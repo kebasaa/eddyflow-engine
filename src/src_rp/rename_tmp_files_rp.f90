@@ -1,7 +1,8 @@
-!***************************************************************************
+﻿!***************************************************************************
 ! rename_tmp_files_rp.f90
 ! -----------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
 !
 ! This file is part of EddyPro (TM).
 !

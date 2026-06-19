@@ -1,7 +1,8 @@
-!***************************************************************************
+﻿!***************************************************************************
 ! ts_extract_subperiod_indexes_from_filelist.f90
 ! ----------------------------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
 !
 ! This file is part of EddyPro (TM).
 !

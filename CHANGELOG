@@ -1,10 +1,47 @@
+8.0.0 (2026-06-19)
+
+    Engine:
+    - Fix: fix again usage of dynamic metadata
+    - Fix: writing of FLUXNET output in RP when "not_enogh_data" (i.e. only biomet to be written)
+    - Refine: improved detection of Spectral Assessment file when running in embedded mode (SmartFlux)
+    - Refine: add variable CP (specific heat at constant pressure) to FLUXNET output
+    - Fix: fix usage of dynamic metadata "file_length" and "ac_freq"
+    - Fix: harmonize Full Output and FLUXNET output for footprint model selection
+    - Fix: implementation of Horst and Leschow 2009 now use Eq. 16 instead of Eq. 13. Thanks M. Aubinet for the notification!
+    - Fix: eliminated spurious Potential Radiation offset. 
+    - Fix: reporting QC flags in the FLUXNET output when using FCC executable
+    - Fix: header error with custom variables when using FCC executable
+    - Fix: reading full cospectra files when using the Fratini et al. 2012 spectral correction method
+    - Fix: planar fit settings when planar fit fails for a sector
+    - Fix:  Units of ET (evapotranspiration flux) harmonized to [mm+1hour-1] throughout the ouput files.
+    - Fix:  error in columns alignment in "full output" file when "fixed output format" is selected along with
+            advanced processing options.
+    - Add:  new output file conforming FLUXNET and AmeriFlux's FP-In Standards for labels, units and format
+            FLUXNET output features a large amount of new output variables, including many intermediate results,
+            statistics on all high-frequency variables, covariances between all high-frequency variables, 
+            biomet mean values and metadata, as well as results of new implementations (see below)
+    - Add:  new data filtering tool allowing user to eliminate raw records corresponding to istantaneous 
+            wind directions from specified sectors (up to 16 sectors)
+    - Add:  new Stationarity test after Mahrt (1998)
+    - Add:  new Random Uncertainty estimation method after Mahrt (1998)
+    - Add:  new QC test named KID (Kurtosis Index on Differenced variable) test (Vitale et al., in preparation)
+    - Add:  new test to identify period of repeated data and drop-outs (Vitale et al., in preparation)
+    - Add:  new supported anemometers:  Metek uSonic-3 Class A MP and Metek uSonic-3 Cage MP 
+    - Add:  computation of wind direction variance
+    - Add:  ET is now treated as a first-class flux (results only available in FLUXNET output)
+    - Refine: improve computation of statistical moments which is now fully robust to presence of missing data
+    - Refine: more accurate computation of mean wind direction 
+    - Refine: Potential Radiation is now computed used timestamp of END of period instead of START
+    - Remove: obsolete GHG-Europe and AmeriFlux outputs
+    - Fix:  minor fixes to Random Error and Footprint settings
+
 6.2.2 (2018-05-04)
   Engine:
   - Add:  new supported sonic(s):  RM Young V, RM Young RE and RM Young VRE
 
 6.2.1 (2017-05-23)
 
-	  Engine
+  Engine
     - Add: new supported instrument model "LI-7500DS".
 
 6.2.0 (2016-08-17)

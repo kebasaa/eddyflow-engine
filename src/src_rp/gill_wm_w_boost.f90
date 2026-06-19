@@ -1,7 +1,8 @@
-!***************************************************************************
+﻿!***************************************************************************
 ! gill_wm_w_boost.f90
 ! -------------------
-! Copyright (C) 2016, LI-COR Biosciences
+! Copyright (C) 2016-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
 !
 ! This file is part of EddyPro (TM).
 !
