@@ -1,6 +1,6 @@
 #
 # Makefile for EddyFlow's engine executables
-# Author: Gerardo Fratini, LI-COR Biosciences
+# Author: Jonathan Muller, ETH Zurich
 #
 
 #Portabilityn
@@ -10,8 +10,8 @@ ifeq ($(OS), Windows_NT)
 	INFO = Compiling for Windows 64bit
 	RM = if exist FILE del /F /Q FILE
 	MV = if exist FILE move FILE DESTINATION
-	RP_EXE = EddyFlow_rp.exe
-	FCC_EXE = EddyFlow_fcc.exe
+	RP_EXE = eddyflow_rp.exe
+	FCC_EXE = eddyflow_fcc.exe
 	OS_DIR = win
 	FC = gfortran.exe
 	MAKE_DIR = if not exist DIR mkdir DIR
@@ -21,8 +21,8 @@ else
 	#Unix
 	RM = rm -f FILE
 	MV = mv FILE DESTINATION || true
-	RP_EXE = EddyFlow_rp
-	FCC_EXE = EddyFlow_fcc
+	RP_EXE = eddyflow_rp
+	FCC_EXE = eddyflow_fcc
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
@@ -567,8 +567,8 @@ bpcf_massman_00.o: \
 replace_gap_with_linear_interpolation.o: \
 	replace_gap_with_linear_interpolation.f90 \
 	m_common_global_var.o
-EddyFlow-rp_main.o: \
-	EddyFlow-rp_main.f90 \
+eddyflow-rp_main.o: \
+	eddyflow-rp_main.f90 \
 	m_rp_global_var.o
 import_current_period.o: \
 	import_current_period.f90 \
@@ -762,8 +762,8 @@ bpcf_read_full_cos_wt.o: \
 cospectra_sorting_and_averaging.o: \
 	cospectra_sorting_and_averaging.f90 \
 	m_fx_global_var_mod.o
-EddyFlow-fcc_main.o: \
-	EddyFlow-fcc_main.f90 \
+eddyflow-fcc_main.o: \
+	eddyflow-fcc_main.f90 \
 	m_fx_global_var_mod.o
 ensemble_cospectra_by_stability.o: \
 	ensemble_cospectra_by_stability.f90 \

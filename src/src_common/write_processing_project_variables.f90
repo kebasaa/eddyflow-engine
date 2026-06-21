@@ -60,9 +60,9 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%title  = trim(adjustl(EPPrjCTags(4)%value))
     EddyFlowProj%id     = trim(adjustl(EPPrjCTags(5)%value))
     if (EddyFlowProj%id(1:1) /= '_') then
-        EddyFlowProj%id = 'EddyFlow_' // trim(adjustl(EddyFlowProj%id))
+        EddyFlowProj%id = 'eddyflow_' // trim(adjustl(EddyFlowProj%id))
     else
-        EddyFlowProj%id = 'EddyFlow' // trim(adjustl(EddyFlowProj%id))
+        EddyFlowProj%id = 'eddyflow' // trim(adjustl(EddyFlowProj%id))
     end if
 
     !>  file type

@@ -50,10 +50,10 @@ module m_fx_global_var
     real(kind = dbl) :: dkf(ndkf + 1)
     real(kind = dbl), allocatable :: custVars(:)
 
-    character(11), parameter :: fcc_app = 'EddyFlow-FCC'
+    character(12), parameter :: fcc_app = 'EddyFlow-FCC'
     character(32) :: g4lab
     character(1024) :: UserVarHeader
-    character(25), parameter :: SubDirSpecAn = 'EddyFlow_spectral_analysis'
+    character(26), parameter :: SubDirSpecAn = 'eddyflow_spectral_analysis'
     character(16000) :: fluxnet_header
 
     logical :: MeanBinSpecAvailable(MaxGasClasses, GHGNumVar)

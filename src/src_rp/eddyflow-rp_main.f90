@@ -1,5 +1,5 @@
 !***************************************************************************
-! EddyFlow-rp_main.f90
+! eddyflow-rp_main.f90
 ! -------------------
 ! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
 ! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini

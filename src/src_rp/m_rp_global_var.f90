@@ -50,11 +50,11 @@ module m_rp_global_var
 
     real(kind = dbl) :: refCounts(GHGNumVar)
 
-    character(10), parameter :: rp_app              = 'EddyFlow-RP'
-    character(13), parameter :: SubDirStats         = 'EddyFlow_stats'
-    character(20), parameter :: SubDirRaw           = 'EddyFlow_raw_datasets'
-    character(18), parameter :: SubDirUserStats     = 'EddyFlow_user_stats'
-    character(21), parameter :: SubDirBinOgives     = 'EddyFlow_binned_ogives'
+    character(11), parameter :: rp_app              = 'EddyFlow-RP'
+    character(14), parameter :: SubDirStats         = 'eddyflow_stats'
+    character(21), parameter :: SubDirRaw           = 'eddyflow_raw_datasets'
+    character(19), parameter :: SubDirUserStats     = 'eddyflow_user_stats'
+    character(22), parameter :: SubDirBinOgives     = 'eddyflow_binned_ogives'
     character(512) :: raw_out_header
     character(PathLen) :: StatsDir
     character(PathLen) :: UserStatsDir

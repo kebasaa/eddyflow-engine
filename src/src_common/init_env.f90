@@ -195,13 +195,13 @@ subroutine CommandLineHelp(sw_ver, build_date)
     character(*), intent(in) :: sw_ver
     character(*), intent(in) :: build_date
     !> Local variables
-    character(11) :: prog
+    character(12) :: prog
 
 
     if (app == 'EddyFlow-RP') then
-        prog = 'EddyFlow_rp'
+        prog = 'eddyflow_rp'
     else
-        prog = 'EddyFlow_fcc'
+        prog = 'eddyflow_fcc'
     end if
 
     write(*, '(a)') ' Help for ' // trim(adjustl(app))
