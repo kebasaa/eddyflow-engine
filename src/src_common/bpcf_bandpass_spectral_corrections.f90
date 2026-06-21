@@ -1,23 +1,25 @@
 !***************************************************************************
 ! bpcf_bandpass_spectral_corrections.f90
 ! --------------------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -30,7 +32,7 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
+subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     loc_var_present, wind_speed, t_air, zL, ac_frequency, avrg_length, &
     logger_sw_ver, detrending_method, detrending_time_constant, printout, &
     LocInstr, nfull, LocFileList, nrow_full, lEx, LocSetup)
@@ -64,7 +66,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
     include 'interfaces_1.inc'
 
     !> Checks that parameters are passed correctly
-    if (app == 'EddyPro-FCC') then
+    if (app == 'EddyFlow-FCC') then
         if (.not. present(lEx) .or. .not. present(LocSetup) &
             .or. .not. present(LocFileList)) &
         call ExceptionHandler(52)
@@ -85,11 +87,11 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
     !> (defined by RH for H2O and by the month for other gases).
     !> If not, sets the method to Moncrieff et al. 1997. Note that even if
     !> only one condition fails, the method is set to Moncrieff for all gases
-    actual_hf_method = trim(adjustl(EddyProProj%hf_meth))
-    if (app == 'EddyPro-FCC') then
-        select case (trim(adjustl(EddyProProj%hf_meth)))
+    actual_hf_method = trim(adjustl(EddyFlowProj%hf_meth))
+    if (app == 'EddyFlow-FCC') then
+        select case (trim(adjustl(EddyFlowProj%hf_meth)))
             case('horst_97', 'ibrom_07', 'fratini_12')
-                call char2int(lEx%date(6:7), month, 2)
+                call char2int(lEx%end_date(6:7), month, 2)
                 if(lEx%var_present(h2o) .and. (RegPar(dum, dum)%e1 == error &
                     .or. RegPar(dum, dum)%e2 == error &
                     .or. RegPar(dum, dum)%e3 == error)) then
@@ -110,11 +112,11 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
                 end if
         end select
     end if
-    EddyProProj%hf_meth = actual_hf_method
+    EddyFlowProj%hf_meth = actual_hf_method
 
     select case(trim(adjustl(actual_hf_method)))
         case('none', 'not')
-            if (EddyProProj%lf_meth == 'analytic') &
+            if (EddyFlowProj%lf_meth == 'analytic') &
                 call BPCF_OnlyLowFrequencyCorrection(measuring_height, &
                     displ_height, loc_var_present, wind_speed, zL, ac_frequency, &
                     avrg_length, detrending_time_constant, detrending_method)
@@ -132,7 +134,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
                 detrending_time_constant, detrending_method, printout)
 
         case('horst_97')
-            if (app == 'EddyPro-FCC') then
+            if (app == 'EddyFlow-FCC') then
                 !> Correction after Horst (1997, BLM), in-situ/analytical
                 call BPCF_Horst97(measuring_height, displ_height, &
                     loc_var_present, wind_speed, zL, ac_frequency, avrg_length, &
@@ -147,7 +149,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
             end if
 
         case('ibrom_07')
-            if (app == 'EddyPro-FCC') then
+            if (app == 'EddyFlow-FCC') then
                 !> Correction after Ibrom et al (2007, AFM), fully in-situ
                 call BPCF_Ibrom07(measuring_height, displ_height, &
                     loc_var_present, wind_speed, zL, ac_frequency, avrg_length, &
@@ -161,7 +163,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
             end if
 
         case('fratini_12')
-            if (app == 'EddyPro-FCC') then
+            if (app == 'EddyFlow-FCC') then
                 !> Correction after Fratini et al. 2012, AFM
                 call BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, &
                     t_air, ac_frequency, avrg_length, detrending_time_constant, &
@@ -179,19 +181,19 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
     !> Based on logger software version, decide whether to override
     !> user settings about BA and ZOH corrections to sonic data
     if (.not. CompareSwVer(SwVerFromString('7.7.0'), logger_sw_ver)) then
-        EddyProProj%hf_correct_ghg_ba = .false.
-        EddyProProj%hf_correct_ghg_zoh = .false.
+        EddyFlowProj%hf_correct_ghg_ba = .false.
+        EddyFlowProj%hf_correct_ghg_zoh = .false.
     end if
 
     !> If acquisition frequency is above 10 Hz, block averaging correction is
     !> not to be applied.
     if (ac_frequency > 10d0) &
-        EddyProProj%hf_correct_ghg_ba = .false.
+        EddyFlowProj%hf_correct_ghg_ba = .false.
 
     !> Apply BA/ZOH correction as necessary
-    if (EddyProProj%hf_correct_ghg_ba .or. EddyProProj%hf_correct_ghg_zoh) then
-        if (EddyProProj%sonic_output_rate <= 0) &
-            EddyProProj%sonic_output_rate =&
+    if (EddyFlowProj%hf_correct_ghg_ba .or. EddyFlowProj%hf_correct_ghg_zoh) then
+        if (EddyFlowProj%sonic_output_rate <= 0) &
+            EddyFlowProj%sonic_output_rate =&
                 DefaultSonicOutputRate(LocInstr(u)%model(1:len_trim(LocInstr(u)%model)-2))
         tmpBPCF = BPCF
         BPCF%of(w_u: w_gas4) = 1d0
@@ -202,6 +204,13 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
 
         BPCF%of(:) = BPCF%of(:) * tmpBPCF%of(:)
     end if
+
+    if (.not. loc_var_present(w_u)) BPCF%of(w_u) = error
+    if (.not. loc_var_present(w_ts)) BPCF%of(w_ts) = error
+    if (.not. loc_var_present(w_co2)) BPCF%of(w_co2) = error
+    if (.not. loc_var_present(w_h2o)) BPCF%of(w_h2o) = error
+    if (.not. loc_var_present(w_ch4)) BPCF%of(w_ch4) = error
+    if (.not. loc_var_present(w_gas4)) BPCF%of(w_gas4) = error
 end subroutine BandPassSpectralCorrections
 
 function DefaultSonicOutputRate(model)
@@ -216,6 +225,8 @@ function DefaultSonicOutputRate(model)
             DefaultSonicOutputRate = 50
         case('r3_100','r3a_100', 'hs_100')
             DefaultSonicOutputRate = 100
+        case('usoni3_classa_mp', 'usoni3_cage_mp')
+            DefaultSonicOutputRate = 30
         case('usa1_standard')
             DefaultSonicOutputRate = 40
         case('usa1_fast')

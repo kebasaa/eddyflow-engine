@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! import_native_data.f90
 ! ----------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -55,7 +57,7 @@ subroutine ImportNativeData(Filepath, FirstRecord, LastRecord, LocCol, &
 
     skip_file = .false.
     !> Open native data file
-    select case (trim(adjustl(EddyProProj%ftype)))
+    select case (trim(adjustl(EddyFlowProj%ftype)))
 
         case ('eddymeas_bin')
             !> Open raw file in binary mode
@@ -177,7 +179,7 @@ subroutine ImportNativeData(Filepath, FirstRecord, LastRecord, LocCol, &
     call ReadNativeFile(Filepath, FirstRecord, LastRecord, rec_len, &
         LocCol, fRaw, size(fRaw, 1), size(fRaw, 2), N, FileEndReached)
 
-    !> Define fRaw, containing both EddyPro and user-defined variables,
+    !> Define fRaw, containing both EddyFlow and user-defined variables,
     !> but no 'ignore' or 'not_numeric' columns.
     !> Values are now converted into standard physical units, if needed.
     call DefineAllVarSet(LocCol, fRaw, size(fRaw, 1), size(fRaw, 2), N)
@@ -213,7 +215,7 @@ subroutine ReadNativeFile(Filepath, FirstRecord, LastRecord, rec_len, &
 
 
     !> select routine to read file, depending on the native file format
-    select case (trim(adjustl(EddyProProj%ftype)))
+    select case (trim(adjustl(EddyFlowProj%ftype)))
 
         !> generic ascii files, with separated values
         case('generic_ascii', 'licor_ghg', 'toa')

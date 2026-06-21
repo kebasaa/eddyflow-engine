@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! available_mean_spectra_cospectra.f90
 ! ------------------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -57,8 +59,10 @@ subroutine AvailableMeanSpectraCospectra(nbins)
     do gas = ts, gas4
         do cls = 1, 8
             if (all(MeanBinCosp(1:nbins, cls)%fnum(gas) == error) &
-                .or. all(MeanBinSpec(1:nbins, cls)%fnum(gas) == 0d0)) &
+                .or. all(MeanBinCosp(1:nbins, cls)%fnum(gas) == 0d0)) then
                 MeanBinCospAvailable(cls, gas) = .false.
+            else
+            end if
         end do
     end do
 

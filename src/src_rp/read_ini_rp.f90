@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! read_ini_rp.f90
 ! ---------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -41,7 +43,7 @@ subroutine ReadIniRP(key)
     logical :: IniFileNotFound
 
 
-    write(*,'(a)') ' Reading EddyPro project file: ' &
+    write(*,'(a)') ' Reading EddyFlow project file: ' &
                      // PrjPath(1:len_trim(PrjPath)) // '..'
 
     !> parse processing.eddypro file and store [Project] variables,
@@ -117,6 +119,23 @@ subroutine WriteVariablesRP()
     !> In/out directories
     Dir%main_in = SCTags(1)%value(1:len_trim(SCTags(1)%value))
     if (len_trim(Dir%main_in) == 0) Dir%main_in = 'none'
+
+    !> Wind direction filter option and corresponding sectors
+    RPSetup%apply_wdf = SCTags(99)%value(1:1) == '1'
+    if (RPSetup%apply_wdf) then
+        leap_an_wsect = 2
+        init_an_wsect = 373 - leap_an_wsect
+        RPSetup%wdf_num_secs = 0
+        do i = 1, MaxNumWdfSectors
+            if (SNTagFound(init_an_wsect + i*leap_an_wsect)) then
+                RPSetup%wdf_num_secs = RPSetup%wdf_num_secs + 1
+                RPSetup%wdf_start(RPSetup%wdf_num_secs) = &
+                    SNTags(init_an_wsect + i*leap_an_wsect)%value
+                RPSetup%wdf_end(RPSetup%wdf_num_secs) = &
+                    SNTags(init_an_wsect + i*leap_an_wsect + 1)%value
+            end if
+        end do
+    end if
 
     !> Everything about raw statistical tests
     Test%sr = SCTags(3)%value(1:1) == '1'
@@ -230,14 +249,15 @@ subroutine WriteVariablesRP()
     RPsetup%recurse = SCTags(19)%value(1:1) == '1'
     !> select whether to output binned (co)spectra
     RPsetup%out_bin_sp = SCTags(26)%value(1:1) == '1'
+
     !> select whether to output binned ogives
     RPsetup%out_bin_og = SCTags(51)%value(1:1) == '1'
 
     !> Regardless of user selection, if ensemble averaged (co)spectra
     !> have been requested and binned spectra files are not available,
     !> need to create them.
-    if ( (EddyProProj%out_avrg_cosp .or. EddyProProj%out_avrg_spec) &
-        .and. .not. EddyProProj%binned_spec_avail) RPsetup%out_bin_sp = .true.
+    if ( (EddyFlowProj%out_avrg_cosp .or. EddyFlowProj%out_avrg_spec) &
+        .and. .not. EddyFlowProj%binned_spec_avail) RPsetup%out_bin_sp = .true.
 
     !> select output file
     RPsetup%out_full_sp(u)   = SCTags(27)%value(1:1) == '1'
@@ -537,29 +557,16 @@ subroutine WriteVariablesRP()
         end if
     end if
 
-    !> Random error estimation settings
-    select case (nint(SNTags(281)%value))
-        case(1)
-            RUsetup%meth = 'finkelstein_sims_01'
-        case(2)
-            RUsetup%meth = 'mann_lenschow_94'
-        case(3)
-            RUsetup%meth = 'tbd'
-        case default
-            RUsetup%meth = 'none'
+    !> Timelag by covariance maximization options
+    select case (SCTags(59)%value(1:len_trim(SCTags(59)%value)))
+    case('w')
+        RPSetup%covmax_var = w
+    case('ts')
+        RPSetup%covmax_var = ts
+    case default
+        RPSetup%covmax_var = w
     end select
-    if (RUsetup%meth /= 'none') then
-        select case (nint(SNTags(282)%value))
-            case(1)
-                RUsetup%its_meth = 'cross_0'
-            case(2)
-                RUsetup%its_meth = 'full_integral'
-            case default
-                RUsetup%its_meth = 'cross_e'
-        end select
-        RUsetup%its_sec_fact = nint(SNTags(283)%value)
-        RUsetup%tlag_max = nint(SNTags(284)%value)
-    end if
+    RPSetup%covmax_stocdet = SCTags(60)%value(1:1) == '1'
 
     !> Biomet measurements
     select case (SCTags(61)%value(1:len_trim(SCTags(61)%value)))

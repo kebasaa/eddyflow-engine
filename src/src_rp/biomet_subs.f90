@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! biomet_subs.f90
 ! ---------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -57,7 +59,6 @@ subroutine RetrieveExtBiometVars(row1, row2, nitems)
     character(32) :: cap_item1
     character(32) :: item1
     character(32) :: item2
-    character(32), external :: biometBaseName
     logical, external :: BiometValidateVar
 
 
@@ -98,12 +99,13 @@ subroutine RetrieveExtBiometVars(row1, row2, nitems)
             ! if (.not. BiometValidateVar(bVars(cnt))) then
             !     write(*,'(a)')
             !     call ExceptionHandler(73)
-            !     EddyProProj%biomet_data = 'none'
+            !     EddyFlowProj%biomet_data = 'none'
             !     return
             ! end if
 
             !> Retrieve variable base name
-            bVars(cnt)%base_name = biometBaseName(bVars(cnt)%label)
+            call biometBaseNameAndPositionalQualifierFromLabel(bVars(cnt)%label, &
+                bVars(cnt)%base_name, bVars(cnt)%pq_string)
         end if
     end do
 
@@ -118,9 +120,6 @@ subroutine RetrieveExtBiometVars(row1, row2, nitems)
     end if
 
     bFileMetadata%numTsCol = tsCnt
-
-    !> Append suffix if variables have not
-    call BiometAppendReplicateSuffix()
 
 end subroutine RetrieveExtBiometVars
 
@@ -274,7 +273,8 @@ subroutine BiometDateTime(pattern, string, date, time, failed)
     end if
 
     !> Check if date and time where correctly read
-    failed = .not. (is_date(date) .and. is_time(time))
+    failed = .not. is_date(date)
+    if (.not. failed) failed = .not. is_time(time)
 
 end subroutine BiometDateTime
 
@@ -345,7 +345,7 @@ end function BiometValidateVar
 ! \deprecated
 ! \test
 !***************************************************************************
-subroutine BiometAppendReplicateSuffix()
+subroutine BiometAppendDefaultPositionalQualifier()
     use m_rp_global_var
     implicit none
     !> Local variables
@@ -381,7 +381,7 @@ subroutine BiometAppendReplicateSuffix()
             bVars(i)%label = trim(bVars(i)%label) // '_0_0_' // trim(adjustl(loc))
         end if
     end do
-end subroutine BiometAppendReplicateSuffix
+end subroutine BiometAppendDefaultPositionalQualifier
 
 
 !***************************************************************************
@@ -548,7 +548,7 @@ subroutine BiometParseRow(row, tstamp, vals, ncol, skip_row)
     logical, intent(out) :: skip_row
     character(*), intent(inout) :: row
     !> Local variables
-    integer :: jj, cnt
+    integer :: jj, cnt, io_status
     character(64) :: tsString
     character(32) :: item
     character(1)  :: sepa
@@ -602,7 +602,8 @@ subroutine BiometParseRow(row, tstamp, vals, ncol, skip_row)
             tsString = trim(tsString) // trim(item)
         else
             cnt = cnt + 1
-            read(item, *) vals(cnt)
+            read(item, *, iostat=io_status) vals(cnt)
+            if (io_status /= 0) vals(cnt) = error
         end if
     end do
 
@@ -686,7 +687,6 @@ subroutine BiometInterpretPositionalQualifier(bVar)
     type(BiometVarsType), intent(inout) :: bVar
     !> Local variables
     character(32) :: s
-    character(32), external :: biometBaseName
 
 
     s = bVar%label(len_trim(bVar%base_name) + 2: len_trim(bVar%label))
@@ -1173,7 +1173,7 @@ end subroutine biometInitEmbedded
 
 !***************************************************************************
 !
-! \brief       Infer standard FLUXNET labels from actual variable labels
+! \brief       Infer variable base name from label, stripping positional qualifier
 ! \author      Gerardo Fratini
 ! \note
 ! \sa
@@ -1181,13 +1181,18 @@ end subroutine biometInitEmbedded
 ! \deprecated
 ! \test
 !***************************************************************************
-character(32) function biometBaseName(bLabel) result(base_name)
+subroutine biometBaseNameAndPositionalQualifierFromLabel(bLabel, base_name, pos_qual)
     use m_rp_global_var
     implicit none
     !> Local variable
     integer :: i
+    integer :: int
+    integer :: stat
+    integer :: underscore
     integer :: n
     character(*), intent(in) :: bLabel
+    character(*), intent(out) :: base_name
+    character(*), intent(out) :: pos_qual
     !> In/out variables
     character(len(bLabel)) :: s
 
@@ -1196,20 +1201,25 @@ character(32) function biometBaseName(bLabel) result(base_name)
     !> Count number of underscores
     n = CountCharInString(bLabel, '_')
 
-    s = bLabel
-    base_name = ''
-    if (n > 3) then
-        do i = 1, n-2
-            base_name = trim(base_name) // s(1:index(s, '_'))
-            s = s(index(s, '_') + 1: len_trim(s))
-        end do
-        base_name = base_name(1:len_trim(base_name)-1)
-    elseif (n == 3) then
-        base_name = s(1:index(s, '_')-1)
+    if (n == 0) then
+        base_name = trim(bLabel)
+        pos_qual = ''
     else
-        base_name = trim(s)
+        s = bLabel
+        do i = 1, n
+            underscore = index(s, '_', .true.)
+            call str2int(s(underscore + 1:len_trim(s)), int, stat)
+            if (stat == 0) then
+                s = s(1:underscore - 1)
+                base_name = trim(s)
+            else
+                base_name = trim(s)
+                exit
+            end if
+        end do
+        pos_qual = bLabel(len_trim(base_name) + 1: len_trim(bLabel))
     end if
-end function biometBaseName
+end subroutine biometBaseNameAndPositionalQualifierFromLabel
 
 !***************************************************************************
 !

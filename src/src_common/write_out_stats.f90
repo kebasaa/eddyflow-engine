@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! write_out_stats.f90
 ! -------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -43,202 +45,203 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     integer :: j = 0
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
+    include '../src_common/interfaces.inc'
 
 
     call clearstr(dataline)
     !> add file info
     call AddDatum(dataline, string(1:len_trim(string)), separator)
-    call WriteDatumInt(N, datum, EddyProProj%err_label)
+    call WriteDatumInt(N, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     !> add mean values
     do j = u, pe
         if (j == ti1 .or. j == ti2) cycle
         if (E2Col(j)%present) then
-            call WriteDatumFloat(LocStats%Mean(j), datum, EddyProProj%err_label)
+            call WriteDatumFloat(LocStats%Mean(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
         else
-            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
         end if
     end do
     !> add wind direction
-    call WriteDatumFloat(LocStats%wind_dir, datum, EddyProProj%err_label)
+    call WriteDatumFloat(LocStats%wind_dir, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     !> add variances
     do j = u, pe
         if (j == ti1 .or. j == ti2) cycle
         if (E2Col(j)%present) then
-            call WriteDatumFloat(LocStats%Cov(j, j), datum, EddyProProj%err_label)
+            call WriteDatumFloat(LocStats%Cov(j, j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
         else
-            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
         end if
     end do
 
     !> add u-covariances
     if (E2Col(u)%present .and. E2Col(v)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, v), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, v), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(u)%present .and. E2Col(w)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, w), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, w), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(u)%present .and. E2Col(ts)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, ts), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, ts), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(u)%present .and. E2Col(co2)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, co2), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, co2), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(u)%present .and. E2Col(h2o)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, h2o), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, h2o), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(u)%present .and. E2Col(ch4)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, ch4), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, ch4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(u)%present .and. E2Col(gas4)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, gas4), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(u, gas4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
 
     !> add remaining v-covariances
     if (E2Col(v)%present .and. E2Col(w)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, w), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(v, w), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(v)%present .and. E2Col(ts)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, ts), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(v, ts), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(v)%present .and. E2Col(co2)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, co2), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(v, co2), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(v)%present .and. E2Col(h2o)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, h2o), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(v, h2o), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(v)%present .and. E2Col(ch4)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, ch4), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(v, ch4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(v)%present .and. E2Col(gas4)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, gas4), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(v, gas4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
 
     !> add remaining w-covariances
     if (E2Col(w)%present .and. E2Col(ts)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, ts), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, ts), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(co2)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, co2), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, co2), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(h2o)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, h2o), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, h2o), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(ch4)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, ch4), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, ch4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(gas4)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, gas4), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, gas4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(tc)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, tc), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, tc), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(pi)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, pi), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, pi), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(te)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, te), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, te), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
     if (E2Col(w)%present .and. E2Col(pe)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, pe), datum, EddyProProj%err_label)
+        call WriteDatumFloat(LocStats%Cov(w, pe), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     else
-        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
 
     !> add standard deviations
     do j = u, pe
         if (j == ti1 .or. j == ti2) cycle
         if (E2Col(j)%present) then
-            call WriteDatumFloat(LocStats%StDev(j), datum, EddyProProj%err_label)
+            call WriteDatumFloat(LocStats%StDev(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
         else
-            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
         end if
     end do
     !> add skewness and kurtosis
     do j = u, pe
         if (j == ti1 .or. j == ti2) cycle
         if (E2Col(j)%present) then
-            call WriteDatumFloat(LocStats%Skw(j), datum, EddyProProj%err_label)
+            call WriteDatumFloat(LocStats%Skw(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
         else
-            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
         end if
     end do
     do j = u, pe
         if (j == ti1 .or. j == ti2) cycle
         if (E2Col(j)%present) then
-            call WriteDatumFloat(LocStats%Kur(j), datum, EddyProProj%err_label)
+            call WriteDatumFloat(LocStats%Kur(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
         else
-            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
         end if
     end do
     write(unt, '(a)') dataline(1:len_trim(dataline) - 1)

@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! create_datasets_rp.f90
 ! ----------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -42,10 +44,6 @@ subroutine CreateDatasetsRP(TimeSeries, nrow, StartIndx, EndIndx)
     type (DateType), intent(in) :: TimeSeries(nrow)
     !> local variables
     integer :: del_status
-    integer :: tmp_indx
-    integer :: move_status = 1
-    character(PathLen) :: OutFile
-    character(PathLen) :: OutPath
 
 
     !> L1 statistics
@@ -177,29 +175,6 @@ subroutine CreateDatasetsRP(TimeSeries, nrow, StartIndx, EndIndx)
         end if
     end if
 
-    !> Essentials file is not filled (useless waste of time)
-    if (EddyProProj%out_essentials) then
-        tmp_indx = index(Essentials_Path, TmpExt)
-        OutFile = Essentials_Path(1: tmp_indx - 1)
-        move_status = system(comm_move // '"' &
-            // Essentials_Path(1:len_trim(Essentials_Path)) // '" "' &
-            // OutFile(1:len_trim(OutFile)) // '"' &
-            // comm_out_redirect // comm_err_redirect)
-    end if
-
-    !> FLUXNET (biomet) file - NEVER filled. Only renamed.
-    if (EddyProProj%out_fluxnet_biomet) then
-        write(*,'(a)', advance = 'no') &
-            '  Closing GHG-Europe (biomet) dataset..'
-        tmp_indx = index(FLUXNET_BIOMET_Path, TmpExt)
-        OutPath = FLUXNET_BIOMET_Path(1: tmp_indx - 1)
-        move_status = system(comm_move // '"' &
-            // FLUXNET_BIOMET_Path(1:len_trim(FLUXNET_BIOMET_Path)) // '" "' &
-            // OutPath(1:len_trim(OutPath)) // '"' &
-            // comm_out_redirect // comm_err_redirect)
-            write(*,'(a)') ' Done.'
-    end if
-
     !> QC file
     if(RPsetup%out_qc_details .and. Meth%qcflag /= 'none') then
         write(*,'(a)', advance = 'no') '  Creating QC details dataset..'
@@ -210,7 +185,7 @@ subroutine CreateDatasetsRP(TimeSeries, nrow, StartIndx, EndIndx)
     end if
 
     !> Biomet measurements file
-    if (EddyProProj%out_biomet .and. nbVars > 0) then
+    if (EddyFlowProj%out_biomet .and. nbVars > 0) then
         write(*,'(a)', advance = 'no') '  Creating Biomet dataset..'
         call MakeDataset(Biomet_Path(1:len_trim(Biomet_Path)), &
             TimeSeries, size(TimeSeries), &
@@ -225,7 +200,7 @@ subroutine CreateDatasetsRP(TimeSeries, nrow, StartIndx, EndIndx)
         // QCdetails_Path(1:len_trim(QCdetails_Path)) // '"')
 
     if (len_trim(Biomet_Path) /= 0 &
-        .and. EddyProProj%out_biomet .and. nbVars > 0) &
+        .and. EddyFlowProj%out_biomet .and. nbVars > 0) &
         del_status = system(comm_del // '"' &
         // Biomet_Path(1:len_trim(Biomet_Path)) // '"')
 

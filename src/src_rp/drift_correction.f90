@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! drift_correction.f90
 ! --------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -72,7 +74,7 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
                     exit
                 end if
             end do
-
+            
         case ('signal_strength')
             !> In case of signal strength proxy, calculate
             !> drift based on signal strength
@@ -113,6 +115,10 @@ tmp2 = Set(1, h2o)
 
     !> This call only to calculate chi_h2o, needed for equivalent pressure
     call MoleFractionsAndMixingRatios()
+
+    !> If chi(h2o) could not be calculated, set it to zero, which in this 
+    !> context means not accounting for broadening effects
+    if (Stats%chi(h2o) == error) Stats%chi(h2o) = 0d0
 
     !> Convert to density/press (note the 10^3 to get to Abs/P with P in kPa)
     !> co2
@@ -171,7 +177,6 @@ tmp2 = Set(1, h2o)
     call PolyVal(DriftCorr%dir_cal(0:6, co2), 6, Set(:, co2), size(Set, 1), Set(:, co2))
     call PolyVal(DriftCorr%dir_cal(0:6, h2o), 6, Set(:, h2o), size(Set, 1), Set(:, h2o))
 
-
     !> Convert density/press back to concentration or density
     !> co2
     if (locCol(co2)%measure_type /= 'molar_density') then
@@ -197,7 +202,7 @@ tmp2 = Set(1, h2o)
     end if
 
 !> ONLY FOR DEBUG, ELIMINATE!
-write(124,*) InitialTimestamp, &
+write(987,*) InitialTimestamp, &
     (tmp - Set(1, co2)) * Ru * Ambient%Tcell / Ambient%Pcell * 1d3
 
 end subroutine DriftCorrection

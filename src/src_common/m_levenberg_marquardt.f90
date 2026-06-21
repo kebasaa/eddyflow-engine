@@ -1859,6 +1859,7 @@ REAL (dp) :: agiant, floatn, s1, s2, s3, xabs, x1max, x3max
 REAL (dp), PARAMETER :: one = 1.0_dp, zero = 0.0_dp, rdwarf = 3.834E-20_dp,  &
                         rgiant = 1.304E+19_dp
 
+fn_val = zero
 s1 = zero
 s2 = zero
 s3 = zero

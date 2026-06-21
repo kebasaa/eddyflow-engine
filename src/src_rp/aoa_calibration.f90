@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! aoa_calibration_nakai.f90
 ! -------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -27,7 +29,7 @@
 ! \author      Taro Nakai, Gerardo Fratini
 ! \notes       This subroutine is taken from Taro Nakai's web page at:
 !              http://todomatsu.lowtem.hokudai.ac.jp/~taro/download/dlcount.php?fname=aoa.f
-!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyPro.
+!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyFlow.
 ! \sa
 ! \bug
 ! \deprecated
@@ -91,7 +93,7 @@ end subroutine AoaCalibration
 ! \author      Taro Nakai, Gerardo Fratini
 ! \notes       This subroutine is taken from Taro Nakai's web page at:
 !              http://todomatsu.lowtem.hokudai.ac.jp/~taro/download/dlcount.php?fname=aoa.f
-!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyPro.
+!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyFlow.
 ! \sa
 ! \bug
 ! \deprecated
@@ -159,7 +161,7 @@ end subroutine AoaSteffensen
 ! \author      Taro Nakai, Gerardo Fratini
 ! \notes       This subroutine is taken from Taro Nakai's web page at:
 !              http://todomatsu.lowtem.hokudai.ac.jp/~taro/download/dlcount.php?fname=aoa.f
-!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyPro.
+!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyFlow.
 ! \sa
 ! \bug
 ! \deprecated
@@ -194,7 +196,7 @@ end subroutine Steffensen
 ! \author      Taro Nakai, Gerardo Fratini
 ! \notes       This subroutine is taken from Taro Nakai's web page at:
 !              http://todomatsu.lowtem.hokudai.ac.jp/~taro/download/dlcount.php?fname=aoa.f
-!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyPro.
+!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyFlow.
 ! \sa
 ! \bug
 ! \deprecated
@@ -225,7 +227,7 @@ end subroutine RetrieveSinErr
 ! \author      Taro Nakai, Gerardo Fratini
 ! \notes       This subroutine is taken from Taro Nakai's web page at:
 !              http://todomatsu.lowtem.hokudai.ac.jp/~taro/download/dlcount.php?fname=aoa.f
-!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyPro.
+!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyFlow.
 ! \sa
 ! \bug
 ! \deprecated
@@ -262,7 +264,7 @@ end subroutine RetrieveCosErr
 ! \author      Taro Nakai, Gerardo Fratini
 ! \notes       This subroutine is taken from Taro Nakai's web page at:
 !              http://todomatsu.lowtem.hokudai.ac.jp/~taro/download/dlcount.php?fname=aoa.f
-!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyPro.
+!              Patched 04.2009 by G. Fratini to be included in ECO2S/EddyFlow.
 ! \sa
 ! \bug
 ! \deprecated

@@ -1,24 +1,26 @@
 !***************************************************************************
 ! date_subs.f90
 ! -------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -52,7 +54,10 @@ subroutine tsValidateTemplate(Template)
     if ( index(Template, 'yy') == 0 &
     .or. index(Template, 'dd') == 0 &
     .or. index(Template, 'HH') == 0 &
-    .or. index(Template, 'MM') == 0) call ExceptionHandler(20)
+    .or. index(Template, 'MM') == 0) then
+        write(*, *) ''
+        call ExceptionHandler(20)
+    end if
 end subroutine tsValidateTemplate
 
 !***************************************************************************
@@ -352,13 +357,45 @@ logical function IsDaytime(rad, date, time)
     character(*), intent(in) :: date
     character(*), intent(in) :: time
     !> local variables
-    logical :: isleap
+    real(kind = dbl) :: lrad
+    integer :: indx
+    integer, external :: DateTimeToHalfHourNumber
+
+    indx = DateTimeToHalfHourNumber(date, time) - 1
+    indx = max(indx, 2)
+    lrad = (rad(indx) + rad(indx - 1)) / 2
+
+    !> Now indx is known, use relevant radiation value to determine daytime
+    if (lrad > 10d0) then
+        IsDaytime = .true.
+    else
+        IsDaytime = .false.
+    end if
+end function IsDaytime
+
+!***************************************************************************
+!
+! \brief       Calculate passed date/time's half-hour number in the year
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+integer function DateTimeToHalfHourNumber(date, time) result(indx)
+    use m_common_global_Var
+    implicit none
+    !> in/out variables
+    character(*), intent(in) :: date
+    character(*), intent(in) :: time
+    !> local variables
     integer :: int_year
     integer :: int_day
     integer :: int_hour
     integer :: int_min
-    integer :: indx
-
+    logical :: isleap
 
     !> Deterime whether current year is leap
     read(date(1:4), '(i4)') int_year
@@ -423,14 +460,7 @@ logical function IsDaytime(rad, date, time)
             indx = indx + 2
     end select
     if (indx == 0) indx = 1
-
-    !> Now indx is known, use relevant radiation value to determine daytime
-    if (rad(indx) > 10d0) then
-        IsDaytime = .true.
-    else
-        IsDaytime = .false.
-    end if
-end function IsDaytime
+end function DateTimeToHalfHourNumber
 
 !***************************************************************************
 !
@@ -484,6 +514,7 @@ subroutine tsRelaxedMatch(tsTest, tsList, nrow, tsRange, side, imatch)
     integer, intent(out) :: imatch
     !> Local variables
     integer :: i
+    type(DateType) :: tsHi
 
 
     imatch = -1
@@ -491,35 +522,38 @@ subroutine tsRelaxedMatch(tsTest, tsList, nrow, tsRange, side, imatch)
     select case (trim(adjustl(side)))
         case ('later')
             do i = 1, nrow
-                if (tsList(i) <= tsTest .and. tsTest <= tsList(i) + tsRange) then
+                tsHi = tsList(i) + tsRange
+                if (tsList(i) <= tsTest .and. tsTest <= tsHi) then
                     imatch = i
                     return
                 end if
             end do
         case ('strictly later')
             do i = 1, nrow
-                if (tsList(i) < tsTest .and. tsTest <= tsList(i) + tsRange) then
+                tsHi = tsList(i) + tsRange
+                if (tsList(i) < tsTest .and. tsTest <= tsHi) then
                     imatch = i
                     return
                 end if
             end do
         case ('before')
             do i = 1, nrow
-                if (tsList(i) - tsRange <= tsTest.and. tsTest <= tsList(i)) then
+                if (tsList(i) - tsRange <= tsTest .and. tsTest <= tsList(i)) then
                     imatch = i
                     return
                 end if
             end do
         case ('strictly before')
             do i = 1, nrow
-                if (tsList(i) - tsRange <= tsTest.and. tsTest < tsList(i)) then
+                if (tsList(i) - tsRange <= tsTest .and. tsTest < tsList(i)) then
                     imatch = i
                     return
                 end if
             end do
         case ('either')
             do i = 1, nrow
-                if (tsList(i) - tsRange <= tsTest.and. tsTest <= tsList(i) + tsRange) then
+                tsHi = tsList(i) + tsRange
+                if (tsList(i) - tsRange <= tsTest .and. tsTest <= tsHi) then
                     imatch = i
                     return
                 end if
@@ -592,6 +626,10 @@ integer function tsInferTimestep(timestamps, nrow) result(tstep)
             end where
         end if
     end do
+    if (.not. allocated(Steps)) then
+        tstep = nint(error)
+        return
+    end if
     nsteps = size(Steps)
 
     !> Find the occurrences of the most recurring step

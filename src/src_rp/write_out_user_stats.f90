@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! write_out_user_stats.f90
 ! ------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -42,6 +44,7 @@ subroutine WriteOutUserStats(unt, string, N, AddHeader)
     integer :: j = 0
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
+    include '../src_common/interfaces.inc'
 
 
     if (AddHeader) then
@@ -52,17 +55,17 @@ subroutine WriteOutUserStats(unt, string, N, AddHeader)
     call clearstr(dataline)
     !> add file info
     call AddDatum(dataline, string(1:len_trim(string)), separator)
-    call WriteDatumInt(N, datum, EddyProProj%err_label)
+    call WriteDatumInt(N, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
 
     do j = 1, NumUserVar
-        call WriteDatumFloat(UserStats%Mean(j), datum, EddyProProj%err_label)
+        call WriteDatumFloat(UserStats%Mean(j), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
-        call WriteDatumFloat(UserStats%StDev(j), datum, EddyProProj%err_label)
+        call WriteDatumFloat(UserStats%StDev(j), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
-        call WriteDatumFloat(UserStats%Skw(j), datum, EddyProProj%err_label)
+        call WriteDatumFloat(UserStats%Skw(j), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
-        call WriteDatumFloat(UserStats%Kur(j), datum, EddyProProj%err_label)
+        call WriteDatumFloat(UserStats%Kur(j), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end do
     write(unt, '(a)') dataline(1:len_trim(dataline) - 1)

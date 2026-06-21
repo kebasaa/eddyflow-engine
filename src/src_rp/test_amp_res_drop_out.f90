@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! test_amp_res_drop_out.f90
 ! -------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -196,6 +198,9 @@ subroutine TestAmpResDropOut(Set, N)
             else
                 ar_hflags(j) = 0
             end if
+            Essentials%ar_s(j) = 1d2 * (dble(tot_mptbins(j))) / dble(ar%bins * wdw_num)
+        else
+            Essentials%ar_s(j) = error
         end if
     end do
     !> Flags the variable if the num of dropouts is larger than threshold
@@ -212,6 +217,11 @@ subroutine TestAmpResDropOut(Set, N)
             else
                 do_hflags(j) = 0
             end if
+            Essentials%do_s_ctr(j) = 100.d0 * dble(idint(dble(tot_drops_ctr(j) / (nn * wdw_num))))
+            Essentials%do_s_ext(j) = 100.d0 * dble(idint(dble(tot_drops_ext(j) / (nn * wdw_num))))
+        else
+            Essentials%do_s_ctr(j) = error
+            Essentials%do_s_ext(j) = error
         end if
     end do
 

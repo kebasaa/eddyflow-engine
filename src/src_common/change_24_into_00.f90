@@ -1,24 +1,26 @@
 !***************************************************************************
 ! change_24_into_00.f90
 ! ---------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -42,6 +44,7 @@ subroutine Change24Into00(Datestring, doy_format)
     integer :: int_doy
     integer :: max_days
     integer :: i
+    integer :: inext
     logical :: isleap
     character(5) :: tmp_date
 
@@ -63,8 +66,9 @@ subroutine Change24Into00(Datestring, doy_format)
                     tmp_date = Datestring(5:6) // '-' // Datestring(7:8)
                     if (DayOfLeapYear(i) == tmp_date) then
                         if (i /= lndays) then
-                            Datestring(5:6) = DayOfLeapYear(i + 1)(1:2)
-                            Datestring(7:8) = DayOfLeapYear(i + 1)(4:5)
+                            inext = i + 1
+                            Datestring(5:6) = DayOfLeapYear(inext)(1:2)
+                            Datestring(7:8) = DayOfLeapYear(inext)(4:5)
                         else
                             Datestring(5:6) = DayOfLeapYear(1)(1:2)
                             Datestring(7:8) = DayOfLeapYear(1)(4:5)
@@ -82,8 +86,9 @@ subroutine Change24Into00(Datestring, doy_format)
                     tmp_date = Datestring(5:6) // '-' // Datestring(7:8)
                     if (DayOfYear(i) == tmp_date) then
                         if (i /= ndays) then
-                            Datestring(5:6) = DayOfYear(i + 1)(1:2)
-                            Datestring(7:8) = DayOfYear(i + 1)(4:5)
+                            inext = i + 1
+                            Datestring(5:6) = DayOfYear(inext)(1:2)
+                            Datestring(7:8) = DayOfYear(inext)(4:5)
                         else
                             Datestring(5:6) = DayOfYear(1)(1:2)
                             Datestring(7:8) = DayOfYear(1)(4:5)

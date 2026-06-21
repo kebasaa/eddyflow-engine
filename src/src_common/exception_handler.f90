@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! exception_handler.f90
 ! ---------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -40,7 +42,7 @@ subroutine ExceptionHandler(error_code)
     select case (error_code)
         case(0)
             write(*,*) ' Fatal error(0)> Occurred while retrieving user home path.'
-            write(*,*) ' Fatal error(0)> EddyPro is not able to locate project files and must terminate.'
+            write(*,*) ' Fatal error(0)> EddyFlow is not able to locate project files and must terminate.'
             write(*,*) ' Fatal error(0)> Program execution aborted.'
             stop 1
         case(1)
@@ -50,7 +52,7 @@ subroutine ExceptionHandler(error_code)
             stop 1
         case(2)
             write(*,*) ' Error(2)> Occurred while scanning file for biomet data.'
-            write(*,*) ' Error(2)> EddyPro could not retrieve biomet data from this file.'
+            write(*,*) ' Error(2)> EddyFlow could not retrieve biomet data from this file.'
             write(*,*) ' Error(2)> File will be ignored.'
         case(3)
             write(*,*) ' Error(3)> Occurred while reading metadata file in GHG archive. File not found or empty.'
@@ -124,12 +126,12 @@ subroutine ExceptionHandler(error_code)
                                      &for this sector: singular matrix found.'
             write(*,*) ' Error(34)> Planar-fit rotation matrix not calculated for this sector.'
         case(35)
-            write(*,*) ' Fatal error(35)> Oops! Something went wrong. EddyPro was not able to process any raw file.'
+            write(*,*) ' Fatal error(35)> Oops! Something went wrong. EddyFlow was not able to process any raw file.'
             write(*,*) ' Fatal error(35)> Output files not created.'
             write(*,*) ' Fatal error(35)> Program execution aborted.'
             stop 1
         case(36)
-            write(*,*) ' Fatal error(36)> No "Output directory" was selected. Select an "Output directory" before running EddyPro.'
+            write(*,*) ' Fatal error(36)> No "Output directory" was selected. Select an "Output directory" before running EddyFlow.'
             write(*,*) ' Fatal error(36)> Program execution aborted.'
             stop 1
         case(37)
@@ -258,29 +260,29 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Error(69)> High-frequency spectral correction method switched to Moncrieff et al. (1997).'
         case(70)
             write(*,*) ' Error(70)> Inconsistent number of variables in biomet files.'
-            write(*,*) ' Error(70)> EddyPro cannot resolve the conflict and will thus proceed without using biomet data.'
+            write(*,*) ' Error(70)> EddyFlow cannot resolve the conflict and will thus proceed without using biomet data.'
         case(71)
             write(*,*) ' Error(71)> No valid biomet record imported.'
-            write(*,*) ' Error(71)> EddyPro will proceed without using biomet data.'
+            write(*,*) ' Error(71)> EddyFlow will proceed without using biomet data.'
         case(72)
             write(*,*) '  Warning(72)> No valid biomet record found for this period.'
         case(73)
             write(*,*) '  Error(73)> The label of at least one biomet variable misses'
             write(*,*) '  Error(73)> or has incomplete positional qualifier ("_x_y_z" suffix).'
-            write(*,*) '  Error(73)> EddyPro will proceed without using biomet data.'
+            write(*,*) '  Error(73)> EddyFlow will proceed without using biomet data.'
         case(74)
             write(*,*) '  Error(74)> No valid binned (co)spectra files were found'
-            write(*,*) '  Error(74)> EddyPro cannot perform spectral asssessment, nor '
+            write(*,*) '  Error(74)> EddyFlow cannot perform spectral asssessment, nor '
             write(*,*) '  Error(74)> create ensemble averaged (co)spectra. If the case, spectral '
             write(*,*) '  Error(74)> correction method will be switched to Moncrieff et al. (2007).'
         case(75)
             write(*,*) ' Error(75)> Not enough valid co-spectra were found for making ensemble averages.'
             write(*,*) ' Error(75)> Time-sorted ensemble averaged cospectra outputs not created.'
         case(76)
-            write(*,*) ' Error(76)> EddyPro could not calculate ensemble spectra.'
+            write(*,*) ' Error(76)> EddyFlow could not calculate ensemble spectra.'
             write(*,*) ' Error(76)> Spectral assessment failed. Spectral assessment file not created.'
         case(77)
-            write(*,*) ' Error(77)> EddyPro could not calculate ensemble spectra.'
+            write(*,*) ' Error(77)> EddyFlow could not calculate ensemble spectra.'
             write(*,*) ' Error(77)> Ensemble averaged spectral output not created.'
         case(78)
             write(*,*) ' Fatal error(78)> No files matching the expected template were found in the selected folder.'
@@ -288,7 +290,7 @@ subroutine ExceptionHandler(error_code)
             stop 1
         case(79)
             write(*,*) ' Error(79)> Inconsistent variable labels or units in biomet files.'
-            write(*,*) ' Error(79)> EddyPro cannot resolve the conflict and will thus proceed without using biomet data.'
+            write(*,*) ' Error(79)> EddyFlow cannot resolve the conflict and will thus proceed without using biomet data.'
         case(80)
             write(*,*) ' Warning(80)> Implausible altitude value detected. Altitude defaulted to zero.'
         case(81)
@@ -311,18 +313,18 @@ subroutine ExceptionHandler(error_code)
             stop 1
         case(87)
             write(*,*) '  Error(87)> Entered or inferred "Binned co-spectra files directory" does not exist.'
-            write(*,*) '  Error(87)> EddyPro cannot perform spectral assessment, calculate ensemble averaged spectra'
+            write(*,*) '  Error(87)> EddyFlow cannot perform spectral assessment, calculate ensemble averaged spectra'
             write(*,*) '  Error(87)> or calculate ensemble averaged co-spectra.'
             write(*,*) '  Error(87)> Continuing by switching to Moncrieff et al. (1997) spectral corrections'
             write(*,*) '  Error(87)> if an in-situ method was selected, and ignoring selection of ensemble'
             write(*,*) '  Error(87)> averaged spectra or co-spectra outputs'
         case(88)
             write(*,*) '  Error(88)> Entered or inferred "Full co-spectra files directory" does not exist.'
-            write(*,*) '  Error(88)> EddyPro cannot use spectral correction method of Fratini et al. (2012)'
+            write(*,*) '  Error(88)> EddyFlow cannot use spectral correction method of Fratini et al. (2012)'
             write(*,*) '  Error(88)> Continuing by switching to Moncrieff et al. (1997)'
         case(89)
             write(*,*) '  Error(89)> Entered or inferred "Binned co-spectra files directory" does not contain any valid files.'
-            write(*,*) '  Error(89)> EddyPro cannot perform spectral assessment, calculate ensemble averaged spectra'
+            write(*,*) '  Error(89)> EddyFlow cannot perform spectral assessment, calculate ensemble averaged spectra'
             write(*,*) '  Error(89)> or calculate ensemble averaged co-spectra.'
             write(*,*) '  Error(89)> Continuing by switching to Moncrieff et al. (1997) spectral corrections'
             write(*,*) '  Error(89)> if an in-situ method was selected, and ignoring selection of ensemble'
@@ -330,9 +332,9 @@ subroutine ExceptionHandler(error_code)
         case(90)
             write(*,*) '  Error(90)> Entered or inferred "Binned co-spectra files directory" does not contain'
             write(*,*) '  Error(90)> any files corresponding to the selected start/end period.'
-            write(*,*) '  Error(90)> EddyPro cannot perform spectral assessment, calculate ensemble averaged spectra'
+            write(*,*) '  Error(90)> EddyFlow cannot perform spectral assessment, calculate ensemble averaged spectra'
             write(*,*) '  Error(90)> or calculate ensemble averaged co-spectra.'
-            write(*,*) '  Error(90)> EddyPro will continue, switching to Moncrieff et al. (1997) spectral corrections'
+            write(*,*) '  Error(90)> EddyFlow will continue, switching to Moncrieff et al. (1997) spectral corrections'
             write(*,*) '  Error(90)> if an in-situ method was selected, and ignoring selection of ensemble'
             write(*,*) '  Error(90)> averaged spectra or co-spectra outputs.'
         case(91)
@@ -343,7 +345,7 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Error(92)> File not created.'
         case(93)
             write(*,*) ' Error(93)> Embedded biomet selected, but not processing GHG files. This is not possible.'
-            write(*,*) ' Error(93)> EddyPro will proceed without using biomet data.'
+            write(*,*) ' Error(93)> EddyFlow will proceed without using biomet data.'
         case(94)
             write(*,*) ' Warning(94)> The selected or inferred angle-of-attack correction method is not applicable'
             write(*,*) ' Warning(94)> to data collected with selected sonic anemometer.'

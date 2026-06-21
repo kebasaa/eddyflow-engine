@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! make_dataset.f90
 ! ----------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -64,6 +66,7 @@ subroutine MakeDataset(PathIn, MasterTimeSeries, nrow, StartIndx, &
 
     !> Initialize ErrString by reading one valid line from the file
     ErrString = ''
+
     call InitContinuousDataset(PathIn, ErrString, hnrow)
 
     !> Open input file
@@ -123,13 +126,9 @@ subroutine MakeDataset(PathIn, MasterTimeSeries, nrow, StartIndx, &
             !> beginning of the averaging period
             call DateTimeToDateType(fdate, ftime, fTimestamp)
             fTimestamp = fTimestamp - DateStep
-
             if (MasterTimeSeries(i) > fTimestamp + DateStep) then
                 call AddErrorString(udf2, MasterTimeSeries(i), &
-                    ErrString, len(ErrString), &
-                    PathIn == trim(adjustl(FLUXNET_EDDY_Path)) &
-                    .or. PathIn == trim(adjustl(FLUXNET_BIOMET_Path)) , &
-                    AddNoFile)
+                    ErrString, len(ErrString), AddNoFile)
                 cycle periods_loop
             end if
 
@@ -144,10 +143,7 @@ subroutine MakeDataset(PathIn, MasterTimeSeries, nrow, StartIndx, &
                 !> backspaces and cycle periods_loops
                 if (i < EndIndx) then
                     call AddErrorString(udf2, MasterTimeSeries(i+1), &
-                        ErrString, len(ErrString), &
-                        PathIn == trim(adjustl(FLUXNET_EDDY_Path)) &
-                        .or. PathIn == trim(adjustl(FLUXNET_BIOMET_Path)) , &
-                        AddNoFile)
+                        ErrString, len(ErrString), AddNoFile)
                 end if
                 backspace(udf)
                 cycle periods_loop
@@ -157,10 +153,7 @@ subroutine MakeDataset(PathIn, MasterTimeSeries, nrow, StartIndx, &
         !> This takes care of time periods following the end of the raw data period
         if (add_error .and. i < EndIndx) then
             call AddErrorString(udf2, MasterTimeSeries(i+1), &
-                ErrString, len(ErrString), &
-                PathIn == trim(adjustl(FLUXNET_EDDY_Path)) &
-                .or. PathIn == trim(adjustl(FLUXNET_BIOMET_Path)) , &
-                AddNoFile)
+                ErrString, len(ErrString), AddNoFile)
             add_error = .false.
         end if
     end do periods_loop
@@ -183,15 +176,13 @@ end subroutine MakeDataset
 ! \test
 ! \todo
 !***************************************************************************
-subroutine AddErrorString(unt, Timestamp, ErrString, LenErrStr, &
-    IsGhgEuropeFile, AddNoFile)
+subroutine AddErrorString(unt, Timestamp, ErrString, LenErrStr, AddNoFile)
     use m_common_global_Var
     implicit none
     !> in/out variables
     integer, intent(in) :: unt
     integer, intent(in) :: LenErrStr
     character(LenErrStr) :: ErrString
-    logical, intent(in) :: IsGhgEuropeFile
     logical, intent(in) :: AddNoFile
     type (DateType), intent(in) :: Timestamp
     !> local variables
@@ -205,20 +196,14 @@ subroutine AddErrorString(unt, Timestamp, ErrString, LenErrStr, &
     !> Convert Timestamp to date and time and calculate doy
     call DateTypeToDateTime(Timestamp, date, time)
     call DateTimeToDOY(date, time, int_doy, float_doy)
-    call WriteDatumFloat(float_doy, char_doy, EddyProProj%err_label)
+    write(char_doy, '(G20.7)') float_doy
     call ShrinkString(char_doy)
 
     !> Create output string
     if (AddNoFile) then
-        if (IsGhgEuropeFile) then
-            dataline = 'not_enough_data,' // date(1:10) // ',' // time // ',' &
-                     // trim(adjustl(EddyProProj%err_label)) &
-                     // ErrString(index(ErrString, ',,') + 1: len_trim(ErrString))
-        else
-            dataline = 'not_enough_data,' // date(1:10) // ',' // time // ',' &
-                     // char_doy(1: index(char_doy, '.')+ 3) &
-                     // ErrString(index(ErrString, ',,') + 1: len_trim(ErrString))
-        end if
+        dataline = 'not_enough_data,' // date(1:10) // ',' // time // ',' &
+                    // char_doy(1: index(char_doy, '.')+ 3) &
+                    // ErrString(index(ErrString, ',,') + 1: len_trim(ErrString))
     else
         dataline = date(1:10) // ',' // time // ',' &
                 // char_doy(1: index(char_doy, '.')+ 3) &
@@ -227,6 +212,5 @@ subroutine AddErrorString(unt, Timestamp, ErrString, LenErrStr, &
 
     !> write on file
     write(unt, '(a)') trim(adjustl(dataline))
-
 
 end subroutine AddErrorString

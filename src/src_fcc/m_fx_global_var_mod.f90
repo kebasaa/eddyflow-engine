@@ -1,28 +1,30 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! m_fx_global_var.f90
 ! -------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
-! \brief       Module for global variables in eddypro_fcc
+! \brief       Module for global variables in EddyFlow_fcc
 ! \author      Gerardo Fratini
 ! \note
 ! \sa
@@ -46,11 +48,13 @@ module m_fx_global_var
 
     real(kind = dbl) :: float_doy
     real(kind = dbl) :: dkf(ndkf + 1)
+    real(kind = dbl), allocatable :: custVars(:)
 
-    character(11), parameter :: fcc_app = 'EddyPro-FCC'
+    character(11), parameter :: fcc_app = 'EddyFlow-FCC'
     character(32) :: g4lab
     character(1024) :: UserVarHeader
-    character(25), parameter :: SubDirSpecAn = 'eddypro_spectral_analysis'
+    character(25), parameter :: SubDirSpecAn = 'EddyFlow_spectral_analysis'
+    character(16000) :: fluxnet_header
 
     logical :: MeanBinSpecAvailable(MaxGasClasses, GHGNumVar)
     logical :: MeanBinCospAvailable(MaxGasClasses, GHGNumVar)
@@ -75,7 +79,7 @@ module m_fx_global_var
 
     !> tags of the setup ".ini" file for eccoce
     integer, parameter :: Nsn = 109
-    integer, parameter :: Nsc = 25
+    integer, parameter :: Nsc = 30
     logical            :: SNTagFound(Nsn)
     logical            :: SCTagFound(Nsc)
     type (Numerical)   :: SNTags(Nsn)
@@ -214,5 +218,6 @@ module m_fx_global_var
          SCTags(22)%Label / 'sa_subset'         / &
          SCTags(23)%Label / 'sa_use_vm_flags'   / &
          SCTags(24)%Label / 'sa_use_foken_low'  / &
-         SCTags(25)%Label / 'sa_use_foken_mid'  /
+         SCTags(25)%Label / 'sa_use_foken_mid'  / &
+         SCTags(26)%Label / 'keep_parent_fluxnet_file'  /
 end module m_fx_global_var

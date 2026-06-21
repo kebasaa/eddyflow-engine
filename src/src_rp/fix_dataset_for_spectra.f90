@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! fix_dataset_for_spectra.f90
 ! ---------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -42,9 +44,11 @@ subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
     integer :: tnrow
 
 
-    !> Check that each variable doesn't have too many error codes
+    !> If more than 30% of the data is missing, don't compute spectra
+    !> because linear interpolation probably too severly affect spectral shape
+    !> This filter is totally arbitrary, only based on anecdotal evidence
     do j = 1, ncol
-        if (count(Set(1:nrow, j) == error) > nrow / 100) SpecCol(j)%present = .false.
+        if (count(Set(1:nrow, j) == error) > nrow / 3) SpecCol(j)%present = .false.
     end do
 
     !> nrow2 is the smallest nrow of all columns

@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! write_out_planar_fit.f90
 ! ------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -47,7 +49,7 @@ subroutine WriteOutPlanarFit(NumElem, N)
 
     !> Create output file
     PlanarFit_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-              // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+              // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
               // PlanarFit_FilePadding // Timestamp_FilePadding // TxtExt
     open(upf, file = PlanarFit_Path, iostat = open_status, encoding = 'utf-8')
 
@@ -58,9 +60,9 @@ subroutine WriteOutPlanarFit(NumElem, N)
         zero = nint(360 + PFSetup%north_offset)
     end if
     write(upf, '(a)') 'Planar_fit_results'
-    write(upf, '(a, i3)') 'Number_of_selected_wind_sectors:', PFSetup%num_sec
-    write(upf, '(a, i4)') 'Minimum_number_of_data_per_wind_sector:', PFSetup%min_per_sec
-    write(upf, '(a, f5.2)') 'Maximum_average_vertical_wind_component_(m/s):', PFSetup%w_max
+    write(upf, '(a, i3)') 'Number_of_selected_wind_sectors: ', PFSetup%num_sec
+    write(upf, '(a, i4)') 'Minimum_number_of_data_per_wind_sector: ', PFSetup%min_per_sec
+    write(upf, '(a, f5.2)') 'Maximum_average_vertical_wind_component_(m/s): ', PFSetup%w_max
     write(upf, '(a, f5.2)') 'Minimum_average_horizontal_wind_component_(m/s): ', PFSetup%u_min
     write(upf, '(a, a)') 'Beginning_of_planar_fit_determination_period: ', PFSetup%start_date
     write(upf, '(a, a)') 'End_of_planar_fit_determination_period: ', PFSetup%end_date

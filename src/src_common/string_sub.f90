@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! string_sub.f90
 ! --------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -280,6 +282,28 @@ end subroutine char2int
 
 !***************************************************************************
 !
+! \brief       Convert string to integer and return error \n
+!              into an integer number
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+elemental subroutine str2int(str,int,stat)
+    implicit none
+    ! Arguments
+    character(len=*),intent(in) :: str
+    integer,intent(out) :: int
+    integer,intent(out) :: stat
+
+    read(str,*,iostat=stat)  int
+end subroutine str2int
+  
+!***************************************************************************
+!
 ! \brief       Convert an integer into a string of max 32 chars
 !              If a 'pad' value is specified, pads with leading zeros
 !              to reach a string length equal to 'pad'.
@@ -317,26 +341,6 @@ subroutine int2char(num, string, pad)
 
     string = trim(adjustl(str))
 end subroutine int2char
-
-! DEPRECATED (WHAT WAS I THINKING ABOUT?)
-!    integer :: i
-!    integer :: j
-!    integer :: aux
-!    logical :: check
-!    check = .false.
-!    aux = num
-!    do j = 1, pad
-!        do i = 1, 9
-!            if (((aux / (i*10**(pad - j))) >= 1).and.((aux / ((i + 1)*10**(pad - j))) < 1)) then
-!            check = .true.
-!            string(j:j) = char(i + 48)
-!            aux = aux - i*10**(pad - j)
-!            end if
-!        end do
-!        if(.not. check) string(j:j) = char(48)
-!        check = .false.
-!    end do
-! DEPRECATED
 
 !***************************************************************************
 !
@@ -406,20 +410,149 @@ end subroutine WriteDatumInt
 ! \test
 ! \todo
 !***************************************************************************
-subroutine WriteDatumFloat(float_datum, char_datum, err_label)
+subroutine WriteDatumFloat(float_datum, char_datum, err_label, gain, offset)
     use m_common_global_var
     implicit none
     !> in/out variables
     real(kind = dbl), intent(in) :: float_datum
+    real(kind = dbl), optional, intent(in) :: gain
+    real(kind = dbl), optional, intent(in) :: offset
     character(*), intent(out) :: char_datum
     character(*), intent(in) :: err_label
+    real(kind = dbl) :: val
+
 
     if (float_datum /= error) then
-        write(char_datum, *) float_datum
+        val = float_datum
+        if (present(gain) .and. present(offset)) then
+            val = val * gain + offset
+        end if
+        write(char_datum, fmt='(G20.6)') val
+        char_datum = trim(char_datum)
     else
         char_datum = err_label(1:len_trim(err_label))
     end if
 end subroutine WriteDatumFloat
+
+!***************************************************************************
+!
+! \brief       Write a character datum as a string, \n
+!              or replace it with the user-defined error string if the case
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine WriteDatumChar(char_in, char_datum, err_label)
+    use m_common_global_var
+    implicit none
+    !> in/out variables
+    character(*), intent(in) :: char_in
+    character(*), intent(out) :: char_datum
+    character(*), intent(in) :: err_label
+
+    if (trim(adjustl(char_in)) /= 'none' .and. trim(adjustl(char_in)) /= 'None' &
+        .and. trim(adjustl(char_in)) /= '899999999') then
+        char_datum = trim(adjustl(char_in))
+    else
+        char_datum = trim(adjustl(err_label))
+    end if
+end subroutine WriteDatumChar
+
+!***************************************************************************
+!
+! \brief       Add integer datum or error code to dataline
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine AddIntDatumToDataline(int_datum, dataline, err_label)
+    use m_common_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: int_datum
+    character(*), intent(in) :: err_label
+    character(*), intent(inout) :: dataline
+    character(DatumLen) :: char_datum
+
+    call WriteDatumInt(int_datum, char_datum, err_label)
+    call AddDatum(dataline, char_datum, separator)
+end subroutine AddIntDatumToDataline
+
+!***************************************************************************
+!
+! \brief       Add float datum or error code to dataline
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine AddFloatDatumToDataline(float_datum, dataline, err_label, gain, offset)
+    use m_common_global_var
+    implicit none
+    !> in/out variables
+    real(kind = dbl), intent(in) :: float_datum
+    real(kind = dbl), optional, intent(in) :: gain
+    real(kind = dbl), optional, intent(in) :: offset
+    character(*), intent(in) :: err_label
+    character(*), intent(inout) :: dataline
+    character(DatumLen) :: char_datum
+
+    interface 
+        subroutine WriteDatumFloat(float_datum, char_datum, err_label, gain, offset)
+            use m_common_global_var
+            implicit none
+            !> in/out variables
+            real(kind = dbl), intent(in) :: float_datum
+            real(kind = dbl), optional, intent(in) :: gain
+            real(kind = dbl), optional, intent(in) :: offset
+            character(*), intent(out) :: char_datum
+            character(*), intent(in) :: err_label
+            real(kind = dbl) :: val
+        end subroutine
+    end interface
+
+    if (present(gain) .and. present(offset)) then
+        call WriteDatumFloat(float_datum, char_datum, err_label, gain, offset)
+    else
+        call WriteDatumFloat(float_datum, char_datum, err_label)
+    end if    
+    call AddDatum(dataline, char_datum, separator)
+end subroutine AddFloatDatumToDataline
+
+!***************************************************************************
+!
+! \brief       Add char datum or error code to dataline
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine AddCharDatumToDataline(char_in, dataline, err_label)
+    use m_common_global_var
+    implicit none
+    !> in/out variables
+    character(*), intent(in) :: char_in
+    character(*), intent(in) :: err_label
+    character(*), intent(inout) :: dataline
+    character(DatumLen) :: char_datum
+
+    call WriteDatumChar(trim(char_in), char_datum, err_label)
+    call AddDatum(dataline, char_datum, separator)
+end subroutine AddCharDatumToDataline
 
 !***************************************************************************
 !
@@ -876,7 +1009,72 @@ end function SplitCount
 ! \bug
 ! \deprecated
 ! \test
-!***************************************************************************function replace(string,what,with, outlen)  result(nstring)
+!***************************************************************************
+! function replace(string, what, with, outlen) result(nstring)
+!     use m_common_global_var
+!     implicit none
+!     !> in/out variables
+!     integer, intent(in) :: outlen
+!     character(*), intent(in) :: string
+!     character(*), intent(in) :: what
+!     character(*), intent(in) :: with
+!     character(:), allocatable :: nstring
+!     !> Local variables
+!     character(len(string) * 10) :: tstring
+!     integer :: i
+
+!     i = outlen
+!     tstring = string
+!     do
+!         i = index(tstring, what)
+!         if (i == 0) exit
+!         if (i == 1) then
+!             tstring = with // trim(tstring(1+len(what):))
+!         else if (i == len_trim(tstring)) then
+!             tstring = trim(tstring(:i-1)) // with
+!         else
+!             tstring = tstring(:i-1) // with // trim(tstring(i+len(what):))
+!         end if
+!     end do
+!     nstring = trim(adjustl(tstring))
+! end function replace
+
+function replace2(string, what, with) result(nstring)
+    use m_common_global_var
+    implicit none
+    !> in/out variables
+    character(*), intent(in) :: string
+    character(*), intent(in) :: what
+    character(*), intent(in) :: with
+    character(:), allocatable :: nstring
+    !> Local variables
+    character(len(string) * 10) :: tstring
+    integer :: i
+    integer :: j
+    integer :: cnt
+    integer :: start
+
+    tstring = string
+    start = 1
+    cnt = 0
+    do
+        i = index(string(start:), what)
+        if (i <= 0) exit
+        i = i + start - 1
+        j = i + (len(with) - len(what)) * cnt 
+        if (j == 1) then
+            tstring = with // tstring(len(what)+1:)
+        elseif (j == len(string) - len(what) + 1) then
+            tstring = tstring(:j-1) // with
+        else 
+            tstring = tstring(:j-1) // with // tstring(j+len(what):)
+        end if
+        cnt = cnt + 1
+        start = i + 1
+    end do
+    nstring = trim(tstring)
+end function replace2
+
 function replace(string, what, with, outlen) result(nstring)
     use m_common_global_var
     implicit none
@@ -886,6 +1084,7 @@ function replace(string, what, with, outlen) result(nstring)
     character(*), intent(in) :: what
     character(*), intent(in) :: with
     character(outlen) :: nstring
+    !> Local variables
     integer :: i, nnr
 
     nstring = string
@@ -896,37 +1095,6 @@ function replace(string, what, with, outlen) result(nstring)
         nstring = nstring(:i-1) // with(:nnr) // nstring(i+len(what):)
     end do
 end function replace
-
-!
-!function replace(string, replace_what, replace_with) result(new_string)
-!    use m_common_global_var
-!    implicit none
-!    !> in/out variables
-!    character(*), intent(in) :: string
-!    character(*), intent(in) :: replace_what
-!    character(*), intent(in) :: replace_with
-!    character(*) :: new_string
-!    !> local variables
-!    integer :: init
-!
-!
-!    init = index(string, replace_what)
-!    if (init /= 0) then
-!        if (init == 1) then
-!            new_string = trim(replace_with) &
-!                // string(len(replace_what)+1:len(trim(string)))
-!        else if (init + len(replace_what) == len(string)) then
-!!            new_string = string(1:init-1) // trim(replace_with) &
-!!                // string(init+len(replace_what):len(trim(string)))
-!        else
-!            new_string = string(1:init-1) // trim(replace_with) &
-!                // string(init+len(replace_what):len(trim(string)))
-!        end if
-!    else
-!        new_string = string
-!    end if
-!end function replace
-
 !***************************************************************************
 !
 ! \brief
@@ -1006,11 +1174,11 @@ logical function is_date(s)
     !> Local variables
     logical, external :: is_numeric
 
-    is_date = len_trim(s) == 10 &
-        .and. is_numeric(s(1:4)) &
-        .and. is_numeric(s(6:7)) &
-        .and. is_numeric(s(9:10)) &
-        .and. s(5:5) == '-' .and. s(8:8) == '-'
+    is_date = len_trim(s) == 10
+    if (is_date) is_date = is_numeric(s(1:4))
+    if (is_date) is_date = is_numeric(s(6:7))
+    if (is_date) is_date = is_numeric(s(9:10))
+    if (is_date) is_date = (s(5:5) == '-' .and. s(8:8) == '-')
 end function is_date
 
 !***************************************************************************
@@ -1031,10 +1199,10 @@ logical function is_time(s)
     !> Local variables
     logical, external :: is_numeric
 
-    is_time = len_trim(s) == 5 &
-        .and. is_numeric(s(1:2)) &
-        .and. is_numeric(s(4:5)) &
-        .and. s(3:3) == ':'
+    is_time = len_trim(s) == 5
+    if (is_time) is_time = is_numeric(s(1:2))
+    if (is_time) is_time = is_numeric(s(4:5))
+    if (is_time) is_time = (s(3:3) == ':')
 end function is_time
 
 !***************************************************************************
@@ -1076,3 +1244,47 @@ logical function strings_match(s1, s2, wcard)
     end do
     strings_match = .true.
 end function strings_match
+!***************************************************************************
+!
+! \brief       Returns index of n-th occurrence of c in s. If s doesn't have
+!              n times c, returns ierror
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+!***************************************************************************
+integer function strCharIndex(s, c, n) result(ix)
+    use m_common_global_var
+    implicit none
+    !> In/out variables
+    character(*),intent(in) :: s
+    character(*),intent(in) :: c
+    integer, intent(in) :: n
+    !> Local variables
+    integer :: i
+    integer :: cnt
+
+    ix = ierror
+    cnt = 0
+    do i = 1, len(s)
+        if (s(i:i) == c) then 
+            cnt = cnt + 1
+            if (cnt == n) then 
+                ix = i
+                exit
+            end if
+        end if
+    end do
+end function strCharIndex
+
+
+
+function strByInt(i) result(res)
+    character(:),allocatable :: res
+    integer,intent(in) :: i
+    character(range(i)+2) :: tmp
+    write(tmp,'(i0)') i
+    res = trim(tmp)
+end function strByInt

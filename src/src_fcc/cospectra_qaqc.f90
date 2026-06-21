@@ -1,24 +1,26 @@
-﻿!*******************************************************************************
+!*******************************************************************************
 ! cospectra_qaqc.f90
 ! ------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !*******************************************************************************
 !
@@ -184,16 +186,16 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (FCCsetup%SA%foken_lim >= 0) then
         !> Partial flags
         !> Stationarity flags
-        call PartialFlagLF(nint(lEx%st_w_co2), STFlg(w_co2))
-        call PartialFlagLF(nint(lEx%st_w_h2o), STFlg(w_h2o))
-        call PartialFlagLF(nint(lEx%st_w_ch4), STFlg(w_ch4))
-        call PartialFlagLF(nint(lEx%st_w_gas4), STFlg(w_gas4))
-        call PartialFlagLF(nint(lEx%st_w_ts),  STFlg(w_ts))
-        call PartialFlagLF(nint(lEx%st_w_u),   STFlg(w_u))
+        call PartialFlagLF(nint(lEx%FC_SS), STFlg(w_co2))
+        call PartialFlagLF(nint(lEx%FH2O_SS), STFlg(w_h2o))
+        call PartialFlagLF(nint(lEx%FCH4_SS), STFlg(w_ch4))
+        call PartialFlagLF(nint(lEx%FGS4_SS), STFlg(w_gas4))
+        call PartialFlagLF(nint(lEx%H_SS),  STFlg(w_ts))
+        call PartialFlagLF(nint(lEx%TAU_SS),   STFlg(w_u))
         !> Developed turbulence flags
-        call PartialFlagLF(nint(lEx%dt_u), DTFlg(u))
-        call PartialFlagLF(nint(lEx%dt_w), DTFlg(w))
-        call PartialFlagLF(nint(lEx%dt_ts), DTFlg(ts))
+        call PartialFlagLF(nint(lEx%U_ITC), DTFlg(u))
+        call PartialFlagLF(nint(lEx%W_ITC), DTFlg(w))
+        call PartialFlagLF(nint(lEx%TS_ITC), DTFlg(ts))
         DTFlg(u)  = max(DTFlg(u),  DTFlg(w))
 
         !> Composite flags

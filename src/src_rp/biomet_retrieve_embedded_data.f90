@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! biomet_retrieve_embedded_data.f90
 ! ---------------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -48,17 +50,21 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     !> Initialize biomet data to error
     if (allocated(bAggr)) bAggr = error
     if (allocated(bAggrFluxnet)) bAggrFluxnet = error
+    if (allocated(bAggrEddyFlow)) bAggrEddyFlow = error
 
     if (proceed) then
         if (printout) write(LogInteger, '(i3)') nbRecs
         if (printout) write(*, '(a)') '   ' // trim(adjustl(LogInteger)) &
             // ' biomet records imported.'
 
-        !> Convert data to standard units
-        call BiometStandardEddyProUnits()
-
         !> Aggregate biomet variables over the averaging interval
         call BiometAggregate(bSet, size(bSet, 1), size(bSet, 2), bAggr)
+
+        !> Convert data to standard units
+        call BiometStandardEddyFlowUnits()
+
+        !> Aggregate biomet variables over the averaging interval
+        call BiometAggregate(bSet, size(bSet, 1), size(bSet, 2), bAggrEddyFlow)
 
         !> Convert aggregated values to FLUXNET units
         call BiometStandardFluxnetUnits()
@@ -71,7 +77,7 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     !> are not included in bAggr. The 2 shall eventually be replaced by nbTimestamp
     !> as per read_biomet_meta_file.f90
     do i = bTa, bRg
-        if (bSetup%sel(i) > 0) biomet%val(i) = bAggr(bSetup%sel(i) - 2)
+        if (bSetup%sel(i) > 0) biomet%val(i) = bAggrEddyFlow(bSetup%sel(i) - 2)
     end do
 
     !> Deallocate variables no longer used

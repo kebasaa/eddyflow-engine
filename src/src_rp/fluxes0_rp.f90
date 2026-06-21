@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! fluxes0_rp.f90
 ! --------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -299,16 +301,21 @@ subroutine Fluxes0_rp(printout)
         if (Essentials%rand_uncer(h2o) /= error .and. Ambient%lambda > 0d0) then
             Essentials%rand_uncer_LE = &
                 Essentials%rand_uncer(h2o) * Ambient%lambda * MW(h2o) * 1d-3
+            Essentials%rand_uncer_ET = &
+                Essentials%rand_uncer(h2o) * h2o_to_ET
         else
             Essentials%rand_uncer_LE = error
+            Essentials%rand_uncer_ET = error
         end if
     end if
 
     !> Level 0 evapotranspiration flux [kg m-2 -1]
     if (Flux0%h2o /= error .and. Ambient%lambda > 0d0) then
         Flux0%E = Flux0%h2o * MW(h2o) * 1d-3
+        Flux0%ET = Flux0%h2o * h2o_to_ET
     else
         Flux0%E = error
+        Flux0%ET = error
     end if
 
     !> Level 0 evapotranspiration flux [kg m-2 -1]
@@ -377,10 +384,12 @@ subroutine Fluxes0_rp(printout)
     else
         Ambient%us = error
     end if
+    Flux0%ustar = Ambient%us
+    Essentials%ustar = Ambient%us
 
     !> Momentum flux [kg m-1 s-2], after Van Dijk et al. 2004 Eq. 2.44
     if (RHO%a > 0d0 .and. Ambient%us >= 0d0) then
-        Flux0%tau = RHO%a * Ambient%us ** 2d0
+        Flux0%tau = sign(RHO%a * Ambient%us ** 2d0, Stats%Cov(u, w))
     else
         Flux0%tau = error
     end if

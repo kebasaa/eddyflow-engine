@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! rename_tmp_files_common.f90
 ! ---------------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -41,7 +43,7 @@ subroutine RenameTmpFilesCommon()
     write(*,'(a)', advance = 'no') ' Closing COMMON output files..'
 
     !> Full out file
-    if (EddyProProj%out_full) then
+    if (EddyFlowProj%out_full) then
         tmp_indx = index(FullOut_Path, TmpExt)
         OutPath = FullOut_Path(1: tmp_indx - 1)
         move_status = system(comm_move // '"' &
@@ -51,7 +53,7 @@ subroutine RenameTmpFilesCommon()
     end if
 
     !> Metadata
-    if (EddyProProj%out_md) then
+    if (EddyFlowProj%out_md) then
         tmp_indx = index(Metadata_Path, TmpExt)
         OutPath = Metadata_Path(1: tmp_indx - 1)
         move_status = system(comm_move // '"' &
@@ -60,24 +62,15 @@ subroutine RenameTmpFilesCommon()
             // comm_out_redirect // comm_err_redirect)
     end if
 
-    !> FLUXNET (fluxes) file
-    if (EddyProProj%out_fluxnet_eddy) then
-        tmp_indx = index(FLUXNET_EDDY_Path, TmpExt)
-        OutPath = FLUXNET_EDDY_Path(1: tmp_indx - 1)
+    !> FLUXNET file
+    if (EddyFlowProj%out_fluxnet) then
+        tmp_indx = index(FLUXNET_Path, TmpExt)
+        OutPath = FLUXNET_Path(1: tmp_indx - 1)
         move_status = system(comm_move // '"' &
-            // FLUXNET_EDDY_Path(1:len_trim(FLUXNET_EDDY_Path)) // '" "' &
+            // FLUXNET_Path(1:len_trim(FLUXNET_Path)) // '" "' &
             // OutPath(1:len_trim(OutPath)) // '"' &
             // comm_out_redirect // comm_err_redirect)
     end if
 
-    !> AmeriFlux file
-    if (EddyProProj%out_amflux) then
-        tmp_indx = index(AmeriFlux_Path, TmpExt)
-        OutPath = AmeriFlux_Path(1: tmp_indx - 1)
-        move_status = system(comm_move // '"' &
-            // AmeriFlux_Path(1:len_trim(AmeriFlux_Path)) // '" "' &
-            // OutPath(1:len_trim(OutPath)) // '"' &
-            // comm_out_redirect // comm_err_redirect)
-    end if
     write(*,'(a)') ' Done.'
 end subroutine RenameTmpFilesCommon

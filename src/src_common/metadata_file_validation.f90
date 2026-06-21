@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! metadata_file_validation.f90
 ! ----------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -51,7 +53,7 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
     InstrChecked = .false.
 
     !> Check separator for ASCII (virtually impossible to fail, GUI filters)
-    if  (EddyProProj%ftype == 'generic_ascii') then
+    if  (EddyFlowProj%ftype == 'generic_ascii') then
         select case (FileInterpreter%separator)
             case (',',';',' ',char(9))
                 continue
@@ -62,7 +64,7 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
         end select
     end if
 
-    !> Each Instrument must be validated only if at least one EddyPro
+    !> Each Instrument must be validated only if at least one EddyFlow
     !> variable is measured with it. Here the instrument check is performed
     !> for columns with property use_it, (which is defined only after reading
     !> the processing project file .eddypro)
@@ -92,7 +94,8 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
                     (LocCol(i)%instr%model(1:len_trim(LocCol(i)%instr%model)-2))
                     case ('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', &
                         'r3a_100', 'wm', 'wmpro', 'usa1_standard', &
-                        'usa1_fast', 'csat3', 'csat3b', &
+                        'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp', &
+                        'csat3', 'csat3b', &
                         '81000', '81000v', '81000re', '81000vre')
                         passed(1) = .false.
                         passed(26) = .false.
@@ -207,9 +210,10 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
             !> check model
             select case (LocInstr%model(1:len_trim(LocInstr%model)-2))
                 case ('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', 'r3a_100', 'wm', 'wmpro', &
-                    'usa1_standard', 'usa1_fast', 'csat3', 'csat3b', &
-                    '81000', '81000v', '81000re', '81000vre')
-                    continue
+                      'usa1_standard', 'usa1_fast', 'csat3', 'csat3b', &
+                      'usoni3_classa_mp', 'usoni3_cage_mp', &
+                      '81000', '81000v', '81000re', '81000vre')
+                      continue
                 case ('generic_sonic')
                     if (LocInstr%hpath_length * LocInstr%vpath_length * LocInstr%tau == 0) then
                         passed(1) = .false.

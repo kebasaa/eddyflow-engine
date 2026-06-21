@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! init_user_outfiles.f90
 ! ----------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -61,7 +63,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 1
     if (RPsetup%out_st(1)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats1_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt1_Path = Test_Path(1:dot) // CsvTmpExt
@@ -72,7 +74,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 2
     if (RPsetup%out_st(2)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats2_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt2_Path = Test_Path(1:dot) // CsvTmpExt
@@ -83,7 +85,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 3
     if (RPsetup%out_st(3)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats3_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt3_Path = Test_Path(1:dot) // CsvTmpExt
@@ -94,7 +96,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 4
     if (RPsetup%out_st(4)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats4_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt4_Path = Test_Path(1:dot) // CsvTmpExt
@@ -106,7 +108,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 5
     if (RPsetup%out_st(5)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats5_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt5_Path = Test_Path(1:dot) // CsvTmpExt
@@ -118,7 +120,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 6
     if (RPsetup%out_st(6)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats6_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt6_Path = Test_Path(1:dot) // CsvTmpExt
@@ -130,7 +132,7 @@ subroutine InitUserOutFiles()
     !> Statistics files Level 7
     if (RPsetup%out_st(7)) then
         Test_Path = UserStatsDir(1:len_trim(UserStatsDir)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // UserStats7_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         UserSt7_Path = Test_Path(1:dot) // CsvTmpExt

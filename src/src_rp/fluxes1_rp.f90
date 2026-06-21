@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! fluxes1_rp.f90
 ! --------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -89,21 +91,25 @@ subroutine Fluxes1_rp()
     if (E2Col(h2o)%Instr%path_type == 'closed') then
         Flux1%h2o = Flux0%h2o
         Flux1%E   = Flux0%E
+        Flux1%ET  = Flux0%ET
         Flux1%LE  = Flux0%LE
     else
         if (BPCF%of(w_h2o) /= error) then
             Flux1%h2o = Flux0%h2o * BPCF%of(w_h2o)
             Flux1%E   = Flux0%E   * BPCF%of(w_h2o)
+            Flux1%ET  = Flux0%ET  * BPCF%of(w_h2o)
             Flux1%LE  = Flux0%LE  * BPCF%of(w_h2o)
         else
             Flux1%h2o = Flux0%h2o
             Flux1%E   = Flux0%E
+            Flux1%ET  = Flux0%ET
             Flux1%LE  = Flux0%LE
         end if
     end if
     if (Flux0%h2o == error) then
         Flux1%h2o = error
         Flux1%E   = error
+        Flux1%ET  = error
         Flux1%LE  = error
     end if
 
@@ -146,6 +152,7 @@ subroutine Fluxes1_rp()
         Flux1%tau = Flux0%tau
     end if
     if (Flux0%tau == error) Flux1%tau = error
+    Flux1%ustar = Ambient%us
 
     write(*,'(a)')   ' Done.'
 end subroutine Fluxes1_rp

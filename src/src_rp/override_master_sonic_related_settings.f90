@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! override_master_sonic_related_settings.f90
 ! ------------------------------------------
-! Copyright (C) 2016-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2016-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -42,7 +44,7 @@ subroutine OverrideMasterSonicRelatedSettings()
     !> If running with EXP settings, override any previous setting and: (1) do not
     !> apply AoA correction; (2) apply the w-boost if MasterSonic is WM with
     !> appropriate firmware version
-    if (EddyProProj%run_mode == 'express') then
+    if (EddyFlowProj%run_mode == 'express') then
         RPsetup%calib_aoa = 'none'
         RPsetup%calib_wboost = .true.
     end if
@@ -50,7 +52,7 @@ subroutine OverrideMasterSonicRelatedSettings()
     !> If MasterSonic is other than a WM/WMPro with specific firmware versions,
     !> the w-boost cannot be applied
     if (.not. SonicDataHasWBug) then
-        if (RPsetup%calib_wboost .and. EddyProProj%run_mode /= 'express') &
+        if (RPsetup%calib_wboost .and. EddyFlowProj%run_mode /= 'express') &
             call ExceptionHandler(95)
         RPsetup%calib_wboost = .false.
     end if

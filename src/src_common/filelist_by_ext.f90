@@ -1,24 +1,26 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! filelist_by_ext.f90
 ! -------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -74,12 +76,12 @@ subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
                 // Ext(1:len_trim(Ext)) // '" ' // ' /O:N /S /B > ' // '"' &
                 // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
         case('linux')
-            comm = 'find "' // DirIn(1:len_trim(DirIn)) // '" -iname *' &
-                // Ext(1:len_trim(Ext)) // ' > ' // '"' // trim(adjustl(TmpDir)) &
+            comm = 'find "' // DirIn(1:len_trim(DirIn)) // '" -iname "*' &
+                // Ext(1:len_trim(Ext)) // '" > ' // '"' // trim(adjustl(TmpDir)) &
                 // 'flist.tmp" ' // comm_err_redirect
         case('mac')
-            comm = 'find "' // DirIn(1:len_trim(DirIn)-1) // '" -iname *' &
-                // Ext(1:len_trim(Ext)) // ' > ' // '"' // trim(adjustl(TmpDir)) &
+            comm = 'find "' // DirIn(1:len_trim(DirIn)-1) // '" -iname "*' &
+                // Ext(1:len_trim(Ext)) // '" > ' // '"' // trim(adjustl(TmpDir)) &
                 // 'flist.tmp" ' // comm_err_redirect
     end select
     dir_status = system(comm)

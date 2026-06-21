@@ -1,23 +1,25 @@
-﻿!***************************************************************************
+!***************************************************************************
 ! random_error_handle.f90
 ! -----------------------
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -37,31 +39,29 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
     integer, intent(in) :: nrow, ncol
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
 
-    if (RUsetup%meth == 'none') then
-        Essentials%rand_uncer = aflx_error
-        Essentials%rand_uncer_LE = aflx_error
-        return
-    end if
 
     write(*, '(a)') '  Estimating random uncertainty..'
 
-    !> Calculate Integral turbulence scale
-    call IntegralTurbulenceScale(Set, size(Set, 1), size(Set, 2))
-
     !> Calculate random uncertainty
-    Essentials%rand_uncer(u:gas4) = error
-    Essentials%rand_uncer_LE = error
     select case (RUsetup%meth)
         case('finkelstein_sims_01')
+            call IntegralTurbulenceScale(Set, size(Set, 1), size(Set, 2))
             call RU_Finkelstein_Sims_01(Set, nrow, ncol)
         case('mann_lenschow_94')
+            call IntegralTurbulenceScale(Set, size(Set, 1), size(Set, 2))
             call RU_Mann_Lenschow_04(nrow)
-        case('tbd')
-            !call RE_Lenschow(Set, nrow, ncol)
+        case('none')
+            Essentials%rand_uncer(u:gas4) = error
+            Essentials%rand_uncer_LE = error
+            Essentials%rand_uncer_ET = error
+        case('mahrt_98')
+            !> Mahrt has been calculated already, so don't need to do anything
+            continue
         case default
             call ExceptionHandler(42)
-            Essentials%rand_uncer(u:gas4) = aflx_error
-            Essentials%rand_uncer_LE = aflx_error
+            Essentials%rand_uncer(u:gas4) = error
+            Essentials%rand_uncer_LE = error
+            Essentials%rand_uncer_ET = error
             return
     end select
     write(*, '(a)') '  Done.'
@@ -190,6 +190,106 @@ subroutine RU_Mann_Lenschow_04(N)
     end do
 end subroutine RU_Mann_Lenschow_04
 
+
+!***************************************************************************
+!
+! \brief       Estimate random error according to \n
+!              Mahrt (1998), Eqs. 8 - 9
+! \author      Gerardo Fratini
+! \note
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+
+!***************************************************************************
+!
+! \brief       Random uncertainty by Mahrt (1998) 6x6 sub-sampling
+!
+! \author      Jonathan Muller, ETH Zurich
+!
+!***************************************************************************
+! Reference: Mahrt, L. (1998). Flux sampling errors for aircraft and towers.
+!            Boundary-Layer Meteorol. 88: 163-187. Eqs. (8)-(10).
+subroutine RU_Mahrt_98(Set, nrow, ncol)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: nrow, ncol
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    integer, parameter :: n_sub    = 6
+    integer, parameter :: n_subsub = 6
+    integer :: sub_idx, subsub_idx, gas_var
+    integer :: sub_len, subsub_len
+    real(kind = dbl) :: cov_mat(GHGNumVar, GHGNumVar)
+    real(kind = dbl) :: subsub_cov(n_subsub, GHGNumVar)
+    real(kind = dbl) :: all_cov(n_sub*n_subsub, GHGNumVar)
+    real(kind = dbl) :: sub_mean(GHGNumVar), sub_means(n_sub, GHGNumVar)
+    real(kind = dbl) :: grand_mean(GHGNumVar), between_ss(GHGNumVar)
+    real(kind = dbl) :: sigma_wi(n_sub, GHGNumVar), sigma_btw(GHGNumVar)
+    real(kind = dbl), allocatable :: sub_chunk(:,:), ss_chunk(:,:)
+
+    sub_len    = nrow / n_sub
+    subsub_len = sub_len / n_subsub
+
+    allocate(sub_chunk(sub_len, GHGNumVar))
+    do sub_idx = 1, n_sub
+        sub_chunk = Set(sub_len*(sub_idx-1)+1 : sub_len*sub_idx, 1:GHGNumVar)
+        allocate(ss_chunk(subsub_len, GHGNumVar))
+        do subsub_idx = 1, n_subsub
+            ss_chunk = sub_chunk( &
+                subsub_len*(subsub_idx-1)+1 : subsub_len*subsub_idx, :)
+            call CovarianceMatrixNoError(ss_chunk, subsub_len, GHGNumVar, cov_mat, error)
+            subsub_cov(subsub_idx, :) = cov_mat(w, :)
+            all_cov(n_subsub*(sub_idx-1)+subsub_idx, :) = cov_mat(w, :)
+        end do
+        deallocate(ss_chunk)
+        ! Sub-period mean covariance (F_i_bar, Mahrt 1998 Eq. 8)
+        call AverageNoError(subsub_cov, n_subsub, GHGNumVar, sub_mean, error)
+        sub_means(sub_idx, :) = sub_mean
+        sigma_wi(sub_idx, :) = 0d0
+        do subsub_idx = 1, n_subsub
+            where (subsub_cov(subsub_idx,:) /= error .and. sub_mean /= error) &
+                sigma_wi(sub_idx,:) = sigma_wi(sub_idx,:) + &
+                    (subsub_cov(subsub_idx,:) - sub_mean)**2
+        end do
+        where (sigma_wi(sub_idx,:) > 0d0) &
+            sigma_wi(sub_idx,:) = dsqrt(sigma_wi(sub_idx,:) / dble(n_subsub-1))
+    end do
+    deallocate(sub_chunk)
+
+    ! Grand mean (F_bar, Mahrt 1998 Eq. 10)
+    call AverageNoError(all_cov, n_sub*n_subsub, GHGNumVar, grand_mean, error)
+
+    ! RE = mean of within-period sigmas / sqrt(n_subsub) (Mahrt 1998 Eq. 8)
+    do gas_var = u, gas4
+        if (E2Col(gas_var)%present) then
+            Essentials%rand_uncer(gas_var) = &
+                sum(sigma_wi(:, gas_var)) / n_sub / dsqrt(dble(n_subsub))
+        else
+            Essentials%rand_uncer(gas_var) = error
+        end if
+    end do
+
+    ! Between-sub-period sigma (sigma_btw, Mahrt 1998 Eq. 10)
+    between_ss = 0d0
+    do sub_idx = 1, n_sub
+        where (sub_means(sub_idx,:) /= error .and. grand_mean /= error) &
+            between_ss = between_ss + (sub_means(sub_idx,:) - grand_mean)**2
+    end do
+    sigma_btw = 0d0
+    where (between_ss > 0d0) sigma_btw = dsqrt(between_ss / dble(n_sub-1))
+
+    do gas_var = u, gas4
+        if (E2Col(gas_var)%present .and. Essentials%rand_uncer(gas_var) /= error &
+            .and. Essentials%rand_uncer(gas_var) > 0d0) then
+            Essentials%mahrt98_NR(gas_var) = &
+                sigma_btw(gas_var) / Essentials%rand_uncer(gas_var)
+        else
+            Essentials%mahrt98_NR(gas_var) = error
+        end if
+    end do
+end subroutine RU_Mahrt_98
 !***************************************************************************
 !
 ! \brief       Estimate random instrument noise (RIN) according to

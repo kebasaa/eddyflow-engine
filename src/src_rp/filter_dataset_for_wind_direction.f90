@@ -1,0 +1,58 @@
+!***************************************************************************
+! filter_dataset_for_wind_direction.f90
+! -------------------------------------
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
+!
+! This file is part of EddyFlow®.
+!
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
+! it under the terms of the GNU General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
+!
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
+! but WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+! GNU General Public License for more details.
+!
+!***************************************************************************
+!
+! \brief       Filter rows in excluded wind-direction sectors
+! \author      Jonathan Muller, ETH Zurich
+!
+!***************************************************************************
+subroutine FilterDatasetForWindDirection(Set, nrow, ncol)
+    use m_rp_global_var
+    integer, intent(in) :: nrow, ncol
+    real(kind = dbl), intent(inout) :: Set(nrow, ncol)
+    integer :: rec, sec
+    real(kind = dbl) :: wd_rec
+    logical :: in_excluded_sector
+
+    write(*, '(a)', advance = 'no') '  Filtering data for wind direction exclusion..'
+    Essentials%m_wdf = 0
+    do rec = 1, nrow
+        if (any(Set(rec, u:w) == error)) cycle
+        call SingleWindDirection(Set(rec, u:w), &
+            E2Col(u)%instr%north_offset + magnetic_declination, wd_rec)
+        in_excluded_sector = .false.
+        do sec = 1, RPSetup%wdf_num_secs
+            if (wd_rec > RPSetup%wdf_start(sec) .and. &
+                wd_rec < RPSetup%wdf_end(sec)) then
+                in_excluded_sector = .true.;  exit
+            end if
+        end do
+        if (in_excluded_sector) then
+            Set(rec, :) = error
+            Essentials%m_wdf = Essentials%m_wdf + 1
+        end if
+    end do
+    write(*, '(a)') ' Done.'
+    write(*, '(a, i6)') &
+        '   Records eliminated by wind direction filter: ', Essentials%m_wdf
+end subroutine FilterDatasetForWindDirection

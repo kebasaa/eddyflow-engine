@@ -1,24 +1,26 @@
 !***************************************************************************
 ! bpcf_anemometric_fluxes.f90
 ! ---------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright (C) 2026-    , ETH Zurich, Jonathan Muller
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -73,7 +75,7 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
     !> Initialize all transfer functions to 1
     call SetTransferFunctionsToValue(BPTF, nfreq, 1d0)
 
-    if (EddyProProj%lf_meth == 'analytic') then
+    if (EddyFlowProj%lf_meth == 'analytic') then
         !> Add analytic high-pass transfer functions
         if (printout) write(*,'(a)') '   High-pass correction for anemometric &
             &fluxes. Method: Moncrieff et al. (2004)..'
@@ -89,7 +91,7 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
     !> analytical cospectra after Moncrieff et al. (1997, JH)
     call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
 
-    if (EddyProProj%hf_meth /= 'none') then
+    if (EddyFlowProj%hf_meth /= 'none') then
         !> Analytical low-pass transfer function
         if (printout) write(*,'(a)') '   Low-pass correction for anemometric &
             &fluxes. Method: Moncrieff et al. (1997)..'
