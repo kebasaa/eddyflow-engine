@@ -1,23 +1,24 @@
 !***************************************************************************
-! filter_raw_data_by_flags.f90
+! filter_dataset_for_flags.f90
 ! ----------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -30,7 +31,7 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine FilterRawDataByFlags(LocCol, Raw, nrow, ncol)
+subroutine FilterDatasetForFlags(LocCol, Raw, nrow, ncol)
     use m_rp_global_var
     implicit none
     !> in/out variables
@@ -44,6 +45,7 @@ subroutine FilterRawDataByFlags(LocCol, Raw, nrow, ncol)
     logical :: filtered(nrow)
 
 
+    write(*, '(a)', advance='no') '  Filtering raw data for custom flags..'
     filtered = .false.
     !> External cycle on all columns
     do j = 1, ncol
@@ -67,4 +69,8 @@ subroutine FilterRawDataByFlags(LocCol, Raw, nrow, ncol)
             end if
         end if
     end do
-end subroutine FilterRawDataByFlags
+    Essentials%m_custom_flags = count(filtered)
+    write(*, '(a)') '  Done.'
+    write(*, '(a, i6)') '   Number of records eliminated for custom flags: ',  Essentials%m_custom_flags
+
+end subroutine FilterDatasetForFlags

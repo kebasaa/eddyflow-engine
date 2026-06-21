@@ -1,22 +1,25 @@
 !***************************************************************************
 ! fluxes23.f90
 ! ------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -55,7 +58,7 @@ subroutine Fluxes23(lEx)
     Flux3%Hi_gas4 = Flux2%Hi_gas4
 
     !> Level 2 evapotranspiration WPL corrected, including Burba if the case
-    if (EddyProProj%wpl) then
+    if (EddyFlowProj%wpl) then
         if (lEx%instr(ih2o)%path_type == 'open') then
             if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
                 .and. Flux1%E /= error .and. Flux1%H /= error &
@@ -125,6 +128,7 @@ subroutine Fluxes23(lEx)
     !> Level 2 h2o and latent heat flux
     if (Flux2%E /= error) then
         Flux2%h2o = Flux2%E * 1d3 / MW(h2o)
+        Flux2%ET = Flux2%h2o * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux2%LE = Flux2%E * lEx%lambda
         else
@@ -133,6 +137,7 @@ subroutine Fluxes23(lEx)
     else
         Flux2%h2o = error
         Flux2%LE  = error
+        Flux2%ET  = error
     end if
 
     !> Level 2 evapotranspiration fluxes with H2O covariances
@@ -181,7 +186,7 @@ subroutine Fluxes23(lEx)
 
     !> Level 3 for evapotranspiration: for open path, WPL again with corrected H
     !> Starts again from Level 1 of E, Level 2 was only used to calculate H Level 3.
-    if(EddyProProj%wpl .and. lEx%instr(ih2o)%path_type == 'open') then
+    if(EddyFlowProj%wpl .and. lEx%instr(ih2o)%path_type == 'open') then
         if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. Flux1%E /= error &
             .and. Flux1%H /= error .and. lEx%sigma /= error) then
             Flux3%E = (1d0 + mu * lEx%sigma) * Flux1%E &
@@ -205,6 +210,7 @@ subroutine Fluxes23(lEx)
     !> Level 3 h2o flux and latent heat flux
     if (Flux3%E /= error) then
         Flux3%h2o = Flux3%E * 1d3 / MW(h2o)
+        Flux3%ET = Flux3%h2o * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux3%LE = Flux3%E * lEx%lambda
         else
@@ -213,6 +219,7 @@ subroutine Fluxes23(lEx)
     else
         Flux3%h2o = error
         Flux3%LE  = error
+        Flux3%ET  = error
     end if
 
     !> Calculate E_nowpl for closed and open path systems
@@ -234,12 +241,14 @@ subroutine Fluxes23(lEx)
         Flux3%h2o = Flux3%h2o * BPCF%of(w_h2o)
         Flux3%E   = Flux3%E   * BPCF%of(w_h2o)
         Flux3%LE  = Flux3%LE  * BPCF%of(w_h2o)
+        Flux3%ET  = Flux3%ET  * BPCF%of(w_h2o)
     end if
 
     if (.not. lEx%var_present(h2o)) then
         Flux3%h2o = error
         Flux3%E   = error
         Flux3%LE  = error
+        Flux3%ET  = error
     end if
 
     !> Level 2 other gases
@@ -403,46 +412,25 @@ subroutine Fluxes23(lEx)
         end select
     else
         !> Level 2, WPL for open path implemented after e.g. Burba et al. (2008, GCB, eq. 1)
-        if(lEx%instr(ico2)%model(1:len_trim(lEx%instr(ico2)%model) - 2)  == 'li7500') then
-            if (Flux1%co2 /= error .and. Flux3%H /= error .and. Flux3%E /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-                Flux2%co2 = Flux1%co2 + mu * Flux3%E * lEx%d(co2) * 1d3 &
-                    / ((1d0 + mu * lEx%sigma) * lEx%RHO%d) &
-                    + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) * lEx%d(co2) * 1d3 &
-                    / (lEx%RhoCp * lEx%Ta)
-            elseif(Flux1%co2 /= error .and. Flux3%H /= error &
-                .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) then
-                Flux2%co2 = Flux1%co2 &
-                    + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) * lEx%d(co2) * 1d3 &
-                    / (lEx%RhoCp * lEx%Ta)
-            elseif(Flux1%co2 /= error .and. Flux3%E /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%sigma /= error) then
-                Flux2%co2 = Flux1%co2 &
-                    + mu * Flux3%E * lEx%d(co2) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d)
-            elseif(Flux1%co2 /= error) then
-                Flux2%co2 = Flux1%co2
-            else
-                Flux2%co2 = error
-            end if
+        if (Flux1%co2 /= error .and. Flux3%H /= error .and. Flux3%E /= error &
+            .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
+            Flux2%co2 = Flux1%co2 + mu * Flux3%E * lEx%d(co2) * 1d3 &
+                / ((1d0 + mu * lEx%sigma) * lEx%RHO%d) &
+                + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) * lEx%d(co2) * 1d3 &
+                / (lEx%RhoCp * lEx%Ta)
+        elseif(Flux1%co2 /= error .and. Flux3%H /= error &
+            .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) then
+            Flux2%co2 = Flux1%co2 &
+                + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) * lEx%d(co2) * 1d3 &
+                / (lEx%RhoCp * lEx%Ta)
+        elseif(Flux1%co2 /= error .and. Flux3%E /= error &
+            .and. lEx%RHO%d > 0d0 .and. lEx%sigma /= error) then
+            Flux2%co2 = Flux1%co2 &
+                + mu * Flux3%E * lEx%d(co2) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d)
+        elseif(Flux1%co2 /= error) then
+            Flux2%co2 = Flux1%co2
         else
-            if (Flux1%co2 /= error .and. Flux3%H /= error .and. Flux3%E /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-                Flux2%co2 = Flux1%co2 &
-                    + mu * Flux3%E * lEx%d(co2) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d) &
-                    + Flux3%H * lEx%d(co2) * 1d3 / (lEx%RhoCp * lEx%Ta)
-            elseif(Flux1%co2 /= error .and. Flux3%H /= error &
-                .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) then
-                Flux2%co2 = Flux1%co2 &
-                    + Flux3%H * lEx%d(co2) * 1d3 / (lEx%RhoCp * lEx%Ta)
-            elseif(Flux1%co2 /= error .and. Flux3%E /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%sigma /= error) then
-                Flux2%co2 = Flux1%co2 &
-                    + mu * Flux3%E * lEx%d(co2) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d)
-            elseif(Flux1%co2 /= error) then
-                Flux2%co2 = Flux1%co2
-            else
-                Flux2%co2 = error
-            end if
+            Flux2%co2 = error
         end if
     end if
     if (.not. lEx%var_present(co2)) Flux2%co2 = error
@@ -823,7 +811,7 @@ subroutine Fluxes23(lEx)
     if (.not. lEx%var_present(gas4)) Flux2%gas4 = error
 
     !> If WPL should not be applied
-    if (.not. EddyProProj%wpl) then
+    if (.not. EddyFlowProj%wpl) then
         Flux2%co2 = Flux1%co2
         Flux2%ch4 = Flux1%ch4
         Flux2%gas4 = Flux1%gas4
@@ -863,10 +851,16 @@ subroutine Fluxes23(lEx)
         Tp = error
     end if
 
+    !> Momentum flux and friction velocity
+    Flux2%tau = Flux1%tau
+    Flux3%tau = Flux1%tau
+    Flux2%ustar = Flux1%ustar
+    Flux3%ustar = Flux1%ustar
+
     !> Monin-Obukhov length (L = - (Tp^ /(k*g))*(ustar**3/(w'Tp')^ in m)
     if (Flux3%H /= 0d0 .and. Flux3%H /= error .and. &
-        lEx%RhoCp > 0d0 .and. lEx%ustar >= 0d0 .and. Tp > 0d0) then
-        lEx%L = -Tp * (lEx%ustar**3) / (vk * g * Flux3%H / lEx%RhoCp)
+        lEx%RhoCp > 0d0 .and. Flux3%ustar >= 0d0 .and. Tp > 0d0) then
+        lEx%L = -Tp * (Flux3%ustar**3) / (vk * g * Flux3%H / lEx%RhoCp)
     else
         lEx%L = error
     end if
@@ -878,8 +872,8 @@ subroutine Fluxes23(lEx)
 
     !> scale temperature(T*)
     !> If condition fails, previous value (from Fluxes0) holds
-    if (lEx%ustar > 0d0 .and. Flux3%H /= error .and. lEx%RhoCp > 0d0) &
-        lEx%Tstar = Flux3%H / (lEx%RhoCp * lEx%ustar)
+    if (Flux3%ustar > 0d0 .and. Flux3%H /= error .and. lEx%RhoCp > 0d0) &
+        lEx%Tstar = Flux3%H / (lEx%RhoCp * Flux3%ustar)
 
     !> Bowen ration (Bowen, 1926, Phyis Rev)
     if (Flux3%LE /= 0d0 .and. Flux3%LE /= error .and. Flux3%H /= error) then
@@ -887,8 +881,4 @@ subroutine Fluxes23(lEx)
     else
         lEx%Bowen = error
     end if
-
-    !> Momentum flux
-    Flux2%tau = Flux1%tau
-    Flux3%tau = Flux1%tau
 end subroutine Fluxes23

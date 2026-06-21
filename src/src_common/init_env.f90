@@ -1,23 +1,26 @@
 !***************************************************************************
 ! init_env.f90
 ! ------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -60,8 +63,8 @@ subroutine InitEnv()
     !> Get command lines switches and values
     OS = ''
     homedir = ''
-    EddyProProj%run_env = ''
-    EddyProProj%caller = ''
+    EddyFlowProj%run_env = ''
+    EddyFlowProj%caller = ''
     projPath = ''
     i = 1
     arg_loop: do
@@ -90,14 +93,14 @@ subroutine InitEnv()
                 !> Switch for "mode", whether "embedded" or "desktop" mode
                 case('-m', '--mode')
                     if (io_status > 0 .or. len_trim(switch) == 0) exit arg_loop
-                    EddyProProj%run_env = trim(arg)
-                    if (EddyProProj%run_env(1:1) == '-') EddyProProj%run_env = ''
+                    EddyFlowProj%run_env = trim(arg)
+                    if (EddyFlowProj%run_env(1:1) == '-') EddyFlowProj%run_env = ''
 
                 !> Switch for "caller", whether "gui" or "console"
                 case('-c', '--caller')
                     if (io_status > 0 .or. len_trim(switch) == 0) exit arg_loop
-                    EddyProProj%caller = trim(arg)
-                    if (EddyProProj%caller(1:1) == '-') EddyProProj%caller = ''
+                    EddyFlowProj%caller = trim(arg)
+                    if (EddyFlowProj%caller(1:1) == '-') EddyFlowProj%caller = ''
 
                 !> Software version
                 case('-v', '--version')
@@ -119,15 +122,15 @@ subroutine InitEnv()
 
     !> Default values if args are not passed
     if (len_trim(homedir) == 0) homedir = '..'
-    if (len_trim(EddyProProj%run_env) == 0) EddyProProj%run_env = 'desktop'
-    if (len_trim(EddyProProj%caller) == 0)  EddyProProj%caller  = 'console'
+    if (len_trim(EddyFlowProj%run_env) == 0) EddyFlowProj%run_env = 'desktop'
+    if (len_trim(EddyFlowProj%caller) == 0)  EddyFlowProj%caller  = 'console'
 
     !> Define default unit number (udf), run specific
     call hms_current_hms(aux, aux, aux, udf)
     if (udf < 200) udf = udf + 200
     udf2 = udf + 1
 
-    !> Define path of key eddypro files/dirs
+    !> Define path of key EddyFlow files/dirs
     call AdjDir(homedir, slash)
     IniDir = trim(homedir) // 'ini' // slash
     if (projPath == '') then
@@ -137,7 +140,7 @@ subroutine InitEnv()
     end if
 
     !> Define TmpDir differently if it's in desktop or embedded mode
-    if (EddyProProj%run_env == 'desktop') then
+    if (EddyFlowProj%run_env == 'desktop') then
         TmpDir = trim(homedir) // 'tmp' // slash // 'tmp' &
         // trim(adjustl(tmpDirPadding)) // slash
     else
@@ -192,13 +195,13 @@ subroutine CommandLineHelp(sw_ver, build_date)
     character(*), intent(in) :: sw_ver
     character(*), intent(in) :: build_date
     !> Local variables
-    character(11) :: prog
+    character(12) :: prog
 
 
-    if (app == 'EddyPro-RP') then
-        prog = 'eddypro_rp'
+    if (app == 'EddyFlow-RP') then
+        prog = 'eddyflow_rp'
     else
-        prog = 'eddypro_fcc'
+        prog = 'eddyflow_fcc'
     end if
 
     write(*, '(a)') ' Help for ' // trim(adjustl(app))

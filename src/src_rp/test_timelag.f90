@@ -1,23 +1,26 @@
 !***************************************************************************
 ! test_timelag.f90
 ! ----------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -63,7 +66,7 @@ subroutine TestTimeLag(Set, N)
         min_rl(j) = nint(E2Col(j)%min_tl * Metadata%ac_freq)
         max_rl(j) = nint(E2Col(j)%max_tl * Metadata%ac_freq)
     end do
-    !> Default values are taken from EddyPro settings
+    !> Default values are taken from EddyFlow settings
     def_rl(co2)  = nint(tl%def_co2 * Metadata%ac_freq)
     def_rl(h2o)  = nint(tl%def_h2o * Metadata%ac_freq)
     def_rl(ch4)  = nint(tl%def_ch4 * Metadata%ac_freq)
@@ -83,7 +86,7 @@ subroutine TestTimeLag(Set, N)
         end if
     end do
 
-    !> Creates 4-digits numbers containing the flags; 4 is the number of EddyPro gases
+    !> Creates 4-digits numbers containing the flags; 4 is the number of EddyFlow gases
     IntHF%tl = 90000
     IntSF%tl = 90000
     do j = 1, 4

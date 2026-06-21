@@ -1,4 +1,4 @@
-# gitignore for EddyPro engine
+# gitignore for EddyFlow engine
 # created by gerardo fratini for Fortran/C::B
 
 ### FORTRAN ###
@@ -20,7 +20,7 @@
 bin
 mod
 obj
-backup_eddypro_to_dropbox.bat
+backup_EddyFlow_to_dropbox.bat
 ep_engine_devtools.py
 src/src_common/deprecated
 src/src_common/under_development

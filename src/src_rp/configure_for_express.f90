@@ -1,22 +1,25 @@
 !***************************************************************************
 ! configure_for_express.f90
 ! -------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -43,8 +46,8 @@ subroutine ConfigureForExpress
     Meth%rot = 'double_rotation'
     Meth%qcflag = 'mauder_foken_04'
     Meth%foot = 'kljun_04'
-    EddyProProj%hf_meth = 'moncrieff_97'
-    EddyProProj%wpl  = .true.
+    EddyFlowProj%hf_meth = 'moncrieff_97'
+    EddyFlowProj%wpl  = .true.
     RUsetup%meth = 'none'
     RPsetup%bu_corr = 'none'
     RPsetup%bu_multi = .false.
@@ -118,29 +121,25 @@ subroutine ConfigureForExpress
     RPsetup%offset(w) = 0d0
 
     !> Output files and other settings
-    EddyProProj%out_fluxnet  = .true.
-    EddyProProj%out_fluxnet_eddy  = .true.
-    EddyProProj%out_fluxnet_biomet  = .true.
-    EddyProProj%out_amflux   = .true.
-    EddyProProj%out_full     = .true.
-    EddyProProj%out_md       = .true.
+    ! EddyFlowProj%out_fluxnet  = .false.
+    EddyFlowProj%out_full     = .true.
+    EddyFlowProj%out_md       = .true.
     RPsetup%out_st        = .true.
-    EddyProProj%out_essentials = .true.
     RPsetup%out_qc_details = .false.
     RPsetup%out_raw        = .false.
     RPsetup%out_bin_sp     = .false.
     RPsetup%out_bin_og     = .false.
     RPsetup%out_full_sp    = .false.
     RPsetup%out_full_cosp  = .false.
-    EddyProProj%out_avrg_cosp = .false.
-    EddyProProj%out_avrg_spec = .false.
-    EddyProProj%fcc_follows  = .false.
-    EddyProProj%make_dataset = .true.
+    EddyFlowProj%out_avrg_cosp = .false.
+    EddyFlowProj%out_avrg_spec = .false.
+    EddyFlowProj%fcc_follows  = .false.
+    EddyFlowProj%make_dataset = .true.
 
-    if (EddyProProj%biomet_data /= 'none') then
-        EddyProProj%out_biomet = .true.
+    if (EddyFlowProj%biomet_data /= 'none') then
+        EddyFlowProj%out_biomet = .true.
     else
-        EddyProProj%out_biomet = .false.
+        EddyFlowProj%out_biomet = .false.
     end if
 
 end subroutine ConfigureForExpress

@@ -1,28 +1,31 @@
 !***************************************************************************
 ! read_metadata_file.f90
 ! ----------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
 ! \brief       Reads metadata file for site and setup information \n
-!              expected in EddyPro .metadata format
+!              expected in EddyFlow .metadata format
 ! \author      Gerardo Fratini
 ! \note
 ! \sa
@@ -47,13 +50,13 @@ subroutine ReadMetadataFile(LocCol, MetaFile, IniFileNotFound, printout)
 
     !> selects only tags needed in this software,
     !> and store them in relevant variables
-    call WriteEddyProMetadataVariables(LocCol, printout)
+    call WriteEddyFlowMetadataVariables(LocCol, printout)
 end subroutine ReadMetadataFile
 
 !***************************************************************************
 !
 ! \brief       Retrieves relevant variables from the tags found in the \n
-!              metadata file expected in EddyPro .metadata format
+!              metadata file expected in EddyFlow .metadata format
 ! \author      Gerardo Fratini
 ! \note
 ! \sa
@@ -62,7 +65,7 @@ end subroutine ReadMetadataFile
 ! \test
 ! \todo
 !***************************************************************************
-subroutine WriteEddyProMetadataVariables(LocCol, printout)
+subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     use m_common_global_var
     implicit none
     !> in/out variables
@@ -81,7 +84,6 @@ subroutine WriteEddyProMetadataVariables(LocCol, printout)
     integer :: i = 0
     integer :: j = 0
     include 'interfaces.inc'
-    character(32), external :: replace
 
 
     if (len_trim(ACTags(1)%value) > 0) then
@@ -174,15 +176,15 @@ subroutine WriteEddyProMetadataVariables(LocCol, printout)
     end if
 
     !> Further meta info
-    EddyProLog%save_native = ACTags(16)%value(1:1) == '1'
-    EddyProLog%timestamp = ACTags(17)%value(1:1) == '1'
-    EddyProLog%enable_proc = ACTags(18)%value(1:1) == '1'
-    EddyProLog%tstamp_end  = ACTags(20)%value(1:1) == '1'
+    EddyFlowLog%save_native = ACTags(16)%value(1:1) == '1'
+    EddyFlowLog%timestamp = ACTags(17)%value(1:1) == '1'
+    EddyFlowLog%enable_proc = ACTags(18)%value(1:1) == '1'
+    EddyFlowLog%tstamp_end  = ACTags(20)%value(1:1) == '1'
     select case (ACTags(21)%value(1:1))
         case ('0')
-        EddyProLog%native_format = 'tmp_ascii'
+        EddyFlowLog%native_format = 'tmp_ascii'
         case default
-        EddyProLog%native_format = 'none'
+        EddyFlowLog%native_format = 'none'
     end select
 
     !> Instruments initializations
@@ -236,7 +238,7 @@ subroutine WriteEddyProMetadataVariables(LocCol, printout)
                         Instr(i)%firm = 'other_irga'
                     case('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', 'r3a_100', 'wm', 'wmpro')
                         Instr(i)%firm = 'gill'
-                    case('usa1_standard', 'usa1_fast')
+                    case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                         Instr(i)%firm = 'metek'
                     case('csat3', 'csat3b')
                         Instr(i)%firm = 'csi'
@@ -429,4 +431,4 @@ subroutine WriteEddyProMetadataVariables(LocCol, printout)
                 LocCol(i)%conversion_type = 'none'
         end if
     end do
-end subroutine WriteEddyProMetadataVariables
+end subroutine WriteEddyFlowMetadataVariables

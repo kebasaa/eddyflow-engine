@@ -1,22 +1,25 @@
 !***************************************************************************
 ! output_spectral_assessment_results.f90
 ! --------------------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -49,12 +52,13 @@ subroutine OutputSpectralAssessmentResults(nbins)
     character(128) :: Filename
     character(PathLen) :: FilePath
     character(PathLen) :: SpecDir
-    character(LongOutstringLen) :: dataline = ''
-    character(DatumLen) :: datum = ''
+    character(LongOutstringLen) :: dataline
+    character(DatumLen) :: datum
     logical :: proceed
-
+    include '../src_common/interfaces_1.inc'
 
     !> Create output directory
+    mkdir_status = CreateDir(Dir%main_out(1:len_trim(Dir%main_out)))
     SpecDir = Dir%main_out(1:len_trim(Dir%main_out)) // SubDirSpecAn // slash
     mkdir_status = CreateDir('"' // SpecDir(1:len_trim(SpecDir)) // '"')
 
@@ -80,7 +84,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             write(*,'(a)') ' Writing spectral assessment results on file.. '
 
             !> Transfer function parameters
-            Filename = EddyProProj%id(1:len_trim(EddyProProj%id)) // SA_FilePadding  &
+            Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // SA_FilePadding  &
                 // Timestamp_FilePadding // TxtExt
             FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
             open(udf, file = FilePath, iostat = open_status)
@@ -244,16 +248,14 @@ subroutine OutputSpectralAssessmentResults(nbins)
     end if
 
     !> ENSEMBLE AVERAGED SPECTRA
-    if (FCCsetup%do_spectral_assessment .or. EddyProProj%out_avrg_spec) then
-
-        !> =====================================================================
+    if (FCCsetup%do_spectral_assessment .or. EddyFlowProj%out_avrg_spec) then
         !> Average H2O spectra, sorted in RH classes, and predicted spectra
         !> (RHS of eq. 6 in Ibrom et al. 2007, AFM)
         if (goodj == ierror) then
             call ExceptionHandler(77)
         else
             !> Initialize file
-            Filename = EddyProProj%id(1:len_trim(EddyProProj%id)) &
+            Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                 // H2OAvrg_FilePadding // Timestamp_FilePadding // CsvExt
             FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
             open(udf, file = FilePath, iostat = open_status)
@@ -268,7 +270,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             call AddDatum(dataline, '', separator)
             do cls = RH10, RH90
                 call WriteDatumInt(MeanBinSpec(1, cls)%cnt(h2o), datum, &
-                    EddyProProj%err_label)
+                    EddyFlowProj%err_label)
                 call AddDatum(dataline, 'n_=_' // datum(1:len_trim(datum)), &
                     separator)
                 call AddDatum(dataline, '', separator)
@@ -290,24 +292,24 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 call clearstr(dataline)
                 if (MeanBinSpec(i, goodj)%fn(h2o) /= error) then
                     call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o), &
-                        datum, EddyProProj%err_label)
+                        datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, datum, separator)
                     do cls = RH10, RH90
                         if (MeanBinSpecAvailable(cls, h2o)) then
                             !> Natural frequency
                             call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
                                 * MeanBinSpec(i, cls)%ts(h2o), datum, &
-                                EddyProProj%err_label)
+                                EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Ensemble averaged spectrum
                             call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
                                 * MeanBinSpec(i, cls)%of(h2o), datum, &
-                                EddyProProj%err_label)
+                                EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Denoised ensemble averaged spectrum
                             call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
                                 * dMeanBinSpec(i, cls)%of(h2o), datum, &
-                                EddyProProj%err_label)
+                                EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Modelled spectrum
                             call WriteDatumFloat(RegPar(h2o, cls)%Fn &
@@ -315,18 +317,18 @@ subroutine OutputSpectralAssessmentResults(nbins)
                                 / RegPar(h2o, cls)%fc)**2 )) &
                                 * MeanBinSpec(i, cls)%ts(h2o) &
                                 * MeanBinSpec(i, goodj)%fn(h2o), datum, &
-                                EddyProProj%err_label)
+                                EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
 
                         else
                             call AddDatum(dataline, &
-                                trim(adjustl(EddyProProj%err_label)), separator)
+                                trim(adjustl(EddyFlowProj%err_label)), separator)
                             call AddDatum(dataline, &
-                                trim(adjustl(EddyProProj%err_label)), separator)
+                                trim(adjustl(EddyFlowProj%err_label)), separator)
                             call AddDatum(dataline, &
-                                trim(adjustl(EddyProProj%err_label)), separator)
+                                trim(adjustl(EddyFlowProj%err_label)), separator)
                             call AddDatum(dataline, &
-                                trim(adjustl(EddyProProj%err_label)), separator)
+                                trim(adjustl(EddyFlowProj%err_label)), separator)
                         end if
                     end do
                     write(udf, '(a)') dataline(1:len_trim(dataline) - 1)
@@ -347,7 +349,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             !> Write output file if valid goodj and pick were found
             if (goodj > 0 .and. goodj < MaxGasClasses &
                 .and. pick > 0 .and. pick < gas4) then
-                Filename = EddyProProj%id(1:len_trim(EddyProProj%id)) // PASGAS_Avrg_FilePadding  &
+                Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // PASGAS_Avrg_FilePadding  &
                     // Timestamp_FilePadding // CsvExt
                 FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
                 open(udf, file = FilePath, iostat = open_status)
@@ -361,9 +363,9 @@ subroutine OutputSpectralAssessmentResults(nbins)
                         if (gas /= h2o) then
                             if (FCCsetup%SA%class(gas, month) /= 0) then
                                 call WriteDatumInt(MeanBinSpec(1, FCCsetup%SA%class(gas, month))%cnt(gas) &
-                                    , datum, EddyProProj%err_label)
+                                    , datum, EddyFlowProj%err_label)
                             else
-                                call WriteDatumInt(0, datum, EddyProProj%err_label)
+                                call WriteDatumInt(0, datum, EddyFlowProj%err_label)
                             end if
                             call AddDatum(dataline, 'n_=_' // datum(1:len_trim(datum)), separator)
                             call AddDatum(dataline, '', separator)
@@ -382,7 +384,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 do i = 1, nbins - 1
                     call clearstr(dataline)
                     if (MeanBinSpec(i, goodj)%fn(pick) /= error) then
-                        call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick), datum, EddyProProj%err_label)
+                        call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick), datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         do month = JAN, JAN
                             do gas = co2, gas4
@@ -391,35 +393,35 @@ subroutine OutputSpectralAssessmentResults(nbins)
                                     if (MeanBinSpecAvailable(FCCsetup%SA%class(gas, month), gas))then
                                         !> Natural frequency
                                         call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick) * MeanBinSpec(i, &
-                                            FCCsetup%SA%class(gas, month))%ts(gas), datum, EddyProProj%err_label)
+                                            FCCsetup%SA%class(gas, month))%ts(gas), datum, EddyFlowProj%err_label)
                                         call AddDatum(dataline, datum, separator)
                                         !> Ensemble averaged spectrum
                                         call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick) * MeanBinSpec(i, &
-                                            FCCsetup%SA%class(gas, month))%of(gas), datum, EddyProProj%err_label)
+                                            FCCsetup%SA%class(gas, month))%of(gas), datum, EddyFlowProj%err_label)
                                         call AddDatum(dataline, datum, separator)
                                         !> Denoised ensemble averaged spectrum
                                         call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick) * dMeanBinSpec(i, &
-                                            FCCsetup%SA%class(gas, month))%of(gas), datum, EddyProProj%err_label)
+                                            FCCsetup%SA%class(gas, month))%of(gas), datum, EddyFlowProj%err_label)
                                         call AddDatum(dataline, datum, separator)
                                         !> Modelled spectrum
                                         call WriteDatumFloat(RegPar(gas, FCCsetup%SA%class(gas, month))%fn &
                                             * (1d0 / (1d0 + (MeanBinSpec(i, goodj)%fn(pick) &
                                             / RegPar(gas, FCCsetup%SA%class(gas, month))%fc)**2 )) &
                                             * MeanBinSpec(i, FCCsetup%SA%class(gas, month))%ts(gas) &
-                                            * MeanBinSpec(i, goodj)%fn(pick), datum, EddyProProj%err_label)
+                                            * MeanBinSpec(i, goodj)%fn(pick), datum, EddyFlowProj%err_label)
                                         call AddDatum(dataline, datum, separator)
 
                                     else
-                                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
+                                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
                                     end if
                                 else
-                                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
+                                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
                                 end if
                             end do
                         end do
@@ -434,7 +436,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
     end if
 
     !> ENSEMBLE AVERAGED COSPECTRA
-    if (EddyProProj%out_avrg_cosp) then
+    if (EddyFlowProj%out_avrg_cosp) then
 
         !> =====================================================================
         !> Ensemble cospectra by time of day
@@ -448,7 +450,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
         if (goodj == ierror .or. pick == ierror) then
             call ExceptionHandler(75)
         else
-            Filename = trim(adjustl(EddyProProj%id)) &
+            Filename = trim(adjustl(EddyFlowProj%id)) &
                 // Cosp_FilePadding // Timestamp_FilePadding // CsvExt
             FilePath = trim(adjustl(SpecDir)) // trim(adjustl(Filename))
             open(udf, file = FilePath, iostat = open_status)
@@ -465,7 +467,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             do cls = 1, 8
                 do gas = w_ts, w_gas4
                     call WriteDatumInt(MeanBinCosp(1, cls)%cnt(gas), &
-                        datum, EddyProProj%err_label)
+                        datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, 'n_=_' // trim(adjustl(datum)), &
                         separator)
                 end do
@@ -494,18 +496,18 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 call clearstr(dataline)
                 if (MeanBinCosp(i, goodj)%fn(pick) /= error) then
                     call WriteDatumFloat(MeanBinCosp(i, goodj)%fn(pick), &
-                        datum, EddyProProj%err_label)
+                        datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, datum, separator)
                     do cls = 1, 8
                         do gas = w_ts, w_gas4
                             if (MeanBinCospAvailable(cls, gas))then
                                 call WriteDatumFloat(MeanBinCosp(i, goodj)%fn(pick) &
                                     * MeanBinCosp(i, cls)%of(gas), datum, &
-                                        EddyProProj%err_label)
+                                        EddyFlowProj%err_label)
                                 call AddDatum(dataline, datum, separator)
                             else
                                 call AddDatum(dataline, &
-                                    trim(adjustl(EddyProProj%err_label)), &
+                                    trim(adjustl(EddyFlowProj%err_label)), &
                                     separator)
                             end if
                         end do
@@ -538,7 +540,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             return
         end if
 
-        Filename = EddyProProj%id(1:len_trim(EddyProProj%id)) // Stability_FilePadding  &
+        Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // Stability_FilePadding  &
             // Timestamp_FilePadding // CsvExt
         FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
 
@@ -623,37 +625,37 @@ subroutine OutputSpectralAssessmentResults(nbins)
             do gas = w_ts, w_gas4
                 if (MeanStabCospAvailable(unstable, gas))then
                     if (MeanStabilityCosp(i, unstable)%fn(gas) /= error .and. MeanStabilityCosp(i, unstable)%fn(gas) /= 0d0) then
-                        call WriteDatumFloat(MeanStabilityCosp(i, unstable)%fn(gas), datum, EddyProProj%err_label)
+                        call WriteDatumFloat(MeanStabilityCosp(i, unstable)%fn(gas), datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         !> Ensemble cospectrum
                         if (MeanStabilityCosp(i, unstable)%cnt(gas) > 20) then
-                            call WriteDatumFloat(MeanStabilityCosp(i, unstable)%of(gas), datum, EddyProProj%err_label)
+                            call WriteDatumFloat(MeanStabilityCosp(i, unstable)%of(gas), datum, EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                         else
-                            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+                            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
                         end if
                         !> Fitted model cospectrum
                         call WriteDatumFloat(dexp(func(MeanStabilityCosp(i, unstable)%fn(gas), &
                             MassPar(gas, unstable)%a0, MassPar(gas, unstable)%fpeak, &
-                            MassPar(gas, unstable)%mu)), datum, EddyProProj%err_label)
+                            MassPar(gas, unstable)%mu)), datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         !> Ideal cospectrum
-                        call WriteDatumFloat(kaimal(MeanStabilityCosp(i, unstable)%fn(gas), 1, 'unstable'), &
-                            datum, EddyProProj%err_label)
+                        call WriteDatumFloat(kaimal(MeanStabilityCosp(i, unstable)%fn(gas), -9999d0, 'unstable'), &
+                            datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         call AddDatum(dataline, '', separator)
                     else
-                        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+                        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
                         call AddDatum(dataline, '', separator)
                     end if
                 else
-                    call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+                    call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
                     call AddDatum(dataline, '', separator)
                 end if
             end do
@@ -662,42 +664,42 @@ subroutine OutputSpectralAssessmentResults(nbins)
             do gas = w_ts, w_gas4
                 if (MeanStabCospAvailable(stable, gas))then
                     if (MeanStabilityCosp(i, stable)%fn(gas) /= error .and. MeanStabilityCosp(i, stable)%fn(gas) /= 0d0) then
-                            call WriteDatumFloat(MeanStabilityCosp(i, stable)%fn(gas), datum, EddyProProj%err_label)
+                            call WriteDatumFloat(MeanStabilityCosp(i, stable)%fn(gas), datum, EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                         !> Ensemble cospectrum
                         if (MeanStabilityCosp(i, stable)%cnt(gas) > 10) then
-                            call WriteDatumFloat(MeanStabilityCosp(i, stable)%of(gas), datum, EddyProProj%err_label)
+                            call WriteDatumFloat(MeanStabilityCosp(i, stable)%of(gas), datum, EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                         else
-                            call AddDatum(dataline, EddyProProj%err_label(1:len_trim(EddyProProj%err_label)), separator)
+                            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
                         end if
                         !> Fitted model cospectrum
                         call WriteDatumFloat(dexp(func(MeanStabilityCosp(i, stable)%fn(gas), &
                             MassPar(gas, stable)%a0, MassPar(gas, stable)%fpeak, &
-                            MassPar(gas, stable)%mu)), datum, EddyProProj%err_label)
+                            MassPar(gas, stable)%mu)), datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         !> Ideal cospectrum
                         call WriteDatumFloat(kaimal(MeanStabilityCosp(i, stable)%fn(gas), 1d-2, 'stable'), &
-                            datum, EddyProProj%err_label)
+                            datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         call WriteDatumFloat(kaimal(MeanStabilityCosp(i, stable)%fn(gas), 1d1 , 'stable'), &
-                            datum, EddyProProj%err_label)
+                            datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         call AddDatum(dataline, '', separator)
                     else
-                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                        call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
+                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                        call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
                         call AddDatum(dataline, '', separator)
                     end if
                 else
-                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
-                    call AddDatum(dataline, trim(adjustl(EddyProProj%err_label)), separator)
+                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
+                    call AddDatum(dataline, trim(adjustl(EddyFlowProj%err_label)), separator)
                     call AddDatum(dataline, '', separator)
                 end if
             end do

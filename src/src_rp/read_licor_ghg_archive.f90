@@ -1,22 +1,25 @@
 !***************************************************************************
 ! read_licor_ghg_archive.f90
 ! --------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -114,8 +117,8 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
             !> In the preamble phase
             !> Embedded mode: define variables to be used,
             !> based on availability in the metadata file
-            if (EddyProProj%run_env == 'embedded' &
-                .and. EddyProProj%run_mode == 'express') &
+            if (EddyFlowProj%run_env == 'embedded' &
+                .and. EddyFlowProj%run_mode == 'express') &
                 call DefaultVarsSelection(LocCol)
             !> Desktop mode: define used variables based on user selection
             !> at processing-time from GUI

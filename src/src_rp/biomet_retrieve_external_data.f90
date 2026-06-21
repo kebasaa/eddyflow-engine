@@ -1,23 +1,26 @@
 !***************************************************************************
 ! biomet_retrieve_external_data.f90
 ! ---------------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -55,11 +58,14 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
     logical :: isopen
     type(DateType) :: cTs
     type(DateType) :: tol
+    type(DateType) :: tsStartTol
+    type(DateType) :: tsEndTol
 
 
     !> Initialize biomet data to error
     bSet = error
     bAggr = error
+    bAggrEddyFlow = error
     bAggrFluxnet = error
 
     !> exit right away, if biomet files are finished
@@ -72,6 +78,8 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
     sepa = bFileMetadata%separator
     bDataFound = .false.
     tol = Datetype(0, 0, 0, 0, bFileMetadata%tolerance)
+    tsStartTol = tsStart + tol
+    tsEndTol   = tsEnd   + tol
 
     !>Loop on all biomet files
     !>Start from last visited file in bFileList
@@ -132,7 +140,7 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
             bLastRec = bLastRec + 1
 
             !> if record is relevant, add it to bSet
-            if (cTs >= tsStart + tol .and. cTs < tsEnd + tol) then
+            if (cTs >= tsStartTol .and. cTs < tsEndTol) then
                 bDataFound = .true.
                 cnt = cnt + 1
                 if (cnt > nbRecs) exit file_loop
@@ -146,11 +154,14 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
         if (printout) write(*, '(a)') '   ' // trim(adjustl(LogInteger )) &
             // ' biomet record(s) imported.'
 
-        !> Convert data to standard units
-        call BiometStandardEddyProUnits()
-
         !> Calculate mean values of biomet over the averaging interval
         call BiometAggregate(bSet, size(bSet, 1), size(bSet, 2), bAggr)
+
+        !> Convert data to standard units
+        call BiometStandardEddyFlowUnits()
+
+        !> Calculate mean values of biomet over the averaging interval
+        call BiometAggregate(bSet, size(bSet, 1), size(bSet, 2), bAggrEddyFlow)
 
         !> Convert aggregated values to FLUXNET units
         call BiometStandardFluxnetUnits()
@@ -160,7 +171,7 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
 
     !> Associate values to variables, as selected by user
     do i = bTa, bRg
-        if (bSetup%sel(i) > 0) biomet%val(i) = bAggr(bSetup%sel(i))
+        if (bSetup%sel(i) > 0) biomet%val(i) = bAggrEddyFlow(bSetup%sel(i))
     end do
     if (printout) write(*,'(a)') '  Done.'
 

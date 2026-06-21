@@ -1,23 +1,26 @@
 !***************************************************************************
 ! stationarity_test.f90
 ! ---------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -69,7 +72,7 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     call CovarianceMatrixNoError(LocSet, nrow, GHGNumVar, GlbCov, error)
 
     !> Partial covariances from subsets and their averages
-    subn = idint(dble(nrow/ndiv))
+    subn = int(dble(nrow/ndiv))
     allocate(SubSet(subn, GHGNumVar))
     AvrgCov = 0.d0
     do l = 1, ndiv
@@ -88,28 +91,28 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     !> Differences
     do i = u, GHGNumVar
         do j = u, GHGNumVar
-            if (GlbCov(i, j) /= 0d0 .and. GlbCov(i, j) /= error) then
+            if (GlbCov(i, j) /= 0d0 .and. GlbCov(i, j) /= error .and. AvrgCov(i, j) /= error) then
                 dev = dabs((GlbCov(i, j) - AvrgCov(i, j)) * 1d2 / GlbCov(i, j))
                 if (dabs(dev) < 2147483648.d0) then
-                    IntDiff(i, j) = idint(dev)
+                    IntDiff(i, j) = int(dev)
                 else
-                    IntDiff(i, j) = nint(error)
+                    IntDiff(i, j) = ierror
                 end if
             else
-                IntDiff(i, j) = nint(error)
+                IntDiff(i, j) = ierror
             end if
         end do
     end do
 
-    if (GlbUstar /= 0d0 .and. GlbUstar /= error) then
+    if (GlbUstar /= 0d0 .and. GlbUstar /= error .and. SubUstar /= error) then
         dev = dabs((GlbUstar - SubUstar) * 1d2 / GlbUstar)
         if (dabs(dev) < 2147483648.d0) then
-            IntDiffUstar = idint(dev)
+            IntDiffUstar = int(dev)
         else
-            IntDiffUstar = nint(error)
+            IntDiffUstar = ierror
         end if
     else
-        IntDiffUstar = nint(error)
+        IntDiffUstar = ierror
     end if
 
     StDiff%u = IntDiff(u, u)
@@ -126,6 +129,7 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     StDiff%w_h2o = IntDiff(w, h2o)
     StDiff%w_ch4 = IntDiff(w, ch4)
     StDiff%w_gas4 = IntDiff(w, gas4)
+
     deallocate(SubSet)
     write(*,'(a)') ' Done.'
 end subroutine StationarityTest

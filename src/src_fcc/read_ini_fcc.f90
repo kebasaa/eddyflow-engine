@@ -1,22 +1,24 @@
 !***************************************************************************
-! read_fx_ini.f90
-! ---------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! read_ini_fcc.f90
+! ----------------
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -29,7 +31,7 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine ReadIniFX(key)
+subroutine ReadIniFCC(key)
     use m_fx_global_var
     implicit none
     ! in/out variables
@@ -37,7 +39,7 @@ subroutine ReadIniFX(key)
     !> local variables
     logical :: IniFileNotFound
 
-    write(*,'(a)') ' Reading EddyPro project file: ' &
+    write(*,'(a)') ' Reading EddyFlow project file: ' &
                      // PrjPath(1:len_trim(PrjPath)) // '..'
 
     !> parse processing.eddypro file and store [Project] variables,
@@ -56,10 +58,10 @@ subroutine ReadIniFX(key)
     if (IniFileNotFound) call ExceptionHandler(21)
     !> selects only tags needed in this software, and store
     !> them in relevant variables
-    call WriteVariablesFX()
+    call WriteVariablesFCC()
 
     write(*,'(a)')   ' Done.'
-end subroutine ReadIniFX
+end subroutine ReadIniFCC
 
 !***************************************************************************
 !
@@ -73,7 +75,7 @@ end subroutine ReadIniFX
 ! \test
 ! \todo
 !***************************************************************************
-subroutine WriteVariablesFX()
+subroutine WriteVariablesFCC()
     use m_fx_global_var
     implicit none
     !> local variables
@@ -126,7 +128,7 @@ subroutine WriteVariablesFX()
     FCCsetup%SA%in_situ = .false.
     FCCsetup%SA%ibrom_model = .false.
     FCCsetup%import_full_cospectra = .false.
-    select case (EddyProProj%hf_meth)
+    select case (EddyFlowProj%hf_meth)
         case ('horst_97')
             !> Correction after Horst (1997, BLM), in-situ/analytical
             FCCsetup%SA%in_situ = .true.
@@ -160,11 +162,11 @@ subroutine WriteVariablesFX()
     end if
 
     !> Check existence of full cospectra directory if necessary
-    if (EddyProProj%hf_meth == 'fratini_12') then
+    if (EddyFlowProj%hf_meth == 'fratini_12') then
         inquire(file = Dir%full, exist=dirExists)
         if (.not. dirExists) then
             call ExceptionHandler(88)
-            EddyProProj%hf_meth = 'moncrieff_97'
+            EddyFlowProj%hf_meth = 'moncrieff_97'
             FCCsetup%SA%in_situ = .false.
             FCCsetup%import_full_cospectra = .false.
         end if
@@ -180,19 +182,19 @@ subroutine WriteVariablesFX()
 
     FCCsetup%pass_thru_spectral_assessment = &
         FCCsetup%do_spectral_assessment &
-        .or. EddyProProj%out_avrg_cosp &
-        .or. EddyProProj%out_avrg_spec
+        .or. EddyFlowProj%out_avrg_cosp &
+        .or. EddyFlowProj%out_avrg_spec
 
     !> Check existence of binned cospectra directory if necessary
     if (FCCsetup%pass_thru_spectral_assessment) then
         inquire(file = Dir%binned, exist=dirExists)
         if (.not. dirExists) then
-            EddyProProj%out_avrg_cosp = .false.
-            EddyProProj%out_avrg_spec = .false.
+            EddyFlowProj%out_avrg_cosp = .false.
+            EddyFlowProj%out_avrg_spec = .false.
             FCCsetup%do_spectral_assessment = .false.
             FCCsetup%pass_thru_spectral_assessment = .false.
             if (FCCsetup%SA%in_situ) then
-                EddyProProj%hf_meth = 'moncrieff_97'
+                EddyFlowProj%hf_meth = 'moncrieff_97'
                 FCCsetup%SA%in_situ = .false.
             end if
             call ExceptionHandler(87)
@@ -200,7 +202,7 @@ subroutine WriteVariablesFX()
     end if
 
     FCCsetup%SA%lptf = 'none'
-    if (EddyProProj%hf_meth == 'custom') then
+    if (EddyFlowProj%hf_meth == 'custom') then
         !> select low-pass transfer function (LPTF) definition method
         select case (SCTags(15)%value(1:1))
             case ('0')
@@ -341,9 +343,12 @@ subroutine WriteVariablesFX()
     end do
     FCCsetup%SA%nclass(gas4) = 12 - skipped_classes
 
+    !> Whether to keep or delete parent fluxnet file
+    FCCsetup%keep_parent = SCTags(26)%value(1:1) == '1'
+    
     !> adjust Dirs
     call AdjDir(Dir%binned, slash)
     call AdjDir(Dir%full, slash)
     call AdjFilePath(AuxFile%ex, slash)
     call AdjFilePath(AuxFile%sa, slash)
-end subroutine WriteVariablesFX
+end subroutine WriteVariablesFCC

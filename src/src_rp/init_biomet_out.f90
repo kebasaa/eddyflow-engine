@@ -1,22 +1,25 @@
 !***************************************************************************
 ! init_biomet_out.f90
 ! -------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -46,10 +49,10 @@ subroutine InitBiometOut()
 
 
     !>==========================================================================
-    !> EddyPro's biomet output
-    if (EddyProProj%out_biomet .and. nbVars > 0) then
+    !> EddyFlow's biomet output
+    if (EddyFlowProj%out_biomet .and. nbVars > 0) then
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // Biomet_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         Biomet_Path = Test_Path(1:dot) // CsvTmpExt
@@ -75,47 +78,6 @@ subroutine InitBiometOut()
         !> Write on output file
         write(ubiomet, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
         write(ubiomet, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-    end if
-
-    !>==========================================================================
-    !> FLUXNET BIOMET output
-
-    !> Even if it was selected for output, FLUXNET biomet is not created if there
-    !> are no biomet variables
-    if (nbVars <= 0) EddyProProj%out_fluxnet_biomet = .false.
-
-    if (EddyProProj%out_fluxnet_biomet) then
-        Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
-                  // FLUXNET_BIOMET_FilePadding // Timestamp_FilePadding // CsvExt
-        dot = index(Test_Path, CsvExt, .true.) - 1
-        FLUXNET_BIOMET_Path = Test_Path(1:dot) // CsvTmpExt
-        open(ufnet_b, file = FLUXNET_BIOMET_Path, &
-            iostat = open_status, encoding = 'utf-8')
-
-        !> Initialize header strings to void
-        call Clearstr(header1)
-        call Clearstr(header2)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-
-        !> Initial common part
-        call AddDatum(header1,'TIMESTAMP', separator)
-        call AddDatum(header2,'[yyyymmddHHMMSS]', separator)
-
-        !>======================================================================
-        !> Biomet variables
-        do i = 1, nbVars
-            call AddDatum(header1,trim(bVars(i)%fluxnet_label), separator)
-            call AddDatum(header2,trim(bVars(i)%fluxnet_unit_out), separator)
-        end do
-
-        call latin1_to_utf8(header1, head1_utf8)
-        call latin1_to_utf8(header2, head2_utf8)
-
-        !> Write on output file
-        write(ufnet_b, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-        write(ufnet_b, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
     end if
 
 end subroutine InitBiometOut

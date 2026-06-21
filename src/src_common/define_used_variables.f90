@@ -1,23 +1,26 @@
 !***************************************************************************
 ! define_used_variables.f90
 ! -------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -54,53 +57,59 @@ subroutine DefineUsedVariables(LocCol)
     !> relevant sonic variables
     LocCol%Instr%master_sonic = .false.
     do i = 1, NumCol
-        if (index(EddyProProj%master_sonic, &
+        if (index(EddyFlowProj%master_sonic, &
             trim(adjustl(LocCol(i)%Instr%model))) /= 0) then
             LocCol(i)%Instr%master_sonic = .true.
         end if
     end do
 
     LocCol%useit = .false.
-    !> Information in EddyPro project file (user explicitly selects which
+    !> Information in EddyFlow project file (user explicitly selects which
     !> variables are to be used)
-    where (EddyProProj%Col(co2:E2NumVar) > 0)
-        LocCol(EddyProProj%Col(co2:E2NumVar))%useit = .true.
+    where (EddyFlowProj%Col(co2:E2NumVar) > 0)
+        LocCol(EddyFlowProj%Col(co2:E2NumVar))%useit = .true.
     endwhere
 
-    where (EddyProProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem) > 0)
-        LocCol(EddyProProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem))%useit = .true.
+    where (EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem) > 0)
+        LocCol(EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem))%useit = .true.
     endwhere
 
     !> If gas4 column was selected, change its name to 'n2o', to be treated
     !> as such. The column label still holds the actual variable name
     !> as selected/entered in the Metadat File Editor
-    if (EddyProProj%Col(gas4) > 0) LocCol(EddyProProj%Col(gas4))%var = 'n2o'
+    if (EddyFlowProj%Col(gas4) > 0) LocCol(EddyFlowProj%Col(gas4))%var = 'n2o'
 
     !> Diagnostic flags
     NumDiag = 0
     Diag7200%present = .false.
     Diag7500%present = .false.
     Diag7700%present = .false.
-    DiagAnemometer%present = .false.
-    if (EddyProProj%Col(E2NumVar + diag72) > 0) then
-        LocCol(EddyProProj%Col(E2NumVar + diag72))%useit = .true.
+    DiagAnemometer%binary_flag_present = .false.
+    DiagAnemometer%staa_present = .false.
+    if (EddyFlowProj%Col(E2NumVar + diag72) > 0) then
+        LocCol(EddyFlowProj%Col(E2NumVar + diag72))%useit = .true.
         NumDiag = NumDiag + 1
         Diag7200%present = .true.
     end if
-    if (EddyProProj%Col(E2NumVar + diag75) > 0) then
-        LocCol(EddyProProj%Col(E2NumVar + diag75))%useit = .true.
+    if (EddyFlowProj%Col(E2NumVar + diag75) > 0) then
+        LocCol(EddyFlowProj%Col(E2NumVar + diag75))%useit = .true.
         NumDiag = NumDiag + 1
         Diag7500%present = .true.
     end if
-    if (EddyProProj%Col(E2NumVar + diag77) > 0) then
-        LocCol(EddyProProj%Col(E2NumVar + diag77))%useit = .true.
+    if (EddyFlowProj%Col(E2NumVar + diag77) > 0) then
+        LocCol(EddyFlowProj%Col(E2NumVar + diag77))%useit = .true.
         NumDiag = NumDiag + 1
         Diag7700%present = .true.
     end if
-    if (EddyProProj%Col(E2NumVar + diagAnem) > 0) then
-        LocCol(EddyProProj%Col(E2NumVar + diagAnem))%useit = .true.
+    if (EddyFlowProj%Col(E2NumVar + diagAnem) > 0) then
+        LocCol(EddyFlowProj%Col(E2NumVar + diagAnem))%useit = .true.
         NumDiag = NumDiag + 1
-        DiagAnemometer%present = .true.
+        DiagAnemometer%binary_flag_present = .true.
+    end if
+    if (EddyFlowProj%Col(E2NumVar + diagStaA) > 0) then
+        LocCol(EddyFlowProj%Col(E2NumVar + diagStaA))%useit = .true.
+        NumDiag = NumDiag + 1
+        DiagAnemometer%staa_present = .true.
     end if
 
     !> Loop on the actual number of columns and determine
@@ -140,10 +149,10 @@ subroutine DefineUsedVariables(LocCol)
     !> as that column, but changes instrument category to "fast_t_sensor"
     !> to remember that it does not need water vapor correction and
     !> (sonic-specific) spectral corrections.
-    if (EddyProProj%Col(ts) > 0) then
-        LocCol(EddyProProj%Col(ts))%useit = .true.
-        LocCol(EddyProProj%Col(ts))%var = 'ts'
-        LocCol(EddyProProj%Col(ts))%instr%category = 'fast_t_sensor'
+    if (EddyFlowProj%Col(ts) > 0) then
+        LocCol(EddyFlowProj%Col(ts))%useit = .true.
+        LocCol(EddyFlowProj%Col(ts))%var = 'ts'
+        LocCol(EddyFlowProj%Col(ts))%instr%category = 'fast_t_sensor'
         !> Search Ts or SoS from master sonic and change property in
         !> "don't use it", so now it will fall into the "non sensitive"
         !> variables group. Note that the total number of User Variables

@@ -1,11 +1,17 @@
+!***************************************************************************
+! m_levenberg_marquardt.f90
+! -------------------------
+! \brief       MINPACK routines which are used by both LMDIF & LMDER
+! \author      A. Miller (amiller@bigpond.net.au)
+! \note        MINPACK License: 
+!              This code may freely be copied, modified, and used for any purpose.
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
 MODULE m_levenberg_marquardt
-! MINPACK routines which are used by both LMDIF & LMDER
-! 25 October 2001:
-!    Changed INTENT of iflag in several places to IN OUT.
-!    Changed INTENT of fvec to IN OUT in user routine FCN.
-!    Removed arguments diag and qtv from LMDIF & LMDER.
-!    Replaced several DO loops with array operations.
-! amiller @ bigpond.net.au
 
 IMPLICIT NONE
 INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(12, 60)
@@ -1853,6 +1859,7 @@ REAL (dp) :: agiant, floatn, s1, s2, s3, xabs, x1max, x3max
 REAL (dp), PARAMETER :: one = 1.0_dp, zero = 0.0_dp, rdwarf = 3.834E-20_dp,  &
                         rgiant = 1.304E+19_dp
 
+fn_val = zero
 s1 = zero
 s2 = zero
 s3 = zero

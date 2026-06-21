@@ -1,22 +1,25 @@
 !***************************************************************************
 ! default_vars_selection.f90
 ! --------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -68,7 +71,7 @@ subroutine DefaultVarsSelection(LocCol)
         !> Attach master sonic property to the first anemometer, regardless of which one it is,
         !> Implement this: ..under the only condition that all anemometric variables are available for it.
         if (Instr(i)%category == 'sonic') &
-            EddyProProj%master_sonic = Instr(i)%model(1:len_trim(Instr(i)%model))
+            EddyFlowProj%master_sonic = Instr(i)%model(1:len_trim(Instr(i)%model))
 
         !> Define analyser for co2/h2o to be used for fluxes, if any
         select case (nirgas_co2)
@@ -84,12 +87,12 @@ subroutine DefaultVarsSelection(LocCol)
         if (nirgas_ch4 /= 0 .and. index(Instr(i)%model, 'li77') /= 0) ch4_instr_indx = i
     end do
 
-    !> If EddyProProj%col(i) = 0, that's an user decision not to use
+    !> If EddyFlowProj%col(i) = 0, that's an user decision not to use
     !> the variable, so does not change it
-    !> If EddyProProj%col(i) > 0, that's an user decision to use
+    !> If EddyFlowProj%col(i) > 0, that's an user decision to use
     !> that column, so does not change it
-    !> In embedded mode, EddyProProj%col(i) < 0 means that the user is leaving
-    !> the decision on which variable to use to EddyPro, so select most
+    !> In embedded mode, EddyFlowProj%col(i) < 0 means that the user is leaving
+    !> the decision on which variable to use to EddyFlow, so select most
     !> appropriate variable now
 
     !> co2 and h2o variables
@@ -101,16 +104,16 @@ subroutine DefaultVarsSelection(LocCol)
     h2od_col = 0
     do i = 1, NumCol
         !> Sonic diagnostics
-        if (LocCol(i)%var == 'anemometer_diagnostic' .and. trim(adjustl(LocCol(i)%Instr%model)) == EddyProProj%master_sonic) &
-            EddyProProj%col(E2NumVar + diagAnem) = i
+        if (LocCol(i)%var == 'anemometer_diagnostic' .and. trim(adjustl(LocCol(i)%Instr%model)) == EddyFlowProj%master_sonic) &
+            EddyFlowProj%col(E2NumVar + diagAnem) = i
 
         !> co2
-        if (EddyProProj%col(co2) < 0 .and. LocCol(i)%var == 'co2') then
+        if (EddyFlowProj%col(co2) < 0 .and. LocCol(i)%var == 'co2') then
             !> A co2 reading was detected, see if it comes from the right instrument
             if (LocCol(i)%Instr%model == Instr(co2_instr_indx)%model) then
                 !> If it's from a LI-7500(A), must be a molar density, otherwise nothing
                 if (index(Instr(co2_instr_indx)%model, 'li75') /= 0 .and. LocCol(i)%measure_type == 'molar_density') &
-                    EddyProProj%col(co2) = i
+                    EddyFlowProj%col(co2) = i
                 if (index(Instr(co2_instr_indx)%model, 'li72') /= 0 .and. LocCol(i)%measure_type == 'mixing_ratio') &
                     co2r_col = i
                 if (index(Instr(co2_instr_indx)%model, 'li72') /= 0 .and. LocCol(i)%measure_type == 'mole_fraction') &
@@ -121,12 +124,12 @@ subroutine DefaultVarsSelection(LocCol)
         end if
 
         !> h2o (note: co2_instr_indx is valid also for h2o!)
-        if (EddyProProj%col(h2o) < 0 .and. LocCol(i)%var == 'h2o') then
+        if (EddyFlowProj%col(h2o) < 0 .and. LocCol(i)%var == 'h2o') then
             !> An h2o reading was detected, see if it comes from the right instrument
             if (LocCol(i)%Instr%model == Instr(co2_instr_indx)%model) then
                 !> If it's from a LI-7500(A), must be a molar density, otherwise nothing
                 if (index(Instr(co2_instr_indx)%model, 'li75') /= 0 .and. LocCol(i)%measure_type == 'molar_density') &
-                    EddyProProj%col(h2o) = i
+                    EddyFlowProj%col(h2o) = i
                 !> If it's from a LI-7200, order is (1) mixing ratio (2) mole fraction and (3) molar density
                 if (index(Instr(co2_instr_indx)%model, 'li72') /= 0 .and. LocCol(i)%measure_type == 'mixing_ratio') &
                     h2or_col = i
@@ -138,72 +141,72 @@ subroutine DefaultVarsSelection(LocCol)
         end if
 
         !> ch4
-        if (EddyProProj%col(ch4) < 0 .and. LocCol(i)%var == 'ch4') then
+        if (EddyFlowProj%col(ch4) < 0 .and. LocCol(i)%var == 'ch4') then
             !> An ch4 reading was detected, see if it comes from the right instrument
             if (LocCol(i)%Instr%model == Instr(ch4_instr_indx)%model) then
                 !> If it's from a LI-7500(A), must be a molar density, otherwise nothing
                 if (index(Instr(ch4_instr_indx)%model, 'li77') /= 0 .and. LocCol(i)%measure_type == 'molar_density') &
-                    EddyProProj%col(ch4) = i
+                    EddyFlowProj%col(ch4) = i
             end if
         end if
     end do
 
     !> In case of LI-7200, need to select the most appropriate column according to the priority list
     !> Order is (1) mixing ratio (2) mole fraction and (3) molar density
-    if (co2d_col /= 0) EddyProProj%col(co2) = co2d_col
-    if (co2f_col /= 0) EddyProProj%col(co2) = co2f_col
-    if (co2r_col /= 0) EddyProProj%col(co2) = co2r_col
-    if (h2od_col /= 0) EddyProProj%col(h2o) = h2od_col
-    if (h2of_col /= 0) EddyProProj%col(h2o) = h2of_col
-    if (h2or_col /= 0) EddyProProj%col(h2o) = h2or_col
+    if (co2d_col /= 0) EddyFlowProj%col(co2) = co2d_col
+    if (co2f_col /= 0) EddyFlowProj%col(co2) = co2f_col
+    if (co2r_col /= 0) EddyFlowProj%col(co2) = co2r_col
+    if (h2od_col /= 0) EddyFlowProj%col(h2o) = h2od_col
+    if (h2of_col /= 0) EddyFlowProj%col(h2o) = h2of_col
+    if (h2or_col /= 0) EddyFlowProj%col(h2o) = h2or_col
 
     !> Check if internal temperatures and pressure are available
     do i = 1, NumCol
         !> In/out and average cell temperatures
-        if (EddyProProj%col(ti1) < 0 .and. LocCol(i)%var == 'int_t_1') EddyProProj%col(ti1) = i
-        if (EddyProProj%col(ti2) < 0 .and. LocCol(i)%var == 'int_t_2') EddyProProj%col(ti2) = i
-        if (EddyProProj%col(tc)  < 0 .and. LocCol(i)%var == 'cell_t')  EddyProProj%col(tc)  = i
+        if (EddyFlowProj%col(ti1) < 0 .and. LocCol(i)%var == 'int_t_1') EddyFlowProj%col(ti1) = i
+        if (EddyFlowProj%col(ti2) < 0 .and. LocCol(i)%var == 'int_t_2') EddyFlowProj%col(ti2) = i
+        if (EddyFlowProj%col(tc)  < 0 .and. LocCol(i)%var == 'cell_t')  EddyFlowProj%col(tc)  = i
         !> Cell pressure
-        if (EddyProProj%col(pc) < 0  .and. LocCol(i)%var == 'int_p')   EddyProProj%col(pc)  = i
+        if (EddyFlowProj%col(pc) < 0  .and. LocCol(i)%var == 'int_p')   EddyFlowProj%col(pc)  = i
     end do
 
     !> Ambient temperature. If available, better using it, prioritarily from the LI-7700
     tmp = -1
     do i = 1, NumCol
-        if (EddyProProj%col(te) < 0 .and. LocCol(i)%var == 'air_t' .and. index(LocCol(i)%Instr%model, 'li77') /= 0) then
-            EddyProProj%col(te) = i
+        if (EddyFlowProj%col(te) < 0 .and. LocCol(i)%var == 'air_t' .and. index(LocCol(i)%Instr%model, 'li77') /= 0) then
+            EddyFlowProj%col(te) = i
             exit
         end if
-        if (EddyProProj%col(te) < 0 .and. LocCol(i)%var == 'air_t') tmp = i
+        if (EddyFlowProj%col(te) < 0 .and. LocCol(i)%var == 'air_t') tmp = i
     end do
-    if (EddyProProj%col(te) < 0 .and. tmp > 0) EddyProProj%col(te) = tmp
+    if (EddyFlowProj%col(te) < 0 .and. tmp > 0) EddyFlowProj%col(te) = tmp
 
     !> Ambient pressure. If available, better using it, prioritarily from the LI-7700
     tmp = -1
     do i = 1, NumCol
-        if (EddyProProj%col(pe) < 0 .and. LocCol(i)%var == 'air_p' .and. index(LocCol(i)%Instr%model, 'li77') /= 0) then
-            EddyProProj%col(pe) = i
+        if (EddyFlowProj%col(pe) < 0 .and. LocCol(i)%var == 'air_p' .and. index(LocCol(i)%Instr%model, 'li77') /= 0) then
+            EddyFlowProj%col(pe) = i
             exit
         end if
-        if (EddyProProj%col(pe) < 0 .and. LocCol(i)%var == 'air_p') tmp = i
+        if (EddyFlowProj%col(pe) < 0 .and. LocCol(i)%var == 'air_p') tmp = i
     end do
-    if (EddyProProj%col(pe) < 0 .and. tmp > 0) EddyProProj%col(pe) = tmp
+    if (EddyFlowProj%col(pe) < 0 .and. tmp > 0) EddyFlowProj%col(pe) = tmp
 
     !> Diagnostic flags
     do i = 1, NumCol
         !> Gas analyzer diagnostics
         if (co2_instr_indx /= 0) then
             if (LocCol(i)%var == 'diag_75' .and. LocCol(i)%Instr%model == Instr(co2_instr_indx)%model) &
-                EddyProProj%col(E2NumVar + diag75) = i
+                EddyFlowProj%col(E2NumVar + diag75) = i
             if (LocCol(i)%var == 'diag_72' .and. LocCol(i)%Instr%model == Instr(co2_instr_indx)%model) &
-                EddyProProj%col(E2NumVar + diag72) = i
+                EddyFlowProj%col(E2NumVar + diag72) = i
         end if
         if (ch4_instr_indx /= 0) then
             if (LocCol(i)%var == 'diag_77' .and. LocCol(i)%Instr%model == Instr(ch4_instr_indx)%model) &
-                EddyProProj%col(E2NumVar + diag77) = i
+                EddyFlowProj%col(E2NumVar + diag77) = i
             end if
         !> Anemometer diagnostics
-        if (LocCol(i)%var == 'anemometer_diagnostic' .and. trim(adjustl(LocCol(i)%Instr%model)) == EddyProProj%master_sonic) &
-            EddyProProj%col(E2NumVar + diagAnem) = i
+        if (LocCol(i)%var == 'anemometer_diagnostic' .and. trim(adjustl(LocCol(i)%Instr%model)) == EddyFlowProj%master_sonic) &
+            EddyFlowProj%col(E2NumVar + diagAnem) = i
     end do
 end subroutine DefaultVarsSelection

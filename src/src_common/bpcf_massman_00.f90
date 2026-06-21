@@ -1,22 +1,25 @@
 !***************************************************************************
 ! bpcf_massman_00.f90
 ! -------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -76,6 +79,7 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
 
     !> Initialization
     t_e = 1d-10
+    unstable_corr_fact(:) = 0d0
 
     !> Equivalent time constants, Massman (2000, Table 1).
     t_sonic_hla_4tau    = LocInstr(sonic)%hpath_length / (2.8d0 * wind_speed) !< sonic line averaging (horizontal, for momentum)
@@ -102,19 +106,21 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
 
     lambda = error
     do var = co2, gas4
-        if (LocInstr(var)%path_type == 'closed') then
-            TubeVel     = LocInstr(var)%tube_f / (p * (LocInstr(var)%tube_d / 2d0)**2)
-            Re          = TubeVel * LocInstr(var)%tube_d / AirVisc
-            lambda(var) = LUT_delta(Re, var)
-            !lambda(var) = 0.5d0 * dabs(alpha_1) * delta_d**(-1) * Re**1.8  !< ****** Massman and Ibrom (2008, Eq. 8 and subsequent text), not used though
-            if (lambda(var) /= error) then
-                t_tube(var) = dsqrt(lambda(var) * LocInstr(var)%tube_d / 2d0 * LocInstr(var)%tube_l) / (0.83d0 * TubeVel)
+        if (loc_var_present(var)) then
+            if (LocInstr(var)%path_type == 'closed') then
+                TubeVel     = LocInstr(var)%tube_f / (p * (LocInstr(var)%tube_d / 2d0)**2)
+                Re          = TubeVel * LocInstr(var)%tube_d / AirVisc
+                lambda(var) = LUT_delta(Re, var)
+                !lambda(var) = 0.5d0 * dabs(alpha_1) * delta_d**(-1) * Re**1.8  !< ****** Massman and Ibrom (2008, Eq. 8 and subsequent text), not used though
+                if (lambda(var) /= error) then
+                    t_tube(var) = dsqrt(lambda(var) * LocInstr(var)%tube_d / 2d0 * LocInstr(var)%tube_l) / (0.83d0 * TubeVel)
+                else
+                    call ExceptionHandler(51)
+                    t_tube(var) = 1d-10 !< a very small value.
+                end if
             else
-                call ExceptionHandler(51)
-                t_tube(var) = 1d-10 !< a very small value.
+                t_tube(var) = 1d-10 !< a very small value, open path case
             end if
-        else
-            t_tube(var) = 1d-10 !< a very small value, open path case
         end if
     end do
 

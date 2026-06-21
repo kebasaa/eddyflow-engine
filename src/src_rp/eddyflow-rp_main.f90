@@ -1,23 +1,26 @@
 !***************************************************************************
-! eddypro-rp_main.f90
+! eddyflow-rp_main.f90
 ! -------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -30,7 +33,7 @@
 ! \test
 ! \todo
 !***************************************************************************
-program EddyproRP
+program EddyFlowRP
     use m_rp_global_var
     !use netcdf
     !use iso_c_binding
@@ -126,6 +129,7 @@ program EddyproRP
     logical :: IniFileNotFound
     logical :: initialize
     logical :: initializeBiometOut
+    logical :: initializeFluxnetOut
     logical :: InitializeStorage
     logical :: InitOutVarPresence
     logical :: SingMat
@@ -135,8 +139,8 @@ program EddyproRP
     logical :: FileEndReached
     logical :: toInit
     logical :: BiometDataFound
+    logical :: FakeGoPlanarFit(1)
 
-    logical, allocatable :: mask(:)
     logical, allocatable :: GoPlanarFit(:)
 
     type (FileListType), allocatable :: RawFileList(:)
@@ -175,7 +179,7 @@ program EddyproRP
     !***************************************************************************
     write(*, '(a)') ''
     write(*, '(a)') ' *******************'
-    write(*, '(a)') '  Executing EddyPro '
+    write(*, '(a)') '  Executing EddyFlow '
     write(*, '(a)') ' *******************'
     write(*, '(a)') ''
 
@@ -184,6 +188,9 @@ program EddyproRP
     !> Initialize environment
     call InitEnv()
 
+    !> By detault, create FLUXNET output
+    EddyFlowProj%out_fluxnet = .true.
+
     !> Read setup file
     call ReadIniRP('RawProcess')
     allocate(bf(Meth%spec%nbins + 1))
@@ -191,12 +198,13 @@ program EddyproRP
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
 
-    !> EddyPro Express settings
-    if (EddyProProj%run_mode == 'express') call ConfigureForExpress()
-    if (EddyProProj%run_mode == 'md_retrieval') call ConfigureForMdRetrieval()
+    !> EddyFlow Express settings
+    if (EddyFlowProj%run_mode == 'express') call ConfigureForExpress()
+    if (EddyFlowProj%run_mode == 'md_retrieval') call ConfigureForMdRetrieval()
+    if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
 
     !> Define message for skipped periods
-    if (EddyProProj%run_mode /= 'md_retrieval') then
+    if (EddyFlowProj%run_mode /= 'md_retrieval') then
         PeriodSkipMessage = '   Flux averaging period processing time: '
     else
         PeriodSkipMessage = '  Metadata retrieving time: '
@@ -204,49 +212,44 @@ program EddyproRP
 
     !> Selects which datasets should be filled with error codes,
     !> based on user selection
-    make_dataset_common = EddyProProj%make_dataset
-    make_dataset_rp     = EddyProProj%make_dataset
+    make_dataset_common = EddyFlowProj%make_dataset
+    make_dataset_rp     = EddyFlowProj%make_dataset
 
     !> Selects which files to output, considering the selected
     !> spectral correction method
-    if (EddyProProj%out_avrg_cosp &
-        .or. EddyProProj%out_avrg_spec &
-        .or. (EddyProProj%hf_meth /= 'none' &
-        .and. EddyProProj%hf_meth /= 'moncrieff_97' &
-        .and. EddyProProj%hf_meth /= 'massman_00')) then
+    if (EddyFlowProj%out_avrg_cosp &
+        .or. EddyFlowProj%out_avrg_spec &
+        .or. (EddyFlowProj%hf_meth /= 'none' &
+        .and. EddyFlowProj%hf_meth /= 'moncrieff_97' &
+        .and. EddyFlowProj%hf_meth /= 'massman_00')) then
         !> in this cases, passage is needed to FCC, so:
         !> don't output files, don't create dataset
         !> don't output metadata
         !> don't calculate spectral correction
         !> don't calculate fluxes 2/3
         !> don't calculate footprint
-        EddyProProj%fcc_follows     = .true.
-        EddyProProj%out_full        = .false.
-        EddyProProj%out_md          = .false.
-        EddyProProj%out_amflux      = .false.
+        EddyFlowProj%fcc_follows     = .true.
+        EddyFlowProj%out_full        = .false.
+        EddyFlowProj%out_md          = .false.
         make_dataset_common         = .false.
     else
         !> in this cases, does what selected by user
-        EddyProProj%fcc_follows  = .false.
+        EddyFlowProj%fcc_follows  = .false.
     end if
 
-    !> Essential file is always created, except in metadata retrieving mode
-    if (EddyProProj%run_mode /= 'md_retrieval') &
-        EddyProProj%out_essentials = .true.
-
     !> If running in embedded mode, override some settings
-    if (EddyProProj%run_env == 'embedded') call ConfigureForEmbedded()
-    if (EddyProProj%run_env == 'embedded') RPsetup%out_st = .false.
+    if (EddyFlowProj%run_env == 'embedded') call ConfigureForEmbedded()
+    if (EddyFlowProj%run_env == 'embedded') RPsetup%out_st = .false.
 
     !> Create output directory if it does not exist, otherwise is silent
     mkdir_status = CreateDir('"' //trim(adjustl(Dir%main_out)) // '"')
 
     !> Check on filename template
-    call tsValidateTemplate(EddyProProj%fname_template)
+    call tsValidateTemplate(EddyFlowProj%fname_template)
 
     !> Detect number of raw files and allocate RawFileList
-    call NumberOfFilesInDir(Dir%main_in, '.'//EddyProProj%fext, .true., &
-        EddyProProj%fname_template, TotNumFile, NumFileNoRecurse)
+    call NumberOfFilesInDir(Dir%main_in, '.'//EddyFlowProj%fext, .true., &
+        EddyFlowProj%fname_template, TotNumFile, NumFileNoRecurse)
 
     if (RPsetup%recurse) then
         NumRawFiles = TotNumFile
@@ -256,11 +259,11 @@ program EddyproRP
     allocate(RawFileList(NumRawFiles))
 
      !> Store names of data files in RawFileList
-    call FileListByExt(Dir%main_in, '.'//EddyProProj%fext, .true., .true., &
-        EddyProProj%fname_template, EddyProLog%iso_format, .true., &
+    call FileListByExt(Dir%main_in, '.'//EddyFlowProj%fext, .true., .true., &
+        EddyFlowProj%fname_template, EddyFlowLog%iso_format, .true., &
         RPsetup%recurse, RawFileList, size(RawFileList), .true., indent0)
 
-    if (EddyProProj%use_extmd_file) then
+    if (EddyFlowProj%use_extmd_file) then
         !> If requested, read external metadata file \n
         !> This is the case with non-GHG files or with GHG files if user \n
         !> explicitly selects an alternative metadata file
@@ -271,7 +274,7 @@ program EddyproRP
             write(*, *)
             call ExceptionHandler(22)
         end if
-        !> Retrieve variables to be used (from EddyPro project file) \n
+        !> Retrieve variables to be used (from EddyFlow project file) \n
         !> and define user-variables
         call DefineUsedVariables(Col)
         MetaIsNeeded = .false.
@@ -289,12 +292,12 @@ program EddyproRP
         !> GHG files.
         allocate(Raw(1, 1))
         BypassCol = NullCol
-        if (EddyProProj%ftype == 'licor_ghg') then
+        if (EddyFlowProj%ftype == 'licor_ghg') then
             i = 1
             do while (i <= NumRawFiles)
                 call ReadLicorGhgArchive(RawFileList(i)%path, -1, -1, Col, &
                     BypassCol, .true., .false., .false., &
-                    EddyProProj%run_mode /= 'md_retrieval', &
+                    EddyFlowProj%run_mode /= 'md_retrieval', &
                     Raw, size(Raw, 1), size(Raw, 2), skip_period, passed, &
                     faulty_col, PeriodRecords, FileEndReached, .false.)
                 if (.not. skip_period .and. passed(1)) exit
@@ -314,7 +317,7 @@ program EddyproRP
 
     !> Now that metadata are read, can set avrg_len in case user didn't
     if (RPsetup%avrg_len <= 0) RPsetup%avrg_len = nint(Metadata%file_length)
-    if (EddyProProj%run_mode == 'md_retrieval') &
+    if (EddyFlowProj%run_mode == 'md_retrieval') &
         RPsetup%avrg_len = nint(Metadata%file_length)
 
     !> Adjust time constant for planar fit if needed
@@ -340,14 +343,14 @@ program EddyproRP
     BypassCol = Col
 
     !> Initialize external biomet data
-    if (index(EddyProProj%biomet_data, 'ext_') /= 0) then
-        if (EddyProProj%biomet_data == 'ext_dir') then
+    if (index(EddyFlowProj%biomet_data, 'ext_') /= 0) then
+        if (EddyFlowProj%biomet_data == 'ext_dir') then
             write(*,'(a)') ' Reading external biomet file(s) from:'
             write(*,'(a)') '  ' // trim(adjustl(Dir%biomet))
             call NumberOfFilesInDir(Dir%biomet, &
-                trim(adjustl(EddyProProj%biomet_tail)), &
+                trim(adjustl(EddyFlowProj%biomet_tail)), &
                 .false., 'none', TotNumFile, NumFileNoRecurse)
-            if (EddyProProj%biomet_recurse) then
+            if (EddyFlowProj%biomet_recurse) then
                 NumBiometFiles = TotNumFile
             else
                 NumBiometFiles = NumFileNoRecurse
@@ -363,15 +366,15 @@ program EddyproRP
     end if
 
     !> Open biomet output file
-    if (index(EddyProProj%biomet_data, 'ext_') /= 0 .and. nbVars > 0) &
+    if (index(EddyFlowProj%biomet_data, 'ext_') /= 0 .and. nbVars > 0) &
         call InitBiometOut()
 
     !> Initialize dynamic metadata by reading the file
     !> and figuring out available variables
-    if (EddyProProj%use_dynmd_file) call InitDynamicMetadata(NumDynRecords)
+    if (EddyFlowProj%use_dynmd_file) call InitDynamicMetadata(NumDynRecords)
 
     !> Determine potential radiation, based on lat/long info from metadata file
-    call PotentialRadiation(Metadata%lat)
+    PotRad = PotentialRadiation(Metadata%lat)
 
     !> Initialize output files for "user" variables (non-sensitive variables)
     !> if at least one such variable exists
@@ -385,7 +388,7 @@ program EddyproRP
     !> Adjust Start/End timestamps to define the boundaries of the
     !> RawTimeSeries. Retrieve the beginning time of first file
     !> and end time of last file.
-    if (EddyProLog%tstamp_end) then
+    if (EddyFlowLog%tstamp_end) then
         tsDatasetStart = tsDatasetStart - DatafileDateStep
     else
         tsDatasetEnd = tsDatasetEnd + DatafileDateStep
@@ -406,7 +409,7 @@ program EddyproRP
         allocate(tsDrifts(NumberOfPeriods + 1))
         allocate(Calib(0:NumDynRecords))  !< elem. 0 is to alloc. start of period
         allocate(tmpCalib(0:NumDynRecords))
-        if (EddyProProj%use_dynmd_file) &
+        if (EddyFlowProj%use_dynmd_file) &
             call driftRetrieveCalibrationEvents(nCalibEvents)
     end if
 
@@ -415,7 +418,7 @@ program EddyproRP
     !> to f_max = AcFreq/2 (= Nyquist frequency) Hz
     !> It is defined a priori, constant for each data period regardless
     !> of the actual length of the averaging periods
-    if (EddyProProj%run_mode /=  'md_retrieval') &
+    if (EddyFlowProj%run_mode /=  'md_retrieval') &
         call BinnedFrequencyVector(bf, Meth%spec%nbins, &
             RPsetup%avrg_len, Metadata%ac_freq)
 
@@ -483,7 +486,7 @@ program EddyproRP
 
                 !> If embedded metadata are to be used,
                 !> reinitialize column information to null
-                if (EddyProProj%use_extmd_file) then
+                if (EddyFlowProj%use_extmd_file) then
                     Col = BypassCol
                 else
                     Col = NullCol
@@ -507,7 +510,7 @@ program EddyproRP
 
                 !> Averaging period advancement
                  if (day /= 0) then
-                    if (EddyProProj%caller == 'console') then
+                    if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)', advance = 'no') '#'
                     else
                         call DisplayProgress('avrg_interval', &
@@ -521,7 +524,7 @@ program EddyproRP
                     .or. month /= tsStart%month) then
                     month = tsStart%month
                     day   = tsStart%day
-                    if (EddyProProj%caller == 'console') then
+                    if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)')
                         call DisplayProgress('daily','  Importing data for ', &
                             tsStart, 'no')
@@ -540,10 +543,11 @@ program EddyproRP
                 call ImportCurrentPeriod(tsStart, tsEnd, &
                     RawFileList, NumRawFiles, NextRawFileIndx, BypassCol, &
                     MaxNumFileRecords, MetaIsNeeded, &
-                    EddyProProj%biomet_data == 'embedded', .false., &
+                    EddyFlowProj%biomet_data == 'embedded', .false., &
                     Raw, size(Raw, 1), size(Raw, 2), PeriodRecords, &
                     EmbBiometDataExist, skip_period, LatestRawFileIndx, Col, &
                     .false.)
+
                 if (skip_period) cycle to_periods_loop
 
                 !> Period skip control with message
@@ -554,7 +558,7 @@ program EddyproRP
 
                 !> Filter raw data for user-defined flags
                 if (RPsetup%filter_by_raw_flags) &
-                    call FilterRawDataByFlags(Col, Raw, &
+                    call FilterDatasetForFlags(Col, Raw, &
                         size(Raw, 1), size(Raw, 2))
 
                 !***************************************************************
@@ -570,7 +574,7 @@ program EddyproRP
                 if (.not. allocated(DiagSet)) &
                     allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
-                !> Define EddyPro set of variables for the following processing
+                !> Define EddyFlow set of variables for the following processing
                 call DefineE2Set(Col, Raw,   size(Raw, 1),     Size(Raw, 2), &
                                     E2Set,   size(E2Set, 1),   Size(E2Set, 2), &
                                     DiagSet, size(DiagSet, 1), Size(DiagSet, 2))
@@ -606,15 +610,15 @@ program EddyproRP
                 end if
 
                 !> Update metadata if dynamic metadata are to be used
-                if (EddyProProj%use_dynmd_file) &
+                if (EddyFlowProj%use_dynmd_file) &
                     call RetrieveDynamicMetadata(tsEnd, E2Col, size(E2Col))
 
                 !> Retrieve biomet data if they exist
-                if (index(EddyProProj%biomet_data, 'ext_') /= 0) then
+                if (index(EddyFlowProj%biomet_data, 'ext_') /= 0) then
                     call BiometRetrieveExternalData(bFileList, size(bFileList), &
                         bLastFile, bLastRec, tsStart, &
                         tsEnd, BiometDataFound, .false.)
-                elseif (EddyProProj%biomet_data == 'embedded') then
+                elseif (EddyFlowProj%biomet_data == 'embedded') then
                     call BiometRetrieveEmbeddedData(EmbBiometDataExist, .false.)
                 end if
 
@@ -636,12 +640,16 @@ program EddyproRP
                     call FilterDatasetForDiagnostics(E2Set, &
                         size(E2Set, 1), size(E2Set, 2), &
                         DiagSet, size(DiagSet, 1), size(DiagSet, 2), &
-                        DiagAnemometer%present, .true.)
+                        DiagAnemometer, .true.)
                 end if
                 if(allocated(DiagSet)) deallocate(DiagSet)
 
                 !> Adjust coordinate systems if the case
                 call AdjustSonicCoordinates(E2Set, size(E2Set, 1), size(E2Set, 2))
+
+                !> Filter for wind direction if requested
+                if (RPSetup%apply_wdf) &
+                    call FilterDatasetForWindDirection(E2Set, size(E2Set, 1), size(E2Set, 2))
 
                 !> Calculate basic stats
                 call BasicStats(E2Set, size(E2Set, 1), size(E2Set, 2), 1, .false.)
@@ -695,7 +703,8 @@ program EddyproRP
                 Stats4 = Stats
 
                 !> Apply rotations for tilt correction, if requested
-                call TiltCorrection('double_rotation', .false., E2Set, &
+                FakeGoPlanarFit = .false.
+                call TiltCorrection('double_rotation', FakeGoPlanarFit, E2Set, &
                     size(E2Set, 1), size(E2Set, 2), 1, Essentials%yaw, &
                     Essentials%pitch, Essentials%roll, .false.)
 
@@ -705,7 +714,7 @@ program EddyproRP
                 Stats5 = Stats
 
                 !> Convert to mixing ratios (if requested and if the case)
-                if (EddyProProj%wpl) &
+                if (EddyFlowProj%wpl) &
                     call PointByPointToMixingRatio(E2Set, &
                         size(E2Set, 1), size(E2Set, 2), .false.)
 
@@ -719,8 +728,8 @@ program EddyproRP
 
                 !> Calculate and compensate time-lags
                 call TimeLagHandle('maxcov', E2Set, &
-                    size(E2Set, 1), size(E2Set, 2), Essentials%timelag, &
-                    Essentials%def_tlag, .true.)
+                    size(E2Set, 1), size(E2Set, 2), Essentials%actual_timelag, &
+                    Essentials%used_timelag, Essentials%def_tlag, .true.)
 
                 !> Calculate basic stats
                 call BasicStats(E2Set, &
@@ -733,7 +742,7 @@ program EddyproRP
                 !> Apply filter for absolute limits test, if the case
                 FilterWhat = .false.
                 FilterWhat(co2:gas4) = .true.
-                call FilterForPhysicalThresholds(E2Set, &
+                call FilterDatasetForPhysicalThresholds(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), FilterWhat)
 
                 !> Define as not present, variables for which
@@ -795,9 +804,8 @@ program EddyproRP
 
             allocate(toH2On(TOSetup%h2o_nclass))
 
-!> Improve readability of this subroutine interface
-            !> Optimize time-lags
-            call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
+            !> Optimize time-lags                                        ******* Improve readability of this subroutine interface
+            call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, & 
                 TOSetup%h2o_nclass, TOSetup%h2o_class_size)
 
             !> Write time-lag optimization results on output file
@@ -816,7 +824,6 @@ program EddyproRP
     !********************** PLANAR FIT IF REQUESTED ****************************
     !***************************************************************************
     !***************************************************************************
-
     if (index(Meth%rot(1:len_trim(Meth%rot)), 'planar_fit') /= 0) then
         if (.not. RPsetup%pf_onthefly) then
             call ReadPlanarFitFile()
@@ -893,7 +900,7 @@ program EddyproRP
 
                 !> If embedded metadata are to be used,
                 !> reinitialize column information to null
-                if (EddyProProj%use_extmd_file) then
+                if (EddyFlowProj%use_extmd_file) then
                     Col = BypassCol
                 else
                     Col = NullCol
@@ -919,7 +926,7 @@ program EddyproRP
 
                 !> Averaging period advancement
                 if (day /= 0) then
-                    if (EddyProProj%caller == 'console') then
+                    if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)', advance = 'no') '#'
                     else
                         call DisplayProgress('avrg_interval', &
@@ -933,7 +940,7 @@ program EddyproRP
                     .or. month /= tsStart%month) then
                     month = tsStart%month
                     day   = tsStart%day
-                    if (EddyProProj%caller == 'console') then
+                    if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)')
                         call DisplayProgress('daily', &
                             '  Importing wind data for ', tsStart, 'no')
@@ -968,7 +975,7 @@ program EddyproRP
 
                 !> Filter raw data for user-defined flags
                 if (RPsetup%filter_by_raw_flags) &
-                    call FilterRawDataByFlags(Col, &
+                    call FilterDatasetForFlags(Col, &
                         Raw, size(Raw, 1), size(Raw, 2))
 
                 !***************************************************************
@@ -982,11 +989,11 @@ program EddyproRP
                 if (.not. allocated(DiagSet)) &
                     allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
-                !> Define EddyPro set of variables for the following processing
+                !> Define EddyFlow set of variables for the following processing
                 call DefineE2Set(Col, Raw,   size(Raw, 1),     Size(Raw, 2), &
                                     E2Set,   size(E2Set, 1),   Size(E2Set, 2), &
                                     DiagSet, size(DiagSet, 1), Size(DiagSet, 2))
-!                if (allocated(DiagSet))  deallocate(DiagSet)
+                !if (allocated(DiagSet))  deallocate(DiagSet)
 
                 !> Clean up E2Set, eliminating values that are clearly un-physical
                 call CleanUpE2Set(E2Set, size(E2Set, 1), size(E2Set, 2))
@@ -1005,7 +1012,7 @@ program EddyproRP
                 end if
 
                 !> Update metadata if dynamic metadata are to be used
-                if (EddyProProj%use_dynmd_file) &
+                if (EddyFlowProj%use_dynmd_file) &
                     call RetrieveDynamicMetadata(tsEnd, &
                         E2Col, size(E2Col))
 
@@ -1022,13 +1029,17 @@ program EddyproRP
                     call FilterDatasetForDiagnostics(E2Set, size(E2Set, 1), &
                         size(E2Set, 2), DiagSet, &
                         size(DiagSet, 1), size(DiagSet, 2), &
-                        DiagAnemometer%present, .false.)
+                        DiagAnemometer, .false.)
                 end if
                 if(allocated(DiagSet)) deallocate(DiagSet)
 
                 !> Adjust coordinate systems if the case
                 call AdjustSonicCoordinates(E2Set, &
                     size(E2Set, 1), size(E2Set, 2))
+
+                !> Filter for wind direction if requested
+                if (RPSetup%apply_wdf) &
+                    call FilterDatasetForWindDirection(E2Set, size(E2Set, 1), size(E2Set, 2))
 
                 !> Calculate basic stats
                 call BasicStats(E2Set, size(E2Set, 1), size(E2Set, 2), &
@@ -1233,13 +1244,13 @@ program EddyproRP
     !***************************************************************************
 
     !> Create TimeSeries for actual raw data processing
-    if (EddyProProj%subperiod) then
+    if (EddyFlowProj%subperiod) then
         !> If user selected a sub-period, create time series corresponding to
         !> that period and verify that there is any overlap with RawTimeSeries
-        call DateTimeToDateType(EddYProProj%start_date, &
-            EddYProProj%start_time, SelectedStartTimestamp)
-        call DateTimeToDateType(EddYProProj%end_date, &
-            EddYProProj%end_time, SelectedEndTimestamp)
+        call DateTimeToDateType(EddyFlowProj%start_date, &
+            EddyFlowProj%start_time, SelectedStartTimestamp)
+        call DateTimeToDateType(EddyFlowProj%end_date, &
+            EddyFlowProj%end_time, SelectedEndTimestamp)
 
         NumberOfPeriods = NumOfPeriods(SelectedStartTimestamp, &
             SelectedEndTimestamp, DateStep)
@@ -1279,7 +1290,7 @@ program EddyproRP
 
             !> If embedded metadata are to be used,
             !> reinitialize column information to null
-            if (EddyProProj%use_extmd_file) then
+            if (EddyFlowProj%use_extmd_file) then
                 Col = BypassCol
             else
                 Col = NullCol
@@ -1347,7 +1358,7 @@ program EddyproRP
             call ImportCurrentPeriod(tsStart, tsEnd, &
                 RawFileList, NumRawFiles, NextRawFileIndx, BypassCol, &
                 MaxNumFileRecords, MetaIsNeeded, &
-                EddyProProj%biomet_data == 'embedded', .false., Raw, &
+                EddyFlowProj%biomet_data == 'embedded', .false., Raw, &
                 size(Raw, 1), size(Raw, 2), PeriodRecords, EmbBiometDataExist, &
                 skip_period, LatestRawFileIndx, Col, .false.)
 
@@ -1425,6 +1436,7 @@ program EddyproRP
     bLastRec = 0
     initialize = .true.
     initializeBiometOut = .true.
+    initializeFluxnetOut = .true.
     InitializeStorage = .true.
     InitOutVarPresence = .true.
     DynamicMetadata = ErrDynamicMetadata
@@ -1439,7 +1451,7 @@ program EddyproRP
 
         if (pcount == rpStartTimestampIndx - 1) then
             !> Some log out
-            if (EddyProProj%run_mode /=  'md_retrieval') then
+            if (EddyFlowProj%run_mode /=  'md_retrieval') then
                 call hms_delta_print(' Start raw data processing: ', '')
             else
                 call hms_delta_print(' Start metadata retrieving: ', '')
@@ -1461,7 +1473,7 @@ program EddyproRP
 
         !> If embedded metadata are to be used, reinitialize
         !> column information to null
-        if (EddyProProj%use_extmd_file) then
+        if (EddyFlowProj%use_extmd_file) then
             Col = BypassCol
         else
             Col = NullCol
@@ -1480,10 +1492,11 @@ program EddyproRP
 
         !> Associate timestamp of end of the period to current Stats
         call DateTypeToDateTime(tsStart, date, time)
+        call DateTypeToDateTime(tsStart, Stats%start_date, Stats%start_time)
         call DateTypeToDateTime(tsEnd, Stats%date, Stats%time)
 
         !> Some logging
-        if (EddyProProj%run_mode /= 'md_retrieval') then
+        if (EddyFlowProj%run_mode /= 'md_retrieval') then
             write(*, '(a)')
             call hms_current_print(' ',': processing new &
                 &flux averaging period', .true.)
@@ -1495,16 +1508,15 @@ program EddyproRP
 
         !> Define initial part of each output string
         call DateTimeToDOY(Stats%date, Stats%time, int_doy, float_doy)
-
-        call WriteDatumFloat(float_doy, char_doy, EddyProProj%err_label)
+        write(char_doy, *) float_doy
         call ShrinkString(char_doy)
         suffixOutString =  trim(Stats%date) // ',' // trim(Stats%time) &
-                   // ',' // char_doy(1: index(char_doy, '.')+ 3)
+                   // ',' // char_doy(1: index(char_doy, '.')+ 4)
 
         !> Only for external biomet files: retrieve biomet data for current
         !> period and write on output. Even if current period is skipped,
         !> biomet data will be on output.
-        if (index(EddyProProj%biomet_data, 'ext_') /= 0) then
+        if (index(EddyFlowProj%biomet_data, 'ext_') /= 0) then
             call BiometRetrieveExternalData(bFileList, size(bFileList), &
                 bLastFile, bLastRec, tsStart, &
                 tsEnd, BiometDataFound, .true.)
@@ -1514,11 +1526,20 @@ program EddyproRP
         !> If files are finished, keep going until the end of the selected
         !> period
         if (LatestRawFileIndx > NumRawFiles) then
-            if (EddyProProj%run_mode /= 'md_retrieval') &
+            if (EddyFlowProj%run_mode /= 'md_retrieval') then
                 call ExceptionHandler(53)
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+            end if
             call hms_delta_print(PeriodSkipMessage,'')
             cycle periods_loop
         end if
+
+        !> Update metadata if dynamic metadata are to be used
+        if (EddyFlowProj%use_dynmd_file) &
+        call RetrieveDynamicMetadata(tsEnd, E2Col, size(E2Col))
+
+        MaxNumFileRecords   = nint(Metadata%file_length * 60d0 * Metadata%ac_freq)
+        MaxPeriodNumRecords = nint(RPsetup%avrg_len     * 60d0 * Metadata%ac_freq)
 
         !> Search file containing data starting from the time
         !> closest to tsStart. Searches only from most current
@@ -1527,13 +1548,17 @@ program EddyproRP
             RawFileList, NumRawFiles, LatestRawFileIndx, &
             NextRawFileIndx, skip_period)
 
+        Essentials%fname = trim(adjustl(RawFileList(NextRawFileIndx)%name))
+
         suffixOutString =  trim(adjustl(RawFileList(NextRawFileIndx)%name)) &
             // ',' // suffixOutString
 
         !> Exception handling
         if (skip_period) then
-            if (EddyProProj%run_mode /= 'md_retrieval') &
+            if (EddyFlowProj%run_mode /= 'md_retrieval') then
                 call ExceptionHandler(53)
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+            end if
             call hms_delta_print(PeriodSkipMessage,'')
             cycle periods_loop
         end if
@@ -1544,19 +1569,19 @@ program EddyproRP
         !> LatestRawFileIndx contains the index of the latest file used
         call ImportCurrentPeriod(tsStart, tsEnd, RawFileList, &
             NumRawFiles, NextRawFileIndx, BypassCol, MaxNumFileRecords, &
-            MetaIsNeeded, EddyProProj%biomet_data == 'embedded', .true., &
+            MetaIsNeeded, EddyFlowProj%biomet_data == 'embedded', .true., &
             Raw, size(Raw, 1), size(Raw, 2), PeriodRecords, &
             EmbBiometDataExist, skip_period, LatestRawFileIndx, Col, .true.)
 
         !> If it's running in metadata retriever mode,
         !> create a dummy dataset 1 minute long
-        if (EddyProProj%run_mode == 'md_retrieval') then
+        if (EddyFlowProj%run_mode == 'md_retrieval') then
             PeriodRecords = nint(Metadata%ac_freq * Metadata%file_length * 60d0)
             Raw = 1d0
             NumUserVar = 0
         else
             !> Retrieve biomet data for current period
-            if (EddyProProj%biomet_data == 'embedded') then
+            if (EddyFlowProj%biomet_data == 'embedded') then
 
                 !> Retrieve biomet data from the already created bSet
                 !> Basically, here only convert units and perform average
@@ -1572,22 +1597,34 @@ program EddyproRP
                 call WriteOutBiomet(suffixOutString, .true.)
             end if
 
+            if (.not. allocated(UserCol)) &
+                allocate(UserCol(NumUserVar))
+            call DefineVars(Col, size(Raw, 2), NumUserVar)
+
+            if (initializeFluxnetOut .and. EddyFlowProj%out_fluxnet) then
+                call InitFluxnetFile_rp()
+                initializeFluxnetOut  = .false.
+            end if
+
             !> Period skip control
             if (skip_period) then
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
             end if
 
-            !> Some logging
-            write(TmpString1, '(i7)') PeriodRecords
-            call ShrinkString(TmpString1)
-            write(*, '(a)') '  Number of samples available for this period: ' &
-                //  TmpString1(1:len_trim(TmpString1))
+            !> Number of valid records imported from raw files
+            Essentials%n_in = &
+                CountRecordsAndValues(dble(Raw), size(Raw, 1), size(Raw, 2))
 
-            !> Period skip control with message
-            MissingRecords = dfloat(MaxPeriodNumRecords - PeriodRecords) &
+            !> Some logging
+            write(*, '(a, i6)') '  Number of valid records available for this period: ', Essentials%n_in
+
+            !> Period skip control
+            MissingRecords = dfloat(MaxPeriodNumRecords - Essentials%n_in) &
                 / dfloat(MaxPeriodNumRecords) * 100d0
-            if (PeriodRecords > 0 .and. MissingRecords > RPsetup%max_lack) then
+            if (Essentials%n_in > 0 .and. MissingRecords > RPsetup%max_lack) then
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
                 call ExceptionHandler(58)
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
@@ -1595,7 +1632,19 @@ program EddyproRP
 
             !> Filter raw data for user-defined flags
             if (RPsetup%filter_by_raw_flags) &
-                call FilterRawDataByFlags(Col, Raw, size(Raw, 1), size(Raw, 2))
+                call FilterDatasetForFlags(Col, Raw, size(Raw, 1), size(Raw, 2))
+            Essentials%n_after_custom_flags = &
+                CountRecordsAndValues(dble(Raw), size(Raw, 1), size(Raw, 2))
+
+            !> Period skip control
+            MissingRecords = dfloat(MaxPeriodNumRecords - Essentials%n_after_custom_flags) &
+                / dfloat(MaxPeriodNumRecords) * 100d0
+            if (MissingRecords > RPsetup%max_lack) then
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                call ExceptionHandler(58)
+                call hms_delta_print(PeriodSkipMessage,'')
+                cycle periods_loop
+            end if
 
             !> If drift correction is to be performed with signal strength
             !> proxy, calculate mean refCounts for current period
@@ -1615,7 +1664,7 @@ program EddyproRP
         if (.not. allocated(DiagSet))  &
             allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
-        !> Define EddyPro set of variables for the following processing
+        !> Define EddyFlow set of variables for the following processing
         call DefineE2Set(Col, Raw,   size(Raw, 1),     Size(Raw, 2), &
                             E2Set,   size(E2Set, 1),   Size(E2Set, 2), &
                             DiagSet, size(DiagSet, 1), Size(DiagSet, 2))
@@ -1626,31 +1675,7 @@ program EddyproRP
             InitOutVarPresence = .false.
         end if
 
-        !> Clean up E2Set, eliminating values that are clearly unphysical,
-        !> and check if time series are still ok for proceeding further
-        if (EddyProProj%run_mode /= 'md_retrieval') then
-            call CleanUpE2Set(E2Set, size(E2Set, 1), size(E2Set, 2))
-
-            !> Define as not present, variables for which
-            !> too many values are outranged
-            call EliminateCorruptedVariables(E2Set, size(E2Set, 1), &
-                size(E2Set, 2), skip_period, .true.)
-
-            !> If either u, v or w have been eliminated,
-            !> stops processing this period
-            if (skip_period) then
-                if(allocated(E2Set)) deallocate(E2Set)
-                if(allocated(E2Primes)) deallocate(E2Primes)
-                if(allocated(DiagSet)) deallocate(DiagSet)
-                call ExceptionHandler(59)
-                write(*,*)''
-                call hms_delta_print(PeriodSkipMessage,'')
-                cycle periods_loop
-            end if
-        end if
-
         !> Define User set of variables, for main statistics
-!        if (NumUserVar > 0) then
             if (.not. allocated(UserSet)) &
                 allocate(UserSet(PeriodRecords, NumUserVar))
             if (.not. allocated(UserCol)) &
@@ -1659,13 +1684,12 @@ program EddyproRP
                 allocate(UserPrimes(PeriodRecords, NumUserVar))
             call DefineUserSet(Col, Raw, size(Raw, 1), size(Raw, 2), &
                 UserSet, size(UserSet, 1), size(UserSet, 2))
-!        end if
 
         RowLags = 0
-        if (EddyProProj%run_mode /= 'md_retrieval') then
+        if (EddyFlowProj%run_mode /= 'md_retrieval') then
 
-            !> Update metadata if dynamic metadata are to be used
-            if (EddyProProj%use_dynmd_file) &
+            ! !> Update metadata if dynamic metadata are to be used
+            if (EddyFlowProj%use_dynmd_file) &
                 call RetrieveDynamicMetadata(tsEnd, E2Col, size(E2Col))
 
             !> Calculate relative separations between the analyzers
@@ -1676,25 +1700,47 @@ program EddyproRP
             call OverrideSettings()
 
             !> Determine whether it is day or night-time,
-            call AssessDayTime(date, time)
+            call AssessDayTime(Stats%date, Stats%time)
 
             !*******************************************************************
             !**** DATASET DEFINITION FINISHES HERE. ****************************
             !**** STARTS RAW DATA REDUCTION         ****************************
             !*******************************************************************
             !> Interpret diagnostics and filter accordingly
-            if (NumDiag > 0) then
-                call InterpretLicorDiagnostics(DiagSet, &
-                    size(DiagSet, 1), size(DiagSet, 2))
-                call FilterDatasetForDiagnostics(E2Set, size(E2Set, 1), &
-                    size(E2Set, 2), DiagSet, &
-                    size(DiagSet, 1), size(DiagSet, 2), &
-                    DiagAnemometer%present, .true.)
-            end if
+            call InterpretLicorDiagnostics(DiagSet, &
+                size(DiagSet, 1), size(DiagSet, 2))
+            call FilterDatasetForDiagnostics(E2Set, size(E2Set, 1), &
+                size(E2Set, 2), DiagSet, &
+                size(DiagSet, 1), size(DiagSet, 2), &
+                DiagAnemometer, .true.)
             if(allocated(DiagSet)) deallocate(DiagSet)
 
             !> Adjust coordinate systems if the case
             call AdjustSonicCoordinates(E2Set, size(E2Set, 1), size(E2Set, 2))
+
+            !> Filter for wind direction if requested
+            if (RPSetup%apply_wdf) &
+                call FilterDatasetForWindDirection(E2Set, size(E2Set, 1), size(E2Set, 2))
+
+            !> Number of valid records after filtering for wind direction
+            Essentials%n_after_wdf = &
+                CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2))
+            PeriodActualRecords = Essentials%n_after_wdf
+            
+            !> Period skip control
+            MissingRecords = dfloat(MaxPeriodNumRecords - Essentials%n_after_wdf) &
+                / dfloat(MaxPeriodNumRecords) * 100d0
+            if (MissingRecords > RPsetup%max_lack) then
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if(allocated(E2Set)) deallocate(E2Set)
+                if(allocated(E2Primes)) deallocate(E2Primes)
+                if(allocated(UserSet)) deallocate(UserSet)
+                if(allocated(UserPrimes)) deallocate(UserPrimes)
+                call ExceptionHandler(58)
+                write(*,*)''
+                call hms_delta_print(PeriodSkipMessage,'')
+                cycle periods_loop
+            end if
 
             !> Generate cell temperature dataset if the case, using either
             !> (1) native cell temperature, (2) weighted average of ti1 and ti2,
@@ -1717,7 +1763,7 @@ program EddyproRP
         end if
 
         !> Output first level of stats
-        if (EddyProProj%run_mode /= 'md_retrieval') then
+        if (EddyFlowProj%run_mode /= 'md_retrieval') then
 
             !> ===== 1. RAW DATA AS READ FROM FILES ============================
             !> Output raw dataset first level
@@ -1750,12 +1796,6 @@ program EddyproRP
             if (NumUserVar > 0) call DespikeUserSet(UserSet, &
                 size(UserSet, 1), size(UserSet, 2))
 
-            !> If a 4th gas calibration has to be done (using a 'cal-ref'
-            !> column from UserCol) does so. Note that so far the calibration
-            !> procedure is fully customized on the needs of a
-            !> specific O3 analyzer
-            call CalibrateGas4(E2Set, size(E2Set, 1), size(E2Set, 2))
-
             !> Define as not present, variables for which
             !> too many values are out-ranged
             call EliminateCorruptedVariables(E2Set, &
@@ -1763,7 +1803,8 @@ program EddyproRP
 
             !> If either u, v or w have been eliminated,
             !> stops processing this period
-            if (skip_period) then
+                if (skip_period) then
+                if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
                 if(allocated(E2Set)) deallocate(E2Set)
                 if(allocated(E2Primes)) deallocate(E2Primes)
                 if(allocated(UserSet)) deallocate(UserSet)
@@ -1774,34 +1815,34 @@ program EddyproRP
                 cycle periods_loop
             end if
 
-            !> Count number of records actually used for the current flux
-            !> Note that this is the max number, and accounts only for entire
-            !> records set to error code. There might be individual values
-            !> set to error code for some variables, that do not imply
-            !> the elimination of the whole data record. Note also that the
-            !> count is performed only using wind components, because if
-            !> any wind components is error code, the whole calculation
-            !> cannot be performed.
-            if (.not. allocated(mask)) allocate(mask(size(E2Set, 1)))
-            mask(:) = E2Set(:, u) /= error .and. E2Set(:, v) /= error &
-                .and. E2Set(:, w) /= error
-            PeriodActualRecords = count(mask)
-            if (allocated(mask)) deallocate(mask)
-
-            !> Period skip control
-            MissingRecords = dfloat(MaxPeriodNumRecords - PeriodActualRecords) &
-                / dfloat(MaxPeriodNumRecords) * 100d0
-            if (MissingRecords > RPsetup%max_lack) then
-                if(allocated(E2Set)) deallocate(E2Set)
-                if(allocated(E2Primes)) deallocate(E2Primes)
-                if(allocated(UserSet)) deallocate(UserSet)
-                if(allocated(UserPrimes)) deallocate(UserPrimes)
-                call ExceptionHandler(58)
-                write(*, *)
-                call hms_delta_print(PeriodSkipMessage,'')
-                cycle periods_loop
-            end if
+            !> If got until here, incrase number of ok periods
             NumberOfOkPeriods = NumberOfOkPeriods + 1
+            
+            !> Count values available for each variable and value pairs 
+            !> available for each main w-covariance
+            !>> 
+            Essentials%n = ierror
+            Essentials%n_wcov = ierror
+            !> Wind data
+            Essentials%n(w) = &
+                CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), w)
+            Essentials%n_wcov(u) = &
+                CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), w, u)
+            !> Gas data
+            do j = ts, gas4
+                if (E2Col(j)%present) then
+                    Essentials%n(j) = &
+                        CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), j)
+                    Essentials%n_wcov(j) = &
+                        CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), w, j)
+                end if
+            end do
+
+            !> If a 4th gas calibration has to be done (using a 'cal-ref'
+            !> column from UserCol) does so. Note that so far the calibration
+            !> procedure is fully customized on the needs of a
+            !> specific O3 analyzer
+            call CalibrateGas4(E2Set, size(E2Set, 1), size(E2Set, 2))
 
             !> Output raw dataset second level
             if (RPsetup%out_raw(2)) call OutRawData(Stats%date, Stats%time, &
@@ -1879,7 +1920,7 @@ program EddyproRP
                     E2Col, size(E2Col), nCalibEvents, tsStart)
 
             !> Convert to mixing ratios (if WPL requested, and if the case)
-            if (EddyProProj%wpl) &
+            if (EddyFlowProj%wpl) &
                 call PointByPointToMixingRatio(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), .true.)
 
@@ -1909,8 +1950,8 @@ program EddyproRP
             !> ===== 6. TIMELAG COMPENSATION  ==================================
             !> If available, for files others than GHG, replace flow rate
             !> of LI-7200 provided by user with mean value from raw files
-            if (EddyProProj%ftype /= 'licor_ghg' &
-                .or. EddyProProj%use_extmd_file) then
+            if (EddyFlowProj%ftype /= 'licor_ghg' &
+                .or. EddyFlowProj%use_extmd_file) then
                 do i = 1, E2NumVar
                     if (NumUserVar > 0) then
                         do j = 1, NumUserVar
@@ -1935,14 +1976,27 @@ program EddyproRP
             !> Calculate and compensate time-lags
             if (TimeLagOptSelected) Meth%tlag = 'maxcov&default'
             call TimeLagHandle(Meth%tlag(1:len_trim(Meth%tlag)), E2Set, &
-                size(E2Set, 1), size(E2Set, 2), Essentials%timelag, &
-                Essentials%def_tlag, .false.)
-            if (NumUserVar > 0) then
-                call UserTimeLagHandle(Meth%tlag(1:len_trim(Meth%tlag)), &
-                    UserSet, size(UserSet, 1), size(UserSet, 2), &
-                    E2Set(:, w), size(E2Set, 1))
-            end if
+                size(E2Set, 1), size(E2Set, 2), Essentials%actual_timelag, &
+                Essentials%used_timelag, Essentials%def_tlag, .false.)
             if (TimeLagOptSelected) Meth%tlag = 'tlag_opt'
+
+            !> ===== 6.1 FILTERING MOLAR DENSITY DATA FOR ABSOLUTE LIMITS TEST  ====================
+            if (EddyFlowProj%run_mode /= 'md_retrieval') then
+                !> Estimate temperatures, pressures and relevant
+                !> air molar volumes
+                call AirAndCellParameters()
+                if (Test%al .and. RPsetup%filter_al) then
+                    !> Apply filter for absolute limits test, if the case
+                    FilterWhat = .false.
+                    FilterWhat(co2:gas4) = .true.
+                    call FilterDatasetForPhysicalThresholds(E2Set, &
+                        size(E2Set, 1), size(E2Set, 2), FilterWhat)
+                    !> Define as not present, variables for which &
+                    !> too many values are out-ranged
+                    call EliminateCorruptedVariables(E2Set, &
+                        size(E2Set, 1), size(E2Set, 2), skip_period, .true.)
+                end if
+            end if
 
             !> Output raw dataset sixth level
             if (RPsetup%out_raw(6)) call OutRawData(Stats%date, Stats%time, &
@@ -1961,24 +2015,6 @@ program EddyproRP
                     AddUserStatsHeader = .false.
             end if
 
-            !> ===== 6.1 FILTERING FOR ABSOLUTE LIMITS TEST ====================
-            if (EddyProProj%run_mode /= 'md_retrieval') then
-                !> Estimate temperatures, pressures and relevant
-                !> air molar volumes
-                call AirAndCellParameters()
-                if (Test%al .and. RPsetup%filter_al) then
-                    !> Apply filter for absolute limits test, if the case
-                    FilterWhat = .false.
-                    FilterWhat(co2:gas4) = .true.
-                    call FilterForPhysicalThresholds(E2Set, &
-                        size(E2Set, 1), size(E2Set, 2), FilterWhat)
-                    !> Define as not present, variables for which &
-                    !> too many values are out-ranged
-                    call EliminateCorruptedVariables(E2Set, &
-                        size(E2Set, 1), size(E2Set, 2), skip_period, .true.)
-                end if
-            end if
-
             !> Quality check test for stationarity
             call StationarityTest(E2Set, size(E2Set, 1), size(E2Set, 2), StDiff)
 
@@ -1992,6 +2028,13 @@ program EddyproRP
             else
                 Ambient%WS = error
             end if
+
+            !> ===== 6.2 QC tests =============================================
+            !> Calculate Kurtosis Index on differenced variables
+            call KID(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
+
+            !> Calculate Longest Gap Duration
+            call LongestGapDuration(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
 
             !> ===== 7. DETRENDING =============================================
             !> Calculate fluctuations based on chosen detrending method
@@ -2029,9 +2072,18 @@ program EddyproRP
             end if
             if (allocated(UserPrimes)) deallocate(UserPrimes)
 
+            !> ===== 7.1 QC tests =============================================
+            !> Fisher's test
+            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+
+            !> Cross-correlation R^2 test for repeated values 
+            call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+
+            !> Calculate Mahrt's random error and Nonstationarity ratio anyway.
+            call RU_Mahrt_98(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
+
             !> If requested, estimate random error
-            call RandomUncertaintyHandle(E2Primes, &
-                size(E2Primes, 1), size(E2Primes, 2))
+            call RandomUncertaintyHandle(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE *****************************
@@ -2039,6 +2091,7 @@ program EddyproRP
             !*******************************************************************
             if (RPsetup%do_spectral_analysis) then
                 SpecCol = E2Col
+
                 !> Replace gaps with linear interpolation of neighbouring data
                 call FixDatasetForSpectra(E2Primes, &
                     size(E2Primes, 1), size(E2Primes, 2), N2)
@@ -2074,6 +2127,8 @@ program EddyproRP
                 !> Reset stats to Stats7, after the parenthesis
                 !> of spectral analysis
                 Stats = Stats7
+            else
+                Essentials%degH(:) = error
             end if
         end if
         if (allocated(E2Primes)) deallocate(E2Primes)
@@ -2084,8 +2139,7 @@ program EddyproRP
         !**** (CO)SPECTRA CALCULATION FINISHES HERE  ***************************
         !**** NOW STARTS FLUX COMPUTATION/CORRECTION ***************************
         !***********************************************************************
-
-        if (EddyProProj%run_mode /= 'md_retrieval') then
+        if (EddyFlowProj%run_mode /= 'md_retrieval') then
 
             !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1]
             call MoleFractionsAndMixingRatios()
@@ -2095,8 +2149,8 @@ program EddyproRP
 
             if (E2Col(ch4)%Instr%model(1:len_trim(E2Col(ch4)%Instr%model) - 2) &
                 == 'li7700') then
-                call Multipliers7700(Stats%Pr, Ambient%Ta, Stats%chi(h2o), &
                 !> Calculate multipliers for LI-7700 spectroscopic correction
+                call Multipliers7700(Stats%Pr, Ambient%Ta, Stats%chi(h2o), &
                     Mul7700%A, Mul7700%B, Mul7700%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual
@@ -2116,11 +2170,12 @@ program EddyproRP
             !> for using logger version from [Station], simply remove the
             !> following line.
 !            if (E2Col(co2)%instr%sw_ver /= errSwVer) then
-                Metadata%logger_swver = E2Col(co2)%instr%sw_ver
+            Metadata%logger_swver = E2Col(co2)%instr%sw_ver
 !            elseif (E2Col(h2o)%instr%sw_ver /= errSwVer) then
 !                Metadata%logger_swver = E2Col(h2o)%instr%sw_ver
 !            end if
-            if (.not. EddyProProj%fcc_follows) then
+
+            if (.not. EddyFlowProj%fcc_follows) then
                 !> Low-pass and high-pass spectral correction factors
                 call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
                     Metadata%d, E2Col(u:gas4)%present, Ambient%WS, Ambient%Ta, &
@@ -2135,13 +2190,17 @@ program EddyproRP
                 call Fluxes23_rp()
 
                 !> Footprint estimation
-                if (Meth%foot(1:len_trim(Meth%foot)) /= 'none') then
-                    call FootprintHandle(Stats%Cov(w, w), Ambient%us, &
-                        Ambient%zL, Ambient%WS, Ambient%L, &
-                        E2Col(u)%Instr%height, Metadata%d, Metadata%z0)
-                else
-                    Foot = errFootprint
-                end if
+                foot_model_used = Meth%foot(1:len_trim(Meth%foot))
+                call FootprintHandle(Stats%Cov(w, w), Ambient%us, &
+                    Ambient%zL, Ambient%WS, Ambient%L, &
+                    E2Col(u)%Instr%height, Metadata%d, Metadata%z0)
+            else
+                Foot = errFootprint
+                Flux1 = errFlux
+                Flux2 = errFlux
+                Flux3 = errFlux
+                BPCF = errBPCF
+                foot_model_used = 'none'
             end if
 
             !> Calculate storage terms
@@ -2172,15 +2231,17 @@ program EddyproRP
             call SetLicorDiagnostics(NumUserVar)
         end if
 
-        !> Write on output file
-        call WriteOutFiles(suffixOutString, PeriodRecords, PeriodActualRecords, &
-            StDiff, DtDiff)
+        !>Write out full output file (main express output)
+        if (EddyFlowProj%out_full) &
+            call WriteOutFull(suffixOutString, PeriodRecords, PeriodActualRecords)
 
-        !> Write on Ameriflux style output
-        if (EddyProProj%out_amflux) &
-            call WriteOutAmeriFlux_rp(Stats%date, Stats%time)
+        !>Write out full output file (main express output)
+        if (EddyFlowProj%out_md) &
+            call WriteOutMetadata(suffixOutString)
+            if (EddyFlowProj%out_fluxnet) &
+                call WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
 
-        if (EddyProProj%run_mode /= 'md_retrieval') then
+        if (EddyFlowProj%run_mode /= 'md_retrieval') then
             call hms_delta_print('  Flux averaging period processing time: ','')
         else
             call hms_delta_print('  Metadata retrieving time: ','')
@@ -2219,11 +2280,12 @@ program EddyproRP
     close(ufnet_b)
     close(uaflx)
     close(uex)
+    close(uflxnt)
     close(ubiomet)
     close(uqc)
 
     !> If no averaging period was performed, return message and cancel tmp files
-    if (NumberOfOkPeriods == 0 .and. EddyProProj%run_mode /= 'md_retrieval') then
+    if (NumberOfOkPeriods == 0 .and. EddyFlowProj%run_mode /= 'md_retrieval') then
         !> Delete files in output folder
         del_status = system(trim(comm_del) // ' "' // trim(adjustl(Dir%main_out)) &
             // '*' // Timestamp_FilePadding //'*"'  // comm_err_redirect)
@@ -2253,30 +2315,32 @@ program EddyproRP
     write(*, '(a)') ' Done.'
 
     !> Edit .eddypro file updating path to ex_file
-    call ForceSlash(Essentials_Path, .false.)
+    call ForceSlash(FLUXNET_Path, .false.)
     call EditIniFile(trim(PrjPath), 'ex_file', &
-        trim(Essentials_Path(1:index(Essentials_Path, '.tmp')-1)))
+        trim(FLUXNET_Path(1:index(FLUXNET_Path, '.tmp')-1)))
 
-    if (EddyProProj%run_env /= 'embedded') &
-        write(*, '(a)') ' Essentials file path: ' &
-            // trim(Essentials_Path(1:index(Essentials_Path, '.tmp')-1))
+    if (EddyFlowProj%run_env /= 'embedded') &
+        write(*, '(a)') ' FLUXNET file path: ' &
+            // trim(FLUXNET_Path(1:index(FLUXNET_Path, '.tmp')-1))
 
     !> Copy ".eddypro" file into output folder
-    call CopyFile(trim(adjustl(PrjPath)), &
+    if (.not. EddyFlowProj%fcc_follows) then
+        call CopyFile(trim(adjustl(PrjPath)), &
         trim(adjustl(Dir%main_out)) // 'processing' &
         // Timestamp_FilePadding // '.eddypro')
+    end if
 
     !> Delete tmp folder if running in embedded mode
-    if(EddyProProj%run_env == 'desktop') &
+    if(EddyFlowProj%run_env == 'desktop') &
         del_status = system(trim(comm_rmdir) // ' "' &
         // trim(adjustl(TmpDir)) // '"')
 
-    if (.not. EddyProProj%fcc_follows) then
+    if (.not. EddyFlowProj%fcc_follows) then
         write(*, '(a)') ''
         write(*, '(a)') ' ****************************************************'
-        write(*, '(a)') ' Program EddyPro executed gracefully.'
+        write(*, '(a)') ' Program EddyFlow executed gracefully.'
         write(*, '(a)') ' Check results in the selected output directory.     '
         write(*, '(a)') ' ****************************************************'
     end if
     stop ''
-end program EddyproRP
+end program EddyFlowRP

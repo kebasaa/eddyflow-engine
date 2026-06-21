@@ -1,22 +1,25 @@
 !***************************************************************************
 ! bpcf_additional_horst_lenschow_09.f90
 ! -------------------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -46,28 +49,28 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
     real(kind = dbl) :: alpha
     real(kind = dbl) :: direc
     real(kind = dbl) :: r
-
+ 
     integer :: igas
     integer :: gas
 
     !> Initialization
     ADDCF%of(co2:gas4) = 1d0
 
-    if (lEx%zL /= error) then
+    if (lEx%Flux0%zL /= error) then
         !> normalized wavenumber corresponding to cospectrum peak
         !> in streamwise direction as a function of stability (Eq. 15)
-        if (lEx%zL <= -0.1d0) then
+        if (lEx%Flux0%zL <= -0.1d0) then
             n_mx = 0.07d0
         else
-            n_mx = 2.31d0 - 2.24d0 / (1.015d0 + 0.15d0 * lEx%zL)**2
+            n_mx = 2.31d0 - 2.24d0 / (1.015d0 + 0.15d0 * lEx%Flux0%zL)**2
         end if
 
         !> normalized wavenumber corresponding to cospectrum peak
         !> in cross-stream direction as a function of stability (Eq. 18)
-        if (lEx%zL <= -0.05d0) then
+        if (lEx%Flux0%zL <= -0.05d0) then
             n_my = 0.15d0
         else
-            n_my = 2.43d0 - 2.28d0 / (1.01d0 + 0.2d0 * lEx%zL)**2
+            n_my = 2.43d0 - 2.28d0 / (1.01d0 + 0.2d0 * lEx%Flux0%zL)**2
         end if
 
         !> normalized wavenumber corresponding to cospectrum peak
@@ -76,15 +79,15 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
             gas = igas + 3
             if (lEx%var_present(gas)) then
                 if (lEx%instr(igas)%vsep >= 0) then
-                    zL = lEx%zL
+                    zL = lEx%Flux0%zL
                     if (zL <= 0.03d0) then
                         n_mz(gas) = 0.1d0
                     else
                         n_mz(gas) = 0.43d0 - 0.33d0 / (0.964d0 + 1.2d0 * zL)**2
                     end if
                 else
-                    if (lEx%L /= 0 .and. lEx%L /= error) then
-                        zL = (lEx%instr(sonic)%height + lEx%instr(igas)%vsep - lEx%disp_height) / lEx%L
+                    if (lEx%Flux0%L /= 0 .and. lEx%Flux0%L /= error) then
+                        zL = (lEx%instr(sonic)%height + lEx%instr(igas)%vsep - lEx%disp_height) / lEx%Flux0%L
                         if (zL <= -0.03d0) then
                             n_mz(gas) = 0.013d0
                         else
@@ -140,7 +143,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
                     Ax = error
                 end if
                 if (k_my /= error .and. r_y(gas) /= error) then
-                    Ay = dexp(-k_my * r_y(gas))
+                    Ay = dexp(-(k_my * r_y(gas))**1.2)       ! Eq. 16 instead of 13 - After notification by M. Aubinet, Nov. 2020
                 else
                     Ay = error
                 end if

@@ -1,22 +1,25 @@
 !***************************************************************************
 ! bpcf_fratini_12.f90
 ! -------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -74,7 +77,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     !> Detect name of file to be read
     indx = nint(error)
     do i = 1, nfull
-        call DateTimeToDateType(lEx%date, lEx%time, Timestamp)
+        call DateTimeToDateType(lEx%end_date, lEx%end_time, Timestamp)
         if (LocFileList(i)%timestamp == Timestamp) then
             indx = i
             exit
@@ -141,13 +144,13 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
             call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), ts, &
                 ac_frequency, loc_var_present, hBPTF)
             !> reset to 1 BA and ZOH low-pass transfer functions if the case
-            if (.not. EddyProProj%hf_correct_ghg_ba) then
+            if (.not. EddyFlowProj%hf_correct_ghg_ba) then
                 do i = 1, nfreq
                     hBPTF(i)%LP%ba_sonic = 1d0
                     hBPTF(i)%LP%ba_irga = 1d0  !< Redundant, but does not harm
                 end do
             end if
-            if (.not. EddyProProj%hf_correct_ghg_zoh) then
+            if (.not. EddyFlowProj%hf_correct_ghg_zoh) then
                 do i = 1, nfreq
                     hBPTF(i)%LP%zoh_sonic = 1d0
                 end do
@@ -155,7 +158,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         end if
 
         !> Add analytic high-pass transfer function, if requested
-        if (EddyProProj%lf_meth == 'analytic') then
+        if (EddyFlowProj%lf_meth == 'analytic') then
             call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, avrg_length, &
                 detrending_method, detrending_time_constant, hBPTF)
             call AnalyticHighPassTransferFunction(nf, size(nf), ts, ac_frequency, avrg_length, &

@@ -1,23 +1,26 @@
 !***************************************************************************
 ! footprint_handle.f90
 ! --------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -47,14 +50,26 @@ subroutine FootprintHandle(var_w, ustar, zL, wind_speed, MO_length, sonic_height
     !> Local variables
     real(kind = dbl) :: std_w
 
-    foot_model_used = Meth%foot(1:len_trim(Meth%foot))
+
+    if (foot_model_used == 'none') then
+        Foot = errFootprint
+        return
+    end if
+
     !> If Kljun model was chosen, but conditions are outside those stated at Pag. 512 of the paper
     !> shift to Kormann and Meixner model.
     if (foot_model_used == 'kljun_04' .and. &
         (var_w <= 0d0 .or. ustar < kj_us_min .or. &
-        zL < kj_zL_min .or. zL > kj_zL_max .or. sonic_height < 1d0)) &
-        foot_model_used = 'kormann_meixner_01'
+        zL < kj_zL_min .or. zL > kj_zL_max .or. sonic_height < 1d0)) then
+        if (EddyFlowProj%fluxnet_mode) then
+            Foot = errFootprint
+            return
+        else
+            foot_model_used = 'kormann_meixner_01'
+        end if
+    end if
 
+    !> DSZKP  mmzdxgc c: <-- code contribution by Luna Marie Fratini, Jul 2018
     !> Calculate std_w
     if (var_w >= 0d0) then
         std_w = dsqrt(var_w)

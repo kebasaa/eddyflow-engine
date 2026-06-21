@@ -1,23 +1,26 @@
 !***************************************************************************
 ! dir_sub.f90
 ! -----------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -79,6 +82,7 @@ logical function NameMatchesTemplate(FileName, Template, HardMatch)
     integer :: s
     integer :: s_year, s_month, s_day, s_hour, s_minute
     integer :: e_year, e_month, e_day, e_hour, e_minute
+    logical :: sm_result
     integer :: s_ts, e_ts
     logical, external :: is_not_numeric
     logical, external :: strings_match
@@ -86,9 +90,13 @@ logical function NameMatchesTemplate(FileName, Template, HardMatch)
 
     !> Initialization
     NameMatchesTemplate = .false.
+    s_year = nint(error); e_year = -nint(error)
+    s_day  = nint(error); e_day  = -nint(error)
+    s_hour = nint(error); e_hour = -nint(error)
+    s_minute = nint(error); e_minute = -nint(error)
 
     !> Check on the length of filename
-    if(EddyProProj%run_env /= 'embedded' &
+    if(EddyFlowProj%run_env /= 'embedded' &
         .and. len_trim(FileName) /= len_trim(Template)) return
 
     !> Check timestamp
@@ -147,7 +155,7 @@ logical function NameMatchesTemplate(FileName, Template, HardMatch)
 
     !> If running in embedded mode, template only contains timestamp
     !> so if it got to here, test is passed
-    if (EddyProProj%run_env == 'embedded') then
+    if (EddyFlowProj%run_env == 'embedded') then
         NameMatchesTemplate = .true.
         return
     endif
@@ -157,15 +165,18 @@ logical function NameMatchesTemplate(FileName, Template, HardMatch)
         s_ts = min(s_year, s_month, s_day, s_hour, s_minute)
 
         !> Check prefix
-        if (s_ts > 1 &
-            .and. .not. strings_match(Template(1:s_ts-1), &
-            Filename(1:s_ts-1), wild_card)) return
+        if (s_ts > 1) then
+            sm_result = strings_match(Template(1:s_ts-1), Filename(1:s_ts-1), wild_card)
+            if (.not. sm_result) return
+        end if
 
         !> Check suffix
         e_ts = max(e_year, e_month, e_day, e_hour, e_minute)
-        if (e_ts < len_trim(Template) - 1 &
-            .and. .not. strings_match(Template(e_ts+1:len_trim(Template)), &
-            Filename(e_ts+1:len_trim(Filename)), wild_card)) return
+        if (e_ts < len_trim(Template) - 1) then
+            sm_result = strings_match(Template(e_ts+1:len_trim(Template)), &
+                Filename(e_ts+1:len_trim(Filename)), wild_card)
+            if (.not. sm_result) return
+        end if
     end if
 
     !> If all tests were passed, filename matches template
@@ -212,13 +223,13 @@ subroutine NumberOfFilesInDir(DirIn, ext, MatchTemplate, Template, N, rN)
                 // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
         case('linux')
             comm = 'find "' // DirIn(1:len_trim(DirIn)) &
-                // '" -iname *' &
-                // Ext(1:len_trim(Ext)) // ' > ' // '"' &
+                // '" -iname "*' &
+                // Ext(1:len_trim(Ext)) // '" > ' // '"' &
                 // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
         case('mac')
             comm = 'find "' // DirIn(1:len_trim(DirIn)-1) &
-                // '" -iname *' &
-                // Ext(1:len_trim(Ext)) // ' > ' // '"' &
+                // '" -iname "*' &
+                // Ext(1:len_trim(Ext)) // '" > ' // '"' &
                 // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
     end select
     dir_status = system(comm)

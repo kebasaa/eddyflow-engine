@@ -1,23 +1,26 @@
 !***************************************************************************
 ! maths_subs.f90
 ! --------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -109,7 +112,7 @@ end function
 ! \todo
 !***************************************************************************
 function asymmetric_linear_transformation(x, N, pgain, poffset, ngain, noffset)
-    use m_numeric_kinds
+    use m_common_global_var
     implicit none
     !> In/out variables
     integer, intent(in) :: N
@@ -120,10 +123,13 @@ function asymmetric_linear_transformation(x, N, pgain, poffset, ngain, noffset)
     real(kind = dbl) , intent(in) :: noffset
     real(kind = dbl)  :: asymmetric_linear_transformation(N)
 
-    where (x(:) >= 0d0)
-        asymmetric_linear_transformation(:) = x(:) * pgain + poffset
+    where (x(:) /= error)
+        where (x(:) >= 0d0)
+            asymmetric_linear_transformation(:) = x(:) * pgain + poffset
+        elsewhere
+            asymmetric_linear_transformation(:) = x(:) * ngain + noffset
+        end where
     elsewhere
-        asymmetric_linear_transformation(:) = x(:) * ngain + noffset
+        asymmetric_linear_transformation(:) = error
     end where
-
 end function

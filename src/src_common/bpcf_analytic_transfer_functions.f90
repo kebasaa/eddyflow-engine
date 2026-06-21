@@ -1,23 +1,26 @@
 !***************************************************************************
 ! bpcf_analytic_transfer_functions.f90
 ! ------------------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -92,7 +95,7 @@ subroutine AnalyticLowPassTransferFunction(nf, N, var, LocInstr, loc_var_present
                         (9.5728d-11 * t_air**2) + (3.7604d-8 * t_air) - 3.4484d-6
                     tube_velocity  = LocInstr(var)%tube_f / (p * (LocInstr(var)%tube_d / 2d0)**2)
                     ! if (var == h2o) &
-                        !tube_velocity  = tube_velocity * Essentials%timelag(co2) / Essentials%timelag(h2o)
+                        !tube_velocity  = tube_velocity * Essentials%used_timelag(co2) / Essentials%used_timelag(h2o)
                     tube_time = LocInstr(var)%tube_l / tube_velocity
                     Re       = tube_velocity * LocInstr(var)%tube_d / air_viscosity
                     !> attenuantions in the intake tube
@@ -251,7 +254,7 @@ subroutine LI7550_AnalogSignalsTransferFunctions(nf, N, var, ac_frequency, &
                 BPTF(1:N)%LP(var)%ba_sonic = dsqrt(dabs(sinc(nf(1:N)*Tba, N)))
                 !> ZOH
                 BPTF(1:N)%LP(var)%zoh_sonic = &
-                    dsqrt(dabs(sinc(nf(1:N)/EddyProProj%sonic_output_rate/2d0, N)))
+                    dsqrt(dabs(sinc(nf(1:N)/EddyFlowProj%sonic_output_rate/2d0, N)))
             case(co2, h2o)
                 BPTF(1:N)%LP(var)%ba_irga = dsqrt(dabs(sinc(nf(1:N)*Tba, N)))
         end select

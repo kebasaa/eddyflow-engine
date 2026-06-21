@@ -1,22 +1,25 @@
 !***************************************************************************
 ! rename_tmp_files_rp.f90
 ! -----------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -47,16 +50,8 @@ subroutine RenameTmpFilesRP()
             // OutPath(1:len_trim(OutPath)) // '"' // comm_out_redirect // comm_err_redirect)
     end if
 
-    !> Essentials file
-    if (EddyProProj%out_essentials) then
-        tmp_indx = index(Essentials_Path, TmpExt)
-        OutPath = Essentials_Path(1: tmp_indx - 1)
-        move_status = system(comm_move // '"' // Essentials_Path(1:len_trim(Essentials_Path)) // '" "' &
-            // OutPath(1:len_trim(OutPath)) // '"' // comm_out_redirect // comm_err_redirect)
-    end if
-
     !> Biomet measurements file
-    if (EddyProProj%out_biomet) then
+    if (EddyFlowProj%out_biomet) then
         tmp_indx = index(Biomet_Path, TmpExt)
         OutPath = Biomet_Path(1: tmp_indx - 1)
         move_status = system(comm_move // '"' // Biomet_Path(1:len_trim(Biomet_Path)) // '" "' &
@@ -166,14 +161,5 @@ subroutine RenameTmpFilesRP()
         end if
     end if
 
-    !> FLUXNET (biomet) file
-    if (EddyProProj%out_fluxnet_biomet) then
-        tmp_indx = index(FLUXNET_BIOMET_Path, TmpExt)
-        OutPath = FLUXNET_BIOMET_Path(1: tmp_indx - 1)
-        move_status = system(comm_move // '"' &
-            // FLUXNET_BIOMET_Path(1:len_trim(FLUXNET_BIOMET_Path)) // '" "' &
-            // OutPath(1:len_trim(OutPath)) // '"' &
-            // comm_out_redirect // comm_err_redirect)
-    end if
     write(*,'(a)') ' Done.'
 end subroutine RenameTmpFilesRP

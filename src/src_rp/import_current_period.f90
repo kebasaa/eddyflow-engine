@@ -1,22 +1,25 @@
 !***************************************************************************
 ! import_current_period.f90
 ! -------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -83,12 +86,12 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     !> Timestamp of beginning of current period, as an
     !> initialization to check files contiguity
     call FilenameToTimestamp(FileList(FirstFile)%name, &
-        EddyProProj%fname_template, EddyProLog%iso_format, CurrentTimestamp)
+        EddyFlowProj%fname_template, EddyFlowLog%iso_format, CurrentTimestamp)
 
     !> Loop on all files relevant to current period
     InitialMetaIsNeeded = MetaIsNeeded
     pN = 0
-    if (EddyProProj%biomet_data == 'embedded') nbRecs = 0
+    if (EddyFlowProj%biomet_data == 'embedded') nbRecs = 0
     Raw = 0.d0
     CurrentFile = FirstFile
     rawfile_loop: do
@@ -108,11 +111,11 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
 
             !> Check file contiguity, if not contiguous, exit cycle
             call FilenameToTimestamp(FileList(CurrentFile)%name, &
-                EddyProProj%fname_template, EddyProLog%iso_format, FollowingTimestamp)
+                EddyFlowProj%fname_template, EddyFlowLog%iso_format, FollowingTimestamp)
 
             !> If timestamp refers to end of the period, need to set it back to
             !> end of period in this context
-            if (EddyProLog%tstamp_end) &
+            if (EddyFlowLog%tstamp_end) &
                 CurrentTimestamp = CurrentTimestamp + DatafileDateStep
 
             if (FollowingTimestamp > CurrentTimestamp + DatafileDateStep) then
@@ -123,7 +126,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
             end if
             CurrentTimestamp = FollowingTimestamp
             !> If fixed metadata are to be used, does so
-            if (EddyProProj%use_extmd_file) then
+            if (EddyFlowProj%use_extmd_file) then
                 LocCol = LocBypassCol
             else
                 LocCol = NullCol
@@ -133,17 +136,17 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
         !> Some logging
         if (logout) then
             if (CurrentFile > FirstFile)  then
-                write(*, *) '          ..\', &
+                write(*, *) '          ..' // slash, &
                 trim(adjustl(FileList(CurrentFile)%name))
             else
-                write(*, *) ' File(s): ..\', &
+                write(*, *) ' File(s): ..' // slash, &
                 trim(adjustl(FileList(CurrentFile)%name))
             end if
         end if
 
         !> So far the CurrentTimestamp was treated for what it was (for
         !> checking contiguity). Now set anyway at the beginning of file period
-        if (EddyProLog%tstamp_end) &
+        if (EddyFlowLog%tstamp_end) &
             CurrentTimestamp = CurrentTimestamp - DatafileDateStep
 
         !> Calculate which portion of the current file shall be imported
@@ -157,13 +160,13 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
 
         !> Actual file import
         fRaw = error
-        select case(EddyProProj%ftype)
+        select case(EddyFlowProj%ftype)
             case ('licor_ghg')
                 !> for LICOR files, goes to unzipper and file reading
                 call ReadLicorGhgArchive(FileList(CurrentFile)%path, &
                     FirstRecord, LastRecord, LocCol, LocBypassCol, MetaIsNeeded, &
-                    BiometIsNeeded, EddyProProj%run_mode /= 'md_retrieval', &
-                    EddyProProj%run_mode /= 'md_retrieval', &
+                    BiometIsNeeded, EddyFlowProj%run_mode /= 'md_retrieval', &
+                    EddyFlowProj%run_mode /= 'md_retrieval', &
                     fRaw, size(fRaw, 1), size(fRaw, 2), skip_file, passed, &
                     faulty_col, N, FileEndReached, printout)
 
@@ -196,7 +199,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
                 end if
         end select
 
-        if (EddyProProj%run_mode /= 'md_retrieval') then
+        if (EddyFlowProj%run_mode /= 'md_retrieval') then
             !> Substitute NaN and Inf with error codes
             where (IsNaN(fRaw(1:N, :)) .or. &
                 fRaw(1:N, :) == 1. / zero .or. &

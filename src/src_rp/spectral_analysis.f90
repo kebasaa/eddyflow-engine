@@ -1,22 +1,25 @@
 !***************************************************************************
 ! spectral_analysis.f90
 ! ---------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -139,7 +142,7 @@ subroutine SpectralAnalysis(date, time, bf, Set, N, M)
         !> Ogive session
         if (RPsetup%out_bin_og) then
             !> Exponential binning of ogives
-            call ExpAvrgOgives(bf, nf, Ogive, CoOgive, N/2 + 1, bnf &
+            call ExpAvrgOgives(bf, nf, Ogive, CoOgive, N, bnf &
                 , BinnedOgive, BinnedCoOgive, bcnt)
             !> Write co-ogives on output file in csv format
             call WriteOutBinnedOgives(Datestring, bnf, bcnt, BinnedOgive, BinnedCoOgive &
@@ -509,6 +512,7 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
     character(PathLen) :: BinCospectraPath
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
+    include '../src_common/interfaces.inc'
 
     e2sg(gas4) = SpecCol(gas4)%label(1:len_trim(SpecCol(gas4)%label))
 
@@ -603,6 +607,7 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
     character(PathLen) :: BinOgivesPath
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
+    include '../src_common/interfaces.inc'
 
     e2sg(gas4) = SpecCol(gas4)%label(1:len_trim(SpecCol(gas4)%label))
 
@@ -698,6 +703,7 @@ subroutine WriteOutFullCoSpectra(String, nf, Spectrum, Cospectrum, &
     character(LongOutstringLen) :: dataline3
     character(DatumLen) :: datum = ''
     character(4) :: e2sg(GHGNumVar)
+    include '../src_common/interfaces.inc'
 
     write(*, '(a)', advance = 'no') '   Writing requested full (co)spectra on output file..'
 
@@ -724,7 +730,7 @@ subroutine WriteOutFullCoSpectra(String, nf, Spectrum, Cospectrum, &
     write(udf, '(a, f7.3)') 'measuring_height_(z-d)_[m]_=_', (SpecCol(u)%Instr%height - Metadata%d)
     write(udf, '(a, f7.3)') 'wind_speed_[m+1s-1]_=_', Ambient%WS
     write(udf, '(a, i7)')   'averaging_interval_[min]_=_', RPsetup%avrg_len
-    write(udf, '(a)')       'tapering_window_=_SQUARED_(no_tapering_forced_by_EddyPro.&
+    write(udf, '(a)')       'tapering_window_=_SQUARED_(no_tapering_forced_by_EddyFlow.&
                             &_Tapering_is_only_applied_for_binned_(co)spectra)'
 
     !> First writes (co)variances (header + numbers) and (co)spectra labels

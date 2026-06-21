@@ -1,23 +1,26 @@
 !***************************************************************************
 ! retrieve_dynamic_metadata.f90
 ! -----------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -101,7 +104,7 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
 
             !> Check suitability of Metadata for current period
             !> Normal case
-            if (mdCurrentTimestamp < FinalTimestamp) then
+            if (mdCurrentTimestamp <= FinalTimestamp) then
                 cnt = cnt + 1
                 mdCurrentStringVars = mdStringVars
                 cycle record_loop
@@ -109,7 +112,7 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
             if (cnt == 0) exit record_loop
         end if
 
-        !> If it gets here, means that it's time to
+        !> If it gets here, it means that it's time to
         !> retrieve Dynamic Metadata from previous dataline
         call ReadMetadataFromTextVars(mdCurrentStringVars, size(mdStringVars))
 
@@ -465,7 +468,7 @@ subroutine FixDynamicMetadata()
             case('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', &
                 'r3a_100', 'wm', 'wmpro')
                 DynamicMetadata%instr(j)%firm = 'gill'
-            case('usa1_standard', 'usa1_fast')
+            case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                 DynamicMetadata%instr(j)%firm = 'metek'
             case('csat3', 'csat3b')
                 DynamicMetadata%instr(j)%firm = 'csi'
@@ -572,18 +575,20 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
         .and. DynamicMetadata%alt <= 8850d0) Metadata%alt = DynamicMetadata%alt
 
     !> Canopy height
-    if (DynamicMetadata%canopy_height >= 0d0) &
+    if (DynamicMetadata%canopy_height > 0d0) &
         Metadata%canopy_height = DynamicMetadata%canopy_height
     !> Displacement height
+    if (DynamicMetadata%canopy_height == 0d0) &
+        Metadata%z0 = 0.001
     if (DynamicMetadata%d /= error &
         .and. DynamicMetadata%d <= Metadata%canopy_height) &
             Metadata%d = DynamicMetadata%d
     !> Roughness length
-    if (DynamicMetadata%z0 /= error &
-        .and. DynamicMetadata%z0 <= Metadata%canopy_height &
-        .and. DynamicMetadata%z0 > 0d0) Metadata%z0 = DynamicMetadata%z0
+    if (DynamicMetadata%z0 <= Metadata%canopy_height &
+        .and. DynamicMetadata%z0 > 0d0) &
+            Metadata%z0 = DynamicMetadata%z0
 
-    !> File props
+            !> File props
     if (DynamicMetadata%ac_freq > 0d0) &
         Metadata%ac_freq = DynamicMetadata%ac_freq
     if (DynamicMetadata%file_length > 0d0) &

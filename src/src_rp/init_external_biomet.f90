@@ -1,23 +1,26 @@
 !***************************************************************************
 ! init_external_biomet.f90
 ! ------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -59,13 +62,13 @@ subroutine InitExternalBiomet(bFileList, N)
     write(*, '(a)', advance = 'no') ' Interpreting biomet data..'
 
     !> Retrieve list of biomet files
-    if (EddyProProj%biomet_data == 'ext_file') then
+    if (EddyFlowProj%biomet_data == 'ext_file') then
         bFileList(1)%path = AuxFile%biomet
         call basename(bFileList(1)%path, bFileList(1)%name, slash)
-    elseif (EddyProProj%biomet_data == 'ext_dir') then
-        call FileListByExt(Dir%biomet, trim(adjustl(EddyProProj%biomet_tail)), &
+    elseif (EddyFlowProj%biomet_data == 'ext_dir') then
+        call FileListByExt(Dir%biomet, trim(adjustl(EddyFlowProj%biomet_tail)), &
             .false., .false., 'none', .false., .false., &
-            EddyProProj%biomet_recurse, bFileList, size(bFileList), .false., ' ')
+            EddyFlowProj%biomet_recurse, bFileList, size(bFileList), .false., ' ')
     end if
 
     !> Loop to retrieve number of rows and cols, so that biomet variables
@@ -95,7 +98,7 @@ subroutine InitExternalBiomet(bFileList, N)
             if (fnbItems /= nbItems) then
                 write(*,*)
                 call ExceptionHandler(70)
-                EddyProProj%biomet_data = 'none'
+                EddyFlowProj%biomet_data = 'none'
                 return
             end if
         end if
@@ -108,7 +111,7 @@ subroutine InitExternalBiomet(bFileList, N)
     !> Control
     if (nRec < 1) then
         call ExceptionHandler(71)
-        EddyProProj%biomet_data = 'none'
+        EddyFlowProj%biomet_data = 'none'
         return
     end if
 
@@ -158,14 +161,16 @@ subroutine InitExternalBiomet(bFileList, N)
         allocate(bAggr(nbVars))
         if (allocated(bAggrFluxnet)) deallocate(bAggrFluxnet)
         allocate(bAggrFluxnet(nbVars))
+        if (allocated(bAggrEddyFlow)) deallocate(bAggrEddyFlow)
+        allocate(bAggrEddyFlow(nbVars))
 
         !> Retrieve variables and timestamp prototype from
         !> header (labels and units rows)
         call RetrieveExtBiometVars(dataline, dataline2, nbItems)
-        if (EddyProProj%biomet_data == 'none') return
+        if (EddyFlowProj%biomet_data == 'none') return
 
         !> Variables consistency among different biomet files
-        if (nfl == 1) then
+        if (.not. allocated(lbVars)) then
             allocate(lbVars(nbVars))
             lbVars = bVars
         else
@@ -174,10 +179,24 @@ subroutine InitExternalBiomet(bFileList, N)
                 .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
                 write(*,'(a)')
                 call ExceptionHandler(79)
-                EddyProProj%biomet_data = 'none'
+                EddyFlowProj%biomet_data = 'none'
                 return
             end if
         end if
+
+        ! if (nfl == 1) then          ****************************************** Deprecated. Replaced with the if clause above
+        !     allocate(lbVars(nbVars))
+        !     lbVars = bVars
+        ! else
+        !     if (size(lbVars) /= size(bVars) &
+        !         .or. (any(lbVars(:)%label /= bVars(:)%label) &
+        !         .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
+        !         write(*,'(a)')
+        !         call ExceptionHandler(79)
+        !         EddyFlowProj%biomet_data = 'none'
+        !         return
+        !     end if
+        ! end if
 
         !> Start loop on file rows
         cnt = lastcnt
@@ -208,7 +227,7 @@ subroutine InitExternalBiomet(bFileList, N)
     write(*, '(a, i6)')    '  Number of variables: ', nbVars
     write(*, '(a, i6)')    '  Number of records:   ', nRec
     write(*, '(a, i6, a)') '  Inferred time-step:  ', &
-        bFileMetadata%time_step, 'min'
+        bFileMetadata%time_step, ' min'
 
     !> Determine nbRecs, the maximum number of biomet data available for
     !> each averaging interval
@@ -225,6 +244,10 @@ subroutine InitExternalBiomet(bFileList, N)
 
     !> Fill variables information based on label and other available fields
     call BiometEnrichVarsDescription()
+
+    ! !> Append suffix if variables have not
+    ! if (EddyFlowProj%fluxnet_standardize_biomet) &
+    !     call BiometAppendDefaultPositionalQualifier()
 
     !> No data label is allowed in external biomet files
     bFileMetadata%data_label = ''

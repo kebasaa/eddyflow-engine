@@ -1,27 +1,31 @@
 !***************************************************************************
 ! wind_direction.f90
 ! ------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
-! \brief       Calculates mean wind direction from mean wind components and offset
+! \brief       Calculates wind direction from single wind components pair and offset
+! \brief       It's essentially a vector direction + offset
 ! \author      Gerardo Fratini
 ! \note
 ! \sa
@@ -30,7 +34,7 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine WindDirection(Wind, offset, WindDir)
+subroutine SingleWindDirection(Wind, offset, WindDir)
     use m_common_global_var
     implicit none
     !> in/out variables
@@ -39,13 +43,68 @@ subroutine WindDirection(Wind, offset, WindDir)
     real(kind = dbl), intent(out) :: WindDir
 
 
-    !> Calculate raw wind direction from wind vector
-    WindDir = 180 - (datan2(Wind(V), Wind(U)) * 180d0 / p)
+    if (Wind(U) /= error .and. Wind(V) /= error)  then 
+        !> Calculate raw wind direction from wind vector
+        WindDir = 180 - (datan2(Wind(V), Wind(U)) * 180d0 / p)
 
-    !> accounts for user-supplied anemometer mis-alignment
-    WindDir = WindDir + offset
+        !> accounts for user-supplied anemometer mis-alignment
+        WindDir = WindDir + offset
 
-    !> wrap within 0 - 360
-    if (WindDir >= 360d0) WindDir = WindDir - 360d0
-    if (WindDir < 0d0)   WindDir = 360d0 + WindDir
-end subroutine WindDirection
+        !> wrap within 0 - 360
+        if (WindDir >= 360d0) WindDir = WindDir - 360d0
+        if (WindDir < 0d0)   WindDir = 360d0 + WindDir
+    else
+        WindDir = error
+    end if
+end subroutine SingleWindDirection
+
+!***************************************************************************
+!
+! \brief       Mean wind direction using Yamartino (1984) circular mean
+!
+! \author      Jonathan Muller, ETH Zurich
+!
+!***************************************************************************
+! Reference: Yamartino, R.J. (1984). J. Climate Appl. Meteor. 23:1362-1366.
+subroutine AverageWindDirection(Set, nrow, ncol, offset, WindDir, err_float)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: nrow, ncol
+    real(kind = dbl), intent(in) :: err_float, offset
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    real(kind = dbl), intent(out) :: WindDir
+    integer :: row_idx
+    real(kind = dbl) :: wd_series(nrow)
+
+    do row_idx = 1, nrow
+        call SingleWindDirection(Set(row_idx, u:w), offset, wd_series(row_idx))
+    end do
+    call AngularAverageNoError(wd_series, nrow, 1, WindDir, err_float)
+end subroutine AverageWindDirection
+
+
+!***************************************************************************
+!
+! \brief       Wind-direction std dev (Yamartino 1984 single-pass approx.)
+!
+! \author      Jonathan Muller, ETH Zurich
+!
+!***************************************************************************
+! Reference: Yamartino, R.J. (1984). J. Climate Appl. Meteor. 23:1362-1366.
+subroutine WindDirectionStDev(Set, nrow, ncol, WindDirStDev, err_float)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: nrow, ncol
+    real(kind = dbl), intent(in) :: err_float
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    real(kind = dbl), intent(out) :: WindDirStDev
+    integer :: row_idx
+    real(kind = dbl) :: wd_series(nrow)
+
+    do row_idx = 1, nrow
+        call SingleWindDirection(Set(row_idx, u:w), 0d0, wd_series(row_idx))
+    end do
+    call AngularStDevApproxNoError(wd_series, nrow, 1, WindDirStDev, err_float)
+end subroutine WindDirectionStDev
+
+

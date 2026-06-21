@@ -1,23 +1,26 @@
 !***************************************************************************
 ! import_ascii_with_text.f90
 ! --------------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -126,7 +129,7 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
         end if
 
         !> Eliminate multiple separators from dataline, but currently only if it's a space
-        if (FileInterpreter%separator == '') &
+        if (FileInterpreter%separator == ' ') &
             call StripConsecutiveChar(dataline, FileInterpreter%separator)
 
         !> Parse variables out of the string
@@ -139,16 +142,18 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
             dataline = dataline(intsep + 1: len_trim(dataline))
             if (LocCol(j)%var /= 'ignore' .and. LocCol(j)%var /= 'not_numeric') then
                 jj = jj + 1
-                if (EddyProProj%col(E2NumVar + DiagAnem) == j &
-                    .and. (index(EddyProProj%master_sonic, 'wm') /= 0 &
-                    .or. index(EddyProProj%master_sonic, 'hs') /= 0)) then
+                if (EddyFlowProj%col(E2NumVar + DiagAnem) == j &
+                    .and. (index(EddyFlowProj%master_sonic, 'wm') /= 0 &
+                    .or. index(EddyFlowProj%master_sonic, 'hs') /= 0)) then
                     if (trim(datum) == '0A') datum = '10'
                     if (trim(datum) == '0B') datum = '11'
                 end if
                 read(datum, *, iostat = io_status) fRaw(N, jj)
                 if (io_status /= 0) then
-                    N = N - 1
-                    cycle record_loop
+                    fRaw(N, jj) = error
+                    cycle il
+                    ! N = N - 1
+                    ! cycle record_loop
                 end if
             end if
         end do il

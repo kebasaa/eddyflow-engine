@@ -1,27 +1,30 @@
 !***************************************************************************
 ! m_common_global_var.f90
 ! -----------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
-! \brief       Contain declaration of all variables common to EddyPro projects.
+! \brief       Contain declaration of all variables common to EddyFlow projects.
 ! \author      Gerardo Fratini
 ! \note
 ! \sa
@@ -90,20 +93,20 @@ module m_common_global_var
     character(18), parameter :: PrjFile   = 'processing.eddypro'
     character(6), parameter :: licor_appdata = '.licor'
     character(22)  :: Timestamp_FilePadding
-    character(7), parameter  :: EDDYPRO_FilePadding    = 'eddypro'
-    character(11), parameter :: RP_FilePadding = 'eddypro-rp_'
-    character(12), parameter :: FX_FilePadding = 'eddypro-fcc_'
+    character(8), parameter  :: EDDYFLOW_FilePadding    = 'eddyflow'
+    character(12), parameter :: RP_FilePadding = 'eddyflow-rp_'
+    character(13), parameter :: FX_FilePadding = 'eddyflow-fcc_'
     character(8),  parameter :: SC_FilePadding = '_spectra'
     character(7),  parameter :: EC_FilePadding = '_fluxes'
     character(8),  parameter :: PF_FilePadding = '_tilting'
     character(8),  parameter :: TO_FilePadding = '_timelag'
-    character(24), parameter :: SubDirBinCospectra      = 'eddypro_binned_cospectra'
-    character(22), parameter :: SubDirCospectra         = 'eddypro_full_cospectra'
+    character(25), parameter :: SubDirBinCospectra      = 'eddyflow_binned_cospectra'
+    character(23), parameter :: SubDirCospectra         = 'eddyflow_full_cospectra'
     character(22), parameter :: RS_flags_FilePadding    = '_statistical_screening'
     character(13), parameter :: RS_spike_FilePadding    = '_spike_counts'
     character(23), parameter :: Rot2D_FilePadding       = '_double_rotation_angles'
     character(9),  parameter :: Metadata_FilePadding    = '_metadata'
-    character(11),  parameter :: QCdetails_FilePadding  = '_qc_details'
+    character(11), parameter :: QCdetails_FilePadding  = '_qc_details'
     character(16), parameter :: H2OCov_FilePadding      = '_h2o_covariances'
     character(9),  parameter :: Tlag_FilePadding        = '_timelags'
     character(14), parameter :: RH_FilePadding          = '_timelag_vs_rh'
@@ -117,12 +120,9 @@ module m_common_global_var
     character(12), parameter :: FullOut_FilePadding     = '_full_output'
     character(11), parameter :: PlanarFit_FilePadding   = '_planar_fit'
     character(12), parameter :: TimelagOpt_FilePadding  = '_timelag_opt'
-    character(16), parameter :: FLUXNET_EDDY_FilePadding = '_ghg-europe_eddy'
-    character(18), parameter :: FLUXNET_BIOMET_FilePadding = '_ghg-europe_biomet'
-    character(11), parameter :: Essentials_FilePadding  = '_essentials'
-    character(7), parameter  :: Biomet_FilePadding      = '_biomet'
+    character(8),  parameter :: FLUXNET_FilePadding     = '_fluxnet'
+    character(7),  parameter  :: Biomet_FilePadding     = '_biomet'
     character(14), parameter :: Quality_FilePadding     = '_quality_check'
-    character(10), parameter :: Ameriflux_FilePadding   = '_ameriflux'
     character(18), parameter :: WPL_FilePadding         = '_wpl_contributions'
     character(20), parameter :: BPCF_FilePadding        = '_bandpass_correction'
     character(21), parameter :: H2OAvrg_FilePadding     = '_h2o_ensemble_spectra'
@@ -155,9 +155,7 @@ module m_common_global_var
     character(56), parameter  :: BinnedFilePrototype    = 'yyyymmdd-HHMM_xxxxxx_xxxxxxxxx_xxxx-xx-xxTxxxxxx_xxx.csv'
     character(54), parameter  :: FullFilePrototype      = 'yyyymmdd-HHMM_xxxx_xxxxxxxxx_xxxx-xx-xxTxxxxxx_xxx.csv'
 
-    character(PathLen) :: FLUXNET_EDDY_Path
-    character(PathLen) :: FLUXNET_BIOMET_Path
-    character(PathLen) :: Ameriflux_Path
+    character(PathLen) :: FLUXNET_Path
     character(PathLen) :: FullOut_Path
     character(PathLen) :: Metadata_Path
 
@@ -167,6 +165,7 @@ module m_common_global_var
     data (Dc(mmm), mmm = co2, gas4) / 0.00001381d0, 0.00002178d0, 0.00001952d0, 0.00001436d0/ !--> Massman (1998, Atm Env, Table 2)
     real(kind = sgl) :: MW(E2NumVar) !< Molecular weights
     data (MW(mmm), mmm = co2, gas4) / 44.01e-3, 18.02e-3, 16.04e-3, 44.01e-3/
+    real(kind = dbl), parameter :: h2o_to_ET =  0.0648d0  !< To convert between H2O flux [mmol m-2 s-1] and ET flux (mm  hour-1)
     real(kind = dbl), parameter :: p = 3.14159265358979323846d0 !< Greek pi
     real(kind = dbl), parameter :: StdVair = 0.02245d0  !< gas molar volume at 25 �C and 101.325 kPa
     real(kind = dbl), parameter :: vk = 0.41d0 !< Von Karman constant
@@ -199,11 +198,15 @@ module m_common_global_var
     real(kind = dbl) , allocatable :: zzFit(:)
     real(kind = dbl) , allocatable :: ddum(:)
 
+    type(RUsetupType) :: RUsetup
     type(FootType) :: Foot
-    type(EddyProLogType)   :: EddyProLog
-    type(EddyProProjType) :: EddyProProj
+    type(EddyFlowLogType)   :: EddyFlowLog
+    type(EddyFlowProjType) :: EddyFlowProj
     type(SpectralType) :: BPCF
+    type(SpectralType), parameter :: &
+        errBPCF = spectraltype(error)
     type(SpectralType) :: ADDCF
+    type(fluxnetChunksType) :: fluxnetChunks
 
     !> Variables to be validate
     real(kind = dbl) :: PFMat(3, 3, MaxNumWSect) = 0.d0
@@ -328,12 +331,12 @@ module m_common_global_var
     type(RawFlagType), parameter :: NullRawFlag = RawFlagType(0, error, .false.)
     type(ColType), parameter :: &
         NullCol = Coltype('none', 'none', 'none', 'none', '', '', '', &
-        0d0, 0d0, 0d0, 0d0, 0d0, 0d0, 0d0, 0d0, NullInstrument, NullRawFlag, .false., .false., 0d0)
+        0d0, 0d0, 0d0, 0d0, 0d0, 0d0, 0d0, 0d0, NullInstrument, NullRawFlag, .false., .false., error)
     type(BiometColType), parameter :: &
         NullBiometCol = BiometColType('none', 'none', 'none', 'none', 'none', error, error)
 
     type(fluxtype), parameter :: &
-        errFlux = fluxtype('', '', error, error, error, error, error, error, &
+        errFlux = fluxtype('', '', error, error, error, error, error, error, error, error, &
             error, error, error, error, error, error, error, error, error, &
             error, error)
 
@@ -349,13 +352,16 @@ module m_common_global_var
     type(BiometFileMetadataType) :: bFileMetadata
     type(BiometVarsType), allocatable :: bVars(:)
     real(kind = dbl), allocatable :: fbSet(:, :)
-    real(kind = dbl), allocatable :: bSet(:, :), auxbSet(:, :), bAggr(:)
+    real(kind = dbl), allocatable :: bSet(:, :)
+    real(kind = dbl), allocatable :: auxbSet(:, :)
+    real(kind = dbl), allocatable :: bAggr(:)
     real(kind = dbl), allocatable :: bAggrFluxnet(:)
+    real(kind = dbl), allocatable :: bAggrEddyFlow(:)
     type(DateType), allocatable :: fbTs(:), auxbTs(:)
     type(DateType), allocatable :: bTs(:)
     type(BiometVarsType), parameter :: &
         nullbVar = BiometVarsType(nint(error), nint(error), nint(error), &
-            error, error, 'none', 'none', 'none', 'none', 'none', 'none', 'none', &
+            error, error, 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', &
             'none', 'none', 'none', 'none','none')
     type(FootType), parameter :: &
         errFootprint = FootType(error, error, error, error, error, &
@@ -397,7 +403,7 @@ module m_common_global_var
     real(kind = dbl) :: UnPar(2) = error
 
     !> tags of the [Project] group of processing.eddypro file
-    integer, parameter :: Npn = 20
+    integer, parameter :: Npn = 25
     integer, parameter :: Npc = 50
     logical :: EPPrjNTagFound(Npn)
     logical :: EPPrjCTagFound(Npc)
@@ -422,7 +428,12 @@ module m_common_global_var
          EPPrjNTags(17)%Label / 'gas_diff'        / &
          EPPrjNTags(18)%Label / 'gas_mw'          / &
          EPPrjNTags(19)%Label / 'sonic_output_rate' / &
-         EPPrjNTags(20)%Label / 'col_diag_anem' /
+         EPPrjNTags(20)%Label / 'col_diag_anem'   / &
+         EPPrjNTags(21)%Label / 'col_diag_staa'   / &
+         EPPrjNTags(22)%Label / 'col_diag_stad'   / &
+         EPPrjNTags(23)%Label / 'ru_its_meth'     / & 
+         EPPrjNTags(24)%Label / 'ru_meth'         / & 
+         EPPrjNTags(25)%Label / 'ru_tlag_max'     / 
 
     data EPPrjCTags(1)%Label / 'sw_version'       / &
          EPPrjCTags(2)%Label / 'ini_version'      / &
@@ -442,8 +453,8 @@ module m_common_global_var
          EPPrjCTags(16)%Label / 'run_mode'          / &
          EPPrjCTags(17)%Label / 'use_biom'          / &
          EPPrjCTags(18)%Label / 'biom_file'         / &
-         EPPrjCTags(19)%Label / 'out_ghg_eu'       / &
-         EPPrjCTags(20)%Label / 'out_amflux'       / &
+!         EPPrjCTags(19)%Label / 'out_ghg_eu'       / &   !< No longer used
+!         EPPrjCTags(20)%Label / 'out_amflux'       / &   !< No longer used
          EPPrjCTags(21)%Label / 'out_rich'         / &
          EPPrjCTags(22)%Label / 'lf_meth'          / &
          EPPrjCTags(23)%Label / 'hf_meth'          / &
@@ -470,7 +481,9 @@ module m_common_global_var
          EPPrjCTags(44)%Label / 'bin_sp_avail'     / &
          EPPrjCTags(45)%Label / 'full_sp_avail'    / &
          EPPrjCTags(46)%Label / 'hf_correct_ghg_ba'  / &
-         EPPrjCTags(47)%Label / 'hf_correct_ghg_zoh' /
+         EPPrjCTags(47)%Label / 'hf_correct_ghg_zoh' / &
+         EPPrjCTags(48)%Label / 'fluxnet_standardize_biomet' / & 
+         EPPrjCTags(49)%Label / 'fluxnet_err_label' / 
 
     !> tags of the metadata file created by GHG software
     integer, parameter :: Nan = 884

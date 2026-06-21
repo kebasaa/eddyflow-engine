@@ -1,23 +1,26 @@
 !***************************************************************************
 ! init_out_files.f90
 ! ------------------
-! Copyright (C) 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -30,26 +33,25 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine InitOutFiles()
+subroutine InitOutFiles(lEx)
     use m_fx_global_var
     implicit none
+    !> in/out variables
+    Type(ExType), intent(in) :: lEx
     !> local variables
     integer :: mkdir_status
     integer :: open_status
     integer :: dot
     integer :: gas
     integer :: i
-    integer :: today(3), now(3)
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
-    character(8) :: dum_string
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
     character(LongOutstringLen) :: head1_utf8
     character(LongOutstringLen) :: head2_utf8
     character(LongOutstringLen) :: head3_utf8
-    character(LongOutstringLen) :: dataline
     integer, external :: CreateDir
 
 
@@ -63,13 +65,13 @@ subroutine InitOutFiles()
     e2sg(gas4) = g4lab(1:g4l) // '_'
 
     !> Full output file
-    if (EddyProProj%out_full) then
+    if (EddyFlowProj%out_full) then
         !> Create output directory if it does not exist
         mkdir_status = CreateDir('"' // Dir%main_out(1:len_trim(Dir%main_out)) // '"')
 
         !> Open full output file and writes header
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // FullOut_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         FullOut_Path = Test_Path(1:dot) // CsvTmpExt
@@ -83,7 +85,7 @@ subroutine InitOutFiles()
         call Clearstr(head2_utf8)
         call Clearstr(head3_utf8)
 
-        if (.not. EddyProProj%fix_out_format) then
+        if (.not. EddyFlowProj%fix_out_format) then
             !> Initial file and timestamp info
             call AddDatum(header1,'file_info,,,,,,', separator)
             call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
@@ -94,7 +96,7 @@ subroutine InitOutFiles()
             call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)
             call AddDatum(header2,'Tau,qc_Tau', separator)
             call AddDatum(header3,'[kg+1m-1s-2],[#]', separator)
-            if (FCCMetadata%ru) then
+            if (RUsetup%meth /= 'none') then
                 call AddDatum(header1, '', separator)
                 call AddDatum(header2,'rand_err_Tau', separator)
                 call AddDatum(header3,'[kg+1m-1s-2]', separator)
@@ -104,7 +106,7 @@ subroutine InitOutFiles()
             call AddDatum(header1, ',', separator)
             call AddDatum(header2, 'H,qc_H', separator)
             call AddDatum(header3, '[W+1m-2],[#]', separator)
-            if (FCCMetadata%ru) then
+            if (RUsetup%meth /= 'none') then
                 call AddDatum(header1, '', separator)
                 call AddDatum(header2, 'rand_err_H', separator)
                 call AddDatum(header3, '[W+1m-2]', separator)
@@ -115,7 +117,7 @@ subroutine InitOutFiles()
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'LE,qc_LE', separator)
                 call AddDatum(header3, '[W+1m-2],[#]', separator)
-                if (FCCMetadata%ru) then
+                if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_LE', separator)
                     call AddDatum(header3, '[W+1m-2]', separator)
@@ -127,7 +129,7 @@ subroutine InitOutFiles()
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'co2_flux,qc_co2_flux', separator)
                 call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
-                if (FCCMetadata%ru) then
+                if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_co2_flux', separator)
                     call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
@@ -139,7 +141,7 @@ subroutine InitOutFiles()
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2,'h2o_flux,qc_h2o_flux', separator)
                 call AddDatum(header3,'[mmol+1s-1m-2],[#]', separator)
-                if (FCCMetadata%ru) then
+                if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_h2o_flux', separator)
                     call AddDatum(header3, '[mmol+1s-1m-2]', separator)
@@ -151,7 +153,7 @@ subroutine InitOutFiles()
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2,'ch4_flux,qc_ch4_flux', separator)
                 call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
-                if (FCCMetadata%ru) then
+                if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_ch4_flux', separator)
                     call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
@@ -164,9 +166,9 @@ subroutine InitOutFiles()
                 call AddDatum(header2, e2sg(gas4)(1:len_trim(e2sg(gas4))) &
                     // 'flux,qc_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
                 call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
-                if (FCCMetadata%ru) then
+                if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
+                    call AddDatum(header2, 'rand_err_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
                     call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
                 end if
             end if
@@ -288,7 +290,7 @@ subroutine InitOutFiles()
                 // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8aa,8U', separator)
 
-            !> Add spikes for EddyPro variables
+            !> Add spikes for EddyFlow variables
             call AddDatum(header1,'spikes,,,', separator)
             call AddDatum(header2,'u_spikes,v_spikes,w_spikes,ts_spikes', separator)
             call AddDatum(header3,'[#],[#],[#],[#]', separator)
@@ -370,10 +372,10 @@ subroutine InitOutFiles()
             end do
 
             !> Mean values of user variables
-            if (NumUserVar > 0) then
+            if (lEx%ncustom > 0) then
                 call AddDatum(header1, 'custom_variables', separator)
-                call AddDatum(header2, UserVarHeader, separator)
-                do i = 1, NumUserVar
+                call AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader)), separator)
+                do i = 1, lEx%ncustom
                     call AddDatum(header3, '--', separator)
                 end do
             end if
@@ -452,7 +454,7 @@ subroutine InitOutFiles()
                 &[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default],&
                 &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
                 &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
-                &[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],[mm],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
+                &[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
                 &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[deg_from_north],[deg],[deg],[deg],&
                 &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
                 &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
@@ -475,11 +477,12 @@ subroutine InitOutFiles()
                 &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
                 &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
                 &[#],[#],[m+2s-2],[m+2s-2],[m+2s-2],[K+2],--,--,--,--,[m+1s-1K+1],--,--,--,--,'
+
             !> Mean values of user variables
-            if (NumUserVar > 0) then
+            if (lEx%ncustom > 0) then
                 call AddDatum(header1, 'custom_variables', separator)
                 call AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader)), separator)
-                do i = 1, NumUserVar
+                do i = 1, lEx%ncustom
                     call AddDatum(header3, '--', separator)
                 end do
             end if
@@ -495,102 +498,14 @@ subroutine InitOutFiles()
         end if
     end if
 
-    !>==========================================================================
-    !>==========================================================================
-    !> FLUXNET output
-    if (EddyProProj%out_fluxnet) then
-        Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
-                  // FLUXNET_EDDY_FilePadding // Timestamp_FilePadding // CsvExt
-        dot = index(Test_Path, CsvExt, .true.) - 1
-        FLUXNET_EDDY_Path = Test_Path(1:dot) // CsvTmpExt
-        open(ufnet_e, file = FLUXNET_EDDY_Path, &
-            iostat = open_status, encoding = 'utf-8')
-
-        !> Initialize header strings to void
-        call Clearstr(header2)
-        call Clearstr(header3)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
-
-        !> Initial common part
-        call AddDatum(header2,'TIMESTAMP', separator)
-        call AddDatum(header3,'[yyyymmddHHMMSS]', separator)
-
-        !>======================================================================
-        !> Variables located at the EC stations
-        !> GASES
-        do gas = co2, gas4
-            if(fcc_var_present(gas)) then
-                select case (gas)
-                    case(co2)
-                        call AddDatum(header2, 'CO2_1_1_1', separator)
-                        call AddDatum(header3, &
-                            '[mmolCO2 mol-1]', separator)
-                    case(h2o)
-                        call AddDatum(header2, 'H2O_1_1_1', separator)
-                        call AddDatum(header3, '[mmolH2O mol-1]', separator)
-                    case(ch4)
-                        call AddDatum(header2, 'CH4_1_1_1', separator)
-                        call AddDatum(header3, '[nmolCH4 mol-1]', separator)
-                    case(gas4)
-                        call AddDatum(header2, &
-                            trim(adjustl(e2sg(gas4))) // '1_1_1', separator)
-                        call AddDatum(header3, '[nmol' &
-                            // trim(adjustl(e2sg(gas4))) //' mol-1]', separator)
-                end select
-            end if
-        end do
-        call AddDatum(header2,&
-            'TAU_1_1_1,TAU_SSITC_TEST_1_1_1,H_1_1_1,H_SSITC_TEST_1_1_1', separator)
-        call AddDatum(header3,'[kg m-1 s-2],[#],[W m-2],[#]', separator)
-        if(fcc_var_present(h2o)) then
-            call AddDatum(header2,'LE_1_1_1,LE_SSITC_TEST_1_1_1', separator)
-            call AddDatum(header3,'[W m-2],[#]', separator)
-        end if
-        if(fcc_var_present(co2)) then
-            call AddDatum(header2,'FC_1_1_1,FC_SSITC_TEST_1_1_1', separator)
-            call AddDatum(header3,'[umolCO2 m-2 s-1],[#]', separator)
-        end if
-        if(fcc_var_present(ch4)) then
-            call AddDatum(header2,'FCH4_1_1_1,FCH4_SSITC_TEST_1_1_1', separator)
-            call AddDatum(header3,'[nmolCH4 m-2 s-1],[#]', separator)
-        end if
-        if(fcc_var_present(gas4)) then
-            call AddDatum(header2,'F' // trim(adjustl(e2sg(gas4))) &
-                // '1_1_1,' // trim(adjustl(e2sg(gas4))) // 'SSITC_TEST_1_1_1', separator)
-            call AddDatum(header3,'[nmol'// trim(adjustl(e2sg(gas4))) &
-                //' m-2 s-1],[#]', separator)
-        end if
-
-        !> MET_WIND and FOOTPRINT
-        call AddDatum(header2,'WD_0_0_1,WS_0_0_1,WS_MAX_0_0_1,U_SIGMA_0_0_1,&
-            &V_SIGMA_0_0_1,W_SIGMA_0_0_1,USTAR_0_0_1,MO_LENGTH_0_0_1,ZL_0_0_1,&
-            &FETCH_MAX_0_0_1,FETCH_70_0_0_1,FETCH_80_0_0_1,FETCH_90_0_0_1', separator)
-        call AddDatum(header3,'[Decimal degrees],[m s-1],[m s-1],[m s-1],&
-            &[m s-1],[m s-1],[m s-1],[m],[#],[m],[m],[m],[m]', separator)
-
-        !> MET_ATM
-        call AddDatum(header2,'PA_0_0_1,RH_0_0_1,TA_0_0_1,VPD_0_0_1,T_SONIC_0_0_1,&
-            &T_SONIC_SIGMA_0_0_1', separator)
-        call AddDatum(header3,'[kPa],[%],[deg C],[hPa],[deg C],[deg C]', separator)
-
-        call latin1_to_utf8(header2, head2_utf8)
-        call latin1_to_utf8(header3, head3_utf8)
-
-        !> Write on output file
-        write(ufnet_e, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-        write(ufnet_e, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
-    end if
-
     !************************************************************************************************************************************
     !************************************************************************************************************************************
     !> METADATA file
-    if (EddyProProj%out_md) then
+    if (EddyFlowProj%out_md) then
         !> Create metadata output file name
         !> Open dynamic matadata file
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                   // MetaData_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
         Metadata_Path = Test_Path(1:dot) // CsvTmpExt
@@ -634,70 +549,22 @@ subroutine InitOutFiles()
         write(umd, '(a)') header1(1:len_trim(header1) - 1)
     end if
 
-    !************************************************************************************************************************************
-    !************************************************************************************************************************************
+    !***************************************************************************
+    !***************************************************************************
 
-    if (EddyProProj%out_amflux) then
-        !> Create AmeriFlux output file name
+    if (EddyFlowProj%out_fluxnet) then
+        !> Create output directory if it does not exist
+        mkdir_status = CreateDir('"' // Dir%main_out(1:len_trim(Dir%main_out)) // '"')
+
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-                  // EddyProProj%id(1:len_trim(EddyProProj%id)) &
-                  // AmeriFlux_FilePadding // Timestamp_FilePadding // CsvExt
+                  // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
+                  // FLUXNET_FilePadding // Timestamp_FilePadding // CsvExt
         dot = index(Test_Path, CsvExt, .true.) - 1
-        AmeriFlux_Path = Test_Path(1:dot) // CsvTmpExt
-        open(uaflx, file = AmeriFlux_Path)
-        write(uaflx, '(a)') 'Sitename:' // Metadata%sitename(1:len_trim(Metadata%sitename))
-        write(uaflx, '(a, f12.7, a, f12.7, a, f6.0)') 'Location: Latitude: ', Metadata%lat, &
-            ' - Longitude: ', Metadata%lon, ' - Elevation (masl): ', Metadata%alt
-        write(uaflx, '(a)') 'Principal investigator: '
-        write(uaflx, '(a)') 'Ecosystem type: '
-        call idate(today)   ! today(1)=day, (2)=month, (3)=year
-        call itime(now)     ! now(1)=hour, (2)=minute, (3)=second
-        call clearstr(dataline)
-        write(dum_string, '(i4)') today(3)
-        dataline(1:5) = dum_string(1:4) // '-'
-        write(dum_string, '(i2)') today(2)
-        if(dum_string(1:1) == ' ') dum_string(1:1) = '0'
-        dataline(6:8) = dum_string(1:2) // '-'
-        write(dum_string, '(i2)') today(1)
-        if(dum_string(1:1) == ' ') dum_string(1:1) = '0'
-        dataline(9:11) = dum_string(1:2) // 'T'
-        write(dum_string, '(i2)') now(1)
-        if(dum_string(1:1) == ' ') dum_string(1:1) = '0'
-        dataline(12:14) = dum_string(1:2) // ':'
-        write(dum_string, '(i2)') now(2)
-        if(dum_string(1:1) == ' ') dum_string(1:1) = '0'
-        dataline(15:16) = dum_string(1:2)
-        write(uaflx, '(a)') 'File creation date: ' // dataline(1:len_trim(dataline))
-        write(uaflx, '(a)') 'Datapolicy:  -- The AmeriFlux data provided on this site&
-            & are freely available and were furnished by individual AmeriFlux scientists who encourage their use.'
-        write(uaflx, '(a)') 'Please kindly inform in writing (or e-mail) the appropriate AmeriFlux scientist(s)&
-            & of how you intend to use the data and of any publication plans.'
-        write(uaflx, '(a)') 'It is also important to contact the AmeriFlux investigator to assure you are downloading&
-            & the latest revision of the data and to prevent potential misuse or misinterpretation of the data.'
-        write(uaflx, '(a)') 'Please acknowledge the data source as a citation or in the&
-            & acknowledgments if no citation is available.'
-        write(uaflx, '(a)') 'If the AmeriFlux Principal Investigators (PIs) feel that they should be acknowledged&
-            & or offered participation as authors they will let you know.'
-        write(uaflx, '(a)') 'And we assume that an agreement on such matters will be reached&
-            & before publishing and/or use of the data for publication.'
-        write(uaflx, '(a)') 'If your work directly competes with the PIs analysis they may ask that they have the&
-            & opportunity to submit a manuscript before you submit one that uses unpublished data.'
-        write(uaflx, '(a)') 'In addition when publishing please acknowledge the agency that supported the research. --'
-        write(uaflx, '(a)') 'File Origin (4 lines) - To be compiled by AmeriFlux data management group.'
-        write(uaflx, '(a)') 'File Origin (4 lines) - To be compiled by AmeriFlux data management group.'
-        write(uaflx, '(a)') 'File Origin (4 lines) - To be compiled by AmeriFlux data management group.'
-        write(uaflx, '(a)') 'File Origin (4 lines) - To be compiled by AmeriFlux data management group.'
-        write(uaflx, '(a)') 'YEAR,GAP,DTIME,DOY,HRMIN,UST,TA,WD,WS,NEE,FC,SFC,H,SH,LE,SLE,FG,TS1,TSdepth1,TS2,TSdepth2,&
-            &PREC,RH,PRESS,CO2,VPD,SWC1,SWC2,Rn,PAR,Rg,Rgdif,PARout,RgOut,Rgl,RglOut,&
-            &H2O,RE,GPP,CO2top,CO2height,APAR,PARdif,APARpct,ZL'
-        write(uaflx, '(a)') 'YEAR,GAP,DTIME,DOY,HRMIN,m/s,deg C,deg,m/s,umol/m2/s,umol/m2/s,&
-            &umol/m2/s,W/m2,W/m2,W/m2,W/m2,W/m2,&
-            &deg C,cm,deg C,cm,mm,%,kPa,umol/mol,kPa,%,%,W/m2,umol/m2/s,W/m2,W/m2,umol/m2/s,&
-            &W/m2,W/m2,W/m2,mmol/mol,umol/m2/s,&
-            &umol/m2/s,umol/mol,m,umol/m2/s,umol/m2/s,%,unitless'
-    end if
+        FLUXNET_Path = Test_Path(1:dot) // CsvTmpExt
+        open(uflxnt, file = FLUXNET_Path, iostat = open_status, encoding = 'utf-8')
 
-    !>*********************************************************************************************
-    !>*********************************************************************************************
+        !> Write on output file
+        write(uflxnt, '(a)') trim(fluxnet_header)
+    end if
 
 end subroutine InitOutFiles

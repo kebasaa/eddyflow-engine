@@ -1,22 +1,25 @@
 !***************************************************************************
 ! configure_for_embedded.f90
 ! --------------------------
-! Copyright (C) 2011-2015, LI-COR Biosciences
+! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright © 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyPro (TM).
+! This file is part of EddyFlow®.
 !
-! EddyPro (TM) is free software: you can redistribute it and/or modify
+! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
 ! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
+! (at your option) any later version. You should have received a copy
+! of the GNU General Public License along with EddyFlow (R). If not,
+! see <http://www.gnu.org/licenses/>.
 !
-! EddyPro (TM) is distributed in the hope that it will be useful,
+! EddyFlow® contains additional Open Source Components. The licenses
+! and/or notices these Components can be found in the file LIBRARIES.txt.
+!
+! EddyFlow® is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with EddyPro (TM).  If not, see <http://www.gnu.org/licenses/>.
 !
 !***************************************************************************
 !
@@ -36,12 +39,14 @@ subroutine ConfigureForEmbedded()
     !> Local variables
     character(CommLen) :: comm
     character(ShortInstringLen) :: dataline
+    character(128) :: sa_fname
     integer :: dir_status
     integer :: io_status
+    integer :: ix
 
     select case (app)
-        !> EddyPro-RP
-        case ('EddyPro-RP')
+        !> EddyFlow-RP
+        case ('EddyFlow-RP')
             Dir%main_in  = trim(homedir) // 'raw_files' // slash
 
             !> Retrieve planar fit file name if needed
@@ -92,29 +97,20 @@ subroutine ConfigureForEmbedded()
             call system(comm_del // '"' // trim(adjustl(TmpDir)) // '"*.tmp ' &
                 // comm_err_redirect)
 
-            !> Selection of output files
-            if (EddyProProj%fcc_follows) then
-                EddyProProj%out_essentials = .true.
+            ! EddyFlowProj%out_fluxnet  = .false.
+            EddyFlowProj%out_md      = .false.
+            if (EddyFlowProj%biomet_data /= 'none') then
+                EddyFlowProj%out_biomet = .true.
             else
-                EddyProProj%out_essentials = .false.
-            end if
-            EddyProProj%out_fluxnet  = .false.
-            EddyProProj%out_fluxnet_eddy  = .false.
-            EddyProProj%out_fluxnet_biomet  = .false.
-            EddyProProj%out_amflux  = .false.
-            EddyProProj%out_md      = .false.
-            if (EddyProProj%biomet_data /= 'none') then
-                EddyProProj%out_biomet = .true.
-            else
-                EddyProProj%out_biomet = .false.
+                EddyFlowProj%out_biomet = .false.
             end if
 
 
-        !> EddyPro-FCC
-        case ('EddyPro-FCC')
-            !> Retrieve essentials file name from /output folder
+        !> EddyFlow-FCC
+        case ('EddyFlow-FCC')
+            !> Retrieve FLUXNET file name from /output folder
             comm = 'find "' // trim(homedir) // 'output' // slash // &
-                '" -iname *_essentials_*' // ' > ' // trim(adjustl(TmpDir)) &
+                '" -iname *_fluxnet_*' // ' > ' // trim(adjustl(TmpDir)) &
                 // 'ex_flist.tmp ' // comm_err_redirect
             dir_status = system(comm)
             open(udf, file = trim(adjustl(TmpDir)) &
@@ -129,28 +125,36 @@ subroutine ConfigureForEmbedded()
             end if
             close(udf)
 
-            !> Retrieve spectral assessment file name if needed
-            if (EddyProProj%hf_meth =='fratini_12' .or. &
-                EddyProProj%hf_meth =='horst_97' .or. &
-                EddyProProj%hf_meth =='ibrom_07') then
 
+            !> Retrieve spectral assessment file name if needed
+            if (EddyFlowProj%hf_meth =='fratini_12' .or. &
+                EddyFlowProj%hf_meth =='horst_97' .or. &
+                EddyFlowProj%hf_meth =='ibrom_07') then
+
+                ! Retrieve file name from project file
+                ix = index(AuxFile%sa, slash, back=.true.)
+                sa_fname = AuxFile%sa(ix+1: len_trim(AuxFile%sa))
+                ! File path is $HOME/ini/sa_fname
+                AuxFile%sa = trim(homedir) // 'ini' // slash // trim(sa_fname)
+                
                 !> Retrieve spectral assessment file name from /ini folder
-                comm = 'find "' // trim(homedir) // 'ini' // slash &
-                    // '" -iname *_spectral_assessment_*' // ' > ' &
-                    // trim(adjustl(TmpDir)) // 'sa_flist.tmp ' &
-                    // comm_err_redirect
-                dir_status = system(comm)
-                open(udf, file = trim(adjustl(TmpDir)) &
-                    // 'sa_flist.tmp', iostat = io_status)
-                AuxFile%sa = 'none'
-                if (io_status == 0) then
-                    read(udf, '(a128)', iostat = io_status) dataline
-                    if(io_status == 0) then
-                        AuxFile%sa = trim(adjustl(dataline))
-                        call StripFileName(AuxFile%sa)
-                    end if
-                end if
-                close(udf)
+                ! comm = 'find "' // trim(homedir) // 'ini' // slash &
+                !     // '" -iname *spectral_assessment*' // ' > ' &
+                !     // trim(adjustl(TmpDir)) // 'sa_flist.tmp ' &
+                !     // comm_err_redirect
+                ! dir_status = system(comm)
+                ! open(udf, file = trim(adjustl(TmpDir)) &
+                !     // 'sa_flist.tmp', iostat = io_status)
+                ! AuxFile%sa = 'none'
+                ! if (io_status == 0) then
+                !     read(udf, '(a128)', iostat = io_status) dataline
+                !     if(io_status == 0) then
+                !         AuxFile%sa = trim(adjustl(dataline))
+                !         call StripFileName(AuxFile%sa)
+                !     end if
+                ! end if
+                ! close(udf)
+
             end if
 
             !> Delet all temporary files
@@ -158,10 +162,7 @@ subroutine ConfigureForEmbedded()
                 // '"*.tmp ' // comm_err_redirect)
 
             !> Selection of output files
-            EddyProProj%out_fluxnet  = .false.
-            EddyProProj%out_fluxnet_eddy  = .false.
-            EddyProProj%out_fluxnet_biomet  = .false.
-            EddyProProj%out_amflux  = .false.
+            EddyFlowProj%out_fluxnet  = .false.
     end select
 
     !> Common settings
