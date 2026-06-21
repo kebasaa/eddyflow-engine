@@ -381,7 +381,7 @@ module m_common_global_var
     real(kind = dbl)  :: PotRad(17568)
     real(kind = dbl)  :: magnetic_declination
     real(kind = dbl) BuMultiPar(2, 3, 4)
-    character(11)  :: app
+    character(12)  :: app
     character(32)  :: TFShape
     character(32) :: foot_model_used
     Type(StatsType)  :: Stats
