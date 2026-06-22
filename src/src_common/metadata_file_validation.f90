@@ -95,7 +95,7 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
                     case ('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', &
                         'r3a_100', 'wm', 'wmpro', 'usa1_standard', &
                         'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp', &
-                        'csat3', 'csat3b', &
+                        'csat3', 'csat3b', 'csat3a', 'irgason', &
                         '81000', '81000v', '81000re', '81000vre')
                         passed(1) = .false.
                         passed(26) = .false.
@@ -210,7 +210,7 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
             !> check model
             select case (LocInstr%model(1:len_trim(LocInstr%model)-2))
                 case ('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', 'r3a_100', 'wm', 'wmpro', &
-                      'usa1_standard', 'usa1_fast', 'csat3', 'csat3b', &
+                      'usa1_standard', 'usa1_fast', 'csat3', 'csat3b', 'csat3a', 'irgason', &
                       'usoni3_classa_mp', 'usoni3_cage_mp', &
                       '81000', '81000v', '81000re', '81000vre')
                       continue
@@ -229,7 +229,7 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
         case ('co2', 'h2o', 'ch4', 'n2o')
             !> check firm
             select case (LocInstr%firm(1:len_trim(LocInstr%firm)))
-                case ('licor', 'other_irga')
+                case ('licor', 'other_irga', 'csi_irga', 'miro', 'aerodyne')
                     continue
                 case default
                     passed(1) = .false.
@@ -241,7 +241,13 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
                 case ('li7500', 'li7500a', 'li7500rs', 'li7500ds', 'li7200', &
                     'li7200rs', 'li7700', 'li6262', 'li7000')
                     continue
-                case ('generic_open_path', 'generic_closed_path')
+                case ('generic_open_path', 'ec150', 'irgason')
+                    if (LocInstr%hpath_length * LocInstr%vpath_length * LocInstr%tau == 0) then
+                        passed(1) = .false.
+                        passed(20) = .false.
+                        return
+                    end if
+                case ('generic_closed_path', 'spectronus', 'miu1000', 'miu2000', 'aerodyne_qcls')
                     if (LocInstr%hpath_length * LocInstr%vpath_length * LocInstr%tau == 0) then
                         passed(1) = .false.
                         passed(20) = .false.
@@ -268,7 +274,7 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
         case ('int_t_1', 'int_t_2', 'cell_t', 'int_p')
             !> check firm
             select case (LocInstr%firm(1:len_trim(LocInstr%firm)))
-                case ('licor', 'other_irga')
+                case ('licor', 'other_irga', 'csi_irga', 'miro', 'aerodyne')
                     continue
                 case default
                     passed(1) = .false.
@@ -277,7 +283,8 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
             end select
             !> check model
             select case (LocInstr%model(1:len_trim(LocInstr%model)-2))
-                case ('li7200', 'li7200rs', 'li6262', 'li7000', 'generic_closed_path')
+                case ('li7200', 'li7200rs', 'li6262', 'li7000', 'generic_closed_path', &
+                      'spectronus', 'miu1000', 'miu2000', 'aerodyne_qcls')
                     continue
                 case default
                     passed(1) = .false.

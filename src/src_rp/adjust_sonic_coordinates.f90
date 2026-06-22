@@ -117,7 +117,7 @@ subroutine AdjustSonicCoordinates(Set, nrow, ncol)
             where(Set(:, v) /= error)
                 Set(:, v) = - Set(:, v)
             end where
-        case('csat3', 'csat3b')
+        case('csat3', 'csat3b', 'csat3a', 'irgason')
             E2Col(u)%instr%north_offset = E2Col(u)%instr%north_offset - 180d0
         case('usoni3_cage_mp', 'usoni3_classa_mp')
             E2Col(u)%instr%north_offset = E2Col(u)%instr%north_offset + 90d0

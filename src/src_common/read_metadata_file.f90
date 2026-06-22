@@ -215,7 +215,8 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                     Instr(i)%hpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 8)%value) * 1d-2 !< cm to m
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
                     Instr(i)%tau = dble(ANTags(init_an_instr + i*leap_an_instr + 10)%value)
-                case ('generic_open_path', 'generic_closed_path')
+                case ('generic_open_path', 'generic_closed_path', 'ec150', 'irgason', &
+                      'spectronus', 'miu1000', 'miu2000', 'aerodyne_qcls')
                     Instr(i)%hpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 8)%value) * 1d-2 !< cm to m
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
                     Instr(i)%tau = dble(ANTags(init_an_instr + i*leap_an_instr + 10)%value)
@@ -240,8 +241,14 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                         Instr(i)%firm = 'gill'
                     case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                         Instr(i)%firm = 'metek'
-                    case('csat3', 'csat3b')
+                    case('csat3', 'csat3b', 'csat3a', 'irgason')
                         Instr(i)%firm = 'csi'
+                    case('ec150')
+                        Instr(i)%firm = 'csi_irga'
+                    case('spectronus', 'miu1000', 'miu2000')
+                        Instr(i)%firm = 'miro'
+                    case('aerodyne_qcls')
+                        Instr(i)%firm = 'aerodyne'
                     case('81000', '81000v', '81000re', '81000vre')
                         Instr(i)%firm = 'young'
                     case('generic_sonic')
@@ -254,7 +261,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
 
             !> Select whether the instrument is a sonic or a gas analyser
             select case(Instr(i)%firm)
-                case('licor', 'other_irga')
+                case('licor', 'other_irga', 'csi_irga', 'miro', 'aerodyne')
                     Instr(i)%category = 'irga'
                 case('gill', 'metek', 'young', 'csi', 'other_sonic')
                     Instr(i)%category = 'sonic'
