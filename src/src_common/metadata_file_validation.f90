@@ -147,7 +147,7 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
         end if
     end do
 
-    !> Beyond a check of metadata file, checks if the minimum number of
+    !> Beyond a check of metadata file, checks if the exact number of
     !> variables needed for flux calculation are present. These are u, v, w and
     !> either sos or ts. Also checks that there are no more than 1
     !> instance of each.
@@ -361,7 +361,7 @@ subroutine ColumnValidation(LocCol, passed)
                     passed(12) = .false.
                     return
             end select
-        case ('ts', 'int_t_1', 'int_t_2', 'cell_t', 'ait_t')
+        case ('ts', 'int_t_1', 'int_t_2', 'cell_t', 'air_t')
             select case (units)
                 case ('kelvin', 'ckelvin', 'celsius', 'ccelsius')
                     continue
