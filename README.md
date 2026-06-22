@@ -1,7 +1,7 @@
 ![Fortran](https://img.shields.io/badge/Fortran-%23734F96.svg?style=for-the-badge&logo=fortran&logoColor=white)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-![EddyFlow Logo](img/app-logo-small.png)
+![EddyFlow Logo](img/app-logo.svg)
 
 # Welcome to EddyFlow
 
