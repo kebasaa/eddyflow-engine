@@ -49,6 +49,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
     real(kind = dbl) :: alpha
     real(kind = dbl) :: direc
     real(kind = dbl) :: r
+    real(kind = dbl), parameter :: crosswind_exp = 1.2d0
  
     integer :: igas
     integer :: gas
@@ -143,7 +144,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
                     Ax = error
                 end if
                 if (k_my /= error .and. r_y(gas) /= error) then
-                    Ay = dexp(-(k_my * r_y(gas))**1.2)       ! Eq. 16 instead of 13 - After notification by M. Aubinet, Nov. 2020
+                    Ay = dexp(-(k_my * r_y(gas))**crosswind_exp)       ! Eq. 16 instead of 13 - After notification by M. Aubinet, Nov. 2020
                 else
                     Ay = error
                 end if
@@ -165,7 +166,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
             do gas = co2, gas4
                 if (k_my /= error .and. r_y(gas) /= error .and. &
                     k_mz(gas) /= error .and. r_z(gas) /= error) then
-                    ADDCF%of(gas) = dexp(k_my * r_y(gas)) * dexp(k_mz(gas) * r_z(gas))
+                    ADDCF%of(gas) = dexp((k_my * r_y(gas))**crosswind_exp) * dexp(k_mz(gas) * r_z(gas))
                 end if
             end do
         end if
