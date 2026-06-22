@@ -328,7 +328,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 select case (Instr(i)%model(1:len_trim(Instr(i)%model) - 2))
                     case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', &
                         'generic_open_path', 'open_path_krypton', &
-                        'open_path_lyman')
+                        'open_path_lyman', 'ec150', 'irgason')
                         Instr(i)%path_type = 'open'
                     case default
                         Instr(i)%path_type = 'closed'
