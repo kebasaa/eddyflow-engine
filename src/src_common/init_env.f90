@@ -49,6 +49,7 @@ subroutine InitEnv()
     character(32) :: tmpDirPadding
     character(3), parameter :: OS_default = 'win'
     integer, external :: CreateDir
+    character(PathLen), external :: to_lower
 
 
     !> Store current timestamp information
