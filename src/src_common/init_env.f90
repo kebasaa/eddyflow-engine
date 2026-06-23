@@ -112,7 +112,7 @@ subroutine InitEnv()
             end select
         else
             projPath = trim(switch)
-            if (index(projPath, '.eddyflow') == 0) projPath = ''
+            if (index(to_lower(projPath), '.eddyflow') == 0) projPath = ''
         end if
     end do arg_loop
 
@@ -224,3 +224,17 @@ subroutine CommandLineHelp(sw_ver, build_date)
                                                              & if not provided, assumes ..\ini\processing.eddyflow'
     stop
 end subroutine CommandLineHelp
+
+pure function to_lower(s) result(out)
+    character(*), intent(in) :: s
+    character(len(s)) :: out
+    integer :: i, c
+    do i = 1, len(s)
+        c = iachar(s(i:i))
+        if (c >= 65 .and. c <= 90) then
+            out(i:i) = achar(c + 32)
+        else
+            out(i:i) = s(i:i)
+        end if
+    end do
+end function to_lower
