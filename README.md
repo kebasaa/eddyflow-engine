@@ -1,9 +1,13 @@
-# Welcome to EddyFlow&reg;
+![Fortran](https://img.shields.io/badge/Fortran-%23734F96.svg?style=for-the-badge&logo=fortran&logoColor=white)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-EddyFlow&reg; is a powerful open source software application for processing eddy covariance data. It computes fluxes of water vapor (evapotranspiration), carbon
-dioxide, and other trace gases, and energy with the Eddy Covariance method.
+![EddyFlow Logo](img/app-logo.svg)
 
-[LI-COR Biosciences](http://www.licor.com) has not published upstream EddyFlow updates for several years. This repository is an actively maintained fork of EddyPro 6.2.2 that continues development while gratefully acknowledging LI-COR, ECO2S, and the original EddyFlow authors for creating and releasing EddyFlow.eddypro originates from [ECO<sub>2</sub>S](http://gaia.agraria.unitus.it/eco2s), the Eddy COvariance COmmunity Software project, which was developed as part of the Infrastructure for Measurement of the European Carbon Cycle (IMECC-EU) research project. We gratefully acknowledge the [IMECC](http://imecc.ipsl.jussieu.fr/index.html) consortium, the ECO<sub>2</sub>S development team, the [University of Tuscia](https://www.unitus.it) (Italy) and scientists around the world who assisted with development and testing of the original version of this software.
+# Welcome to EddyFlow
+
+EddyFlow is a powerful open source software application for processing eddy covariance data. It computes fluxes of water vapor (evapotranspiration), carbon dioxide, and other trace gases, and energy with the Eddy Covariance method.
+
+[LI-COR Biosciences](http://www.licor.com) has not published upstream EddyPro updates for several years. This repository is an actively maintained fork of EddyPro 6.2.2 that continues development while gratefully acknowledging LI-COR, ECO2S, and the original EddyFlow authors for creating and releasing EddyFlow.eddypro originates from [ECO<sub>2</sub>S](http://gaia.agraria.unitus.it/eco2s), the Eddy COvariance COmmunity Software project, which was developed as part of the Infrastructure for Measurement of the European Carbon Cycle (IMECC-EU) research project. We gratefully acknowledge the [IMECC](http://imecc.ipsl.jussieu.fr/index.html) consortium, the ECO<sub>2</sub>S development team, the [University of Tuscia](https://www.unitus.it) (Italy) and scientists around the world who assisted with development and testing of the original version of this software.
 
 ## Overview
 
@@ -19,13 +23,12 @@ Both Engine and GUI are pre-built for a particular environment (operating system
 
 ## License
 
-This fork of EddyPro 6.2.2 is released with and will retain the
+This fork of EddyPro 6.2.2 (newly branded EddyFlow) is released with and will retain the
 [GNU General Public License (GPL) v3.0](https://github.com/LI-COR/EddyFlow-gui/blob/master/LICENSE).
 
 ## Source Code Repository
 
-EddyFlow is a fully cross-platform application, which consists of a set of
-command line programs and a graphical user interface (GUI).
+EddyFlow is a fully cross-platform application, which consists of a set of command line programs and a graphical user interface (GUI).
 
 The source code is developed using two independent Git repositories, namely:
 
@@ -96,7 +99,6 @@ To successfully run EddyFlow, the program installation folder must contain the
 following command line utilities under the 'bin' sub-directory:
 
 - 7-zip
-- pausep
 
 ### 7-zip
 
@@ -107,17 +109,6 @@ The console application consists of two files:
 - 7z.exe
 
 License: [LGPL](https://www.7-zip.org/license.txt).
-
-### pausep
-
-Pausep it's a Win32 process suspend/resume tool, available on
-[Code Project](http://www.codeproject.com/Articles/2964/Win-process-suspend-resume-tool).
-
-It consists of one file:
-- pausep.exe
-
-License: Code Project Open License,
-[CPOL](http://www.codeproject.com/info/cpol10.aspx).
 
 ## Using EddyFlow sample data
 

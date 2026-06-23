@@ -155,7 +155,7 @@ subroutine InformOfMetadataProblem(passed, faulty_col)
 
     if (.not. passed(18)) then
         write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> At least one among u, v, w and a fast temperature is missing.'
+        write(*,*) '  Warning(1001)> Exactly one selected u, v, w and one selected ts or sos are required.'
     end if
 
     if (.not. passed(19)) then

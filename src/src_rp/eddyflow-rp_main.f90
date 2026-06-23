@@ -2327,7 +2327,7 @@ program EddyFlowRP
     if (.not. EddyFlowProj%fcc_follows) then
         call CopyFile(trim(adjustl(PrjPath)), &
         trim(adjustl(Dir%main_out)) // 'processing' &
-        // Timestamp_FilePadding // '.eddypro')
+        // Timestamp_FilePadding // '.eddyflow')
     end if
 
     !> Delete tmp folder if running in embedded mode

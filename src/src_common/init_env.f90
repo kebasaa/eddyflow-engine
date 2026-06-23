@@ -49,6 +49,7 @@ subroutine InitEnv()
     character(32) :: tmpDirPadding
     character(3), parameter :: OS_default = 'win'
     integer, external :: CreateDir
+    character(PathLen) :: lowerPath
 
 
     !> Store current timestamp information
@@ -112,7 +113,12 @@ subroutine InitEnv()
             end select
         else
             projPath = trim(switch)
-            if (index(projPath, '.eddypro') == 0) projPath = ''
+            lowerPath = projPath
+            do i = 1, len_trim(lowerPath)
+                if (iachar(lowerPath(i:i)) >= 65 .and. iachar(lowerPath(i:i)) <= 90) &
+                    lowerPath(i:i) = achar(iachar(lowerPath(i:i)) + 32)
+            end do
+            if (index(lowerPath, '.eddyflow') == 0) projPath = ''
         end if
     end do arg_loop
 
@@ -220,7 +226,8 @@ subroutine CommandLineHelp(sw_ver, build_date)
     write(*, '(a)') '   [-h | --help]                        Display this help and exit'
     write(*, '(a)') '   [-v | --version]                     Output version information and exit'
     write(*, '(a)')
-    write(*, '(a)') ' PROJ_FILE                              Path of project (*.eddypro) file;&
-                                                             & if not provided, assumes ..\ini\processing.eddypro'
+    write(*, '(a)') ' PROJ_FILE                              Path of project (*.eddyflow) file;&
+                                                             & if not provided, assumes ..\ini\processing.eddyflow'
     stop
 end subroutine CommandLineHelp
+

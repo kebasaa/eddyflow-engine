@@ -42,6 +42,7 @@ subroutine DefineUsedVariables(LocCol)
     type(ColType), intent(inout) :: LocCol(MaxNumCol)
     !> local variables
     integer :: i
+    integer :: selected_ts_col
     logical :: ts_found
 
 
@@ -150,16 +151,18 @@ subroutine DefineUsedVariables(LocCol)
     !> to remember that it does not need water vapor correction and
     !> (sonic-specific) spectral corrections.
     if (EddyFlowProj%Col(ts) > 0) then
-        LocCol(EddyFlowProj%Col(ts))%useit = .true.
-        LocCol(EddyFlowProj%Col(ts))%var = 'ts'
-        LocCol(EddyFlowProj%Col(ts))%instr%category = 'fast_t_sensor'
+        selected_ts_col = EddyFlowProj%Col(ts)
+        LocCol(selected_ts_col)%useit = .true.
+        LocCol(selected_ts_col)%var = 'ts'
+        LocCol(selected_ts_col)%instr%category = 'fast_t_sensor'
         !> Search Ts or SoS from master sonic and change property in
         !> "don't use it", so now it will fall into the "non sensitive"
         !> variables group. Note that the total number of User Variables
         !> did not change
         ts_found = .false.
         do i = 1, NumCol
-            if (LocCol(i)%instr%master_sonic &
+            if (i /= selected_ts_col &
+                .and. LocCol(i)%instr%master_sonic &
                 .and. (LocCol(i)%var == 'ts' .or. LocCol(i)%var == 'sos' ) &
                 .and. LocCol(i)%useit) then
                 LocCol(i)%useit = .false.

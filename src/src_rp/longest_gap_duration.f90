@@ -51,12 +51,15 @@ integer function LongestVariableGap(arr, nrow)
     real(kind = dbl), intent(in) :: arr(nrow)
     integer :: pos, run_len
 
-    LongestVariableGap = 0;  pos = 1
+    LongestVariableGap = 0
+    pos = 1
     do while (pos <= nrow)
         if (arr(pos) == error) then
             run_len = 0
-            do while (pos <= nrow .and. arr(pos) == error)
-                run_len = run_len + 1;  pos = pos + 1
+            do while (pos <= nrow)
+                if (arr(pos) /= error) exit
+                run_len = run_len + 1
+                pos = pos + 1
             end do
             if (run_len > LongestVariableGap) LongestVariableGap = run_len
         else
