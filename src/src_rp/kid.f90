@@ -34,21 +34,47 @@ subroutine KID(Set, nrow, ncol)
     integer, intent(in) :: nrow, ncol
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
     integer :: icol
+    integer, external :: CountZeroCrossings
     real(kind = dbl) :: residuals(nrow, ncol)
 
     do icol = u, ts
         call VariableStochasticDetrending(Set(:, icol), residuals(:, icol), nrow)
         call KurtosisNoError(residuals(:, icol), nrow, 1, Essentials%KID(icol), error)
-        Essentials%ZCD(icol) = count(dabs(residuals(:, icol)) < 1d-8)
+        Essentials%ZCD(icol) = CountZeroCrossings(residuals(:, icol), nrow)
     end do
     do icol = co2, gas4
         if (E2Col(icol)%present) then
             call VariableStochasticDetrending(Set(:, icol), residuals(:, icol), nrow)
             call KurtosisNoError(residuals(:, icol), nrow, 1, Essentials%KID(icol), error)
-            Essentials%ZCD(icol) = count(dabs(residuals(:, icol)) < 1d-8)
+            Essentials%ZCD(icol) = CountZeroCrossings(residuals(:, icol), nrow)
         else
             Essentials%KID(icol) = error
             Essentials%ZCD(icol) = ierror
         end if
     end do
 end subroutine KID
+
+
+integer function CountZeroCrossings(arr, nrow)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: nrow
+    real(kind = dbl), intent(in) :: arr(nrow)
+    integer :: irow, current_sign, previous_sign
+
+    CountZeroCrossings = 0
+    previous_sign = 0
+    do irow = 1, nrow
+        if (arr(irow) == error .or. arr(irow) == 0d0) cycle
+
+        if (arr(irow) > 0d0) then
+            current_sign = 1
+        else
+            current_sign = -1
+        end if
+
+        if (previous_sign /= 0 .and. current_sign /= previous_sign) &
+            CountZeroCrossings = CountZeroCrossings + 1
+        previous_sign = current_sign
+    end do
+end function CountZeroCrossings

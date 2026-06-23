@@ -42,7 +42,7 @@ subroutine fisher(Set, nrow, ncol)
     nodup_set = Set
     do ci = u, gas4
         do rec = 2, nrow
-            if (dabs(Set(rec, ci) - Set(rec-1, ci)) < 1d-8) &
+            if (dabs(Set(rec, ci) - Set(rec-1, ci)) < 1d-6) &
                 nodup_set(rec, ci) = error
         end do
     end do
