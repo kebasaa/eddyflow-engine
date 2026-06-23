@@ -49,7 +49,7 @@ subroutine InitEnv()
     character(32) :: tmpDirPadding
     character(3), parameter :: OS_default = 'win'
     integer, external :: CreateDir
-    character(PathLen), external :: to_lower
+    character(PathLen) :: lowerPath
 
 
     !> Store current timestamp information
@@ -113,7 +113,12 @@ subroutine InitEnv()
             end select
         else
             projPath = trim(switch)
-            if (index(to_lower(projPath), '.eddyflow') == 0) projPath = ''
+            lowerPath = projPath
+            do i = 1, len_trim(lowerPath)
+                if (iachar(lowerPath(i:i)) >= 65 .and. iachar(lowerPath(i:i)) <= 90) &
+                    lowerPath(i:i) = achar(iachar(lowerPath(i:i)) + 32)
+            end do
+            if (index(lowerPath, '.eddyflow') == 0) projPath = ''
         end if
     end do arg_loop
 
@@ -226,16 +231,3 @@ subroutine CommandLineHelp(sw_ver, build_date)
     stop
 end subroutine CommandLineHelp
 
-pure function to_lower(s) result(out)
-    character(*), intent(in) :: s
-    character(len(s)) :: out
-    integer :: i, c
-    do i = 1, len(s)
-        c = iachar(s(i:i))
-        if (c >= 65 .and. c <= 90) then
-            out(i:i) = achar(c + 32)
-        else
-            out(i:i) = s(i:i)
-        end if
-    end do
-end function to_lower
