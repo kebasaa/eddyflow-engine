@@ -112,7 +112,7 @@ subroutine InitEnv()
             end select
         else
             projPath = trim(switch)
-            if (index(projPath, '.eddypro') == 0) projPath = ''
+            if (index(projPath, '.eddyflow') == 0) projPath = ''
         end if
     end do arg_loop
 
@@ -220,7 +220,7 @@ subroutine CommandLineHelp(sw_ver, build_date)
     write(*, '(a)') '   [-h | --help]                        Display this help and exit'
     write(*, '(a)') '   [-v | --version]                     Output version information and exit'
     write(*, '(a)')
-    write(*, '(a)') ' PROJ_FILE                              Path of project (*.eddypro) file;&
-                                                             & if not provided, assumes ..\ini\processing.eddypro'
+    write(*, '(a)') ' PROJ_FILE                              Path of project (*.eddyflow) file;&
+                                                             & if not provided, assumes ..\ini\processing.eddyflow'
     stop
 end subroutine CommandLineHelp

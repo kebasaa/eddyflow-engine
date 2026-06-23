@@ -82,7 +82,7 @@ subroutine ExceptionHandler(error_code)
             write(*,*) '  Fatal error(20)> Program execution aborted.'
             stop 1
         case(21)
-            write(*,*) '  Fatal error(21)> Configuration file (project file with extension *.eddypro) not found.'
+            write(*,*) '  Fatal error(21)> Configuration file (project file with extension *.eddyflow) not found.'
             write(*,*) '  Fatal error(21)> Program execution aborted.'
             stop 1
         case(22)

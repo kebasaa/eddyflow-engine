@@ -90,7 +90,7 @@ module m_common_global_var
     character(PathLen) :: TmpDir
     character(PathLen) :: PrjPath
 
-    character(18), parameter :: PrjFile   = 'processing.eddypro'
+    character(19), parameter :: PrjFile   = 'processing.eddyflow'
     character(6), parameter :: licor_appdata = '.licor'
     character(22)  :: Timestamp_FilePadding
     character(8), parameter  :: EDDYFLOW_FilePadding    = 'eddyflow'

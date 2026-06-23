@@ -575,7 +575,7 @@ Program EddyFlowFCC
     !> Copy ".eddypro" file into output folder
     call CopyFile(trim(adjustl(PrjPath)), &
     trim(adjustl(Dir%main_out)) // 'processing' &
-    // Timestamp_FilePadding // '.eddypro')
+    // Timestamp_FilePadding // '.eddyflow')
 
 
     write(*, '(a)') ''
