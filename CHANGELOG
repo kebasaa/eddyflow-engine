@@ -1,3 +1,8 @@
+7.1.0 (2026-06-23)
+
+    Engine:
+    - Fix: .ghg metadata not detected when both fast_t and sos are available in the file
+
 7.0.4 (2026-06-19)
 
     Engine:
