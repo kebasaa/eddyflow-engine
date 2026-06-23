@@ -113,6 +113,10 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
             !> If it's in the raw file processing loop, define used variables
             !> based on variables already identified (LocBypassCol)
             call RetrieveVarsSelection(LocBypassCol, LocCol)
+            !> Re-apply user column selection: ReadMetadataFile resets var names
+            !> (e.g. col_ts reverts to 'fast_t'), and BypassCol is never populated
+            !> for GHG files, so RetrieveVarsSelection alone cannot restore useit.
+            call DefineUsedVariables(LocCol)
         else
             !> In the preamble phase
             !> Embedded mode: define variables to be used,
