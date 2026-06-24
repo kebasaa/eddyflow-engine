@@ -353,6 +353,18 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%fluxnet_standardize_biomet = EPPrjCTags(48)%value(1:1) == '1'
     EddyFlowProj%fluxnet_mode = EPPrjCTags(49)%value(1:1) == '1'
 
+    !> Conditional Eddy Covariance (Zahn et al. 2022)
+    select case (EPPrjCTags(50)%value(1:1))
+        case ('1')
+            EddyFlowProj%do_cec = 1
+        case ('2')
+            EddyFlowProj%do_cec = 2
+        case ('3')
+            EddyFlowProj%do_cec = 3
+        case default
+            EddyFlowProj%do_cec = 0
+    end select
+
     !> main output directory, only in Desktop mode
     if (EddyFlowProj%run_env /= 'embedded') then
         Dir%main_out = EPPrjCTags(35)%value

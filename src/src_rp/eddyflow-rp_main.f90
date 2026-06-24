@@ -2122,7 +2122,6 @@ program EddyFlowRP
                 call SpectralAnalysis(Stats%date, Stats%time, bf, &
                     SpecSet(:, u:gas4), size(SpecSet, 1), gas4)
                 if (allocated(SpecSet)) deallocate(SpecSet)
-                if (allocated(E2Primes)) deallocate(E2Primes)
 
                 !> Reset stats to Stats7, after the parenthesis
                 !> of spectral analysis
@@ -2131,7 +2130,7 @@ program EddyFlowRP
                 Essentials%degH(:) = error
             end if
         end if
-        if (allocated(E2Primes)) deallocate(E2Primes)
+        !> E2Primes deallocation is deferred to after CEC computation below
         if (allocated(UserPrimes)) deallocate(UserPrimes)
         if (allocated(UserSet)) deallocate(UserSet)
 
@@ -2202,6 +2201,24 @@ program EddyFlowRP
                 BPCF = errBPCF
                 foot_model_used = 'none'
             end if
+
+            !> Conditional Eddy Covariance partitioning (Zahn et al. 2022)
+            !> Uses the fully QC'd, rotated, detrended E2Primes together with
+            !> WPL-corrected Flux3 totals. E2Primes deallocation is deferred to here.
+            CECFlux%E_cec    = error
+            CECFlux%T_cec    = error
+            CECFlux%R_cec    = error
+            CECFlux%P_cec    = error
+            CECFlux%r_ET_cec = error
+            CECFlux%r_Fc_cec = error
+            CECFlux%ok       = .false.
+            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows &
+                .and. allocated(E2Primes)) then
+                call CecFluxes(E2Primes, size(E2Primes, 1), size(E2Primes, 2), &
+                               gW, gCO2, gH2O, Flux3%ET, Flux3%co2, &
+                               EddyFlowProj%do_cec, CECFlux)
+            end if
+            if (allocated(E2Primes)) deallocate(E2Primes)
 
             !> Calculate storage terms
             if(InitializeStorage) then
