@@ -2207,7 +2207,7 @@ program EddyFlowRP
             !> WPL-corrected Flux3 totals. E2Primes deallocation is deferred to here.
             if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows &
                 .and. allocated(E2Primes)) then
-                call CecFluxes(Flux3%ET, Flux3%co2, EddyFlowProj%do_cec)
+                call CecFluxes(E2Primes, Flux3%ET, Flux3%co2, EddyFlowProj%do_cec)
             end if
             if (allocated(E2Primes)) deallocate(E2Primes)
 

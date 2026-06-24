@@ -39,18 +39,20 @@
 !     E = ET / (1 + 1/r_ET)         T = ET / (1 + r_ET)
 !     R = Fc / (1 + 1/r_Fc)         P = Fc / (1 + r_Fc)
 !
-! Uses module globals: E2Primes, CECFlux, gW, gCO2, gH2O, error (from m_rp_global_var)
-!
 ! Reference: Zahn et al. (2022), doi:10.1111/gcb.16122
 !***************************************************************************
-subroutine CecFluxes(ET_total, Fc_total, do_cec)
+subroutine CecFluxes(primes, ET_total, Fc_total, do_cec)
     use m_rp_global_var
     implicit none
+    !> Detrended fluctuations array (rows=samples, cols=variables); uses module
+    !> index constants iW, iCO2, iH2O (= gW, gCO2, gH2O) to avoid name clash.
+    real(kind = dbl), intent(in) :: primes(:, :)
     real(kind = dbl), intent(in) :: ET_total  !< WPL-corrected ET [mmol m-2 s-1]
     real(kind = dbl), intent(in) :: Fc_total  !< WPL-corrected NEE [umol m-2 s-1]
     integer, intent(in) :: do_cec             !< 1=H2O+CO2, 2=H2O only, 3=CO2 only
     !> local variables
     integer :: i, nr
+    integer :: iW, iH2O, iCO2
     integer :: N, n_O1, n_O2
     real(kind = dbl) :: wpr, qpr, cpr
     real(kind = dbl) :: sum_fE, sum_fT, sum_fR, sum_fP
@@ -58,40 +60,44 @@ subroutine CecFluxes(ET_total, Fc_total, do_cec)
     real(kind = dbl) :: r_ET, r_Fc
     real(kind = dbl) :: frac_O1, frac_O2
 
+    !> Copy module index constants to local names to avoid ambiguity
+    iW   = gW
+    iH2O = gH2O
+    iCO2 = gCO2
+    nr   = size(primes, 1)
+
     !> Initialise output to error
     CECFlux%E_cec    = error
-    CECFlux%T_cec    = error
-    CECFlux%R_cec    = error
-    CECFlux%P_cec    = error
+    CECFlux%Tr_cec   = error
+    CECFlux%Reco_cec = error
+    CECFlux%GPP_cec  = error
+    CECFlux%NEE_cec  = error
     CECFlux%r_ET_cec = error
     CECFlux%r_Fc_cec = error
     CECFlux%ok       = .false.
 
-    if (.not. allocated(E2Primes)) return
-    nr = size(E2Primes, 1)
-
-    !> ===== Phase 1: octant conditional sample fluxes from E2Primes =====
+    !> ===== Phase 1: octant conditional sample fluxes =====
     N = 0; n_O1 = 0; n_O2 = 0
     sum_fE = 0d0; sum_fT = 0d0
     sum_fR = 0d0; sum_fP = 0d0
 
     do i = 1, nr
-        wpr = E2Primes(i, gW)
-        qpr = E2Primes(i, gH2O)
-        cpr = E2Primes(i, gCO2)
+        wpr = primes(i, iW)
+        qpr = primes(i, iH2O)
+        cpr = primes(i, iCO2)
         if (wpr == error .or. qpr == error .or. cpr == error) cycle
         N = N + 1
         !> Octant O1: non-stomatal (evaporation/respiration)
         if (wpr > 0d0 .and. qpr > 0d0 .and. cpr > 0d0) then
-            n_O1    = n_O1 + 1
-            sum_fE  = sum_fE + wpr * qpr
-            sum_fR  = sum_fR + wpr * cpr
+            n_O1   = n_O1 + 1
+            sum_fE = sum_fE + wpr * qpr
+            sum_fR = sum_fR + wpr * cpr
         end if
         !> Octant O2: stomatal (transpiration/photosynthesis)
         if (wpr > 0d0 .and. qpr > 0d0 .and. cpr < 0d0) then
-            n_O2    = n_O2 + 1
-            sum_fT  = sum_fT + wpr * qpr
-            sum_fP  = sum_fP + wpr * cpr
+            n_O2   = n_O2 + 1
+            sum_fT = sum_fT + wpr * qpr
+            sum_fP = sum_fP + wpr * cpr
         end if
     end do
 
@@ -122,38 +128,42 @@ subroutine CecFluxes(ET_total, Fc_total, do_cec)
     if ((do_cec == 1 .or. do_cec == 2) .and. ET_total /= error) then
         if (frac_O1 < 0.05d0) then
             !> Almost no non-stomatal signal -> all transpiration
-            CECFlux%E_cec = 0d0
-            CECFlux%T_cec = ET_total
+            CECFlux%E_cec  = 0d0
+            CECFlux%Tr_cec = ET_total
         else if (frac_O2 < 0.05d0) then
             !> Almost no stomatal signal -> all evaporation
-            CECFlux%E_cec = ET_total
-            CECFlux%T_cec = 0d0
+            CECFlux%E_cec  = ET_total
+            CECFlux%Tr_cec = 0d0
         else if (r_ET /= error .and. r_ET /= 0d0) then
-            CECFlux%E_cec = ET_total / (1d0 + 1d0 / r_ET)
-            CECFlux%T_cec = ET_total / (1d0 + r_ET)
+            CECFlux%E_cec  = ET_total / (1d0 + 1d0 / r_ET)
+            CECFlux%Tr_cec = ET_total / (1d0 + r_ET)
         else
-            CECFlux%T_cec = ET_total
-            CECFlux%E_cec = 0d0
+            CECFlux%Tr_cec = ET_total
+            CECFlux%E_cec  = 0d0
         end if
     end if
 
     !> CO2 partitioning (do_cec = 1 or 3)
     if ((do_cec == 1 .or. do_cec == 3) .and. Fc_total /= error) then
-        !> Near-singularity: r_Fc ~ -1 means R and P nearly cancel
+        !> Near-singularity: r_Fc ~ -1 means Reco and GPP nearly cancel
         if (r_Fc /= error .and. abs(r_Fc + 1d0) < 0.05d0) then
-            !> R_cec and P_cec remain error (undefined)
+            !> Reco_cec and GPP_cec remain error (undefined)
         else if (frac_O1 < 0.05d0) then
-            CECFlux%R_cec = 0d0
-            CECFlux%P_cec = Fc_total
+            CECFlux%Reco_cec = 0d0
+            CECFlux%GPP_cec  = Fc_total
         else if (frac_O2 < 0.05d0) then
-            CECFlux%R_cec = Fc_total
-            CECFlux%P_cec = 0d0
+            CECFlux%Reco_cec = Fc_total
+            CECFlux%GPP_cec  = 0d0
         else if (r_Fc /= error .and. r_Fc /= 0d0) then
-            CECFlux%R_cec = Fc_total / (1d0 + 1d0 / r_Fc)
-            CECFlux%P_cec = Fc_total / (1d0 + r_Fc)
+            CECFlux%Reco_cec = Fc_total / (1d0 + 1d0 / r_Fc)
+            CECFlux%GPP_cec  = Fc_total / (1d0 + r_Fc)
         else
-            CECFlux%R_cec = Fc_total
-            CECFlux%P_cec = 0d0
+            CECFlux%Reco_cec = Fc_total
+            CECFlux%GPP_cec  = 0d0
+        end if
+        !> NEE_cec = Reco + GPP (GPP is negative by sign convention -> recovers Fc_total)
+        if (CECFlux%Reco_cec /= error .and. CECFlux%GPP_cec /= error) then
+            CECFlux%NEE_cec = CECFlux%Reco_cec + CECFlux%GPP_cec
         end if
     end if
 

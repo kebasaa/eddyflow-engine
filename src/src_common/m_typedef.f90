@@ -537,10 +537,11 @@ module m_typedef
 
     !> Results of Conditional Eddy Covariance partitioning (Zahn et al. 2022)
     type :: CECFluxType
-        real(kind = dbl) :: E_cec    !< evaporation component [mmol m-2 s-1]
-        real(kind = dbl) :: T_cec    !< transpiration component [mmol m-2 s-1]
-        real(kind = dbl) :: R_cec    !< respiration component [umol m-2 s-1]
-        real(kind = dbl) :: P_cec    !< photosynthesis component [umol m-2 s-1]
+        real(kind = dbl) :: E_cec    !< evaporation [mmol m-2 s-1]
+        real(kind = dbl) :: Tr_cec   !< transpiration [mmol m-2 s-1]
+        real(kind = dbl) :: Reco_cec !< ecosystem respiration [umol m-2 s-1]
+        real(kind = dbl) :: GPP_cec  !< gross primary production [umol m-2 s-1]
+        real(kind = dbl) :: NEE_cec  !< net ecosystem exchange = Reco+GPP [umol m-2 s-1]
         real(kind = dbl) :: r_ET_cec !< sample flux ratio fE/fT [dimensionless]
         real(kind = dbl) :: r_Fc_cec !< sample flux ratio fR/fP [dimensionless]
         logical :: ok
