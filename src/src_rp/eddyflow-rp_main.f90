@@ -2188,6 +2188,7 @@ program EddyFlowRP
 
             !> Calculate fluxes at Level 0
             call Fluxes0_rp(.true.)
+            flush(6)
 
             !> As of now, still use CO2 analyzer software version as a proxy for
             !> Logger software version. However, the machinery is in place
@@ -2206,18 +2207,22 @@ program EddyFlowRP
                     Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                     Metadata%logger_swver, Meth%det, &
                     RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
+                flush(6)
 
                 !> Calculate fluxes at Level 1
                 call Fluxes1_rp()
+                flush(6)
 
                 !> Calculate fluxes at Level 2 and Level 3
                 call Fluxes23_rp()
+                flush(6)
 
                 !> Footprint estimation
                 foot_model_used = Meth%foot(1:len_trim(Meth%foot))
                 call FootprintHandle(Stats%Cov(w, w), Ambient%us, &
                     Ambient%zL, Ambient%WS, Ambient%L, &
                     E2Col(u)%Instr%height, Metadata%d, Metadata%z0)
+                flush(6)
             else
                 Foot = errFootprint
                 Flux1 = errFlux

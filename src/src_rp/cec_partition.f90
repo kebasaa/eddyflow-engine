@@ -77,8 +77,8 @@ subroutine CecFluxes(primes, ET_total, Fc_total, do_cec)
 
     do i = 1, nr
         wpr = primes(i, gW)
-        qpr = primes(i, gH2O)
-        cpr = primes(i, gCO2)
+        qpr = primes(i, h2o)
+        cpr = primes(i, co2)
         if (wpr == error .or. qpr == error .or. cpr == error) cycle
         N = N + 1
         !> Octant O1: non-stomatal (evaporation/respiration)
