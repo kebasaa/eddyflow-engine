@@ -631,6 +631,7 @@ module m_typedef
         character(PathLen) :: pf
         character(PathLen) :: to
         character(PathLen) :: sa
+        character(PathLen) :: cec   !< CEC ratios intermediate file (RP→FCC)
     end type FileType
 
     type :: FluxType

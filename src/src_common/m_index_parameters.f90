@@ -229,4 +229,5 @@ module m_index_parameters
     integer, parameter :: uoff  = 159
     integer, parameter :: urh   = 160
     integer, parameter :: uto   = 161
+    integer, parameter :: ucec  = 162  !< CEC ratios intermediate file (RP→FCC)
 end module m_index_parameters

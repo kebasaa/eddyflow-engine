@@ -1444,6 +1444,17 @@ program EddyFlowRP
 
     periods_loop: do
         Gas4CalRefCol = InitGas4CalRefCol
+        !> Reset CEC outputs to error at the start of every period
+        if (EddyFlowProj%do_cec > 0) then
+            CECFlux%E_cec    = error
+            CECFlux%Tr_cec   = error
+            CECFlux%Reco_cec = error
+            CECFlux%GPP_cec  = error
+            CECFlux%NEE_cec  = error
+            CECFlux%r_ET_cec = error
+            CECFlux%r_Fc_cec = error
+            CECFlux%ok       = .false.
+        end if
 
         !***********************************************************************
         !**** RAW FILE IMPORT **************************************************
@@ -1529,6 +1540,8 @@ program EddyFlowRP
             if (EddyFlowProj%run_mode /= 'md_retrieval') then
                 call ExceptionHandler(53)
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
             end if
             call hms_delta_print(PeriodSkipMessage,'')
             cycle periods_loop
@@ -1558,6 +1571,8 @@ program EddyFlowRP
             if (EddyFlowProj%run_mode /= 'md_retrieval') then
                 call ExceptionHandler(53)
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
             end if
             call hms_delta_print(PeriodSkipMessage,'')
             cycle periods_loop
@@ -1609,6 +1624,8 @@ program EddyFlowRP
             !> Period skip control
             if (skip_period) then
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
             end if
@@ -1625,6 +1642,8 @@ program EddyFlowRP
                 / dfloat(MaxPeriodNumRecords) * 100d0
             if (Essentials%n_in > 0 .and. MissingRecords > RPsetup%max_lack) then
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
                 call ExceptionHandler(58)
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
@@ -1641,6 +1660,8 @@ program EddyFlowRP
                 / dfloat(MaxPeriodNumRecords) * 100d0
             if (MissingRecords > RPsetup%max_lack) then
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
                 call ExceptionHandler(58)
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
@@ -1732,6 +1753,8 @@ program EddyFlowRP
                 / dfloat(MaxPeriodNumRecords) * 100d0
             if (MissingRecords > RPsetup%max_lack) then
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
                 if(allocated(E2Set)) deallocate(E2Set)
                 if(allocated(E2Primes)) deallocate(E2Primes)
                 if(allocated(UserSet)) deallocate(UserSet)
@@ -1805,6 +1828,8 @@ program EddyFlowRP
             !> stops processing this period
                 if (skip_period) then
                 if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetOnlyBiomet()
+                if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) &
+                    call WriteCecStats()
                 if(allocated(E2Set)) deallocate(E2Set)
                 if(allocated(E2Primes)) deallocate(E2Primes)
                 if(allocated(UserSet)) deallocate(UserSet)
@@ -2203,11 +2228,14 @@ program EddyFlowRP
             end if
 
             !> Conditional Eddy Covariance partitioning (Zahn et al. 2022)
-            !> Uses the fully QC'd, rotated, detrended E2Primes together with
-            !> WPL-corrected Flux3 totals. E2Primes deallocation is deferred to here.
-            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows &
-                .and. allocated(E2Primes)) then
-                call CecFluxes(E2Primes, Flux3%ET, Flux3%co2, EddyFlowProj%do_cec)
+            !> Phase 1 (ratios from E2Primes) always runs; phase 2 (partition)
+            !> completes here only when fcc_follows=.false. — FCC uses the
+            !> ratios written by WriteCecStats to apply the partition to its
+            !> own spectrally-corrected fluxes.
+            if (EddyFlowProj%do_cec > 0) then
+                if (allocated(E2Primes)) &
+                    call CecFluxes(E2Primes, Flux3%ET, Flux3%co2, EddyFlowProj%do_cec)
+                if (EddyFlowProj%fcc_follows) call WriteCecStats()
             end if
             if (allocated(E2Primes)) deallocate(E2Primes)
 
@@ -2291,6 +2319,7 @@ program EddyFlowRP
     close(uflxnt)
     close(ubiomet)
     close(uqc)
+    if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) close(ucec)
 
     !> If no averaging period was performed, return message and cancel tmp files
     if (NumberOfOkPeriods == 0 .and. EddyFlowProj%run_mode /= 'md_retrieval') then

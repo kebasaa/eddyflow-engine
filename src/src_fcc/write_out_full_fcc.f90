@@ -162,6 +162,26 @@ subroutine WriteOutFullFcc(lEx)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
+    !> Conditional Eddy Covariance (Zahn et al. 2022)
+    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
+        call WriteDatumFloat(CECFlux%E_cec,    field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%Tr_cec,   field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%r_ET_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
+        call WriteDatumFloat(CECFlux%Reco_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%GPP_cec,  field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%NEE_cec,  field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%r_Fc_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+
     !> storage
     call WriteDatumFloat(lEx%Stor%H, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)

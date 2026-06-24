@@ -622,6 +622,15 @@ subroutine InitOutFiles_rp()
 
     !>==========================================================================
     !>==========================================================================
+    !> CEC ratios intermediate file (written by RP, consumed by FCC)
+    if (EddyFlowProj%do_cec > 0 .and. EddyFlowProj%fcc_follows) then
+        open(ucec, file = trim(Dir%main_out) // trim(EddyFlowProj%id) &
+            // '_cec_ratios.csv', iostat = open_status)
+        write(ucec, '(a)') 'timestamp,do_cec,r_ET_cec,r_Fc_cec'
+    end if
+
+    !>==========================================================================
+    !>==========================================================================
     !> Metadata output
     if (EddyFlowProj%out_md) then
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
