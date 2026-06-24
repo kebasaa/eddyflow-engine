@@ -203,6 +203,9 @@ wind_sector.o: \
 footprint_handle.o: \
 	footprint_handle.f90 \
 	m_common_global_var.o
+cec_partition.o: \
+	cec_partition.f90 \
+	m_rp_global_var.o
 molefractions_and_mixingratios.o: \
 	molefractions_and_mixingratios.f90 \
 	m_rp_global_var.o

@@ -475,6 +475,19 @@ subroutine InitOutFiles_rp()
                     call AddDatum(header3,'--', separator)
                 end do
             end if
+
+            !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
+            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,r_ET_cec', separator)
+                call AddDatum(header3, '[mmol+1m-2s-1],[mmol+1m-2s-1],[#]', separator)
+            end if
+            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
+                call AddDatum(header2, 'Reco_cec,GPP_cec,NEE_cec,r_Fc_cec', separator)
+                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
+            end if
+
             call latin1_to_utf8(header1, head1_utf8)
             call latin1_to_utf8(header2, head2_utf8)
             call latin1_to_utf8(header3, head3_utf8)
@@ -583,6 +596,19 @@ subroutine InitOutFiles_rp()
                     call AddDatum(header3,'--', separator)
                 end do
             end if
+
+            !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
+            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,r_ET_cec', separator)
+                call AddDatum(header3, '[mmol+1m-2s-1],[mmol+1m-2s-1],[#]', separator)
+            end if
+            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
+                call AddDatum(header2, 'Reco_cec,GPP_cec,NEE_cec,r_Fc_cec', separator)
+                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
+            end if
+
             call latin1_to_utf8(header1, head1_utf8)
             call latin1_to_utf8(header2, head2_utf8)
             call latin1_to_utf8(header3, head3_utf8)

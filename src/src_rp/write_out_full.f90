@@ -584,6 +584,26 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         end do
     end if
 
+    !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
+    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
+        call WriteDatumFloat(CECFlux%E_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%Tr_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%r_ET_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
+        call WriteDatumFloat(CECFlux%Reco_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%GPP_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%NEE_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(CECFlux%r_Fc_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+
     write(uflx, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
 end subroutine WriteOutFull
