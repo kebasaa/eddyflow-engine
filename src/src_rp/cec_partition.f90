@@ -44,15 +44,13 @@
 subroutine CecFluxes(primes, ET_total, Fc_total, do_cec)
     use m_rp_global_var
     implicit none
-    !> Detrended fluctuations array (rows=samples, cols=variables); uses module
-    !> index constants iW, iCO2, iH2O (= gW, gCO2, gH2O) to avoid name clash.
+    !> Detrended fluctuations array (rows=samples, cols=variables).
     real(kind = dbl), intent(in) :: primes(:, :)
     real(kind = dbl), intent(in) :: ET_total  !< WPL-corrected ET [mmol m-2 s-1]
     real(kind = dbl), intent(in) :: Fc_total  !< WPL-corrected NEE [umol m-2 s-1]
     integer, intent(in) :: do_cec             !< 1=H2O+CO2, 2=H2O only, 3=CO2 only
     !> local variables
     integer :: i, nr
-    integer :: iW, iH2O, iCO2
     integer :: N, n_O1, n_O2
     real(kind = dbl) :: wpr, qpr, cpr
     real(kind = dbl) :: sum_fE, sum_fT, sum_fR, sum_fP
@@ -60,11 +58,7 @@ subroutine CecFluxes(primes, ET_total, Fc_total, do_cec)
     real(kind = dbl) :: r_ET, r_Fc
     real(kind = dbl) :: frac_O1, frac_O2
 
-    !> Copy module index constants to local names to avoid ambiguity
-    iW   = gW
-    iH2O = gH2O
-    iCO2 = gCO2
-    nr   = size(primes, 1)
+    nr = size(primes, 1)
 
     !> Initialise output to error
     CECFlux%E_cec    = error
@@ -82,9 +76,9 @@ subroutine CecFluxes(primes, ET_total, Fc_total, do_cec)
     sum_fR = 0d0; sum_fP = 0d0
 
     do i = 1, nr
-        wpr = primes(i, iW)
-        qpr = primes(i, iH2O)
-        cpr = primes(i, iCO2)
+        wpr = primes(i, gW)
+        qpr = primes(i, gH2O)
+        cpr = primes(i, gCO2)
         if (wpr == error .or. qpr == error .or. cpr == error) cycle
         N = N + 1
         !> Octant O1: non-stomatal (evaporation/respiration)
