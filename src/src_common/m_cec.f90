@@ -135,8 +135,7 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
         descriptor%h2o_valid = .true.
     end if
 
-    if (descriptor%r_Fc /= error .and. descriptor%r_Fc > -1.2d0 &
-        .and. descriptor%r_Fc < -0.8d0) then
+    if (descriptor%r_Fc /= error .and. abs(descriptor%r_Fc + 1d0) < 0.05d0) then
         descriptor%co2_status = cec_singular
     else if (descriptor%frac_O1 < 0.05d0 .or. descriptor%r_Fc == 0d0) then
         descriptor%co2_status = cec_all_stomatal
