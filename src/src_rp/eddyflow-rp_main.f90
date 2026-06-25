@@ -2091,10 +2091,12 @@ program EddyFlowRP
 
             !> Extract CEC before spectral processing interpolates E2Primes.
             if (EddyFlowProj%do_cec > 0) then
+                write(*, '(a)', advance='no') '  Calculating CEC partitioning..'
                 call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
                     StDiff%w_h2o, CECDescriptor)
                 CECFlux%r_ET_cec = CECDescriptor%r_ET
                 CECFlux%r_Fc_cec = CECDescriptor%r_Fc
+                write(*, '(a)') ' Done.'
             end if
 
             !*******************************************************************
