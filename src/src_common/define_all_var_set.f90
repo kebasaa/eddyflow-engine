@@ -198,6 +198,8 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                             fRaw(1:N, j) = fRaw(1:N, j) * 1e3
                         case ('umol_m3', 'ppb')
                             fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
+                        case ('pmol_mol')
+                            fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
                         case ('g_m3')
                             select case (LocCol(j)%var)
                                 case('co2')
@@ -258,6 +260,10 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                         case ('umol_m3', 'ppb')
                             where(fRaw(1:N, j) /= error)
                                 fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
+                            end where
+                        case ('pmol_mol')
+                            where(fRaw(1:N, j) /= error)
+                                fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
                             end where
                         case ('g_m3')
                             select case (LocCol(j)%var)
