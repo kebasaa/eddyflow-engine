@@ -535,13 +535,36 @@ module m_typedef
         integer :: do_cec    !< 0=disabled, 1=H2O+CO2, 2=H2O only, 3=CO2 only
     end type EddyFlowProjType
 
+    !> CEC component status values.
+    integer, parameter :: cec_rejected = 0
+    integer, parameter :: cec_normal = 1
+    integer, parameter :: cec_all_stomatal = 2
+    integer, parameter :: cec_all_nonstomatal = 3
+    integer, parameter :: cec_singular = 4
+
+    !> High-frequency Conditional Eddy Covariance partition descriptor.
+    type :: CECDescriptorType
+        real(kind = dbl) :: r_ET
+        real(kind = dbl) :: r_Fc
+        real(kind = dbl) :: frac_O1
+        real(kind = dbl) :: frac_O2
+        integer :: n_valid
+        integer :: n_O1
+        integer :: n_O2
+        integer :: h2o_status
+        integer :: co2_status
+        logical :: h2o_valid
+        logical :: co2_valid
+    end type CECDescriptorType
+
     !> Results of Conditional Eddy Covariance partitioning (Zahn et al. 2022)
     type :: CECFluxType
-        real(kind = dbl) :: E_cec    !< evaporation [mmol m-2 s-1]
-        real(kind = dbl) :: Tr_cec   !< transpiration [mmol m-2 s-1]
+        real(kind = dbl) :: E_cec    !< evaporation [mm hour-1]
+        real(kind = dbl) :: Tr_cec   !< transpiration [mm hour-1]
         real(kind = dbl) :: Reco_cec !< ecosystem respiration [umol m-2 s-1]
-        real(kind = dbl) :: GPP_cec  !< gross primary production [umol m-2 s-1]
-        real(kind = dbl) :: NEE_cec  !< net ecosystem exchange = Reco+GPP [umol m-2 s-1]
+        real(kind = dbl) :: P_cec    !< net photosynthesis [umol m-2 s-1]
+        real(kind = dbl) :: GPP_cec  !< compatibility alias for P_cec
+        real(kind = dbl) :: NEE_cec  !< net ecosystem exchange = Reco+P [umol m-2 s-1]
         real(kind = dbl) :: r_ET_cec !< sample flux ratio fE/fT [dimensionless]
         real(kind = dbl) :: r_Fc_cec !< sample flux ratio fR/fP [dimensionless]
         logical :: ok
@@ -1319,8 +1342,7 @@ module m_typedef
         type(FluxType) :: Flux0
         Type(SwVerType) :: logger_swver
         type(StatsType) :: stats
-        real(kind = dbl) :: r_ET_cec
-        real(kind = dbl) :: r_Fc_cec
+        type(CECDescriptorType) :: cec
     end type ExType
 
     type fluxnetChunksType

@@ -237,7 +237,16 @@ subroutine InitFluxnetFile_rp()
     !> CEC partitioning ratios (always present; error when do_cec=0)
     call AddDatum(csv_row, 'r_ET_cec', separator)
     call AddDatum(csv_row, 'r_Fc_cec', separator)
+    call AddDatum(csv_row, 'CEC_N_VALID', separator)
+    call AddDatum(csv_row, 'CEC_N_O1', separator)
+    call AddDatum(csv_row, 'CEC_N_O2', separator)
+    call AddDatum(csv_row, 'CEC_FRAC_O1', separator)
+    call AddDatum(csv_row, 'CEC_FRAC_O2', separator)
+    call AddDatum(csv_row, 'CEC_H2O_VALID', separator)
+    call AddDatum(csv_row, 'CEC_CO2_VALID', separator)
+    call AddDatum(csv_row, 'CEC_H2O_STATUS', separator)
+    call AddDatum(csv_row, 'CEC_CO2_STATUS', separator)
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
-end subroutine InitFluxnetFile_rp
+end subroutine InitFluxnetFile_rp

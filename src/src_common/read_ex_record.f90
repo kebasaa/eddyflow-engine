@@ -51,8 +51,13 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: i
     integer :: var
     integer :: ix
+    integer :: cec_h2o_valid
+    integer :: cec_co2_valid
+    integer :: cec_start
+    integer :: remaining_fields
     character(9) :: vm97flags(GHGNumVar)
     character(16000) :: dataline
+    character(16000) :: cec_line
     real(kind = dbl) :: aux(32)
     include 'interfaces_1.inc'
 
@@ -258,13 +263,36 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         end do
     end if
 
-    !> Read CEC ratios appended by RP (always present; error when do_cec=0)
-    lEx%r_ET_cec = error
-    lEx%r_Fc_cec = error
+    !> Split and read the CEC descriptor appended after variable biomet data.
+    lEx%cec%r_ET = error
+    lEx%cec%r_Fc = error
+    lEx%cec%frac_O1 = error
+    lEx%cec%frac_O2 = error
+    lEx%cec%n_valid = 0
+    lEx%cec%n_O1 = 0
+    lEx%cec%n_O2 = 0
+    lEx%cec%h2o_status = cec_rejected
+    lEx%cec%co2_status = cec_rejected
+    lEx%cec%h2o_valid = .false.
+    lEx%cec%co2_valid = .false.
     if (len_trim(dataline) > 0) then
-        read(dataline, *, iostat = read_status) lEx%r_ET_cec, lEx%r_Fc_cec
-        ix = strCharIndex(dataline, ',', 2)
-        if (ix > 0) dataline = dataline(ix+1: len_trim(dataline))
+        remaining_fields = count([(dataline(i:i) == ',', &
+            i = 1, len_trim(dataline))]) + 1
+        cec_start = strCharIndex(dataline, ',', remaining_fields - 11)
+        if (cec_start > 0) then
+            cec_line = dataline(cec_start + 1:len_trim(dataline))
+            dataline = dataline(1:cec_start - 1)
+        else
+            cec_line = ''
+        end if
+        read(cec_line, *, iostat = read_status) lEx%cec%r_ET, lEx%cec%r_Fc, &
+            lEx%cec%n_valid, lEx%cec%n_O1, lEx%cec%n_O2, &
+            lEx%cec%frac_O1, lEx%cec%frac_O2, cec_h2o_valid, cec_co2_valid, &
+            lEx%cec%h2o_status, lEx%cec%co2_status
+        if (read_status == 0) then
+            lEx%cec%h2o_valid = cec_h2o_valid == 1
+            lEx%cec%co2_valid = cec_co2_valid == 1
+        end if
     end if
 
     !> Put remaining into last chunk

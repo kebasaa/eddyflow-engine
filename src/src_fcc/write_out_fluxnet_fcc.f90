@@ -492,6 +492,19 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> Biomet data
     call AddDatum(csv_row, fluxnetChunks%s(6), separator)
 
+    !> Preserve RP's high-frequency CEC descriptor in FCC output.
+    call AddFloatDatumToDataline(lEx%cec%r_ET, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%cec%r_Fc, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(lEx%cec%n_valid, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(lEx%cec%n_O1, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(lEx%cec%n_O2, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%cec%frac_O1, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%cec%frac_O2, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(merge(1, 0, lEx%cec%h2o_valid), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(merge(1, 0, lEx%cec%co2_valid), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(lEx%cec%h2o_status, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(lEx%cec%co2_status, csv_row, EddyFlowProj%err_label)
+
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')
     csv_row = replace2(csv_row, ',NaN,',   ',' // trim(EddyFlowProj%err_label) // ',')

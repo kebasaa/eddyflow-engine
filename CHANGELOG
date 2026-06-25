@@ -1,3 +1,13 @@
+Unreleased
+
+    Engine:
+    - Fix: prevent a CEC segmentation fault by providing module-based procedure interfaces.
+    - Refine: extract CEC partition descriptors before spectral interpolation and apply them
+              to the authoritative RP or FCC corrected totals.
+    - Refine: enforce CEC short-gap, completeness, stationarity, and octant validity criteria.
+    - Fix: preserve the complete CEC descriptor through the RP-to-FCC essentials record.
+    - Fix: report CEC net photosynthesis as P_cec and correct E_cec/Tr_cec units to mm hour-1.
+
 7.1.0 (2026-06-23)
 
     Engine:

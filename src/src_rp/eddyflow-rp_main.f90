@@ -35,6 +35,7 @@
 !***************************************************************************
 program EddyFlowRP
     use m_rp_global_var
+    use m_cec
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -1444,17 +1445,9 @@ program EddyFlowRP
 
     periods_loop: do
         Gas4CalRefCol = InitGas4CalRefCol
-        !> Reset CEC outputs to error at the start of every period
-        if (EddyFlowProj%do_cec > 0) then
-            CECFlux%E_cec    = error
-            CECFlux%Tr_cec   = error
-            CECFlux%Reco_cec = error
-            CECFlux%GPP_cec  = error
-            CECFlux%NEE_cec  = error
-            CECFlux%r_ET_cec = error
-            CECFlux%r_Fc_cec = error
-            CECFlux%ok       = .false.
-        end if
+        !> Reset CEC state at the start of every period.
+        call ResetCecDescriptor(CECDescriptor)
+        call ResetCecFlux(CECFlux)
 
         !***********************************************************************
         !**** RAW FILE IMPORT **************************************************
@@ -2096,6 +2089,14 @@ program EddyFlowRP
             !> If requested, estimate random error
             call RandomUncertaintyHandle(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
 
+            !> Extract CEC before spectral processing interpolates E2Primes.
+            if (EddyFlowProj%do_cec > 0) then
+                call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
+                    StDiff%w_h2o, CECDescriptor)
+                CECFlux%r_ET_cec = CECDescriptor%r_ET
+                CECFlux%r_Fc_cec = CECDescriptor%r_Fc
+            end if
+
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE *****************************
             !**** CALCULATE AND OUTPUT CO-SPECTRA  *****************************
@@ -2213,14 +2214,11 @@ program EddyFlowRP
                 foot_model_used = 'none'
             end if
 
-            !> Conditional Eddy Covariance partitioning (Zahn et al. 2022)
-            !> Phase 1 (ratios from E2Primes) always runs; phase 2 (partition)
-            !> completes here only when fcc_follows=.false. — when fcc_follows,
-            !> FCC reads r_ET_cec/r_Fc_cec from the ex-record and applies them.
-            if (EddyFlowProj%do_cec > 0) then
-                if (allocated(E2Primes)) &
-                    call CecFluxes(E2Primes, Flux3%ET, Flux3%co2, EddyFlowProj%do_cec)
-            end if
+            !> RP applies the CEC descriptor only when it owns the final
+            !> corrected totals. Otherwise FCC applies it to FCC Flux3.
+            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) &
+                call ApplyCecDescriptor(CECDescriptor, Flux3%ET, Flux3%co2, &
+                    EddyFlowProj%do_cec, CECFlux)
             if (allocated(E2Primes)) deallocate(E2Primes)
 
             !> Calculate storage terms
