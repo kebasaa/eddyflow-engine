@@ -22,70 +22,12 @@
 !
 !***************************************************************************
 !
-! \brief   Two-phase CEC helper for the FCC executable.
-!
-!   ReadNextCecRatio — reads one line from the CEC ratios intermediate file
-!                      (written by RP).  Called once per Ex record, regardless
-!                      of whether the record will be processed, to keep the
-!                      file position in sync with the Ex file.
-!
-!   ApplyCecRatios   — applies pre-read r_ET / r_Fc to FCC's spectrally-
-!                      corrected total fluxes and populates CECFlux.
-!                      Called only for records that pass FCC's validity checks.
-!
-!   Intermediate file format (one line per averaging period):
-!     timestamp,do_cec,r_ET_cec,r_Fc_cec
-!***************************************************************************
-
-!***************************************************************************
-! \brief   Read and parse the next line from the CEC ratios file.
-!          Returns error for both ratios on EOF or parse failure.
-!***************************************************************************
-subroutine ReadNextCecRatio(r_ET, r_Fc)
-    use m_fx_global_var
-    implicit none
-    real(kind = dbl), intent(out) :: r_ET
-    real(kind = dbl), intent(out) :: r_Fc
-
-    !> local variables
-    character(256) :: line
-    character(32)  :: r_ET_field, r_Fc_field
-    integer :: io_stat, p1, p2, p3
-    logical :: is_open
-
-    r_ET = error
-    r_Fc = error
-
-    inquire(unit = ucec, opened = is_open)
-    if (.not. is_open) return
-
-    read(ucec, '(a)', iostat = io_stat) line
-    if (io_stat /= 0) return   ! EOF
-
-    !> Parse: timestamp,do_cec,r_ET,r_Fc  (four comma-separated fields)
-    p1 = index(line, ',')
-    if (p1 <= 0) return
-
-    p2 = index(line(p1+1:), ',')
-    if (p2 <= 0) return
-
-    p3 = index(line(p1+p2+1:), ',')
-    if (p3 <= 0) return
-
-    r_ET_field = adjustl(line(p1+p2+1 : p1+p2+p3-1))
-    r_Fc_field = adjustl(line(p1+p2+p3+1:))
-
-    read(r_ET_field, *, iostat = io_stat) r_ET
-    if (io_stat /= 0) r_ET = error
-
-    read(r_Fc_field, *, iostat = io_stat) r_Fc
-    if (io_stat /= 0) r_Fc = error
-
-end subroutine ReadNextCecRatio
-
-!***************************************************************************
 ! \brief   Apply pre-computed CEC ratios (r_ET, r_Fc) to FCC's total fluxes.
-!          Populates the module-level CECFlux fields.
+!          Ratios are read from the ExRecord (r_ET_cec, r_Fc_cec fields) and
+!          passed directly — no separate intermediate file.
+!
+!   ApplyCecRatios — applies r_ET / r_Fc to FCC's spectrally-corrected total
+!                    fluxes and populates the module-level CECFlux fields.
 !
 ! \param   ET_total  WPL-corrected ET from FCC Flux3 [mmol m-2 s-1]
 ! \param   Fc_total  WPL-corrected NEE from FCC Flux3 [umol m-2 s-1]

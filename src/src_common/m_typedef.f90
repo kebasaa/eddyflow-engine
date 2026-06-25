@@ -1319,6 +1319,8 @@ module m_typedef
         type(FluxType) :: Flux0
         Type(SwVerType) :: logger_swver
         type(StatsType) :: stats
+        real(kind = dbl) :: r_ET_cec
+        real(kind = dbl) :: r_Fc_cec
     end type ExType
 
     type fluxnetChunksType

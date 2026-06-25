@@ -58,7 +58,6 @@ subroutine Storage(PrevStats, prevAmbient)
     character(5) tmp_time
 
 
-    flush(6)
     write(*, '(a)', advance = 'no') '  Calculating storage terms..'
 
     !> Check that time periods are consecutive. If not, set storage to error and exit

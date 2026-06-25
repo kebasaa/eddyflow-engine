@@ -231,8 +231,12 @@ subroutine InitFluxnetFile_rp()
         end do
     end if
 
-    call uppercase(e2sg(gas4)) 
-    csv_row = replace2(csv_row, 'GS4', e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)) 
+    call uppercase(e2sg(gas4))
+    csv_row = replace2(csv_row, 'GS4', e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1))
+
+    !> CEC partitioning ratios (always present; error when do_cec=0)
+    call AddDatum(csv_row, 'r_ET_cec', separator)
+    call AddDatum(csv_row, 'r_Fc_cec', separator)
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 

@@ -258,6 +258,15 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         end do
     end if
 
+    !> Read CEC ratios appended by RP (always present; error when do_cec=0)
+    lEx%r_ET_cec = error
+    lEx%r_Fc_cec = error
+    if (len_trim(dataline) > 0) then
+        read(dataline, *, iostat = read_status) lEx%r_ET_cec, lEx%r_Fc_cec
+        ix = strCharIndex(dataline, ',', 2)
+        if (ix > 0) dataline = dataline(ix+1: len_trim(dataline))
+    end if
+
     !> Put remaining into last chunk
     fluxnetChunks%s(6) = dataline(1: len_trim(dataline))
 

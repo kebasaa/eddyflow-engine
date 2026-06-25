@@ -837,6 +837,10 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         if (allocated(bAggrOut)) deallocate(bAggrOut)
     end if
 
+    !> CEC partitioning ratios (always written; error when do_cec=0)
+    call AddFloatDatumToDataline(CECFlux%r_ET_cec, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECFlux%r_Fc_cec, csv_row, EddyFlowProj%err_label)
+
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')
     csv_row = replace2(csv_row, ',NaN,',   ',' // trim(EddyFlowProj%err_label) // ',')

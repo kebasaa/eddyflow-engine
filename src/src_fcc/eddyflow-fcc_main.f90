@@ -63,10 +63,6 @@ Program EddyFlowFCC
     logical :: ValidRecord
     logical :: EndOfFileReached
     logical :: exEndReached
-    logical :: cec_file_open
-
-    real(kind = dbl) :: cec_r_ET   !< per-period ratio from CEC ratios file
-    real(kind = dbl) :: cec_r_Fc   !< per-period ratio from CEC ratios file
 
     !> Derived type variables
     type(DateType) :: exStartTimestamp
@@ -458,16 +454,7 @@ Program EddyFlowFCC
     !> Skip first line for header
     read(uex, *)
 
-    !> Open CEC ratios file written by RP (if CEC was enabled)
-    if (EddyFlowProj%do_cec > 0) then
-        open(ucec, file = trim(Dir%main_out) // trim(EddyFlowProj%id) &
-            // '_cec_ratios.csv', status = 'old', iostat = open_status)
-        if (open_status == 0) then
-            read(ucec, *)  ! skip header
-        else
-            open_status = 0  ! not fatal; CEC ratios will be error
-        end if
-    end if
+
 
     month = 0
     day   = 0
@@ -483,12 +470,6 @@ Program EddyFlowFCC
 
         !> If end of file was reached, exit loop
         if (EndOfFileReached) exit ex_loop
-
-        !> Read one CEC ratios line per Ex record to keep files in sync.
-        !> Done unconditionally (before any cycle) so the read position
-        !> matches even for skipped/invalid periods.
-        if (EddyFlowProj%do_cec > 0) &
-            call ReadNextCecRatio(cec_r_ET, cec_r_Fc)
 
         !> If invalid record was found, cycle loop
         if (.not. ValidRecord) cycle ex_loop
@@ -536,9 +517,9 @@ Program EddyFlowFCC
         !> Calculate fluxes at Level 2 and Level 3
         call Fluxes23(lEx)
 
-        !> Apply CEC partitioning using ratios read from RP's cec_ratios.csv
+        !> Apply CEC partitioning using ratios carried in the ex-record from RP
         if (EddyFlowProj%do_cec > 0) &
-            call ApplyCecRatios(Flux3%ET, Flux3%co2, cec_r_ET, cec_r_Fc, &
+            call ApplyCecRatios(Flux3%ET, Flux3%co2, lEx%r_ET_cec, lEx%r_Fc_cec, &
                 EddyFlowProj%do_cec)
 
         !> Calculate footprint estimation   
@@ -570,10 +551,6 @@ Program EddyFlowFCC
 
     end do ex_loop
     close(uex)
-    if (EddyFlowProj%do_cec > 0) then
-        inquire(unit = ucec, opened = cec_file_open)
-        if (cec_file_open) close(ucec)
-    end if
     close(uflx)
     close(ufnet_e)
     close(uaflx)
@@ -601,11 +578,6 @@ Program EddyFlowFCC
     if (.not. FCCsetup%keep_parent) then
         call system(comm_del // '"' // trim(adjustl(AuxFile%ex)) // '"' // comm_err_redirect)
     end if
-
-    !> Delete CEC ratios intermediate file (RP→FCC, not needed after processing)
-    if (EddyFlowProj%do_cec > 0) &
-        call system(comm_del // '"' // trim(Dir%main_out) // trim(EddyFlowProj%id) &
-            // '_cec_ratios.csv"' // comm_err_redirect)
 
     !> Copy ".eddypro" file into output folder
     call CopyFile(trim(adjustl(PrjPath)), &
