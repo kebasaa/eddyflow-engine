@@ -2217,7 +2217,7 @@ program EddyFlowRP
             !> RP applies the CEC descriptor only when it owns the final
             !> corrected totals. Otherwise FCC applies it to FCC Flux3.
             if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) &
-                call ApplyCecDescriptor(CECDescriptor, Flux3%ET, Flux3%co2, &
+                call ApplyCecDescriptor(CECDescriptor, Flux3%h2o, Flux3%co2, &
                     EddyFlowProj%do_cec, CECFlux)
             if (allocated(E2Primes)) deallocate(E2Primes)
 

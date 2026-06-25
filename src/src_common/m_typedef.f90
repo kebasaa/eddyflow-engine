@@ -559,8 +559,10 @@ module m_typedef
 
     !> Results of Conditional Eddy Covariance partitioning (Zahn et al. 2022)
     type :: CECFluxType
-        real(kind = dbl) :: E_cec    !< evaporation [mm hour-1]
-        real(kind = dbl) :: Tr_cec   !< transpiration [mm hour-1]
+        real(kind = dbl) :: E_cec    !< evaporation [mmol m-2 s-1]
+        real(kind = dbl) :: Tr_cec   !< transpiration [mmol m-2 s-1]
+        real(kind = dbl) :: E_cec_ET !< evaporation equivalent [mm hour-1]
+        real(kind = dbl) :: Tr_cec_ET !< transpiration equivalent [mm hour-1]
         real(kind = dbl) :: Reco_cec !< ecosystem respiration [umol m-2 s-1]
         real(kind = dbl) :: P_cec    !< net photosynthesis [umol m-2 s-1]
         real(kind = dbl) :: GPP_cec  !< compatibility alias for P_cec

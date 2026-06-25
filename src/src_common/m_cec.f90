@@ -39,6 +39,8 @@ subroutine ResetCecFlux(flux)
 
     flux%E_cec = error
     flux%Tr_cec = error
+    flux%E_cec_ET = error
+    flux%Tr_cec_ET = error
     flux%Reco_cec = error
     flux%P_cec = error
     flux%GPP_cec = error
@@ -133,7 +135,8 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
         descriptor%h2o_valid = .true.
     end if
 
-    if (descriptor%r_Fc /= error .and. abs(descriptor%r_Fc + 1d0) < 0.05d0) then
+    if (descriptor%r_Fc /= error .and. descriptor%r_Fc > -1.2d0 &
+        .and. descriptor%r_Fc < -0.8d0) then
         descriptor%co2_status = cec_singular
     else if (descriptor%frac_O1 < 0.05d0 .or. descriptor%r_Fc == 0d0) then
         descriptor%co2_status = cec_all_stomatal
@@ -147,9 +150,9 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
     end if
 end subroutine ExtractCecDescriptor
 
-subroutine ApplyCecDescriptor(descriptor, ET_total, Fc_total, do_cec, flux)
+subroutine ApplyCecDescriptor(descriptor, H2O_total, Fc_total, do_cec, flux)
     type(CECDescriptorType), intent(in) :: descriptor
-    real(kind = dbl), intent(in) :: ET_total
+    real(kind = dbl), intent(in) :: H2O_total
     real(kind = dbl), intent(in) :: Fc_total
     integer, intent(in) :: do_cec
     type(CECFluxType), intent(out) :: flux
@@ -159,19 +162,26 @@ subroutine ApplyCecDescriptor(descriptor, ET_total, Fc_total, do_cec, flux)
     flux%r_Fc_cec = descriptor%r_Fc
 
     if ((do_cec == 1 .or. do_cec == 2) .and. descriptor%h2o_valid &
-        .and. ET_total /= error) then
+        .and. H2O_total /= error) then
         select case (descriptor%h2o_status)
             case (cec_normal)
-                flux%E_cec = ET_total / (1d0 + 1d0 / descriptor%r_ET)
-                flux%Tr_cec = ET_total / (1d0 + descriptor%r_ET)
+                flux%E_cec = H2O_total / (1d0 + 1d0 / descriptor%r_ET)
+                flux%Tr_cec = H2O_total / (1d0 + descriptor%r_ET)
             case (cec_all_stomatal)
                 flux%E_cec = 0d0
-                flux%Tr_cec = ET_total
+                flux%Tr_cec = H2O_total
             case (cec_all_nonstomatal)
-                flux%E_cec = ET_total
+                flux%E_cec = H2O_total
                 flux%Tr_cec = 0d0
         end select
+        if (flux%E_cec /= error .and. flux%Tr_cec /= error) then
+            flux%E_cec_ET = flux%E_cec * h2o_to_ET
+            flux%Tr_cec_ET = flux%Tr_cec * h2o_to_ET
+        end if
     end if
+
+    if ((do_cec == 1 .or. do_cec == 3) .and. Fc_total /= error) &
+        flux%NEE_cec = Fc_total
 
     if ((do_cec == 1 .or. do_cec == 3) .and. descriptor%co2_valid &
         .and. Fc_total /= error) then
@@ -187,8 +197,6 @@ subroutine ApplyCecDescriptor(descriptor, ET_total, Fc_total, do_cec, flux)
                 flux%P_cec = 0d0
         end select
         flux%GPP_cec = flux%P_cec
-        if (flux%Reco_cec /= error .and. flux%P_cec /= error) &
-            flux%NEE_cec = flux%Reco_cec + flux%P_cec
     end if
 
     if (do_cec == 1) then

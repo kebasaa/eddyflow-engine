@@ -382,9 +382,10 @@ subroutine InitOutFiles(lEx)
 
             !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,', separator)
-                call AddDatum(header2, 'E_cec,Tr_cec,r_ET_cec', separator)
-                call AddDatum(header3, '[mm+1hour-1],[mm+1hour-1],[#]', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec', separator)
+                call AddDatum(header3, &
+                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#]', separator)
             end if
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
                 call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
@@ -498,6 +499,20 @@ subroutine InitOutFiles(lEx)
                 do i = 1, lEx%ncustom
                     call AddDatum(header3, '--', separator)
                 end do
+            end if
+
+            !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
+            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec', separator)
+                call AddDatum(header3, &
+                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#]', separator)
+            end if
+            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
+                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec', separator)
+                call AddDatum(header3, &
+                    '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
             end if
 
             call latin1_to_utf8(header1, head1_utf8)
