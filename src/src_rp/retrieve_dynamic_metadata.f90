@@ -470,7 +470,8 @@ subroutine FixDynamicMetadata()
                 DynamicMetadata%instr(j)%firm = 'gill'
             case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                 DynamicMetadata%instr(j)%firm = 'metek'
-            case('csat3', 'csat3b')
+            case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
+                 'campbell_csat3c', 'campbell_irgason')
                 DynamicMetadata%instr(j)%firm = 'csi'
             case('81000', '81000v', '81000re', '81000vre')
                 DynamicMetadata%instr(j)%firm = 'young'

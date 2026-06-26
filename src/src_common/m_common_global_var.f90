@@ -415,7 +415,7 @@ module m_common_global_var
          EPPrjNTags(4)%Label / 'col_co2'          / &
          EPPrjNTags(5)%Label / 'col_h2o'          / &
          EPPrjNTags(6)%Label / 'col_ch4'          / &
-         EPPrjNTags(7)%Label / 'col_n2o'          / &
+         EPPrjNTags(7)%Label / 'col_gas4'         / &
          EPPrjNTags(8)%Label / 'col_cell_t'       / &
          EPPrjNTags(9)%Label / 'col_int_t_1'      / &
          EPPrjNTags(10)%Label / 'col_int_t_2'     / &

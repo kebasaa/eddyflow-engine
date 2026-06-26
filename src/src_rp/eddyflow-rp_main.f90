@@ -230,7 +230,9 @@ program EddyFlowRP
         !> don't calculate fluxes 2/3
         !> don't calculate footprint
         EddyFlowProj%fcc_follows     = .true.
-        EddyFlowProj%out_full        = .false.
+        !> Preserve full output when gas4 is configured — it cannot benefit from
+        !> in-situ spectral corrections (FCC-only) and must be computed in RP
+        if (EddyFlowProj%col(gas4) == 0) EddyFlowProj%out_full = .false.
         EddyFlowProj%out_md          = .false.
         make_dataset_common         = .false.
     else
@@ -2208,11 +2210,26 @@ program EddyFlowRP
                     Ambient%zL, Ambient%WS, Ambient%L, &
                     E2Col(u)%Instr%height, Metadata%d, Metadata%z0)
             else
+                if (OutVarPresent(gas4)) then
+                    !> Gas4 cannot use in-situ spectral corrections (FCC-only): compute
+                    !> with BPCF=1.0, then zero co2/h2o/ch4 so FCC corrects those later
+                    call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
+                        Metadata%d, E2Col(u:gas4)%present, Ambient%WS, Ambient%Ta, &
+                        Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
+                        Metadata%logger_swver, Meth%det, &
+                        RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
+                    call Fluxes1_rp()
+                    call Fluxes23_rp()
+                    Flux1%co2 = error;  Flux2%co2 = error;  Flux3%co2 = error
+                    Flux1%h2o = error;  Flux2%h2o = error;  Flux3%h2o = error
+                    Flux1%ch4 = error;  Flux2%ch4 = error;  Flux3%ch4 = error
+                else
+                    Flux1 = errFlux
+                    Flux2 = errFlux
+                    Flux3 = errFlux
+                    BPCF = errBPCF
+                end if
                 Foot = errFootprint
-                Flux1 = errFlux
-                Flux2 = errFlux
-                Flux3 = errFlux
-                BPCF = errBPCF
                 foot_model_used = 'none'
             end if
 
