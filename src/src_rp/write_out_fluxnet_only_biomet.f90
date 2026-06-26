@@ -106,6 +106,19 @@ subroutine WriteOutFluxnetOnlyBiomet()
             call AddFloatDatumToDataline(bAggrOut(i), csv_row, EddyFlowProj%err_label)
         end do
     end if
+    !> CEC ratios — error for skipped periods
+    call AddFloatDatumToDataline(CECDescriptor%r_ET, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECDescriptor%r_Fc, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%n_valid, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%n_O1, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%n_O2, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECDescriptor%frac_O1, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECDescriptor%frac_O2, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%h2o_valid), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%co2_valid), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%h2o_status, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%co2_status, csv_row, EddyFlowProj%err_label)
+
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
 end subroutine WriteOutFluxnetOnlyBiomet

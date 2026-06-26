@@ -352,7 +352,7 @@ subroutine ColumnValidation(LocCol, passed)
     select case (LocCol%var)
         case ('co2', 'h2o', 'ch4', 'n2o')
             select case (units)
-                case ('ppt', 'ppm', 'ppb', 'mmol_m3', 'umol_m3', 'g_m3', 'mg_m3', 'ug_m3')
+                case ('ppt', 'ppm', 'ppb', 'pmol_mol', 'mmol_m3', 'umol_m3', 'g_m3', 'mg_m3', 'ug_m3')
                     continue
                 case default
                     passed(1) = .false.

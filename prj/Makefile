@@ -158,6 +158,9 @@ m_common_global_var.o: \
 	m_index_parameters.o \
 	m_methane_tables.o \
 	m_typedef.o
+m_cec.o: \
+	m_cec.f90 \
+	m_common_global_var.o
 m_rp_global_var.o: \
 	m_rp_global_var.f90 \
 	m_common_global_var.o
@@ -203,9 +206,6 @@ wind_sector.o: \
 footprint_handle.o: \
 	footprint_handle.f90 \
 	m_common_global_var.o
-cec_partition.o: \
-	cec_partition.f90 \
-	m_rp_global_var.o
 molefractions_and_mixingratios.o: \
 	molefractions_and_mixingratios.f90 \
 	m_rp_global_var.o
@@ -572,7 +572,8 @@ replace_gap_with_linear_interpolation.o: \
 	m_common_global_var.o
 eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
-	m_rp_global_var.o
+	m_rp_global_var.o \
+	m_cec.o
 import_current_period.o: \
 	import_current_period.f90 \
 	m_rp_global_var.o
@@ -767,7 +768,8 @@ cospectra_sorting_and_averaging.o: \
 	m_fx_global_var_mod.o
 eddyflow-fcc_main.o: \
 	eddyflow-fcc_main.f90 \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	m_cec.o
 ensemble_cospectra_by_stability.o: \
 	ensemble_cospectra_by_stability.f90 \
 	m_fx_global_var_mod.o

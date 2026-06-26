@@ -124,6 +124,7 @@ module m_rp_global_var
     type (FluxType) :: Flux1
     type (FluxType) :: Flux2
     type (FluxType) :: Flux3
+    type (CECDescriptorType) :: CECDescriptor
     type (CECFluxType) :: CECFlux
     type (BurbaType):: Burba
     type (BurbaParType) :: BurbaPar

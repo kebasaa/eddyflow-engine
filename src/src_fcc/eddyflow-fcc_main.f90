@@ -25,6 +25,7 @@
 !***************************************************************************
 Program EddyFlowFCC
     use m_fx_global_var
+    use m_cec
     implicit none
 
     integer, external :: CreateDir
@@ -454,6 +455,8 @@ Program EddyFlowFCC
     !> Skip first line for header
     read(uex, *)
 
+
+
     month = 0
     day   = 0
     InitializeOuputFiles = .true.
@@ -514,6 +517,12 @@ Program EddyFlowFCC
 
         !> Calculate fluxes at Level 2 and Level 3
         call Fluxes23(lEx)
+
+        !> Apply RP's high-frequency CEC descriptor to FCC's authoritative
+        !> corrected totals.
+        if (EddyFlowProj%do_cec > 0) &
+            call ApplyCecDescriptor(lEx%cec, Flux3%h2o, Flux3%co2, &
+                EddyFlowProj%do_cec, CECFlux)
 
         !> Calculate footprint estimation   
         foot_model_used = Meth%foot(1:len_trim(Meth%foot))

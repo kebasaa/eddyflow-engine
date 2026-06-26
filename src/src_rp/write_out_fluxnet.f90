@@ -837,6 +837,19 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         if (allocated(bAggrOut)) deallocate(bAggrOut)
     end if
 
+    !> CEC partitioning ratios (always written; error when do_cec=0)
+    call AddFloatDatumToDataline(CECDescriptor%r_ET, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECDescriptor%r_Fc, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%n_valid, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%n_O1, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%n_O2, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECDescriptor%frac_O1, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(CECDescriptor%frac_O2, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%h2o_valid), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%co2_valid), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%h2o_status, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(CECDescriptor%co2_status, csv_row, EddyFlowProj%err_label)
+
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')
     csv_row = replace2(csv_row, ',NaN,',   ',' // trim(EddyFlowProj%err_label) // ',')
@@ -848,4 +861,4 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     csv_row = replace2(csv_row, ',Infinity,', ',' // trim(EddyFlowProj%err_label) // ',')
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
-end subroutine WriteOutFluxnet
+end subroutine WriteOutFluxnet
