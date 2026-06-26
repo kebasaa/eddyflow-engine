@@ -214,17 +214,17 @@ module m_rp_global_var
          SNTags(55)%Label  / 'sr_lim_co2'    / &
          SNTags(56)%Label  / 'sr_lim_h2o'    / &
          SNTags(57)%Label  / 'sr_lim_ch4'    / &
-         SNTags(58)%Label  / 'sr_lim_n2o'    / &
+         SNTags(58)%Label  / 'sr_lim_gas4'   / &
          SNTags(59)%Label  / 'al_ch4_min'    / &
          SNTags(60)%Label  / 'al_ch4_max'    / &
-         SNTags(61)%Label  / 'al_n2o_min'    / &
-         SNTags(62)%Label  / 'al_n2o_max'    / &
+         SNTags(61)%Label  / 'al_gas4_min'   / &
+         SNTags(62)%Label  / 'al_gas4_max'   / &
          SNTags(63)%Label  / 'ds_hf_ch4'     / &
-         SNTags(64)%Label  / 'ds_hf_n2o'     / &
+         SNTags(64)%Label  / 'ds_hf_gas4'    / &
          SNTags(65)%Label  / 'ds_sf_ch4'     / &
-         SNTags(66)%Label  / 'ds_sf_n2o'     / &
+         SNTags(66)%Label  / 'ds_sf_gas4'    / &
          SNTags(67)%Label  / 'tl_def_ch4'    / &
-         SNTags(68)%Label  / 'tl_def_n2o'    / &
+         SNTags(68)%Label  / 'tl_def_gas4'   / &
          SNTags(69)%Label  / 'pf_num_sec'    / &  !< no longer used
          SNTags(70)%Label  / 'pf_min_num_per_sec' / &
          SNTags(71)%Label  / 'pf_w_max'    / &
