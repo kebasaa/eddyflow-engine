@@ -93,7 +93,7 @@ subroutine ConfigureForExpress
     al%h2o_max = 40d0
     al%ch4_min = 1.7d0 * 0.1d0  !< 1.7 ppm is minimum in unpolluted troposphere, 0.1 is safety factor
     al%ch4_max = 1000d0    !< to be better assessed
-    al%gas4_min = 0.32d0 * 0.1d0  !< 0.32 ppm is minimum in unpolluted troposphere, 0.1 is safety factor
+    al%gas4_min = 0d0  !< no default lower bound — gas4 can be any trace gas at any concentration
     al%gas4_max = 1000d0    !< to be better assessed
     sk%hf_skmin = -2d0
     sk%hf_skmax = 2d0

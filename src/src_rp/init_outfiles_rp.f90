@@ -50,6 +50,7 @@ subroutine InitOutFiles_rp()
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
     character(32) :: usg(NumUserVar)
+    character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
@@ -78,7 +79,25 @@ subroutine InitOutFiles_rp()
     e2sg(pe)  = 'air_p_'
 
     call lowercase(e2sg(gas4))
-    
+
+    select case (trim(adjustl(E2Col(gas4)%unit_in)))
+        case ('ppb', 'nmol_mol')
+            gas4_flux_label = '[nmol+1s-1m-2]'
+            gas4_conc_label = '[nmol+1mol_a-1]'
+            gas4_mixr_label = '[nmol+1mol_d-1]'
+            gas4_dens_label = '[nmol+1m-3]'
+        case ('pmol_mol')
+            gas4_flux_label = '[pmol+1s-1m-2]'
+            gas4_conc_label = '[pmol+1mol_a-1]'
+            gas4_mixr_label = '[pmol+1mol_d-1]'
+            gas4_dens_label = '[pmol+1m-3]'
+        case default
+            gas4_flux_label = '[' // char(181) // 'mol+1s-1m-2]'
+            gas4_conc_label = '[' // char(181) // 'mol+1mol_a-1]'
+            gas4_mixr_label = '[' // char(181) // 'mol+1mol_d-1]'
+            gas4_dens_label = '[mmol+1m-3]'
+    end select
+
     do j = 1, NumUserVar
         usg(j)  = UserCol(j)%label(1:len_trim(UserCol(j)%label)) // '_'
         call lowercase(usg(j))
@@ -260,11 +279,11 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, e2sg(gas4)(1:len_trim(e2sg(gas4))) &
                     // 'flux,qc_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
-                call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, gas4_flux_label(1:len_trim(gas4_flux_label)) // ',[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
-                    call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, gas4_flux_label, separator)
                 end if
             end if
 
@@ -279,7 +298,11 @@ subroutine InitOutFiles_rp()
                 if (gas /= h2o) then
                     if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
                     if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    if(gas == gas4) then
+                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
+                    else
+                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    end if
                 else
                     if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
                     if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
@@ -293,7 +316,11 @@ subroutine InitOutFiles_rp()
                 if (gas /= h2o) then
                     if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
                     if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    if(gas == gas4) then
+                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
+                    else
+                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    end if
                 else
                     if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
                     if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
@@ -310,7 +337,10 @@ subroutine InitOutFiles_rp()
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mixing_ratio,' &
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'time_lag,' &
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag', separator)
-                if (gas /= h2o) then
+                if (gas == gas4) then
+                    if(OutVarPresent(gas)) call AddDatum(header3, gas4_dens_label // ',' &
+                        // gas4_conc_label // ',' // gas4_mixr_label // ',[s],[1=default]', separator)
+                else if (gas /= h2o) then
                     if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1m-3],[' // char(181) // &
                         'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default]', separator)
                 else
@@ -359,7 +389,11 @@ subroutine InitOutFiles_rp()
                     if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
                     if(OutVarPresent(gas)) call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
                         // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                    if (gas == gas4) then
+                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label // ',[#]', separator)
+                    else
+                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                    end if
                 else
                     if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
                     if(OutVarPresent(gas)) call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
