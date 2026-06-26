@@ -89,7 +89,7 @@ subroutine RetrieveSensorParams()
             E2Col(u:ts)%Instr%vpath_length = 0.131d0    !< to be verified
             E2Col(u:ts)%Instr%hpath_length = 0.099d0    !< to be verified
             E2Col(u:ts)%Instr%tau = 1d0 / 50d0
-        case('csat3', 'csat3b')
+        case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', 'campbell_csat3c')
             E2Col(u:ts)%Instr%vpath_length = 0.115d0
             E2Col(u:ts)%Instr%hpath_length = 0.058d0
             E2Col(u:ts)%Instr%tau = 1d0 / 60d0

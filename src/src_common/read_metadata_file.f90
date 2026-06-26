@@ -215,8 +215,9 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                     Instr(i)%hpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 8)%value) * 1d-2 !< cm to m
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
                     Instr(i)%tau = dble(ANTags(init_an_instr + i*leap_an_instr + 10)%value)
-                case ('generic_open_path', 'generic_closed_path', 'ec150', 'irgason', &
-                      'spectronus', 'miu1000', 'miu2000', 'aerodyne_qcls')
+                case ('generic_open_path', 'generic_closed_path', &
+                      'campbell_ec150', 'campbell_ec155', 'campbell_irgason', 'campbell_tga200a', &
+                      'miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o', 'aerodyne_tildas')
                     Instr(i)%hpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 8)%value) * 1d-2 !< cm to m
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
                     Instr(i)%tau = dble(ANTags(init_an_instr + i*leap_an_instr + 10)%value)
@@ -241,13 +242,14 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                         Instr(i)%firm = 'gill'
                     case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                         Instr(i)%firm = 'metek'
-                    case('csat3', 'csat3b', 'csat3a', 'irgason')
+                    case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
+                         'campbell_csat3c', 'campbell_irgason')
                         Instr(i)%firm = 'csi'
-                    case('ec150')
+                    case('campbell_ec150', 'campbell_ec155', 'campbell_tga200a')
                         Instr(i)%firm = 'csi_irga'
-                    case('spectronus', 'miu1000', 'miu2000')
+                    case('miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o')
                         Instr(i)%firm = 'miro'
-                    case('aerodyne_qcls')
+                    case('aerodyne_tildas')
                         Instr(i)%firm = 'aerodyne'
                     case('81000', '81000v', '81000re', '81000vre')
                         Instr(i)%firm = 'young'
@@ -328,7 +330,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 select case (Instr(i)%model(1:len_trim(Instr(i)%model) - 2))
                     case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', &
                         'generic_open_path', 'open_path_krypton', &
-                        'open_path_lyman', 'ec150', 'irgason')
+                        'open_path_lyman', 'campbell_ec150', 'campbell_ec155', 'campbell_irgason')
                         Instr(i)%path_type = 'open'
                     case default
                         Instr(i)%path_type = 'closed'
