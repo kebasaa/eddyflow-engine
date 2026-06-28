@@ -216,7 +216,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
                     Instr(i)%tau = dble(ANTags(init_an_instr + i*leap_an_instr + 10)%value)
                 case ('generic_open_path', 'generic_closed_path', &
-                      'campbell_ec150', 'campbell_ec155', 'campbell_irgason', 'campbell_tga200a', &
+                      'campbell_ec150', 'campbell_ec155', 'campbell_irgason_irga', 'campbell_tga200a', &
                       'miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o', 'aerodyne_tildas')
                     Instr(i)%hpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 8)%value) * 1d-2 !< cm to m
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
@@ -243,7 +243,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                     case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                         Instr(i)%firm = 'metek'
                     case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
-                         'campbell_csat3c', 'campbell_irgason')
+                         'campbell_csat3c', 'campbell_irgason_sonic')
                         Instr(i)%firm = 'csi'
                     case('campbell_ec150', 'campbell_ec155', 'campbell_tga200a')
                         Instr(i)%firm = 'csi_irga'
@@ -330,7 +330,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 select case (Instr(i)%model(1:len_trim(Instr(i)%model) - 2))
                     case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', &
                         'generic_open_path', 'open_path_krypton', &
-                        'open_path_lyman', 'campbell_ec150', 'campbell_ec155', 'campbell_irgason')
+                        'open_path_lyman', 'campbell_ec150', 'campbell_ec155', 'campbell_irgason_irga')
                         Instr(i)%path_type = 'open'
                     case default
                         Instr(i)%path_type = 'closed'

@@ -96,7 +96,7 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
                         'r3a_100', 'wm', 'wmpro', 'usa1_standard', &
                         'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp', &
                         'campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
-                        'campbell_csat3c', 'campbell_irgason', &
+                        'campbell_csat3c', 'campbell_irgason_sonic', &
                         '81000', '81000v', '81000re', '81000vre')
                         passed(1) = .false.
                         passed(26) = .false.
@@ -213,7 +213,7 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
                 case ('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', 'r3a_100', 'wm', 'wmpro', &
                       'usa1_standard', 'usa1_fast', &
                       'campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
-                      'campbell_csat3c', 'campbell_irgason', &
+                      'campbell_csat3c', 'campbell_irgason_sonic', &
                       'usoni3_classa_mp', 'usoni3_cage_mp', &
                       '81000', '81000v', '81000re', '81000vre')
                       continue
@@ -244,7 +244,7 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
                 case ('li7500', 'li7500a', 'li7500rs', 'li7500ds', 'li7200', &
                     'li7200rs', 'li7700', 'li6262', 'li7000')
                     continue
-                case ('generic_open_path', 'campbell_ec150', 'campbell_ec155', 'campbell_irgason')
+                case ('generic_open_path', 'campbell_ec150', 'campbell_ec155', 'campbell_irgason_irga')
                     if (LocInstr%hpath_length * LocInstr%vpath_length * LocInstr%tau == 0) then
                         passed(1) = .false.
                         passed(20) = .false.
