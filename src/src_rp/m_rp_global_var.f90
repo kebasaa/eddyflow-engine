@@ -89,6 +89,8 @@ module m_rp_global_var
     type(RPsetupType) :: RPsetup
     type(PFSetupType) :: PFSetup
     type(TOSetupType) :: TOSetup
+    type(PWBSetupType) :: PWBSetup
+    type(PWBResultType) :: PWBResult(E2NumVar)
     type(TimeLagType) :: toPasGas(E2NumVar)
     type(TimeLagType) :: toH2O(toMaxH2OClass)
     type(StatsType) :: Stats1
@@ -536,7 +538,23 @@ module m_rp_global_var
          SNTags(402)%Label  / 'wdf_sect_15_end'        / &
          SNTags(403)%Label  / 'wdf_sect_16_start'      / &
          SNTags(404)%Label  / 'wdf_sect_16_end'        / &
-         SNTags(405)%Label  / 'wdf_apply'             /
+         SNTags(405)%Label  / 'wdf_apply'             / &
+         SNTags(406)%Label  / 'pwb_co2_min_lag'       / &
+         SNTags(407)%Label  / 'pwb_co2_max_lag'       / &
+         SNTags(408)%Label  / 'pwb_h2o_min_lag'       / &
+         SNTags(409)%Label  / 'pwb_h2o_max_lag'       / &
+         SNTags(410)%Label  / 'pwb_ch4_min_lag'       / &
+         SNTags(411)%Label  / 'pwb_ch4_max_lag'       / &
+         SNTags(412)%Label  / 'pwb_gas4_min_lag'      / &
+         SNTags(413)%Label  / 'pwb_gas4_max_lag'      / &
+         SNTags(414)%Label  / 'pwb_n_bootstrap'       / &
+         SNTags(415)%Label  / 'pwb_block_length_s'    / &
+         SNTags(416)%Label  / 'pwb_min_valid_frac'    / &
+         SNTags(417)%Label  / 'pwb_hdi_thresh_s'      / &
+         SNTags(418)%Label  / 'pwb_dev_thresh_s'      / &
+         SNTags(419)%Label  / 'pwb_hdi_prefilter_s'   / &
+         SNTags(420)%Label  / 'pwb_smoothing_width'   / &
+         SNTags(421)%Label  / 'pwb_random_seed'       /
 
     data SCTags(1)%Label  / 'data_path'    / &
          SCTags(2)%Label  / 'out_path'     / &

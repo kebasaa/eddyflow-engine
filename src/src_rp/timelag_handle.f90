@@ -37,6 +37,7 @@
 subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     DefTlagUsed, InTimelagOpt)
     use m_rp_global_var
+    use m_pwb_timelag
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow, ncol
@@ -58,6 +59,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: FirstCol(nrow)
     real(kind = dbl) :: SecondCol(nrow)
     real(kind = dbl) :: TmpSet(nrow, ncol)
+    type(PWBResultType) :: lPwbResult
+    logical :: pwb_success
 
     if  (.not. InTimelagOpt) write(*, '(a)', advance = 'no') &
         '  Compensating time-lags..'
@@ -110,6 +113,42 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     TLag(j) = 0d0
                     ActTLag(j) = 0d0
                end if
+            end do
+        case ('pwb')
+            do j = ts, pe
+                if (E2Col(j)%present .and. (j >= co2 .and. j <= gas4)) then
+                    call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
+                    PWBResult(j) = lPwbResult
+                    if (pwb_success) then
+                        RowLags(j) = lPwbResult%row_lag
+                        TLag(j) = lPwbResult%selected_lag
+                        ActTLag(j) = lPwbResult%selected_lag
+                        DefTlagUsed(j) = .false.
+                    else
+                        FirstCol(:)  = Set(:, RPSetup%covmax_var)
+                        SecondCol(:) = Set(:, j)
+                        call CovMax(min_rl(j), max_rl(j), &
+                            FirstCol, SecondCol, size(FirstCol), &
+                            TLag(j), RowLags(j))
+                        ActTLag(j) = TLag(j)
+                        if ((RowLags(j) == min_rl(j)) .or. (RowLags(j) == max_rl(j))) then
+                            DefTlagUsed(j) = .true.
+                            TLag(j) = dble(def_rl(j)) / Metadata%ac_freq
+                            ActTLag(j) = TLag(j)
+                            RowLags(j) = def_rl(j)
+                        end if
+                        PWBResult(j)%fallback_used = .true.
+                    end if
+                elseif (E2Col(j)%present) then
+                    RowLags(j) = def_rl(j)
+                    TLag(j) = E2Col(j)%def_tl
+                    ActTLag(j) = E2Col(j)%def_tl
+                    DefTlagUsed(j) = .true.
+                else
+                    RowLags(j) = 0
+                    TLag(j) = 0d0
+                    ActTLag(j) = 0d0
+                end if
             end do
         case ('none')
             !> not compensating for timelags

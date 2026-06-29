@@ -1203,6 +1203,32 @@ module m_typedef
         logical :: subperiod
     end type TOSetupType
 
+    type :: PWBSetupType
+        real(kind = dbl) :: min_lag(GHGNumVar)
+        real(kind = dbl) :: max_lag(GHGNumVar)
+        integer :: n_bootstrap
+        real(kind = dbl) :: block_length_s
+        real(kind = dbl) :: min_valid_frac
+        real(kind = dbl) :: hdi_thresh_s
+        real(kind = dbl) :: dev_thresh_s
+        real(kind = dbl) :: hdi_prefilter_s
+        integer :: smoothing_width
+        integer :: random_seed
+    end type PWBSetupType
+
+    type :: PWBResultType
+        real(kind = dbl) :: selected_lag
+        integer :: row_lag
+        real(kind = dbl) :: hdi_low
+        real(kind = dbl) :: hdi_high
+        real(kind = dbl) :: hdi_range
+        character(16) :: reliability_class
+        character(2) :: best_combination
+        logical :: edge_pinned
+        logical :: fallback_used
+        real(kind = dbl) :: raw_covariance
+    end type PWBResultType
+
     type :: TLType
         real(kind = dbl) :: def_co2
         real(kind = dbl) :: def_h2o
