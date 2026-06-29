@@ -196,6 +196,10 @@ basic_stats.o: \
 	m_common_global_var.o
 timelag_handle.o: \
 	timelag_handle.f90 \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
+pwb_timelag_handle.o: \
+	pwb_timelag_handle.f90 \
 	m_rp_global_var.o
 count_records_and_values.o: \
 	count_records_and_values.f90 \

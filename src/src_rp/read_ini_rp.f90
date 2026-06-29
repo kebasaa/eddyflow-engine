@@ -433,9 +433,49 @@ subroutine WriteVariablesRP()
         Meth%tlag = 'maxcov'
         case ('4')
         Meth%tlag = 'tlag_opt'
+        case ('5')
+        Meth%tlag = 'pwb'
         case default
         Meth%tlag = 'none'
     end select
+
+    !> Pre-whitening block-bootstrap (Vitale et al. 2024) defaults.
+    PWBSetup%min_lag(co2) = -10d0
+    PWBSetup%max_lag(co2) =  10d0
+    PWBSetup%min_lag(h2o) = -10d0
+    PWBSetup%max_lag(h2o) =  10d0
+    PWBSetup%min_lag(ch4) = -10d0
+    PWBSetup%max_lag(ch4) =  10d0
+    PWBSetup%min_lag(gas4) = -10d0
+    PWBSetup%max_lag(gas4) =  10d0
+    PWBSetup%n_bootstrap = 99
+    PWBSetup%block_length_s = 20d0
+    PWBSetup%min_valid_frac = 0.3d0
+    PWBSetup%hdi_thresh_s = 0.5d0
+    PWBSetup%dev_thresh_s = 0.5d0
+    PWBSetup%hdi_prefilter_s = 1.0d0
+    PWBSetup%smoothing_width = 5
+    PWBSetup%random_seed = 2024
+    if (SNTagFound(406)) PWBSetup%min_lag(co2) = SNTags(406)%value
+    if (SNTagFound(407)) PWBSetup%max_lag(co2) = SNTags(407)%value
+    if (SNTagFound(408)) PWBSetup%min_lag(h2o) = SNTags(408)%value
+    if (SNTagFound(409)) PWBSetup%max_lag(h2o) = SNTags(409)%value
+    if (SNTagFound(410)) PWBSetup%min_lag(ch4) = SNTags(410)%value
+    if (SNTagFound(411)) PWBSetup%max_lag(ch4) = SNTags(411)%value
+    if (SNTagFound(412)) PWBSetup%min_lag(gas4) = SNTags(412)%value
+    if (SNTagFound(413)) PWBSetup%max_lag(gas4) = SNTags(413)%value
+    if (SNTagFound(414)) PWBSetup%n_bootstrap = max(1, nint(SNTags(414)%value))
+    if (SNTagFound(415)) PWBSetup%block_length_s = SNTags(415)%value
+    if (SNTagFound(416)) PWBSetup%min_valid_frac = SNTags(416)%value
+    if (SNTagFound(417)) PWBSetup%hdi_thresh_s = SNTags(417)%value
+    if (SNTagFound(418)) PWBSetup%dev_thresh_s = SNTags(418)%value
+    if (SNTagFound(419)) PWBSetup%hdi_prefilter_s = SNTags(419)%value
+    if (SNTagFound(420)) PWBSetup%smoothing_width = max(1, nint(SNTags(420)%value))
+    if (SNTagFound(421)) PWBSetup%random_seed = max(1, nint(SNTags(421)%value))
+    PWBSetup%approx_ccf   = .false.
+    PWBSetup%max_ar_order = 0
+    if (SNTagFound(422)) PWBSetup%approx_ccf   = nint(SNTags(422)%value) /= 0
+    if (SNTagFound(423)) PWBSetup%max_ar_order = max(0, nint(SNTags(423)%value))
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.

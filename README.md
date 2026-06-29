@@ -13,22 +13,10 @@ EddyFlow is based on EddyPro, for which [LI-COR Biosciences](http://www.licor.co
 
 EddyFlow consists of 4 repositories:
 
-- [eddyflow-engine](https://github.com/keba_saa/eddyflow-engine) (current repository): The engine behind it all
-- [eddyflow-gui](https://github.com/keba_saa/eddyflow-gui): The Qt6 GUI
-- [eddyflow-documentation](https://github.com/keba_saa/eddyflow-documentation): The documentation of the software and its usage
-- [eddyflow-build-script](https://github.com/keba_saa/eddyflow-build-script): This builds the software binaries (currently Windows only)
-
-## Overview
-
-The EddyFlow installer installs the following components:
-
-- EddyFlow Engine, the core engine, a command line software
-- EddyFlow GUI, the graphical user interface to configure and run the engine
-- EddyFlow Help, consisting in a local context-sensitive help system, a local
-    html version of the online EddyFlow Help system, the 'Getting Started' and
-    'User Guide' documents in PDF format
-
-Both Engine and GUI are pre-built for a particular environment (operating system and compiler).
+- [eddyflow-engine](https://github.com/kebasaa/eddyflow-engine) (current repository): The engine behind it all
+- [eddyflow-gui](https://github.com/kebasaa/eddyflow-gui): The Qt6 GUI
+- [eddyflow-documentation](https://github.com/kebasaa/eddyflow-documentation): The documentation of the software and its usage
+- [eddyflow-build-script](https://github.com/kebasaa/eddyflow-build-script): This builds the software binaries (currently Windows only)
 
 ## License
 
@@ -41,12 +29,14 @@ EddyFlow is a fully cross-platform application, which consists of a set of comma
 
 The source code is developed using two independent Git repositories, namely:
 
-  - [EddyFlow-engine](https://github.com/li-cor/EddyFlow-engine)
-  - [EddyFlow-gui](https://github.com/li-cor/EddyFlow-gui)
+  - [EddyFlow-engine](https://github.com/kebasaa/EddyFlow-engine)
+  - [EddyFlow-gui](https://github.com/kebasaa/EddyFlow-gui)
 
-## Building EddyFlow from source
+## Installing EddyFlow
 
-To build EddyFlow follow these instructions:
+You can download EddyFlow from the GUI [releases .7z file](https://github.com/kebasaa/eddyflow-gui/), the contained folder is fully portable and does not require installation.
+
+To build the EddyFlow engine separately, follow these instructions:
 
 ### Engine
 
@@ -57,57 +47,14 @@ To compile the Engine use [gfortran](https://gcc.gnu.org/wiki/GFortran)
     $ make rp
     $ make fcc
 
-### GUI
-
-Source code compilation instructions for the GUI are undergoing a revision. They will posted as soon the update is completed.
-
-<!-- To compile the GUI:
-
-1. install the [Qt framework](https://www.qt.io/developers/)
-2. install [git](http://git-scm.com/)
-3. build the Qt `EddyFlow.pro` project file using custom build scripts available
-   under `source/scripts/build` or using QtCreator
-
-In both cases, the build configuration will be shadowed or out-of-tree, i.e. created in a dedicated
-directory outside the source tree.
-
-#### Build the GUI using provided scripts
-
-##### On Windows
-
-Launch git-bash and enter the following commands, where `EddyFlow-source-dir` is
-the directory where the source code is:
-
-    1. $ cd EddyFlow-source-dir/source/scripts/build/
-    2. $ ./win-build-EddyFlow.sh [debug|release]
-
-##### On Mac
-
-In a terminal enter the following commands, where `EddyFlow-source-dir` is the
-directory where the source code is:
-
-    1. $ cd EddyFlow-source-dir/source/scripts/build/
-    2. $ ./mac-build-EddyFlow.sh [debug|release]
-
-#### Build the GUI using QtCreator (on Windows or Mac)
-
-    1. Open 'source\EddyFlow.pro'
-    2. Open 'source\libs\quazip\quazip\EddyFlow.pro'
-    3. In the 'EddyFlow.pro' project settings:
-        3.1 set the build directory to '..\build\build-EddyFlow-6.1.0-qt-5.4.2-mingw-4.9.1-x86_64'
-            for both debug and release targets
-        3.2 check all the listed libs as dependencies
-    4. In the 'quazip.pro' project settings:
-        4.1 set the build directory to '..\..\..\..\build\libs\build-quazip-0.7.1-qt-5.4.2-mingw-4.9.1-x86_64'
-            for both debug and release targets
-    5. In the 'EddyFlow.pro' project, build both targets -->
 
 ## Utilities
 
-To successfully run EddyFlow, the program installation folder must contain the
-following command line utilities under the 'bin' sub-directory:
+To successfully run EddyFlow, the program installation folder must contain the following command line utilities under the 'bin' sub-directory:
 
 - 7-zip
+- Quazip
+- Zlib
 
 ### 7-zip
 
@@ -121,8 +68,7 @@ License: [LGPL](https://www.7-zip.org/license.txt).
 
 ## Using EddyFlow sample data
 
-You can run EddyFlow using sample data files available at the LI-COR
-[EddyFlow web page](http://www.licor.com/EddyFlow).
+You can run EddyFlow using sample data files available at the [eddyflow-build-script](https://github.com/kebasaa/eddyflow-build-script) repository.
 
 ## Data Processing Options in EddyFlow
 
@@ -139,6 +85,7 @@ You can run EddyFlow using sample data files available at the LI-COR
   - Exponential running mean
 
 + Compensation of time lag between sonic anemometer and gas analyzer measurements
+  - Pre-whitening block-bootstrap time lag detection (Vitale et al. 2024)
   - Automatic time lag optimization (optionally as a function of RH for H<sub>2</sub>O)
   - Maximum covariance with default (circular correlation)
   - Maximum covariance without default
@@ -186,6 +133,9 @@ You can run EddyFlow using sample data files available at the LI-COR
   - Kljun et al. (2004)
   - Kormann and Meixner (2001)
   - Hsieh et al. (2000)
+  
++ ET & NEE Partitioning
+  - Conditional Eddy Covariance (Zahn et al. 2022)
 
 + Other options applied in both Express and/or Advanced Mode include:
   - Sonic temperature correction for humidity following van Dijk et al. (2004)
@@ -212,24 +162,10 @@ You can run EddyFlow using sample data files available at the LI-COR
 
 ## EddyFlow Trademark and Logo Policy
 
-In order to help users who want to cite EddyFlow on posters or publications,
-LI-COR provides [guidelines](docs/EddyFlow_Trademark_Policy.pdf) for the proper
-use of the EddyFlow wordmark and logo.
+In order to help users who want to cite EddyFlow on posters or publications, we provide the [EddyFlow logo as vector graphic](img/logo/app-logo.svg) for the proper use of the EddyFlow wordmark and logo.
 
 ## Want to Know More?
 
-More information is available at:
-
-  - [EddyFlow web page](http://www.licor.com/EddyFlow)
-  - [EddyFlow help](http://www.licor.com/env/support/EddyFlow/home.html)
-
-Be sure to check out the
-'[What's new](http://www.licor.com/env/support/EddyFlow/topics/whats-new.html)'
-page, which will list any known problems or limitations of the current and
-past versions.
+More information is available at the help website [EddyFlow help](https://kebasaa.github.io/eddyflow-documentation/).
 
 See also the [CHANGELOG](CHANGELOG).
-
----
-
-We hope you will enjoy using EddyFlow!
