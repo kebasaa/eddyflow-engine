@@ -1214,6 +1214,8 @@ module m_typedef
         real(kind = dbl) :: hdi_prefilter_s
         integer :: smoothing_width
         integer :: random_seed
+        logical :: approx_ccf      !< skip CCF normalisation in bootstrap (faster, minor approximation)
+        integer :: max_ar_order    !< cap on AR model order in FitArAic (0 = unlimited)
     end type PWBSetupType
 
     type :: PWBResultType

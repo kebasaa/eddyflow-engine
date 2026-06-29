@@ -554,7 +554,9 @@ module m_rp_global_var
          SNTags(418)%Label  / 'pwb_dev_thresh_s'      / &
          SNTags(419)%Label  / 'pwb_hdi_prefilter_s'   / &
          SNTags(420)%Label  / 'pwb_smoothing_width'   / &
-         SNTags(421)%Label  / 'pwb_random_seed'       /
+         SNTags(421)%Label  / 'pwb_random_seed'       / &
+         SNTags(422)%Label  / 'pwb_approx_ccf'        / &
+         SNTags(423)%Label  / 'pwb_max_ar_order'      /
 
     data SCTags(1)%Label  / 'data_path'    / &
          SCTags(2)%Label  / 'out_path'     / &

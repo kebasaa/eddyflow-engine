@@ -225,6 +225,7 @@ subroutine FitArAic(x, n, phi_best, p_best)
     real(kind = dbl), allocatable :: acf(:), phi(:), phi_old(:)
 
     max_lag = min(int(floor(100d0 * log10(dble(max(n, 2))))), n - 1)
+    if (PWBSetup%max_ar_order > 0) max_lag = min(max_lag, PWBSetup%max_ar_order)
     if (max_lag < 1) then
         allocate(phi_best(0))
         p_best = 0
@@ -326,7 +327,7 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, combo, res, ok)
             call CopyBlock(x, y, n, start, block_len, xb, yb, pos)
             if (pos > n) exit
         end do
-        call ComputeCcfWindow(xb, yb, n, min_rl, max_rl, ccf)
+        call ComputeCcfWindow(xb, yb, n, min_rl, max_rl, ccf, PWBSetup%approx_ccf)
         call SmoothAndFill(ccf, min_rl, max_rl, max(1, PWBSetup%smoothing_width), smooth)
         best_idx = ArgmaxAbs(smooth, min_rl, max_rl)
         boot_lags(b) = best_idx
@@ -388,42 +389,46 @@ integer function LcgRandInt(state, upper)
     LcgRandInt = mod(state, upper)
 end function LcgRandInt
 
-subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf)
-    integer, intent(in) :: n, min_rl, max_rl
-    real(kind = dbl), intent(in) :: x(n), y(n)
+subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf, approx)
+    integer,  intent(in) :: n, min_rl, max_rl
+    real(kind = dbl), intent(in)  :: x(n), y(n)
     real(kind = dbl), intent(out) :: ccf(min_rl:max_rl)
-    integer :: lag, i, nn, s1, s2
-    real(kind = dbl) :: mx, my, vx, vy, cov
+    logical,  intent(in) :: approx
+    integer :: lag, i, nn
+    real(kind = dbl) :: xi, yi, sum_x, sum_y, cov_raw, sum_x2, sum_y2, dns, cov, vx, vy
+    !> Single-pass CCF using the computational formula (König-Huygens identity).
+    !> When approx=.true., variance normalisation is skipped — valid when only
+    !> the argmax is needed and N >> lag range (variance varies <1% across lags).
     do lag = min_rl, max_rl
-        mx = 0d0; my = 0d0; vx = 0d0; vy = 0d0; cov = 0d0; nn = n - abs(lag)
+        nn = n - abs(lag)
         if (nn <= 1) then
             ccf(lag) = 0d0
             cycle
         end if
-        do i = 1, nn
-            if (lag >= 0) then
-                s1 = i; s2 = i + lag
-            else
-                s1 = i - lag; s2 = i
-            end if
-            mx = mx + x(s1)
-            my = my + y(s2)
-        end do
-        mx = mx / dble(nn); my = my / dble(nn)
-        do i = 1, nn
-            if (lag >= 0) then
-                s1 = i; s2 = i + lag
-            else
-                s1 = i - lag; s2 = i
-            end if
-            cov = cov + (x(s1) - mx) * (y(s2) - my)
-            vx = vx + (x(s1) - mx)**2
-            vy = vy + (y(s2) - my)**2
-        end do
-        if (vx <= 0d0 .or. vy <= 0d0) then
-            ccf(lag) = 0d0
+        sum_x = 0d0; sum_y = 0d0; cov_raw = 0d0; sum_x2 = 0d0; sum_y2 = 0d0
+        if (lag >= 0) then
+            do i = 1, nn
+                xi = x(i);  yi = y(i + lag)
+                sum_x = sum_x + xi;  sum_y = sum_y + yi
+                cov_raw = cov_raw + xi * yi
+                sum_x2 = sum_x2 + xi * xi;  sum_y2 = sum_y2 + yi * yi
+            end do
         else
-            ccf(lag) = cov / sqrt(vx * vy)
+            do i = 1, nn
+                xi = x(i - lag);  yi = y(i)
+                sum_x = sum_x + xi;  sum_y = sum_y + yi
+                cov_raw = cov_raw + xi * yi
+                sum_x2 = sum_x2 + xi * xi;  sum_y2 = sum_y2 + yi * yi
+            end do
+        end if
+        dns = dble(nn)
+        cov = cov_raw - sum_x * sum_y / dns
+        if (approx) then
+            ccf(lag) = cov
+        else
+            vx = sum_x2 - sum_x * sum_x / dns
+            vy = sum_y2 - sum_y * sum_y / dns
+            ccf(lag) = merge(cov / sqrt(vx * vy), 0d0, vx > 0d0 .and. vy > 0d0)
         end if
     end do
 end subroutine ComputeCcfWindow

@@ -472,6 +472,10 @@ subroutine WriteVariablesRP()
     if (SNTagFound(419)) PWBSetup%hdi_prefilter_s = SNTags(419)%value
     if (SNTagFound(420)) PWBSetup%smoothing_width = max(1, nint(SNTags(420)%value))
     if (SNTagFound(421)) PWBSetup%random_seed = max(1, nint(SNTags(421)%value))
+    PWBSetup%approx_ccf   = .false.
+    PWBSetup%max_ar_order = 0
+    if (SNTagFound(422)) PWBSetup%approx_ccf   = nint(SNTags(422)%value) /= 0
+    if (SNTagFound(423)) PWBSetup%max_ar_order = max(0, nint(SNTags(423)%value))
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.
