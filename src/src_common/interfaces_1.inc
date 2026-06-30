@@ -23,6 +23,22 @@ interface
 end interface
 
 interface
+    subroutine Gas4FullOutputUnits(unit_in, flux_scale, dens_scale, &
+        flux_label, conc_label, mixr_label, dens_label)
+        use m_common_global_var
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: unit_in
+        real(kind = dbl), intent(out) :: flux_scale
+        real(kind = dbl), intent(out) :: dens_scale
+        character(*), intent(out) :: flux_label
+        character(*), intent(out) :: conc_label
+        character(*), intent(out) :: mixr_label
+        character(*), intent(out) :: dens_label
+    end subroutine Gas4FullOutputUnits
+end interface
+
+interface
     function CompareSwVer(v1, v2)
         use m_common_global_var
         implicit none

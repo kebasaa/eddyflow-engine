@@ -148,12 +148,14 @@ subroutine WriteOutFullFcc(lEx)
     end if
 
     if(fcc_var_present(gas4)) then
-        call WriteDatumFloat(Flux3%gas4, field_val, EddyFlowProj%err_label)
+        call WriteDatumFloat(merge(Flux3%gas4 * gas4_full_flux_sc, error, &
+            Flux3%gas4 /= error), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumInt(QCFlag%gas4, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none' .or. EddyFlowProj%fix_out_format) then
-            call WriteDatumFloat(lEx%rand_uncer(gas4), field_val, EddyFlowProj%err_label)
+            call WriteDatumFloat(merge(lEx%rand_uncer(gas4) * gas4_full_flux_sc, error, &
+                lEx%rand_uncer(gas4) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         end if
     elseif(EddyFlowProj%fix_out_format) then
@@ -182,7 +184,12 @@ subroutine WriteOutFullFcc(lEx)
     do gas = ch4, gas4
         if(fcc_var_present(gas)) then
             if (lEx%Stor%of(gas) /= error) then
-                call WriteDatumFloat(lEx%Stor%of(gas) * 1d-3, field_val, EddyFlowProj%err_label)
+                if (gas == gas4) then
+                    call WriteDatumFloat(lEx%Stor%of(gas) * 1d-3 * gas4_full_flux_sc, &
+                        field_val, EddyFlowProj%err_label)
+                else
+                    call WriteDatumFloat(lEx%Stor%of(gas) * 1d-3, field_val, EddyFlowProj%err_label)
+                end if
                 call AddDatum(csv_row, field_val, separator)
             else
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -196,7 +203,11 @@ subroutine WriteOutFullFcc(lEx)
     do gas = co2, n2o
         if(fcc_var_present(gas)) then
             if (lEx%rot_w /= error .and. lEx%d(gas) >= 0d0) then
-                if (gas /= h2o) then
+                if (gas == gas4) then
+                    call WriteDatumFloat(lEx%rot_w * lEx%d(gas) * 1d3 * gas4_full_flux_sc, &
+                        field_val, EddyFlowProj%err_label)
+                    call AddDatum(csv_row, field_val, separator)
+                else if (gas /= h2o) then
                     call WriteDatumFloat(lEx%rot_w * lEx%d(gas) * 1d3, field_val, EddyFlowProj%err_label)
                     call AddDatum(csv_row, field_val, separator)
                 else
@@ -214,11 +225,26 @@ subroutine WriteOutFullFcc(lEx)
     !> Gas concentrations, densities and timelags
     do gas = co2, n2o
         if (fcc_var_present(gas)) then
-            call WriteDatumFloat(lEx%d(gas), field_val, EddyFlowProj%err_label)
+            if (gas == gas4) then
+                call WriteDatumFloat(merge(lEx%d(gas) * gas4_full_dens_sc, error, &
+                    lEx%d(gas) /= error), field_val, EddyFlowProj%err_label)
+            else
+                call WriteDatumFloat(lEx%d(gas), field_val, EddyFlowProj%err_label)
+            end if
             call AddDatum(csv_row, field_val, separator)
-            call WriteDatumFloat(lEx%chi(gas), field_val, EddyFlowProj%err_label)
+            if (gas == gas4) then
+                call WriteDatumFloat(merge(lEx%chi(gas) * gas4_full_flux_sc, error, &
+                    lEx%chi(gas) /= error), field_val, EddyFlowProj%err_label)
+            else
+                call WriteDatumFloat(lEx%chi(gas), field_val, EddyFlowProj%err_label)
+            end if
             call AddDatum(csv_row, field_val, separator)
-            call WriteDatumFloat(lEx%r(gas), field_val, EddyFlowProj%err_label)
+            if (gas == gas4) then
+                call WriteDatumFloat(merge(lEx%r(gas) * gas4_full_flux_sc, error, &
+                    lEx%r(gas) /= error), field_val, EddyFlowProj%err_label)
+            else
+                call WriteDatumFloat(lEx%r(gas), field_val, EddyFlowProj%err_label)
+            end if
             call AddDatum(csv_row, field_val, separator)
             call WriteDatumFloat(lEx%tlag(gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -400,7 +426,8 @@ subroutine WriteOutFullFcc(lEx)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     if(fcc_var_present(gas4)) then
-        call WriteDatumFloat(lEx%Flux0%gas4, field_val, EddyFlowProj%err_label)
+        call WriteDatumFloat(merge(lEx%Flux0%gas4 * gas4_full_flux_sc, error, &
+            lEx%Flux0%gas4 /= error), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumFloat(BPCF%of(w_gas4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)

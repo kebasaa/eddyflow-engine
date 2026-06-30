@@ -51,6 +51,7 @@ subroutine InitOutFiles_rp()
     character(64) :: e2sg(E2NumVar)
     character(32) :: usg(NumUserVar)
     character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
+    real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
@@ -80,23 +81,8 @@ subroutine InitOutFiles_rp()
 
     call lowercase(e2sg(gas4))
 
-    select case (trim(adjustl(E2Col(gas4)%unit_in)))
-        case ('ppb', 'nmol_mol')
-            gas4_flux_label = '[nmol+1s-1m-2]'
-            gas4_conc_label = '[nmol+1mol_a-1]'
-            gas4_mixr_label = '[nmol+1mol_d-1]'
-            gas4_dens_label = '[nmol+1m-3]'
-        case ('pmol_mol')
-            gas4_flux_label = '[pmol+1s-1m-2]'
-            gas4_conc_label = '[pmol+1mol_a-1]'
-            gas4_mixr_label = '[pmol+1mol_d-1]'
-            gas4_dens_label = '[pmol+1m-3]'
-        case default
-            gas4_flux_label = '[' // char(181) // 'mol+1s-1m-2]'
-            gas4_conc_label = '[' // char(181) // 'mol+1mol_a-1]'
-            gas4_mixr_label = '[' // char(181) // 'mol+1mol_d-1]'
-            gas4_dens_label = '[mmol+1m-3]'
-    end select
+    call Gas4FullOutputUnits(E2Col(gas4)%unit_in, gas4_flux_sc, gas4_dens_sc, &
+        gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
 
     do j = 1, NumUserVar
         usg(j)  = UserCol(j)%label(1:len_trim(UserCol(j)%label)) // '_'
