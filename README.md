@@ -47,6 +47,26 @@ To compile the Engine use [gfortran](https://gcc.gnu.org/wiki/GFortran)
     $ make rp
     $ make fcc
 
+## Running the engines from the command line
+
+Use `eddyflow_rp` for Express mode, Advanced mode step 1, and Metadata Retriever runs. Use `eddyflow_fcc` for Advanced mode step 2 when flux/cospectral correction outputs are required.
+
+From a shell, the commands are:
+
+```bash
+eddyflow_rp -c gui -s [linux,win] -e /path/to/eddyflow-env /path/to/project.eddyflow
+eddyflow_fcc -c gui -s [linux,win] -e /path/to/eddyflow-env /path/to/project.eddyflow
+```
+
+Command line arguments:
+
+- `-c`, `--caller`: use `gui` to mirror GUI behavior; omit it to use the console default.
+- `-s`, `--system`: host operating system, one of `win`, `linux`, or `mac`.
+- `-e`, `--environment`: EddyFlow environment directory containing folders such as `ini` and `tmp`; if omitted, the engine defaults to `..`.
+- Final positional argument: path to the EddyFlow project file (`*.eddyflow`).
+
+For a full Advanced mode run, run `eddyflow_rp` first. Run `eddyflow_fcc` afterwards only when the project requires flux/cospectral correction outputs.
+
 
 ## Utilities
 
