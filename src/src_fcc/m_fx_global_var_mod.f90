@@ -48,10 +48,16 @@ module m_fx_global_var
 
     real(kind = dbl) :: float_doy
     real(kind = dbl) :: dkf(ndkf + 1)
+    real(kind = dbl) :: gas4_full_flux_sc
+    real(kind = dbl) :: gas4_full_dens_sc
     real(kind = dbl), allocatable :: custVars(:)
 
     character(12), parameter :: fcc_app = 'EddyFlow-FCC'
     character(32) :: g4lab
+    character(32) :: gas4_full_flux_label
+    character(32) :: gas4_full_conc_label
+    character(32) :: gas4_full_mixr_label
+    character(32) :: gas4_full_dens_label
     character(1024) :: UserVarHeader
     character(26), parameter :: SubDirSpecAn = 'eddyflow_spectral_analysis'
     character(16000) :: fluxnet_header

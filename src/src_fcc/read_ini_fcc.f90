@@ -351,4 +351,44 @@ subroutine WriteVariablesFCC()
     call AdjDir(Dir%full, slash)
     call AdjFilePath(AuxFile%ex, slash)
     call AdjFilePath(AuxFile%sa, slash)
+    call InitializeGas4FullOutputUnitsFcc()
 end subroutine WriteVariablesFCC
+
+!***************************************************************************
+!
+! \brief       Initialize gas4 full-output units from project metadata.
+!***************************************************************************
+subroutine InitializeGas4FullOutputUnitsFcc()
+    use m_fx_global_var
+    implicit none
+    !> local variables
+    integer :: gas4_col
+    logical :: metadata_exists
+    logical :: IniFileNotFound
+    character(32) :: gas4_unit
+    type(ColType) :: MetadataCol(MaxNumCol)
+    include '../src_common/interfaces_1.inc'
+
+    gas4_unit = 'ppm'
+
+    if (AuxFile%metadata /= 'none') then
+        inquire(file = AuxFile%metadata, exist = metadata_exists)
+        if (metadata_exists) then
+            call ReadMetadataFile(MetadataCol, AuxFile%metadata, IniFileNotFound, .false.)
+            gas4_col = EddyFlowProj%col(gas4)
+            if (.not. IniFileNotFound .and. gas4_col > 0 .and. gas4_col <= MaxNumCol) then
+                if (trim(adjustl(MetadataCol(gas4_col)%conversion_type)) /= 'none' &
+                    .and. len_trim(MetadataCol(gas4_col)%unit_out) > 0 &
+                    .and. trim(adjustl(MetadataCol(gas4_col)%unit_out)) /= 'none') then
+                    gas4_unit = MetadataCol(gas4_col)%unit_out
+                else
+                    gas4_unit = MetadataCol(gas4_col)%unit_in
+                end if
+            end if
+        end if
+    end if
+
+    call Gas4FullOutputUnits(gas4_unit, gas4_full_flux_sc, gas4_full_dens_sc, &
+        gas4_full_flux_label, gas4_full_conc_label, gas4_full_mixr_label, &
+        gas4_full_dens_label)
+end subroutine InitializeGas4FullOutputUnitsFcc

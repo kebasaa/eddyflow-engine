@@ -43,22 +43,14 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     integer :: gas
 !    integer :: prof
     real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
+    character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
     character(LongOutstringLen) :: csv_row
     character(DatumLen) :: field_val
     include '../src_common/interfaces.inc'
 
-    !> Scale gas4 outputs back to input units (inverse of define_all_var_set conversion)
-    select case (trim(adjustl(E2Col(gas4)%unit_in)))
-        case ('ppb', 'nmol_mol')
-            gas4_flux_sc = 1d3
-            gas4_dens_sc = 1d6
-        case ('pmol_mol')
-            gas4_flux_sc = 1d6
-            gas4_dens_sc = 1d9
-        case default
-            gas4_flux_sc = 1d0
-            gas4_dens_sc = 1d0
-    end select
+    !> Scale gas4 outputs back to the configured full-output unit basis.
+    call Gas4FullOutputUnits(E2Col(gas4)%unit_in, gas4_flux_sc, gas4_dens_sc, &
+        gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
 
     !> Preliminary file and timestamp information
     call clearstr(csv_row)
