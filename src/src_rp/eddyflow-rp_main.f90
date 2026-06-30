@@ -230,9 +230,9 @@ program EddyFlowRP
         !> don't calculate fluxes 2/3
         !> don't calculate footprint
         EddyFlowProj%fcc_follows     = .true.
-        !> Preserve full output when gas4 is configured — it cannot benefit from
-        !> in-situ spectral corrections (FCC-only) and must be computed in RP
-        if (EddyFlowProj%col(gas4) == 0) EddyFlowProj%out_full = .false.
+        !> FCC owns the public full output in this flow. RP still writes the
+        !> parent FLUXNET essentials file that FCC uses, including gas4 values.
+        EddyFlowProj%out_full        = .false.
         EddyFlowProj%out_md          = .false.
         make_dataset_common         = .false.
     else

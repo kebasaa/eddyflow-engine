@@ -58,7 +58,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
     include '../src_common/interfaces_1.inc'
 
     !> Create output directory
-    mkdir_status = CreateDir(Dir%main_out(1:len_trim(Dir%main_out)))
+    mkdir_status = CreateDir('"' // Dir%main_out(1:len_trim(Dir%main_out)) // '"')
     SpecDir = Dir%main_out(1:len_trim(Dir%main_out)) // SubDirSpecAn // slash
     mkdir_status = CreateDir('"' // SpecDir(1:len_trim(SpecDir)) // '"')
 

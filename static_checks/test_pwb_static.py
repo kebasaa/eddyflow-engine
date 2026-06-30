@@ -53,7 +53,11 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertIn("Hdi95", source)
         self.assertIn("edge_pinned", source)
         self.assertIn("fallback_used", source)
-        self.assertIn("eddyflow_pwb_timelag_diagnostics.csv", source)
+        self.assertIn("EddyFlowProj%id(1:len_trim(EddyFlowProj%id))", source)
+        self.assertIn("PwbTimelagDiag_FilePadding", source)
+        self.assertIn("Timestamp_FilePadding", source)
+        globals_ = read("src/src_common/m_common_global_var.f90")
+        self.assertIn("PwbTimelagDiag_FilePadding = '_pwb_diagnostics'", globals_)
         self.assertNotIn("import scipy", source.lower())
 
     def test_bounds_sensitive_loops_do_not_rely_on_short_circuiting(self):

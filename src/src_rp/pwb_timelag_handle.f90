@@ -572,7 +572,9 @@ subroutine WritePwbDiagnostic(gas, res)
     character(PathLen) :: path
 
     if (Dir%main_out == 'none') return
-    path = Dir%main_out(1:len_trim(Dir%main_out)) // 'eddyflow_pwb_timelag_diagnostics.csv'
+    path = Dir%main_out(1:len_trim(Dir%main_out)) &
+        // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
+        // PwbTimelagDiag_FilePadding // Timestamp_FilePadding // CsvExt
     open(newunit = u, file = path, status = 'unknown', position = 'append', iostat = ios, encoding = 'utf-8')
     if (ios /= 0) return
     if (.not. pwb_diag_header_written) then
