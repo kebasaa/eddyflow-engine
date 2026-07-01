@@ -48,6 +48,13 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     integer :: en
     integer :: j
     integer :: gas
+    integer :: field_start
+    integer :: field_end
+    integer :: field_count
+    integer :: marker_custom
+    integer :: marker_biomet
+    character(32) :: custom_label
+    logical :: label_has_alpha
     logical :: ValidRecord
     logical :: EndOfFileReached
     logical :: InitializationPerformed
@@ -76,11 +83,41 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     g4l = len_trim(g4lab)
     
 
-    st = index(fluxnet_header, 'NUM_CUSTOM_VARS') + 16
-    en = index(fluxnet_header, 'NUM_BIOMET_VARS') - 2
-    UserVarHeader = fluxnet_header(st:en)
-    UserVarHeader = replace2(UserVarHeader, 'CUSTOM_', '')
-    call lowercase(UserVarHeader)
+    UserVarHeader = ''
+    marker_custom = index(fluxnet_header, 'NUM_CUSTOM_VARS')
+    marker_biomet = index(fluxnet_header, 'NUM_BIOMET_VARS')
+    if (marker_custom > 0 .and. marker_biomet > marker_custom) then
+        field_start = marker_custom + len('NUM_CUSTOM_VARS') + 1
+        field_count = 0
+        do while (field_start < marker_biomet .and. field_count < MaxUserVar)
+            field_end = field_start + index(fluxnet_header(field_start:), ',') - 2
+            if (field_end < field_start) exit
+            field_count = field_count + 1
+            call clearstr(custom_label)
+            custom_label = fluxnet_header(field_start:field_end)
+            custom_label = replace2(custom_label, 'CUSTOM_', '')
+            call lowercase(custom_label)
+            label_has_alpha = index(custom_label, 'a') > 0 .or. index(custom_label, 'b') > 0 &
+                .or. index(custom_label, 'c') > 0 .or. index(custom_label, 'd') > 0 &
+                .or. index(custom_label, 'e') > 0 .or. index(custom_label, 'f') > 0 &
+                .or. index(custom_label, 'g') > 0 .or. index(custom_label, 'h') > 0 &
+                .or. index(custom_label, 'i') > 0 .or. index(custom_label, 'j') > 0 &
+                .or. index(custom_label, 'k') > 0 .or. index(custom_label, 'l') > 0 &
+                .or. index(custom_label, 'm') > 0 .or. index(custom_label, 'n') > 0 &
+                .or. index(custom_label, 'o') > 0 .or. index(custom_label, 'p') > 0 &
+                .or. index(custom_label, 'q') > 0 .or. index(custom_label, 'r') > 0 &
+                .or. index(custom_label, 's') > 0 .or. index(custom_label, 't') > 0 &
+                .or. index(custom_label, 'u') > 0 .or. index(custom_label, 'v') > 0 &
+                .or. index(custom_label, 'w') > 0 .or. index(custom_label, 'x') > 0 &
+                .or. index(custom_label, 'y') > 0 .or. index(custom_label, 'z') > 0
+            if (label_has_alpha) then
+                if (index(custom_label, '_mean') == 0) &
+                    custom_label = custom_label(1:len_trim(custom_label)) // '_mean'
+                UserVarHeader(field_count) = custom_label
+            end if
+            field_start = field_end + 2
+        end do
+    end if
 
     !> Initialize variables that are determined for the whole
     !> dataset (presence of certain variables)

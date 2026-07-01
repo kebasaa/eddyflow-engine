@@ -34,3 +34,4 @@ src/src_rp/deprecated
 !/static_checks/
 /static_checks/*
 !/static_checks/test_irga_path_classification_static.py
+!/static_checks/test_fcc_full_header_static.py

@@ -49,9 +49,7 @@ subroutine InitOutFiles(lEx)
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
-    character(LongOutstringLen) :: head1_utf8
-    character(LongOutstringLen) :: head2_utf8
-    character(LongOutstringLen) :: head3_utf8
+    character(32) :: custom_label
     integer, external :: CreateDir
 
 
@@ -81,10 +79,6 @@ subroutine InitOutFiles(lEx)
         call clearstr(header1)
         call clearstr(header2)
         call clearstr(header3)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
-
         if (.not. EddyFlowProj%fix_out_format) then
             !> Initial file and timestamp info
             call AddDatum(header1,'file_info,,,,,,', separator)
@@ -389,8 +383,12 @@ subroutine InitOutFiles(lEx)
             !> Mean values of user variables
             if (lEx%ncustom > 0) then
                 call AddDatum(header1, 'custom_variables', separator)
-                call AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader)), separator)
                 do i = 1, lEx%ncustom
+                    if (i > 1) call AddDatum(header1, '', separator)
+                    call clearstr(custom_label)
+                    if (i <= MaxUserVar) custom_label = UserVarHeader(i)
+                    if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
+                    call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
                     call AddDatum(header3, '--', separator)
                 end do
             end if
@@ -408,14 +406,10 @@ subroutine InitOutFiles(lEx)
                 call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         else
             header1 = 'file_info,,,,,,,corrected_fluxes_and_quality_flags,,,,,,,,,,,,,,,,,,,,,&
                 &storage_fluxes,,,,,,vertical_advection_fluxes,,,,&
@@ -510,8 +504,12 @@ subroutine InitOutFiles(lEx)
             !> Mean values of user variables
             if (lEx%ncustom > 0) then
                 call AddDatum(header1, 'custom_variables', separator)
-                call AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader)), separator)
                 do i = 1, lEx%ncustom
+                    if (i > 1) call AddDatum(header1, '', separator)
+                    call clearstr(custom_label)
+                    if (i <= MaxUserVar) custom_label = UserVarHeader(i)
+                    if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
+                    call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
                     call AddDatum(header3, '--', separator)
                 end do
             end if
@@ -530,14 +528,10 @@ subroutine InitOutFiles(lEx)
                     '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         end if
     end if
 
