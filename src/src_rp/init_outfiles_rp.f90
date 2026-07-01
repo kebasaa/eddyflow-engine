@@ -50,6 +50,10 @@ subroutine InitOutFiles_rp()
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
     character(32) :: usg(NumUserVar)
+    character(32) :: user_header(NumUserVar)
+    character(32) :: user_unit(NumUserVar)
+    character(32) :: flow_model_label
+    character(32) :: previous_flow_model
     character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
     real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
     character(LongOutstringLen) :: header1
@@ -87,6 +91,35 @@ subroutine InitOutFiles_rp()
     do j = 1, NumUserVar
         usg(j)  = UserCol(j)%label(1:len_trim(UserCol(j)%label)) // '_'
         call lowercase(usg(j))
+        user_header(j) = usg(j)(1:len_trim(usg(j))) // 'mean'
+        user_unit(j) = '--'
+        if (UserCol(j)%var == 'flowrate') then
+            call clearstr(flow_model_label)
+            flow_model_label = UserCol(j)%instr%model
+            if (len_trim(flow_model_label) > 2) then
+                if (flow_model_label(len_trim(flow_model_label) - 1:len_trim(flow_model_label) - 1) == '_' &
+                    .or. flow_model_label(len_trim(flow_model_label) - 1:len_trim(flow_model_label) - 1) == '-') &
+                    flow_model_label = flow_model_label(1:len_trim(flow_model_label) - 2)
+            end if
+            call lowercase(flow_model_label)
+            var = 1
+            do i = 1, j - 1
+                if (UserCol(i)%var /= 'flowrate') cycle
+                call clearstr(previous_flow_model)
+                previous_flow_model = UserCol(i)%instr%model
+                if (len_trim(previous_flow_model) > 2) then
+                    if (previous_flow_model(len_trim(previous_flow_model) - 1:len_trim(previous_flow_model) - 1) == '_' &
+                        .or. previous_flow_model(len_trim(previous_flow_model) - 1: &
+                            len_trim(previous_flow_model) - 1) == '-') &
+                        previous_flow_model = previous_flow_model(1:len_trim(previous_flow_model) - 2)
+                end if
+                call lowercase(previous_flow_model)
+                if (previous_flow_model == flow_model_label) var = var + 1
+            end do
+            write(user_header(j), '("flowrate_", a, "_", i0, "_mean")') &
+                flow_model_label(1:len_trim(flow_model_label)), var
+            user_unit(j) = '[m+3s-1]'
+        end if
     end do
 
     !> Create sub-directory
@@ -491,8 +524,8 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header1, 'custom_variables', separator)
                 do var = 1, NumUserVar
                     call AddDatum(header1, '', separator)
-                    call AddDatum(header2, usg(var)(1:len_trim(usg(var))) // 'mean', separator)
-                    call AddDatum(header3,'--', separator)
+                    call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
+                    call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
                 end do
             end if
 
@@ -618,8 +651,8 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header1, 'custom_variables', separator)
                 do var = 1, NumUserVar
                     call AddDatum(header1, '', separator)
-                    call AddDatum(header2, usg(var)(1:len_trim(usg(var))) // 'mean', separator)
-                    call AddDatum(header3,'--', separator)
+                    call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
+                    call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
                 end do
             end if
 

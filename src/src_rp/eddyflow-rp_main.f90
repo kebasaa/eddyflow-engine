@@ -1954,15 +1954,18 @@ program EddyFlowRP
             end if
 
             !> ===== 6. TIMELAG COMPENSATION  ==================================
-            !> If available, for files others than GHG, replace flow rate
-            !> of LI-7200 provided by user with mean value from raw files
+            !> If available, for files others than GHG, replace instrument
+            !> flow rates provided by user with mean values from raw files
             if (EddyFlowProj%ftype /= 'licor_ghg' &
                 .or. EddyFlowProj%use_extmd_file) then
-                do i = 1, E2NumVar
+                do i = co2, gas4
                     if (NumUserVar > 0) then
                         do j = 1, NumUserVar
                             if (UserCol(j)%var == 'flowrate' &
-                                .and. UserCol(j)%instr%model == E2Col(i)%instr%model &
+                                .and. (UserCol(j)%instr_name == E2Col(i)%instr_name &
+                                    .or. ((len_trim(UserCol(j)%instr_name) == 0 &
+                                        .or. len_trim(E2Col(i)%instr_name) == 0) &
+                                        .and. UserCol(j)%instr%model == E2Col(i)%instr%model)) &
                                 .and. UserStats%Mean(j) /= 0d0 &
                                 .and. UserStats%Mean(j) /= error) then
                                 E2Col(i)%instr%tube_f = UserStats%Mean(j)

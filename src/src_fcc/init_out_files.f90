@@ -389,7 +389,11 @@ subroutine InitOutFiles(lEx)
                     if (i <= MaxUserVar) custom_label = UserVarHeader(i)
                     if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
                     call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
-                    call AddDatum(header3, '--', separator)
+                    if (index(custom_label, 'flowrate_') == 1 .and. index(custom_label, '_mean') > 0) then
+                        call AddDatum(header3, '[m+3s-1]', separator)
+                    else
+                        call AddDatum(header3, '--', separator)
+                    end if
                 end do
             end if
 
@@ -510,7 +514,11 @@ subroutine InitOutFiles(lEx)
                     if (i <= MaxUserVar) custom_label = UserVarHeader(i)
                     if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
                     call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
-                    call AddDatum(header3, '--', separator)
+                    if (index(custom_label, 'flowrate_') == 1 .and. index(custom_label, '_mean') > 0) then
+                        call AddDatum(header3, '[m+3s-1]', separator)
+                    else
+                        call AddDatum(header3, '--', separator)
+                    end if
                 end do
             end if
 
