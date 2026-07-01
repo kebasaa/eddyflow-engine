@@ -99,7 +99,7 @@ subroutine InitOutFiles_rp()
             case ('int_p')
                 user_unit(j) = '[Pa]'
             case ('co2', 'n2o', 'ch4')
-                user_unit(j) = '[' // char(194) // utf8_mu// 'mol+1mol_a-1]'
+                user_unit(j) = '[' // utf8_mu // 'mol+1mol_a-1]'
             case ('h2o')
                 user_unit(j) = '[mmol+1mol_a-1]'
         end select
