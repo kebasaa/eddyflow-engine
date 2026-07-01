@@ -78,11 +78,15 @@ subroutine ResetCecFlux(flux)
     flux%ok = .false.
 end subroutine ResetCecFlux
 
-subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, descriptor)
+subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, descriptor, &
+    setup, signal_strength_co2, signal_strength_h2o)
     real(kind = dbl), intent(in) :: primes(:, :)
     integer, intent(in) :: stationarity_co2
     integer, intent(in) :: stationarity_h2o
     type(CECDescriptorType), intent(out) :: descriptor
+    type(CECSetupType), intent(in), optional :: setup
+    real(kind = dbl), intent(in), optional :: signal_strength_co2(:)
+    real(kind = dbl), intent(in), optional :: signal_strength_h2o(:)
 
     integer :: i
     integer :: nrow
@@ -97,8 +101,11 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
     real(kind = dbl) :: f_T
     real(kind = dbl) :: f_R
     real(kind = dbl) :: f_P
+    type(CECSetupType) :: active_setup
 
     call ResetCecDescriptor(descriptor)
+    call DefaultCecSetup(active_setup)
+    if (present(setup)) active_setup = setup
 
     if (size(primes, 2) < h2o) return
     nrow = size(primes, 1)
@@ -109,9 +116,18 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
     c_prime = primes(:, co2)
     q_prime = primes(:, h2o)
 
-    call InterpolateShortCecGaps(w_prime, 4)
-    call InterpolateShortCecGaps(c_prime, 4)
-    call InterpolateShortCecGaps(q_prime, 4)
+    if (active_setup%signal_strength > 0d0) then
+        if (present(signal_strength_co2)) &
+            call FilterCecSignalStrength(c_prime, signal_strength_co2, &
+                active_setup%signal_strength)
+        if (present(signal_strength_h2o)) &
+            call FilterCecSignalStrength(q_prime, signal_strength_h2o, &
+                active_setup%signal_strength)
+    end if
+
+    call InterpolateShortCecGaps(w_prime, active_setup%max_gap_fill)
+    call InterpolateShortCecGaps(c_prime, active_setup%max_gap_fill)
+    call InterpolateShortCecGaps(q_prime, active_setup%max_gap_fill)
 
     sum_fE = 0d0
     sum_fT = 0d0
@@ -125,10 +141,14 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
 
         descriptor%n_valid = descriptor%n_valid + 1
         if (w_prime(i) > 0d0 .and. q_prime(i) > 0d0 .and. c_prime(i) > 0d0) then
+            if (.not. CecPassesHyperbolicThreshold(w_prime(i), q_prime(i), &
+                c_prime(i), active_setup%h)) cycle
             descriptor%n_O1 = descriptor%n_O1 + 1
             sum_fE = sum_fE + w_prime(i) * q_prime(i)
             sum_fR = sum_fR + w_prime(i) * c_prime(i)
         else if (w_prime(i) > 0d0 .and. q_prime(i) > 0d0 .and. c_prime(i) < 0d0) then
+            if (.not. CecPassesHyperbolicThreshold(w_prime(i), q_prime(i), &
+                c_prime(i), active_setup%h)) cycle
             descriptor%n_O2 = descriptor%n_O2 + 1
             sum_fT = sum_fT + w_prime(i) * q_prime(i)
             sum_fP = sum_fP + w_prime(i) * c_prime(i)
@@ -136,13 +156,13 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
     end do
 
     !> Zahn et al. retained periods with at least 90% instantaneous data.
-    if (10 * descriptor%n_valid < 9 * nrow) return
+    if (dble(descriptor%n_valid) < active_setup%min_valid * dble(nrow)) return
     if (stationarity_co2 == ierror .or. stationarity_h2o == ierror) return
     if (stationarity_co2 > 25 .or. stationarity_h2o > 25) return
 
     descriptor%frac_O1 = dble(descriptor%n_O1) / dble(descriptor%n_valid)
     descriptor%frac_O2 = dble(descriptor%n_O2) / dble(descriptor%n_valid)
-    if (descriptor%frac_O1 + descriptor%frac_O2 < 0.20d0) return
+    if (descriptor%frac_O1 + descriptor%frac_O2 < active_setup%min_o1_o2) return
 
     f_E = sum_fE / dble(descriptor%n_valid)
     f_T = sum_fT / dble(descriptor%n_valid)
@@ -152,10 +172,10 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
     if (f_T /= 0d0) descriptor%r_ET = f_E / f_T
     if (f_P /= 0d0) descriptor%r_Fc = f_R / f_P
 
-    if (descriptor%frac_O1 < 0.05d0 .or. descriptor%r_ET == 0d0) then
+    if (descriptor%frac_O1 < active_setup%min_octant .or. descriptor%r_ET == 0d0) then
         descriptor%h2o_status = cec_all_stomatal
         descriptor%h2o_valid = .true.
-    else if (descriptor%frac_O2 < 0.05d0) then
+    else if (descriptor%frac_O2 < active_setup%min_octant) then
         descriptor%h2o_status = cec_all_nonstomatal
         descriptor%h2o_valid = .true.
     else if (descriptor%r_ET /= error) then
@@ -165,10 +185,10 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
 
     if (descriptor%r_Fc /= error .and. abs(descriptor%r_Fc + 1d0) < 0.05d0) then
         descriptor%co2_status = cec_singular
-    else if (descriptor%frac_O1 < 0.05d0 .or. descriptor%r_Fc == 0d0) then
+    else if (descriptor%frac_O1 < active_setup%min_octant .or. descriptor%r_Fc == 0d0) then
         descriptor%co2_status = cec_all_stomatal
         descriptor%co2_valid = .true.
-    else if (descriptor%frac_O2 < 0.05d0) then
+    else if (descriptor%frac_O2 < active_setup%min_octant) then
         descriptor%co2_status = cec_all_nonstomatal
         descriptor%co2_valid = .true.
     else if (descriptor%r_Fc /= error) then
@@ -176,6 +196,47 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
         descriptor%co2_valid = .true.
     end if
 end subroutine ExtractCecDescriptor
+
+subroutine DefaultCecSetup(setup)
+    type(CECSetupType), intent(out) :: setup
+
+    setup%h = 0d0
+    setup%min_o1_o2 = 0.20d0
+    setup%min_octant = 0.05d0
+    setup%min_valid = 0.90d0
+    setup%signal_strength = 70d0
+    setup%max_gap_fill = 4
+end subroutine DefaultCecSetup
+
+subroutine FilterCecSignalStrength(values, signal_strength, threshold)
+    real(kind = dbl), intent(inout) :: values(:)
+    real(kind = dbl), intent(in) :: signal_strength(:)
+    real(kind = dbl), intent(in) :: threshold
+
+    integer :: i
+    integer :: n
+
+    n = min(size(values), size(signal_strength))
+    do i = 1, n
+        if (CecValueIsValid(signal_strength(i))) then
+            if (signal_strength(i) < threshold) values(i) = error
+        end if
+    end do
+end subroutine FilterCecSignalStrength
+
+logical function CecPassesHyperbolicThreshold(w_prime, q_prime, c_prime, h)
+    real(kind = dbl), intent(in) :: w_prime
+    real(kind = dbl), intent(in) :: q_prime
+    real(kind = dbl), intent(in) :: c_prime
+    real(kind = dbl), intent(in) :: h
+
+    if (h <= 0d0) then
+        CecPassesHyperbolicThreshold = .true.
+    else
+        CecPassesHyperbolicThreshold = &
+            abs(w_prime * q_prime) >= h .and. abs(w_prime * c_prime) >= h
+    end if
+end function CecPassesHyperbolicThreshold
 
 subroutine ApplyCecDescriptor(descriptor, H2O_total, Fc_total, do_cec, flux)
     type(CECDescriptorType), intent(in) :: descriptor

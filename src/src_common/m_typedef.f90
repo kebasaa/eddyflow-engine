@@ -488,6 +488,15 @@ module m_typedef
         type(InstrumentType) :: Instr(E2NumVar)
     end type DynMDType
 
+    type :: CECSetupType
+        real(kind = dbl) :: h
+        real(kind = dbl) :: min_o1_o2
+        real(kind = dbl) :: min_octant
+        real(kind = dbl) :: min_valid
+        real(kind = dbl) :: signal_strength
+        integer :: max_gap_fill
+    end type CECSetupType
+
     type :: EddyFlowProjType
         integer :: sonic_output_rate
         integer :: col(E2NumVar + MaxNumDiag)
@@ -533,6 +542,7 @@ module m_typedef
         logical :: hf_correct_ghg_ba
         logical :: hf_correct_ghg_zoh
         integer :: do_cec    !< 0=disabled, 1=H2O+CO2, 2=H2O only, 3=CO2 only
+        type(CECSetupType) :: cec
     end type EddyFlowProjType
 
     !> CEC component status values.
