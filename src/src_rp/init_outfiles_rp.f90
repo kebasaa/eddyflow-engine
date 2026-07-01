@@ -52,16 +52,11 @@ subroutine InitOutFiles_rp()
     character(32) :: usg(NumUserVar)
     character(32) :: user_header(NumUserVar)
     character(32) :: user_unit(NumUserVar)
-    character(32) :: flow_model_label
-    character(32) :: previous_flow_model
     character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
     real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
-    character(LongOutstringLen) :: head1_utf8
-    character(LongOutstringLen) :: head2_utf8
-    character(LongOutstringLen) :: head3_utf8
     character(LongOutstringLen) :: dataline
     logical :: proceed
     include '../src_common/interfaces.inc'
@@ -89,36 +84,16 @@ subroutine InitOutFiles_rp()
         gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
 
     do j = 1, NumUserVar
-        usg(j)  = UserCol(j)%label(1:len_trim(UserCol(j)%label)) // '_'
-        call lowercase(usg(j))
-        user_header(j) = usg(j)(1:len_trim(usg(j))) // 'mean'
+        user_header(j) = FullOutputCustomLabel(j)
+        usg(j) = user_header(j)
+        if (index(usg(j), '_mean') > 0) usg(j) = usg(j)(1:index(usg(j), '_mean') - 1)
         user_unit(j) = '--'
         if (UserCol(j)%var == 'flowrate') then
-            call clearstr(flow_model_label)
-            flow_model_label = UserCol(j)%instr%model
-            if (len_trim(flow_model_label) > 2) then
-                if (flow_model_label(len_trim(flow_model_label) - 1:len_trim(flow_model_label) - 1) == '_' &
-                    .or. flow_model_label(len_trim(flow_model_label) - 1:len_trim(flow_model_label) - 1) == '-') &
-                    flow_model_label = flow_model_label(1:len_trim(flow_model_label) - 2)
-            end if
-            call lowercase(flow_model_label)
-            var = 1
-            do i = 1, j - 1
-                if (UserCol(i)%var /= 'flowrate') cycle
-                call clearstr(previous_flow_model)
-                previous_flow_model = UserCol(i)%instr%model
-                if (len_trim(previous_flow_model) > 2) then
-                    if (previous_flow_model(len_trim(previous_flow_model) - 1:len_trim(previous_flow_model) - 1) == '_' &
-                        .or. previous_flow_model(len_trim(previous_flow_model) - 1: &
-                            len_trim(previous_flow_model) - 1) == '-') &
-                        previous_flow_model = previous_flow_model(1:len_trim(previous_flow_model) - 2)
-                end if
-                call lowercase(previous_flow_model)
-                if (previous_flow_model == flow_model_label) var = var + 1
-            end do
-            write(user_header(j), '("flowrate_", a, "_", i0, "_mean")') &
-                flow_model_label(1:len_trim(flow_model_label)), var
             user_unit(j) = '[m+3s-1]'
+        elseif (UserCol(j)%var == 'cell_t') then
+            user_unit(j) = '[K]'
+        elseif (UserCol(j)%var == 'int_p') then
+            user_unit(j) = '[Pa]'
         end if
     end do
 
@@ -214,9 +189,6 @@ subroutine InitOutFiles_rp()
         call Clearstr(header1)
         call Clearstr(header2)
         call Clearstr(header3)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
 
         if (.not. EddyFlowProj%fix_out_format) then
             !> Initial file and timestamp info
@@ -547,14 +519,10 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
 
         else
             header1 = 'file_info,,,,,,,corrected_fluxes_and_quality_flags,,,,,,,,,,,,,,,,,,,,,&
@@ -674,14 +642,10 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         end if
     end if
 
@@ -751,9 +715,6 @@ subroutine InitOutFiles_rp()
         call Clearstr(header1)
         call Clearstr(header2)
         call Clearstr(header3)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
         call AddDatum(header1,'file_info,,,,stationarity test,,', separator)
         call AddDatum(header2,'filename,date,time,DOY,dev(u),dev(w),dev(ts)', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[%],[%],[%]', separator)
@@ -832,14 +793,10 @@ subroutine InitOutFiles_rp()
         call AddDatum(header2,'dev(u),dev(w),dev(ts),flag(u),flag(w),flag(ts)', separator)
         call AddDatum(header3,'[%],[%],[%],[#],[#],[#]', separator)
 
-        call latin1_to_utf8(header1, head1_utf8)
-        call latin1_to_utf8(header2, head2_utf8)
-        call latin1_to_utf8(header3, head3_utf8)
-
         !> Write on output file
-        write(uqc, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-        write(uqc, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-        write(uqc, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+        write(uqc, '(a)') header1(1:len_trim(header1) - 1)
+        write(uqc, '(a)') header2(1:len_trim(header2) - 1)
+        write(uqc, '(a)') header3(1:len_trim(header3) - 1)
     end if
 
     !>*********************************************************************************************
@@ -1065,4 +1022,100 @@ subroutine InitOutFiles_rp()
                            &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
                            &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
     end if
+
+contains
+
+function FullOutputCustomLabel(ordinal) result(clean_label)
+    integer, intent(in) :: ordinal
+    character(32) :: clean_label
+
+    character(32) :: model_token
+    character(32) :: var_token
+    character(32) :: label_token
+    character(16) :: ordinal_label
+
+    call clearstr(clean_label)
+    model_token = SanitizeOutputToken(UserCol(ordinal)%instr%model)
+    var_token = SanitizeOutputToken(UserCol(ordinal)%var)
+
+    select case (trim(var_token))
+        case ('flowrate', 'co2', 'h2o', 'cell_t', 'int_p')
+            if (LabelHasAlpha(model_token)) then
+                clean_label = trim(var_token) // '_' // trim(model_token)
+            else
+                clean_label = trim(var_token)
+            end if
+        case default
+            label_token = UserCol(ordinal)%label
+            call lowercase(label_token)
+            label_token = replace2(label_token, 'custom_', '')
+            label_token = replace2(label_token, '_mean', '')
+            clean_label = SanitizeOutputToken(label_token)
+            if (.not. LabelHasAlpha(clean_label)) then
+                write(ordinal_label, '(i0)') ordinal
+                clean_label = 'custom_' // trim(adjustl(ordinal_label))
+            end if
+    end select
+
+    if (len_trim(clean_label) <= len(clean_label) - 5) &
+        clean_label = trim(clean_label) // '_mean'
+end function FullOutputCustomLabel
+
+function SanitizeOutputToken(raw_token) result(clean_token)
+    character(*), intent(in) :: raw_token
+    character(32) :: clean_token
+
+    integer :: i
+    integer :: out_pos
+    character(32) :: tmp
+
+    call clearstr(clean_token)
+    tmp = raw_token
+    call lowercase(tmp)
+
+    out_pos = 0
+    do i = 1, len_trim(tmp)
+        select case (tmp(i:i))
+            case ('a':'z', '0':'9', '_', '-')
+                if (out_pos < len(clean_token)) then
+                    out_pos = out_pos + 1
+                    clean_token(out_pos:out_pos) = tmp(i:i)
+                end if
+            case default
+                if (out_pos < len(clean_token)) then
+                    out_pos = out_pos + 1
+                    clean_token(out_pos:out_pos) = '_'
+                end if
+        end select
+    end do
+
+    do while (index(clean_token, '__') > 0)
+        clean_token = replace2(clean_token, '__', '_')
+    end do
+    do while (len_trim(clean_token) > 0 .and. clean_token(1:1) == '_')
+        clean_token = clean_token(2:len_trim(clean_token))
+    end do
+    do while (len_trim(clean_token) > 0 &
+        .and. clean_token(len_trim(clean_token):len_trim(clean_token)) == '_')
+        clean_token(len_trim(clean_token):len_trim(clean_token)) = ' '
+    end do
+end function SanitizeOutputToken
+
+logical function LabelHasAlpha(label)
+    character(*), intent(in) :: label
+
+    LabelHasAlpha = index(label, 'a') > 0 .or. index(label, 'b') > 0 &
+        .or. index(label, 'c') > 0 .or. index(label, 'd') > 0 &
+        .or. index(label, 'e') > 0 .or. index(label, 'f') > 0 &
+        .or. index(label, 'g') > 0 .or. index(label, 'h') > 0 &
+        .or. index(label, 'i') > 0 .or. index(label, 'j') > 0 &
+        .or. index(label, 'k') > 0 .or. index(label, 'l') > 0 &
+        .or. index(label, 'm') > 0 .or. index(label, 'n') > 0 &
+        .or. index(label, 'o') > 0 .or. index(label, 'p') > 0 &
+        .or. index(label, 'q') > 0 .or. index(label, 'r') > 0 &
+        .or. index(label, 's') > 0 .or. index(label, 't') > 0 &
+        .or. index(label, 'u') > 0 .or. index(label, 'v') > 0 &
+        .or. index(label, 'w') > 0 .or. index(label, 'x') > 0 &
+        .or. index(label, 'y') > 0 .or. index(label, 'z') > 0
+end function LabelHasAlpha
 end subroutine InitOutFiles_rp

@@ -68,7 +68,7 @@ subroutine InitFluxnetFile_rp()
     call lowercase(e2sg(gas4))
     
     do j = 1, NumUserVar
-        usg(j)  = UserCol(j)%label(1:len_trim(UserCol(j)%label)) // '_'
+        usg(j) = SafeFluxnetCustomLabel(j)
         call lowercase(usg(j))
     end do
 
@@ -213,8 +213,8 @@ subroutine InitFluxnetFile_rp()
     if (NumUserVar > 0) then
         do i = 1, NumUserVar
             call uppercase(usg(i)) 
-            csv_row = csv_row(1:len_trim(csv_row)) &
-                // 'CUSTOM_' // usg(i)(1:len_trim(usg(i))) // 'MEAN' // ','
+            call AddDatum(csv_row, 'CUSTOM_' // usg(i)(1:len_trim(usg(i))) &
+                // '_MEAN', separator)
         end do
     end if
 
@@ -248,5 +248,107 @@ subroutine InitFluxnetFile_rp()
     call AddDatum(csv_row, 'CEC_CO2_STATUS', separator)
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
+
+contains
+
+function SafeFluxnetCustomLabel(ordinal) result(clean_label)
+    integer, intent(in) :: ordinal
+    character(32) :: clean_label
+
+    character(32) :: tmp
+    character(32) :: model_token
+    character(32) :: var_token
+    character(16) :: ordinal_label
+
+    call clearstr(clean_label)
+    model_token = SanitizeFluxnetToken(UserCol(ordinal)%instr%model)
+    var_token = SanitizeFluxnetToken(UserCol(ordinal)%var)
+
+    select case (trim(var_token))
+        case ('flowrate', 'co2', 'h2o', 'cell_t', 'int_p')
+            if (LabelHasAlpha(model_token)) then
+                clean_label = trim(var_token) // '_' // trim(model_token)
+            else
+                clean_label = trim(var_token)
+            end if
+        case default
+            tmp = UserCol(ordinal)%label
+            call lowercase(tmp)
+            tmp = replace2(tmp, 'custom_', '')
+            tmp = replace2(tmp, '_mean', '')
+            clean_label = SanitizeFluxnetToken(tmp)
+            if (.not. LabelHasAlpha(clean_label)) then
+                write(ordinal_label, '(i0)') ordinal
+                clean_label = 'custom_' // trim(adjustl(ordinal_label))
+            end if
+    end select
+
+    if (.not. LabelHasAlpha(clean_label)) then
+        write(ordinal_label, '(i0)') ordinal
+        if (len_trim(var_token) > 0) then
+            clean_label = trim(var_token) // '_' // trim(adjustl(ordinal_label))
+        else
+            clean_label = 'custom_' // trim(adjustl(ordinal_label))
+        end if
+    end if
+end function SafeFluxnetCustomLabel
+
+function SanitizeFluxnetToken(raw_token) result(clean_token)
+    character(*), intent(in) :: raw_token
+    character(32) :: clean_token
+
+    integer :: i
+    integer :: out_pos
+    character(32) :: tmp
+
+    call clearstr(clean_token)
+    tmp = raw_token
+    call lowercase(tmp)
+
+    out_pos = 0
+    do i = 1, len_trim(tmp)
+        select case (tmp(i:i))
+            case ('a':'z', '0':'9', '_', '-')
+                if (out_pos < len(clean_token)) then
+                    out_pos = out_pos + 1
+                    clean_token(out_pos:out_pos) = tmp(i:i)
+                end if
+            case default
+                if (out_pos < len(clean_token)) then
+                    out_pos = out_pos + 1
+                    clean_token(out_pos:out_pos) = '_'
+                end if
+        end select
+    end do
+
+    do while (index(clean_token, '__') > 0)
+        clean_token = replace2(clean_token, '__', '_')
+    end do
+    do while (len_trim(clean_token) > 0 .and. clean_token(1:1) == '_')
+        clean_token = clean_token(2:len_trim(clean_token))
+    end do
+    do while (len_trim(clean_token) > 0 &
+        .and. clean_token(len_trim(clean_token):len_trim(clean_token)) == '_')
+        clean_token(len_trim(clean_token):len_trim(clean_token)) = ' '
+    end do
+end function SanitizeFluxnetToken
+
+logical function LabelHasAlpha(label)
+    character(*), intent(in) :: label
+
+    LabelHasAlpha = index(label, 'a') > 0 .or. index(label, 'b') > 0 &
+        .or. index(label, 'c') > 0 .or. index(label, 'd') > 0 &
+        .or. index(label, 'e') > 0 .or. index(label, 'f') > 0 &
+        .or. index(label, 'g') > 0 .or. index(label, 'h') > 0 &
+        .or. index(label, 'i') > 0 .or. index(label, 'j') > 0 &
+        .or. index(label, 'k') > 0 .or. index(label, 'l') > 0 &
+        .or. index(label, 'm') > 0 .or. index(label, 'n') > 0 &
+        .or. index(label, 'o') > 0 .or. index(label, 'p') > 0 &
+        .or. index(label, 'q') > 0 .or. index(label, 'r') > 0 &
+        .or. index(label, 's') > 0 .or. index(label, 't') > 0 &
+        .or. index(label, 'u') > 0 .or. index(label, 'v') > 0 &
+        .or. index(label, 'w') > 0 .or. index(label, 'x') > 0 &
+        .or. index(label, 'y') > 0 .or. index(label, 'z') > 0
+end function LabelHasAlpha
 
 end subroutine InitFluxnetFile_rp

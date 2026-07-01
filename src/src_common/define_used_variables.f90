@@ -125,21 +125,8 @@ subroutine DefineUsedVariables(LocCol)
         !> Count users variables, made up of: sonic variables from a non-master
         !> sonic; irga variables without the property "use_it", and
         !> those with a custom label
-        select case (LocCol(i)%var(1:len_trim(LocCol(i)%var)))
-            case('ignore', 'not_numeric')
-                !> Skip flags and columns to be ignored
-                continue
-            case('co2','h2o','ch4','n2o', 'cell_t','int_t_1', 'int_t_2', &
-                'int_p', 'air_t', 'air_p', 'u','v','w','ts','sos', &
-                'flag_1', 'flag_2') !< this two are for back-compatibility
-                !> Sonic and irga variables without property "use_it"
-                if (.not. LocCol(i)%useit .and. NumUserVar < MaxUserVar - 1) &
-                    NumUserVar = NumUserVar + 1
-            case default
-                !> Variables with a custom label and without property "use_it"
-                if (.not. LocCol(i)%useit .and. NumUserVar < MaxUserVar - 1) &
-                    NumUserVar = NumUserVar + 1
-        end select
+        if (IsCustomOutputColumn(LocCol(i)) .and. NumUserVar < MaxUserVar - 1) &
+            NumUserVar = NumUserVar + 1
 
         !> Detect whether an 4th gas calibration data column is available
         if (index(LocCol(i)%var, 'cal-ref') /= 0) Gas4CalRefCol = i
@@ -175,4 +162,25 @@ subroutine DefineUsedVariables(LocCol)
         !> as a fast temperature
         if (.not. ts_found) NumUserVar = NumUserVar - 1
     end if
+
+contains
+
+logical function IsCustomOutputColumn(col)
+    type(ColType), intent(in) :: col
+    character(32) :: var
+
+    IsCustomOutputColumn = .false.
+    if (col%useit) return
+
+    var = col%var
+    call lowercase(var)
+    if (len_trim(var) == 0) return
+    select case (trim(var))
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
+              'agc', 'rssi')
+            return
+        case default
+            IsCustomOutputColumn = .true.
+    end select
+end function IsCustomOutputColumn
 end subroutine DefineUsedVariables

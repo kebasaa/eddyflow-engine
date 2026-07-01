@@ -51,37 +51,45 @@ subroutine DefineUserSet(LocCol, Raw, nrow, ncol, UserSet, unrow, uncol)
     character(len(LocCol%label)), external :: replace
 
 
-    UserCol%var = 'none'
-    UserCol%measure_type = 'none'
+    UserCol = NullCol
     UserSet = error
     jj = 0
     do j = 1, ncol
-        select case (LocCol(j)%var(1:len_trim(LocCol(j)%var)))
-            !> Sonic and irga variables without property "useit"
-            case('co2','h2o','ch4','n2o', 'cell_t', 'int_t_1', 'int_t_2', &
-                'int_p', 'air_t', 'air_p', 'u','v','w','ts','sos', &
-                'flag_1', 'flag_2')
-                if (.not. LocCol(j)%useit) then
-                    jj = jj + 1
-                    if (jj > uncol) exit
-                    UserCol(jj) = LocCol(j)
-                    UserCol(jj)%present = .true.
-                    UserSet(1:unrow, jj) = Raw(1:unrow, j)
-                end if
-            case default
-                !> Variables with a custom label
-                if (.not. LocCol(j)%useit) then
-                    jj = jj + 1
-                    if (jj > uncol) exit
-                    UserCol(jj) = LocCol(j)
-                    UserCol(jj)%present = .true.
-                    UserSet(1:unrow, jj) = Raw(1:unrow, j)
-                    !> Replace spaces with underscores
-                    UserCol(jj)%label = replace(UserCol(jj)%label, &
-                        ' ', '_', len(UserCol(jj)%label))
-                end if
-                !> Special case of 4th gas calibration reference
-                if (j == Gas4CalRefCol) UserCol(jj)%var = 'cal-ref'
-        end select
+        if (.not. IsCustomOutputColumn(LocCol(j))) cycle
+        jj = jj + 1
+        if (jj > uncol) then
+            jj = uncol
+            exit
+        end if
+        UserCol(jj) = LocCol(j)
+        UserCol(jj)%present = .true.
+        UserSet(1:unrow, jj) = Raw(1:unrow, j)
+        !> Replace spaces with underscores
+        UserCol(jj)%label = replace(UserCol(jj)%label, &
+            ' ', '_', len(UserCol(jj)%label))
+        !> Special case of 4th gas calibration reference
+        if (j == Gas4CalRefCol) UserCol(jj)%var = 'cal-ref'
     end do
+    NumUserVar = jj
+
+contains
+
+logical function IsCustomOutputColumn(col)
+    type(ColType), intent(in) :: col
+    character(32) :: var
+
+    IsCustomOutputColumn = .false.
+    if (col%useit) return
+
+    var = col%var
+    call lowercase(var)
+    if (len_trim(var) == 0) return
+    select case (trim(var))
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
+              'agc', 'rssi')
+            return
+        case default
+            IsCustomOutputColumn = .true.
+    end select
+end function IsCustomOutputColumn
 end subroutine DefineUserSet
