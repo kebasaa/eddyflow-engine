@@ -451,13 +451,14 @@ end subroutine ReadMetadataFromTextVars
 !***************************************************************************
 subroutine FixDynamicMetadata()
     use m_rp_global_var
+    use m_typedef, only: InstrumentModelBase, IrgaPathTypeFromModel
     implicit none
     !> local variables
     integer :: j
 
     do j = 1, E2NumVar
         !> Adjust instrument firms
-        select case (DynamicMetadata%instr(j)%model(1:len_trim(DynamicMetadata%instr(j)%model) - 2))
+        select case (InstrumentModelBase(DynamicMetadata%instr(j)%model))
             case ('li6262','li7000','li7200','li7200rs','li7500','li7500a',&
                 'li7500rs','li7500ds','li7700')
                 DynamicMetadata%instr(j)%firm = 'licor'
@@ -465,13 +466,20 @@ subroutine FixDynamicMetadata()
                     'open_path_krypton', 'open_path_lyman', &
                     'closed_path_krypton', 'closed_path_lyman')
                 DynamicMetadata%instr(j)%firm = 'other_irga'
+            case('csi_ec150', 'csi_ec155', 'csi_tga200a', &
+                'csi_irgason_irga')
+                DynamicMetadata%instr(j)%firm = 'csi_irga'
+            case('miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o')
+                DynamicMetadata%instr(j)%firm = 'miro'
+            case('aerodyne_tildas')
+                DynamicMetadata%instr(j)%firm = 'aerodyne'
             case('hs_50', 'hs_100', 'r2', 'r3_50', 'r3_100', &
                 'r3a_100', 'wm', 'wmpro')
                 DynamicMetadata%instr(j)%firm = 'gill'
             case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                 DynamicMetadata%instr(j)%firm = 'metek'
-            case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
-                 'campbell_csat3c', 'campbell_irgason_sonic')
+            case('csi_csat3', 'csi_csat3b', 'csi_csat3a', &
+                 'csi_csat3c', 'csi_irgason_sonic')
                 DynamicMetadata%instr(j)%firm = 'csi'
             case('81000', '81000v', '81000re', '81000vre')
                 DynamicMetadata%instr(j)%firm = 'young'
@@ -480,7 +488,7 @@ subroutine FixDynamicMetadata()
         end select
         !> Determine whether the instrument is a sonic or a gas analyser
         select case(DynamicMetadata%instr(j)%firm)
-            case('licor', 'other_irga')
+            case('licor', 'other_irga', 'csi_irga', 'miro', 'aerodyne')
                 DynamicMetadata%instr(j)%category = 'irga'
             case('gill', 'metek', 'young', 'csi', 'other_sonic')
                 DynamicMetadata%instr(j)%category = 'sonic'
@@ -509,14 +517,14 @@ subroutine FixDynamicMetadata()
         end if
 
         if (DynamicMetadata%instr(j)%category == 'irga') then
-            select case (DynamicMetadata%instr(j)%model(1:len_trim(DynamicMetadata%instr(j)%model) - 2))
-                case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', 'generic_open_path', &
-                    'open_path_krypton', 'open_path_lyman')
+            select case (IrgaPathTypeFromModel(DynamicMetadata%instr(j)%model))
+                case ('open')
                     DynamicMetadata%instr(j)%path_type = 'open'
-                case ('none')
-                    continue
-                case default
+                case ('closed')
                     DynamicMetadata%instr(j)%path_type = 'closed'
+                case default
+                    if (InstrumentModelBase(DynamicMetadata%instr(j)%model) /= 'none') &
+                        DynamicMetadata%instr(j)%path_type = 'closed'
             end select
         end if
 

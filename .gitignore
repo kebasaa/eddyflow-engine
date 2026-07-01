@@ -31,3 +31,6 @@ src/src_rp/deprecated
 /tests
 /_temp
 /static_checks
+!/static_checks/
+/static_checks/*
+!/static_checks/test_irga_path_classification_static.py

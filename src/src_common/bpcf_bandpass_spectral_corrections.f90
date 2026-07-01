@@ -235,7 +235,7 @@ function DefaultSonicOutputRate(model)
             DefaultSonicOutputRate = 40
         case('r2')
             DefaultSonicOutputRate = 50
-        case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', 'campbell_csat3c', 'campbell_irgason_sonic')
+        case('csi_csat3', 'csi_csat3b', 'csi_csat3a', 'csi_csat3c', 'csi_irgason_sonic')
             DefaultSonicOutputRate = 60
         case('81000', '81000v', '81000re', '81000vre')
             DefaultSonicOutputRate = 160

@@ -67,6 +67,7 @@ end subroutine ReadMetadataFile
 !***************************************************************************
 subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     use m_common_global_var
+    use m_typedef, only: IrgaPathTypeFromModel
     implicit none
     !> in/out variables
     logical, intent(in) :: printout
@@ -216,7 +217,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
                     Instr(i)%tau = dble(ANTags(init_an_instr + i*leap_an_instr + 10)%value)
                 case ('generic_open_path', 'generic_closed_path', &
-                      'campbell_ec150', 'campbell_ec155', 'campbell_irgason_irga', 'campbell_tga200a', &
+                      'csi_ec150', 'csi_ec155', 'csi_irgason_irga', 'csi_tga200a', &
                       'miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o', 'aerodyne_tildas')
                     Instr(i)%hpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 8)%value) * 1d-2 !< cm to m
                     Instr(i)%vpath_length = dble(ANTags(init_an_instr + i*leap_an_instr + 9)%value) * 1d-2 !< cm to m
@@ -242,10 +243,10 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                         Instr(i)%firm = 'gill'
                     case('usa1_standard', 'usa1_fast', 'usoni3_classa_mp', 'usoni3_cage_mp')
                         Instr(i)%firm = 'metek'
-                    case('campbell_csat3', 'campbell_csat3b', 'campbell_csat3a', &
-                         'campbell_csat3c', 'campbell_irgason_sonic')
+                    case('csi_csat3', 'csi_csat3b', 'csi_csat3a', &
+                         'csi_csat3c', 'csi_irgason_sonic')
                         Instr(i)%firm = 'csi'
-                    case('campbell_ec150', 'campbell_ec155', 'campbell_tga200a')
+                    case('csi_ec150', 'csi_ec155', 'csi_tga200a')
                         Instr(i)%firm = 'csi_irga'
                     case('miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o')
                         Instr(i)%firm = 'miro'
@@ -327,10 +328,8 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 Instr(i)%tube_l = error
                 Instr(i)%tube_f = error
 
-                select case (Instr(i)%model(1:len_trim(Instr(i)%model) - 2))
-                    case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', &
-                        'generic_open_path', 'open_path_krypton', &
-                        'open_path_lyman', 'campbell_ec150', 'campbell_ec155', 'campbell_irgason_irga')
+                select case (IrgaPathTypeFromModel(Instr(i)%model))
+                    case ('open')
                         Instr(i)%path_type = 'open'
                     case default
                         Instr(i)%path_type = 'closed'
