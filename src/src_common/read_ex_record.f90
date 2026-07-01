@@ -319,6 +319,7 @@ end subroutine ReadExRecord
 !***************************************************************************
 subroutine CompleteEssentials(lEx)
     use m_common_global_var
+    use m_typedef, only: IrgaPathTypeFromModel
     implicit none
     !> in/out variables
     type(ExType), intent(inout) :: lEx
@@ -379,9 +380,8 @@ subroutine CompleteEssentials(lEx)
     lEx%instr(ico2:igas4)%category = 'irga'
     !> Determine whether igas analysers are open or closed path
     do igas = ico2, igas4
-        select case (lEx%instr(igas)%model(1:len_trim(lEx%instr(igas)%model) - 2))
-        case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', &
-            'generic_open_path', 'open_path_krypton', 'open_path_lyman')
+        select case (IrgaPathTypeFromModel(lEx%instr(igas)%model))
+            case ('open')
                 lEx%instr(igas)%path_type = 'open'
             case default
                 lEx%instr(igas)%path_type = 'closed'

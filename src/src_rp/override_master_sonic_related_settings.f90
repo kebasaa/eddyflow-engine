@@ -90,13 +90,13 @@ subroutine OverrideMasterSonicRelatedSettings()
         RPsetup%calib_cw = .true.
 
     !> Cross wind correction should not be applied for CSAT3 family
-    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'campbell_csat3') &
+    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'csi_csat3') &
         RPsetup%calib_cw = .false.
-    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'campbell_csat3b') &
+    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'csi_csat3b') &
         RPsetup%calib_cw = .false.
-    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'campbell_csat3a') &
+    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'csi_csat3a') &
         RPsetup%calib_cw = .false.
-    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'campbell_csat3c') &
+    if (MasterSonic%model(1:len_trim(MasterSonic%model) - 2) == 'csi_csat3c') &
         RPsetup%calib_cw = .false.
 
 end subroutine OverrideMasterSonicRelatedSettings

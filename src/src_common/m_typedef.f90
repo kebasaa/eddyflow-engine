@@ -1378,4 +1378,64 @@ module m_typedef
     type fluxnetChunksType
         character(LongOutstringLen) s(6)
     end type fluxnetChunksType
+
+contains
+
+    character(32) function InstrumentModelBase(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+        !> local variables
+        integer :: model_len
+
+        InstrumentModelBase = 'none'
+        model_len = len_trim(model)
+        if (model_len > 2) InstrumentModelBase = model(1:model_len - 2)
+    end function InstrumentModelBase
+
+    logical function IsOpenPathIrgaModel(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+
+        select case (InstrumentModelBase(model))
+            case ('li7700', 'li7500', 'li7500a', 'li7500rs', 'li7500ds', &
+                'generic_open_path', 'open_path_krypton', 'open_path_lyman', &
+                'csi_ec150', 'csi_irgason_irga')
+                IsOpenPathIrgaModel = .true.
+            case default
+                IsOpenPathIrgaModel = .false.
+        end select
+    end function IsOpenPathIrgaModel
+
+    logical function IsClosedPathIrgaModel(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+
+        select case (InstrumentModelBase(model))
+            case ('li7200', 'li7200rs', 'li6262', 'li7000', &
+                'generic_closed_path', 'closed_path_krypton', 'closed_path_lyman', &
+                'csi_ec155', 'csi_tga200a', &
+                'miro_mga1_5', 'miro_mga4_6', 'miro_mga9_10', 'miro_mgai_n2o', &
+                'aerodyne_tildas')
+                IsClosedPathIrgaModel = .true.
+            case default
+                IsClosedPathIrgaModel = .false.
+        end select
+    end function IsClosedPathIrgaModel
+
+    character(32) function IrgaPathTypeFromModel(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+
+        if (IsOpenPathIrgaModel(model)) then
+            IrgaPathTypeFromModel = 'open'
+        elseif (IsClosedPathIrgaModel(model)) then
+            IrgaPathTypeFromModel = 'closed'
+        else
+            IrgaPathTypeFromModel = 'none'
+        end if
+    end function IrgaPathTypeFromModel
 end module m_typedef
