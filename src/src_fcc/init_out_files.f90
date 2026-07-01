@@ -50,10 +50,10 @@ subroutine InitOutFiles(lEx)
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
     character(32) :: custom_label
-    character(2) :: mu
+    character(2) :: utf8_mu
     integer, external :: CreateDir
 
-    mu = mu
+    utf8_mu = char(194) // char(181)
 
     e2sg(u)    = 'u_'
     e2sg(v)    = 'v_'
@@ -124,11 +124,11 @@ subroutine InitOutFiles(lEx)
             if(fcc_var_present(co2)) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'co2_flux,qc_co2_flux', separator)
-                call AddDatum(header3, '[' // mu // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_co2_flux', separator)
-                    call AddDatum(header3, '[' // mu // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                 end if
             end if
 
@@ -148,11 +148,11 @@ subroutine InitOutFiles(lEx)
             if(fcc_var_present(ch4)) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2,'ch4_flux,qc_ch4_flux', separator)
-                call AddDatum(header3, '[' // mu // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_ch4_flux', separator)
-                    call AddDatum(header3, '[' // mu // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                 end if
             end if
 
@@ -183,7 +183,7 @@ subroutine InitOutFiles(lEx)
                     if (gas == gas4) then
                         if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_flux_label, separator)
                     else
-                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // mu // 'mol+1s-1m-2]', separator)
+                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                     end if
                 else
                     if(fcc_var_present(gas)) call AddDatum(header1, '', separator)
@@ -201,7 +201,7 @@ subroutine InitOutFiles(lEx)
                     if (gas == gas4) then
                         if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_flux_label, separator)
                     else
-                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // mu // 'mol+1s-1m-2]', separator)
+                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                     end if
                 else
                     if(fcc_var_present(gas)) call AddDatum(header1, '', separator)
@@ -223,8 +223,8 @@ subroutine InitOutFiles(lEx)
                     if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_dens_label // ',' &
                         // gas4_full_conc_label // ',' // gas4_full_mixr_label // ',[s],[1=default]', separator)
                 else if (gas /= h2o) then
-                    if(fcc_var_present(gas)) call AddDatum(header3, '[mmol+1m-3],[' // mu // &
-                        'mol+1mol_a-1],[' // mu // 'mol+1mol_d-1],[s],[1=default]', separator)
+                    if(fcc_var_present(gas)) call AddDatum(header3, '[mmol+1m-3],[' // utf8_mu// &
+                        'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default]', separator)
                 else
                     if(fcc_var_present(gas)) &
                         call AddDatum(header3, '[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default]', separator)
@@ -274,7 +274,7 @@ subroutine InitOutFiles(lEx)
                     if (gas == gas4) then
                         if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_flux_label // ',[#]', separator)
                     else
-                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // mu // 'mol+1s-1m-2],[#]', separator)
+                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                     end if
                 else
                     if(fcc_var_present(gas)) call AddDatum(header1, ',', separator)
@@ -472,22 +472,22 @@ subroutine InitOutFiles(lEx)
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'cov,'
             header3 = ',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#],[kg+1m-1s-2],[#],[kg+1m-1s-2],&
                 &[W+1m-2],[#],[W+1m-2],[W+1m-2],[#],[W+1m-2],&
-                &[' // mu // 'mol+1s-1m-2],[#],[' // mu // 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
-                &[' // mu // 'mol+1s-1m-2],[#],[' // mu // 'mol+1s-1m-2],&
-                &[' // mu // 'mol+1s-1m-2],[#],[' // mu // 'mol+1s-1m-2],&
-                &[W+1m-2],[W+1m-2],[' // mu // 'mol+1s-1m-2],&
-                &[mmol+1s-1m-2],[' // mu // 'mol+1s-1m-2],[' // mu // 'mol+1s-1m-2],&
-                &[' // mu // 'mol+1s-1m-2],[mmol+1s-1m-2],[' // mu &
-                // 'mol+1s-1m-2],[' // mu // 'mol+1s-1m-2],&
-                &[mmol+1m-3],[' // mu // 'mol+1mol_a-1],[' // mu // 'mol+1mol_d-1],[s],[1=default],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[W+1m-2],[W+1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[mmol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[' // utf8_mu&
+                // 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
                 &[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // mu // 'mol+1mol_a-1],[' // mu // 'mol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // mu // 'mol+1mol_a-1],[' // mu // 'mol+1mol_d-1],[s],[1=default],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
                 &[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
                 &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[deg_from_north],[deg],[deg],[deg],&
                 &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
-                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // mu // 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
-                &[' // mu // 'mol+1s-1m-2],[#],[' // mu // 'mol+1s-1m-2],[#],&
+                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],&
                 &8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
