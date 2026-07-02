@@ -46,6 +46,13 @@ subroutine WriteProcessingProjectVariables()
     Dir%biomet         = 'none'
     Dir%main_out       = 'none'
     EddyFlowProj%fname_template = 'none'
+    EddyFlowProj%cec%h = 0d0
+    EddyFlowProj%cec%min_o1_o2 = 0.20d0
+    EddyFlowProj%cec%min_octant = 0.05d0
+    EddyFlowProj%cec%min_valid = 0.90d0
+    EddyFlowProj%cec%signal_strength = 70d0
+    EddyFlowProj%cec%max_stationarity = 25d0
+    EddyFlowProj%cec%max_gap_fill = 4
 
     !> Project general info
     select case (EPPrjCTags(16)%value(1:1))
@@ -364,6 +371,26 @@ subroutine WriteProcessingProjectVariables()
         case default
             EddyFlowProj%do_cec = 0
     end select
+    if (EPPrjNTagFound(26)) &
+        EddyFlowProj%cec%h = max(0d0, EPPrjNTags(26)%value)
+    if (EPPrjNTagFound(27)) &
+        EddyFlowProj%cec%min_o1_o2 = NormalizeCecFraction( &
+            EPPrjNTags(27)%value, 0.20d0)
+    if (EPPrjNTagFound(28)) &
+        EddyFlowProj%cec%min_octant = NormalizeCecFraction( &
+            EPPrjNTags(28)%value, 0.05d0)
+    if (EPPrjNTagFound(29)) &
+        EddyFlowProj%cec%min_valid = NormalizeCecFraction( &
+            EPPrjNTags(29)%value, 0.90d0)
+    if (EPPrjNTagFound(30)) &
+        EddyFlowProj%cec%signal_strength = NormalizeCecSignalStrength( &
+            EPPrjNTags(30)%value, 70d0)
+    if (EPPrjNTagFound(31)) &
+        EddyFlowProj%cec%max_gap_fill = NormalizeCecMaxGapFill( &
+            EPPrjNTags(31)%value, 4)
+    if (EPPrjNTagFound(32)) &
+        EddyFlowProj%cec%max_stationarity = NormalizeCecStationarity( &
+            EPPrjNTags(32)%value, 25d0)
 
     !> main output directory, only in Desktop mode
     if (EddyFlowProj%run_env /= 'embedded') then
@@ -402,4 +429,53 @@ subroutine WriteProcessingProjectVariables()
     call AdjFilePath(AuxFile%metadata, slash)
     call AdjFilePath(AuxFile%biomet, slash)
     call AdjDir(Dir%biomet, slash)
+contains
+
+real(kind = dbl) function NormalizeCecFraction(value, default_value)
+    real(kind = dbl), intent(in) :: value
+    real(kind = dbl), intent(in) :: default_value
+
+    if (value >= 0d0 .and. value <= 1d0) then
+        NormalizeCecFraction = value
+    else if (value > 1d0 .and. value <= 100d0) then
+        NormalizeCecFraction = value / 100d0
+    else
+        NormalizeCecFraction = default_value
+    end if
+end function NormalizeCecFraction
+
+real(kind = dbl) function NormalizeCecSignalStrength(value, default_value)
+    real(kind = dbl), intent(in) :: value
+    real(kind = dbl), intent(in) :: default_value
+
+    if (value <= 0d0) then
+        NormalizeCecSignalStrength = 0d0
+    else if (value <= 100d0) then
+        NormalizeCecSignalStrength = value
+    else
+        NormalizeCecSignalStrength = default_value
+    end if
+end function NormalizeCecSignalStrength
+
+integer function NormalizeCecMaxGapFill(value, default_value)
+    real(kind = dbl), intent(in) :: value
+    integer, intent(in) :: default_value
+
+    if (value >= 0d0) then
+        NormalizeCecMaxGapFill = nint(value)
+    else
+        NormalizeCecMaxGapFill = default_value
+    end if
+end function NormalizeCecMaxGapFill
+
+real(kind = dbl) function NormalizeCecStationarity(value, default_value)
+    real(kind = dbl), intent(in) :: value
+    real(kind = dbl), intent(in) :: default_value
+
+    if (value >= 0d0) then
+        NormalizeCecStationarity = value
+    else
+        NormalizeCecStationarity = default_value
+    end if
+end function NormalizeCecStationarity
 end subroutine WriteProcessingProjectVariables

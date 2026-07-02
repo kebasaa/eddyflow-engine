@@ -62,9 +62,9 @@ subroutine Gas4FullOutputUnits(unit_in, flux_scale, dens_scale, &
         case default
             flux_scale = 1d0
             dens_scale = 1d0
-            flux_label = '[' // char(181) // 'mol+1s-1m-2]'
-            conc_label = '[' // char(181) // 'mol+1mol_a-1]'
-            mixr_label = '[' // char(181) // 'mol+1mol_d-1]'
+            flux_label = '[' // char(194) // char(181) // 'mol+1s-1m-2]'
+            conc_label = '[' // char(194) // char(181) // 'mol+1mol_a-1]'
+            mixr_label = '[' // char(194) // char(181) // 'mol+1mol_d-1]'
             dens_label = '[mmol+1m-3]'
     end select
 end subroutine Gas4FullOutputUnits

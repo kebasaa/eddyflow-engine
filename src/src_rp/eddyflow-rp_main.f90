@@ -51,6 +51,8 @@ program EddyFlowRP
     integer :: NumberOfPeriods
     integer :: i
     integer :: j
+    integer :: cec_co2_signal_col
+    integer :: cec_h2o_signal_col
     integer :: SpecRow
     integer :: Nmax
     integer :: Nmin
@@ -1954,15 +1956,18 @@ program EddyFlowRP
             end if
 
             !> ===== 6. TIMELAG COMPENSATION  ==================================
-            !> If available, for files others than GHG, replace flow rate
-            !> of LI-7200 provided by user with mean value from raw files
+            !> If available, for files others than GHG, replace instrument
+            !> flow rates provided by user with mean values from raw files
             if (EddyFlowProj%ftype /= 'licor_ghg' &
                 .or. EddyFlowProj%use_extmd_file) then
-                do i = 1, E2NumVar
+                do i = co2, gas4
                     if (NumUserVar > 0) then
                         do j = 1, NumUserVar
                             if (UserCol(j)%var == 'flowrate' &
-                                .and. UserCol(j)%instr%model == E2Col(i)%instr%model &
+                                .and. (UserCol(j)%instr_name == E2Col(i)%instr_name &
+                                    .or. ((len_trim(UserCol(j)%instr_name) == 0 &
+                                        .or. len_trim(E2Col(i)%instr_name) == 0) &
+                                        .and. UserCol(j)%instr%model == E2Col(i)%instr%model)) &
                                 .and. UserStats%Mean(j) /= 0d0 &
                                 .and. UserStats%Mean(j) /= error) then
                                 E2Col(i)%instr%tube_f = UserStats%Mean(j)
@@ -2055,7 +2060,6 @@ program EddyFlowRP
                     size(UserSet, 1), size(UserSet, 2), &
                     RPsetup%Tconst, UserStats, UserCol)
                 write(*,'(a)') ' Done.'
-                if (allocated(UserSet)) deallocate(UserSet)
             end if
 
             !> Output raw dataset seventh level
@@ -2094,12 +2098,30 @@ program EddyFlowRP
             !> Extract CEC before spectral processing interpolates E2Primes.
             if (EddyFlowProj%do_cec > 0) then
                 write(*, '(a)', advance='no') '  Calculating CEC partitioning..'
-                call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
-                    StDiff%w_h2o, CECDescriptor)
+                cec_co2_signal_col = 0
+                cec_h2o_signal_col = 0
+                do j = 1, NumUserVar
+                    if ((UserCol(j)%var == 'AGC' .or. UserCol(j)%var == 'RSSI') &
+                        .and. (index(UserCol(j)%instr%model, 'li7200') /= 0 &
+                            .or. index(UserCol(j)%instr%model, 'li7500') /= 0)) then
+                        if (cec_co2_signal_col == 0) cec_co2_signal_col = j
+                        if (cec_h2o_signal_col == 0) cec_h2o_signal_col = j
+                    end if
+                end do
+                if (cec_co2_signal_col > 0 .and. cec_h2o_signal_col > 0) then
+                    call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
+                        StDiff%w_h2o, CECDescriptor, EddyFlowProj%cec, &
+                        UserSet(:, cec_co2_signal_col), &
+                        UserSet(:, cec_h2o_signal_col))
+                else
+                    call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
+                        StDiff%w_h2o, CECDescriptor, EddyFlowProj%cec)
+                end if
                 CECFlux%r_ET_cec = CECDescriptor%r_ET
                 CECFlux%r_Fc_cec = CECDescriptor%r_Fc
                 write(*, '(a)') ' Done.'
             end if
+            if (allocated(UserSet)) deallocate(UserSet)
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE *****************************

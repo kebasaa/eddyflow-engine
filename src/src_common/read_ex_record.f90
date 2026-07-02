@@ -142,25 +142,43 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         aux(1:8), & !< Skip SCFs
         lEx%degT%cov, lEx%degT%dcov(1:9), &
         lEx%spikes(u:gas4)
-    ix = strCharIndex(dataline, ',', 259)
-    dataline = dataline(ix+1: len_trim(dataline))
-    
-    if (lEx%fname == 'not_enough_data') then
-        ValidRecord = .false.
-        if (rec_num > 0) close(unt)
+    if (read_status /= 0) then
+        call InvalidateRecord()
         return
     end if
+    if (lEx%fname == 'not_enough_data') then
+        call InvalidateRecord()
+        return
+    end if
+    ix = strCharIndex(dataline, ',', 259)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
+    dataline = dataline(ix+1: len_trim(dataline))
 
 
     !> Copy NREX chunk
     ix = strCharIndex(dataline, ',', 23)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     fluxnetChunks%s(1) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Read out VM flags and Foken QC details
     read(dataline, *, iostat = read_status) vm97flags(u:GHGNumVar), &
         lEx%vm_tlag_hf, lEx%vm_tlag_sf, lEx%vm_aoa_hf, lEx%vm_nshw_hf 
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
     ix = strCharIndex(dataline, ',', 12)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Rearrage VM flags per test, instead of per variable
@@ -185,43 +203,91 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
 
     !> Copy LGD/KID/ZCD/CORRDIFF/NSR chunk
     ix = strCharIndex(dataline, ',', 38)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     fluxnetChunks%s(2) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
     read(dataline, *, iostat = read_status) &
         lEx%TAU_SS, lEx%H_SS, lEx%FC_SS, lEx%FH2O_SS, &
         lEx%FCH4_SS, lEx%FGS4_SS, lEx%U_ITC, lEx%W_ITC, lEx%TS_ITC
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
     ix = strCharIndex(dataline, ',', 9)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Copy another piece
     ix = strCharIndex(dataline, ',', 9)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     fluxnetChunks%s(3) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Read licor IRGA flags
     read(dataline, *, iostat = read_status) aux(1:8), lEx%licor_flags(1:29)
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
     ix = strCharIndex(dataline, ',', 37)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Read AGC/RSSI
     read(dataline, *, iostat = read_status) lEx%agc72,lEx%agc75,lEx%rssi77
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
     ix = strCharIndex(dataline, ',', 3)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Copy WBOOST_APPLIED thru AXES_ROTATION_METHOD
     ix = strCharIndex(dataline, ',', 3)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     fluxnetChunks%s(4) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Read rotation angles and detrending method/time constant
     read(dataline, *, iostat = read_status) &
         lEx%yaw, lEx%pitch, lEx%roll, lEx%det_meth_int, lEx%det_timec
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
     ix = strCharIndex(dataline, ',', 5)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Copy TIMELAG_DETECTION_METHOD thru SPECTRAL_CORRECTION_METHOD
     ix = strCharIndex(dataline, ',', 4)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     fluxnetChunks%s(5) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
@@ -251,14 +317,30 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%instr(igas4)%tube_f, &
         lEx%instr(igas4)%hpath_length, lEx%instr(igas4)%vpath_length, lEx%instr(igas4)%tau, &
         lEx%ncustom
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
     ix = strCharIndex(dataline, ',', 69)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Read custom variables
     if (lEx%ncustom > 0) then
         do i = 1, lEx%ncustom
             read(dataline, *, iostat = read_status) lEx%user_var(i)
+            if (read_status /= 0) then
+                call InvalidateRecord()
+                return
+            end if
             ix = strCharIndex(dataline, ',', 1)
+            if (ix <= 0) then
+                call InvalidateRecord()
+                return
+            end if
             dataline = dataline(ix+1: len_trim(dataline))
         end do
     end if
@@ -278,20 +360,26 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     if (len_trim(dataline) > 0) then
         remaining_fields = count([(dataline(i:i) == ',', &
             i = 1, len_trim(dataline))]) + 1
-        cec_start = strCharIndex(dataline, ',', remaining_fields - 11)
-        if (cec_start > 0) then
-            cec_line = dataline(cec_start + 1:len_trim(dataline))
-            dataline = dataline(1:cec_start - 1)
-        else
-            cec_line = ''
+        cec_line = ''
+        if (remaining_fields == 11) then
+            cec_line = dataline(1:len_trim(dataline))
+            dataline = ''
+        elseif (remaining_fields > 11) then
+            cec_start = strCharIndex(dataline, ',', remaining_fields - 11)
+            if (cec_start > 0) then
+                cec_line = dataline(cec_start + 1:len_trim(dataline))
+                dataline = dataline(1:cec_start - 1)
+            end if
         end if
-        read(cec_line, *, iostat = read_status) lEx%cec%r_ET, lEx%cec%r_Fc, &
-            lEx%cec%n_valid, lEx%cec%n_O1, lEx%cec%n_O2, &
-            lEx%cec%frac_O1, lEx%cec%frac_O2, cec_h2o_valid, cec_co2_valid, &
-            lEx%cec%h2o_status, lEx%cec%co2_status
-        if (read_status == 0) then
-            lEx%cec%h2o_valid = cec_h2o_valid == 1
-            lEx%cec%co2_valid = cec_co2_valid == 1
+        if (len_trim(cec_line) > 0) then
+            read(cec_line, *, iostat = read_status) lEx%cec%r_ET, lEx%cec%r_Fc, &
+                lEx%cec%n_valid, lEx%cec%n_O1, lEx%cec%n_O2, &
+                lEx%cec%frac_O1, lEx%cec%frac_O2, cec_h2o_valid, cec_co2_valid, &
+                lEx%cec%h2o_status, lEx%cec%co2_status
+            if (read_status == 0) then
+                lEx%cec%h2o_valid = cec_h2o_valid == 1
+                lEx%cec%co2_valid = cec_co2_valid == 1
+            end if
         end if
     end if
 
@@ -303,6 +391,13 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
 
     !> Close file only if it wasn't open on entrance
     if (rec_num > 0) close(unt)
+contains
+
+subroutine InvalidateRecord()
+    ValidRecord = .false.
+    if (rec_num > 0) close(unt)
+end subroutine InvalidateRecord
+
 end subroutine ReadExRecord
 
 !***************************************************************************

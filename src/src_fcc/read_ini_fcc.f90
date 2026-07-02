@@ -46,7 +46,7 @@ subroutine ReadIniFCC(key)
     !> common to all programs
     call ParseIniFile(PrjPath, 'Project', EPPrjNTags, EPPrjCTags,&
         size(EPPrjNTags), size(EPPrjCTags), &
-        SNTagFound, SCTagFound, IniFileNotFound)
+        EPPrjNTagFound, EPPrjCTagFound, IniFileNotFound)
 
     if (IniFileNotFound) call ExceptionHandler(21)
     call WriteProcessingProjectVariables()

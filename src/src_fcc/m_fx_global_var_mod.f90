@@ -58,7 +58,7 @@ module m_fx_global_var
     character(32) :: gas4_full_conc_label
     character(32) :: gas4_full_mixr_label
     character(32) :: gas4_full_dens_label
-    character(1024) :: UserVarHeader
+    character(64) :: UserVarHeader(MaxUserVar)
     character(26), parameter :: SubDirSpecAn = 'eddyflow_spectral_analysis'
     character(16000) :: fluxnet_header
 

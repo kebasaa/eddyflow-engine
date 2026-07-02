@@ -390,7 +390,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             LocCol(i)%label = LocCol(i)%var
 
             !> Check variable name. If empty, change it to "ignore".
-            if (len(LocCol(i)%var) == 0) LocCol%var = 'ignore'
+            if (len_trim(LocCol(i)%var) == 0) LocCol(i)%var = 'ignore'
 
             !> Back compatibility: if a column is declared not_numeric, set flag "file with text" to .true.
             if (index(LocCol(i)%var, 'not_numeric') /= 0) FileInterpreter%file_with_text = .true.

@@ -404,7 +404,7 @@ module m_common_global_var
     real(kind = dbl) :: UnPar(2) = error
 
     !> tags of the [Project] group of processing.eddypro file
-    integer, parameter :: Npn = 25
+    integer, parameter :: Npn = 32
     integer, parameter :: Npc = 50
     logical :: EPPrjNTagFound(Npn)
     logical :: EPPrjCTagFound(Npc)
@@ -434,7 +434,14 @@ module m_common_global_var
          EPPrjNTags(22)%Label / 'col_diag_stad'   / &
          EPPrjNTags(23)%Label / 'ru_its_meth'     / & 
          EPPrjNTags(24)%Label / 'ru_meth'         / & 
-         EPPrjNTags(25)%Label / 'ru_tlag_max'     / 
+         EPPrjNTags(25)%Label / 'ru_tlag_max'     / &
+         EPPrjNTags(26)%Label / 'cec_h'           / &
+         EPPrjNTags(27)%Label / 'cec_min_o1_o2'   / &
+         EPPrjNTags(28)%Label / 'cec_min_octant'  / &
+         EPPrjNTags(29)%Label / 'cec_min_valid'   / &
+         EPPrjNTags(30)%Label / 'cec_signal_strength' / &
+         EPPrjNTags(31)%Label / 'cec_max_gap_fill' / &
+         EPPrjNTags(32)%Label / 'cec_max_stationarity' /
 
     data EPPrjCTags(1)%Label / 'sw_version'       / &
          EPPrjCTags(2)%Label / 'ini_version'      / &

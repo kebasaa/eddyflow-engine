@@ -49,11 +49,12 @@ subroutine InitOutFiles(lEx)
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
-    character(LongOutstringLen) :: head1_utf8
-    character(LongOutstringLen) :: head2_utf8
-    character(LongOutstringLen) :: head3_utf8
+    character(64) :: custom_label
+    character(32) :: custom_unit
+    character(2) :: utf8_mu
     integer, external :: CreateDir
 
+    utf8_mu = char(194) // char(181)
 
     e2sg(u)    = 'u_'
     e2sg(v)    = 'v_'
@@ -81,10 +82,6 @@ subroutine InitOutFiles(lEx)
         call clearstr(header1)
         call clearstr(header2)
         call clearstr(header3)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
-
         if (.not. EddyFlowProj%fix_out_format) then
             !> Initial file and timestamp info
             call AddDatum(header1,'file_info,,,,,,', separator)
@@ -128,11 +125,11 @@ subroutine InitOutFiles(lEx)
             if(fcc_var_present(co2)) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'co2_flux,qc_co2_flux', separator)
-                call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_co2_flux', separator)
-                    call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                 end if
             end if
 
@@ -152,11 +149,11 @@ subroutine InitOutFiles(lEx)
             if(fcc_var_present(ch4)) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2,'ch4_flux,qc_ch4_flux', separator)
-                call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_ch4_flux', separator)
-                    call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                 end if
             end if
 
@@ -187,7 +184,7 @@ subroutine InitOutFiles(lEx)
                     if (gas == gas4) then
                         if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_flux_label, separator)
                     else
-                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                     end if
                 else
                     if(fcc_var_present(gas)) call AddDatum(header1, '', separator)
@@ -205,7 +202,7 @@ subroutine InitOutFiles(lEx)
                     if (gas == gas4) then
                         if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_flux_label, separator)
                     else
-                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                     end if
                 else
                     if(fcc_var_present(gas)) call AddDatum(header1, '', separator)
@@ -227,8 +224,8 @@ subroutine InitOutFiles(lEx)
                     if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_dens_label // ',' &
                         // gas4_full_conc_label // ',' // gas4_full_mixr_label // ',[s],[1=default]', separator)
                 else if (gas /= h2o) then
-                    if(fcc_var_present(gas)) call AddDatum(header3, '[mmol+1m-3],[' // char(181) // &
-                        'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default]', separator)
+                    if(fcc_var_present(gas)) call AddDatum(header3, '[mmol+1m-3],[' // utf8_mu// &
+                        'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default]', separator)
                 else
                     if(fcc_var_present(gas)) &
                         call AddDatum(header3, '[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default]', separator)
@@ -278,7 +275,7 @@ subroutine InitOutFiles(lEx)
                     if (gas == gas4) then
                         if(fcc_var_present(gas)) call AddDatum(header3, gas4_full_flux_label // ',[#]', separator)
                     else
-                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                        if(fcc_var_present(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                     end if
                 else
                     if(fcc_var_present(gas)) call AddDatum(header1, ',', separator)
@@ -389,33 +386,35 @@ subroutine InitOutFiles(lEx)
             !> Mean values of user variables
             if (lEx%ncustom > 0) then
                 call AddDatum(header1, 'custom_variables', separator)
-                call AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader)), separator)
                 do i = 1, lEx%ncustom
-                    call AddDatum(header3, '--', separator)
+                    if (i > 1) call AddDatum(header1, '', separator)
+                    call clearstr(custom_label)
+                    call clearstr(custom_unit)
+                    if (i <= MaxUserVar) custom_label = UserVarHeader(i)
+                    if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
+                    custom_unit = CustomUnitFromLabel(custom_label)
+                    call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
+                    call AddDatum(header3, custom_unit(1:len_trim(custom_unit)), separator)
                 end do
             end if
 
             !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,', separator)
-                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
                 call AddDatum(header3, &
-                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#]', separator)
+                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
             end if
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
-                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec', separator)
-                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,,', separator)
+                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
+                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         else
             header1 = 'file_info,,,,,,,corrected_fluxes_and_quality_flags,,,,,,,,,,,,,,,,,,,,,&
                 &storage_fluxes,,,,,,vertical_advection_fluxes,,,,&
@@ -472,22 +471,22 @@ subroutine InitOutFiles(lEx)
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'cov,'
             header3 = ',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#],[kg+1m-1s-2],[#],[kg+1m-1s-2],&
                 &[W+1m-2],[#],[W+1m-2],[W+1m-2],[#],[W+1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],&
-                &[W+1m-2],[W+1m-2],[' // char(181) // 'mol+1s-1m-2],&
-                &[mmol+1s-1m-2],[' // char(181) // 'mol+1s-1m-2],[' // char(181) // 'mol+1s-1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[mmol+1s-1m-2],[' // char(181) &
-                // 'mol+1s-1m-2],[' // char(181) // 'mol+1s-1m-2],&
-                &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[W+1m-2],[W+1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[mmol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[' // utf8_mu&
+                // 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
                 &[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
                 &[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
                 &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[deg_from_north],[deg],[deg],[deg],&
                 &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
-                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[#],&
+                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],&
                 &8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
@@ -510,34 +509,36 @@ subroutine InitOutFiles(lEx)
             !> Mean values of user variables
             if (lEx%ncustom > 0) then
                 call AddDatum(header1, 'custom_variables', separator)
-                call AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader)), separator)
                 do i = 1, lEx%ncustom
-                    call AddDatum(header3, '--', separator)
+                    if (i > 1) call AddDatum(header1, '', separator)
+                    call clearstr(custom_label)
+                    call clearstr(custom_unit)
+                    if (i <= MaxUserVar) custom_label = UserVarHeader(i)
+                    if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
+                    custom_unit = CustomUnitFromLabel(custom_label)
+                    call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
+                    call AddDatum(header3, custom_unit(1:len_trim(custom_unit)), separator)
                 end do
             end if
 
             !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,', separator)
-                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
                 call AddDatum(header3, &
-                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#]', separator)
+                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
             end if
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
-                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,,', separator)
+                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
                 call AddDatum(header3, &
-                    '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
+                    '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         end if
     end if
 
@@ -609,5 +610,32 @@ subroutine InitOutFiles(lEx)
         !> Write on output file
         write(uflxnt, '(a)') trim(fluxnet_header)
     end if
+
+contains
+
+function CustomUnitFromLabel(label) result(unit_label)
+    character(*), intent(in) :: label
+    character(32) :: unit_label
+    character(64) :: clean_label
+
+    unit_label = '--'
+    clean_label = label
+    call lowercase(clean_label)
+
+    if (index(clean_label, 'flowrate_') == 1) then
+        unit_label = '[m+3s-1]'
+    elseif (index(clean_label, 'co2_') == 1 &
+        .or. index(clean_label, 'n2o_') == 1 &
+        .or. index(clean_label, 'ch4_') == 1) then
+        unit_label = '[' // utf8_mu // 'mol+1mol_a-1]'
+    elseif (index(clean_label, 'h2o_') == 1) then
+        unit_label = '[mmol+1mol_a-1]'
+    elseif (index(clean_label, 'int_t_') == 1 &
+        .or. index(clean_label, 'cell_t_') == 1) then
+        unit_label = '[K]'
+    elseif (index(clean_label, 'int_p_') == 1) then
+        unit_label = '[Pa]'
+    end if
+end function CustomUnitFromLabel
 
 end subroutine InitOutFiles

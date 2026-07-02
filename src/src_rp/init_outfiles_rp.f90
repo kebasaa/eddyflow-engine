@@ -49,19 +49,21 @@ subroutine InitOutFiles_rp()
     integer :: j
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
-    character(32) :: usg(NumUserVar)
+    character(64) :: usg(NumUserVar)
+    character(64) :: user_header(NumUserVar)
+    character(32) :: user_unit(NumUserVar)
     character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
     real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
+    character(2) :: utf8_mu
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
-    character(LongOutstringLen) :: head1_utf8
-    character(LongOutstringLen) :: head2_utf8
-    character(LongOutstringLen) :: head3_utf8
     character(LongOutstringLen) :: dataline
     logical :: proceed
     include '../src_common/interfaces.inc'
 
+
+    utf8_mu = char(194) // char(181)
 
     !> Convenient strings
     e2sg(u)   = 'u_'
@@ -85,8 +87,22 @@ subroutine InitOutFiles_rp()
         gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
 
     do j = 1, NumUserVar
-        usg(j)  = UserCol(j)%label(1:len_trim(UserCol(j)%label)) // '_'
-        call lowercase(usg(j))
+        user_header(j) = FullOutputCustomLabel(j)
+        usg(j) = user_header(j)
+        if (index(usg(j), '_mean') > 0) usg(j) = usg(j)(1:index(usg(j), '_mean') - 1)
+        user_unit(j) = '--'
+        select case (trim(UserCol(j)%var))
+            case ('flowrate')
+                user_unit(j) = '[m+3s-1]'
+            case ('cell_t', 'int_t_1', 'int_t_2')
+                user_unit(j) = '[K]'
+            case ('int_p')
+                user_unit(j) = '[Pa]'
+            case ('co2', 'n2o', 'ch4')
+                user_unit(j) = '[' // utf8_mu // 'mol+1mol_a-1]'
+            case ('h2o')
+                user_unit(j) = '[mmol+1mol_a-1]'
+        end select
     end do
 
     !> Create sub-directory
@@ -181,9 +197,6 @@ subroutine InitOutFiles_rp()
         call Clearstr(header1)
         call Clearstr(header2)
         call Clearstr(header3)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
 
         if (.not. EddyFlowProj%fix_out_format) then
             !> Initial file and timestamp info
@@ -228,11 +241,11 @@ subroutine InitOutFiles_rp()
             if(OutVarPresent(co2)) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'co2_flux,qc_co2_flux', separator)
-                call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_co2_flux', separator)
-                    call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                 end if
             end if
 
@@ -252,11 +265,11 @@ subroutine InitOutFiles_rp()
             if(OutVarPresent(ch4)) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2,'ch4_flux,qc_ch4_flux', separator)
-                call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, 'rand_err_ch4_flux', separator)
-                    call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                 end if
             end if
 
@@ -287,7 +300,7 @@ subroutine InitOutFiles_rp()
                     if(gas == gas4) then
                         if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
                     else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                     end if
                 else
                     if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
@@ -305,7 +318,7 @@ subroutine InitOutFiles_rp()
                     if(gas == gas4) then
                         if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
                     else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2]', separator)
+                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
                     end if
                 else
                     if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
@@ -327,8 +340,8 @@ subroutine InitOutFiles_rp()
                     if(OutVarPresent(gas)) call AddDatum(header3, gas4_dens_label // ',' &
                         // gas4_conc_label // ',' // gas4_mixr_label // ',[s],[1=default]', separator)
                 else if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1m-3],[' // char(181) // &
-                        'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default]', separator)
+                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1m-3],[' // utf8_mu// &
+                        'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default]', separator)
                 else
                     if(OutVarPresent(gas)) &
                         call AddDatum(header3, '[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default]', separator)
@@ -378,7 +391,7 @@ subroutine InitOutFiles_rp()
                     if (gas == gas4) then
                         if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label // ',[#]', separator)
                     else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // char(181) // 'mol+1s-1m-2],[#]', separator)
+                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
                     end if
                 else
                     if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
@@ -491,8 +504,8 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header1, 'custom_variables', separator)
                 do var = 1, NumUserVar
                     call AddDatum(header1, '', separator)
-                    call AddDatum(header2, usg(var)(1:len_trim(usg(var))) // 'mean', separator)
-                    call AddDatum(header3,'--', separator)
+                    call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
+                    call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
                 end do
             end if
 
@@ -514,14 +527,10 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
 
         else
             header1 = 'file_info,,,,,,,corrected_fluxes_and_quality_flags,,,,,,,,,,,,,,,,,,,,,&
@@ -579,22 +588,22 @@ subroutine InitOutFiles_rp()
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'cov,'
             header3 = ',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#],[kg+1m-1s-2],[#],[kg+1m-1s-2],&
                 &[W+1m-2],[#],[W+1m-2],[W+1m-2],[#],[W+1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],&
-                &[W+1m-2],[W+1m-2],[' // char(181) // 'mol+1s-1m-2],&
-                &[mmol+1s-1m-2],[' // char(181) // 'mol+1s-1m-2],[' // char(181) // 'mol+1s-1m-2],&
-                &[' // char(181) // 'mol+1s-1m-2],[mmol+1s-1m-2],[' // char(181) &
-                // 'mol+1s-1m-2],[' // char(181) // 'mol+1s-1m-2],&
-                &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[W+1m-2],[W+1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[mmol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[' // utf8_mu&
+                // 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
                 &[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // char(181) // 'mol+1mol_a-1],[' // char(181) // 'mol+1mol_d-1],[s],[1=default],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
+                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
                 &[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
                 &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[deg_from_north],[deg],[deg],[deg],&
                 &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
-                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
-                &[' // char(181) // 'mol+1s-1m-2],[#],[' // char(181) // 'mol+1s-1m-2],[#],&
+                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
+                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],&
                 &8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
                 // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
@@ -618,8 +627,8 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header1, 'custom_variables', separator)
                 do var = 1, NumUserVar
                     call AddDatum(header1, '', separator)
-                    call AddDatum(header2, usg(var)(1:len_trim(usg(var))) // 'mean', separator)
-                    call AddDatum(header3,'--', separator)
+                    call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
+                    call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
                 end do
             end if
 
@@ -641,14 +650,10 @@ subroutine InitOutFiles_rp()
                 call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
-            call latin1_to_utf8(header1, head1_utf8)
-            call latin1_to_utf8(header2, head2_utf8)
-            call latin1_to_utf8(header3, head3_utf8)
-
             !> Write on output file
-            write(uflx, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-            write(uflx, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-            write(uflx, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         end if
     end if
 
@@ -718,9 +723,6 @@ subroutine InitOutFiles_rp()
         call Clearstr(header1)
         call Clearstr(header2)
         call Clearstr(header3)
-        call Clearstr(head1_utf8)
-        call Clearstr(head2_utf8)
-        call Clearstr(head3_utf8)
         call AddDatum(header1,'file_info,,,,stationarity test,,', separator)
         call AddDatum(header2,'filename,date,time,DOY,dev(u),dev(w),dev(ts)', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[%],[%],[%]', separator)
@@ -799,14 +801,10 @@ subroutine InitOutFiles_rp()
         call AddDatum(header2,'dev(u),dev(w),dev(ts),flag(u),flag(w),flag(ts)', separator)
         call AddDatum(header3,'[%],[%],[%],[#],[#],[#]', separator)
 
-        call latin1_to_utf8(header1, head1_utf8)
-        call latin1_to_utf8(header2, head2_utf8)
-        call latin1_to_utf8(header3, head3_utf8)
-
         !> Write on output file
-        write(uqc, '(a)') head1_utf8(1:len_trim(head1_utf8) - 1)
-        write(uqc, '(a)') head2_utf8(1:len_trim(head2_utf8) - 1)
-        write(uqc, '(a)') head3_utf8(1:len_trim(head3_utf8) - 1)
+        write(uqc, '(a)') header1(1:len_trim(header1) - 1)
+        write(uqc, '(a)') header2(1:len_trim(header2) - 1)
+        write(uqc, '(a)') header3(1:len_trim(header3) - 1)
     end if
 
     !>*********************************************************************************************
@@ -1032,4 +1030,125 @@ subroutine InitOutFiles_rp()
                            &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
                            &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
     end if
+
+contains
+
+function FullOutputCustomLabel(ordinal) result(clean_label)
+    integer, intent(in) :: ordinal
+    character(64) :: clean_label
+
+    character(32) :: model_token
+    character(32) :: var_token
+    character(64) :: label_token
+    character(16) :: ordinal_label
+
+    call clearstr(clean_label)
+    var_token = SanitizeOutputToken(UserCol(ordinal)%var)
+    model_token = CustomModelToken(UserCol(ordinal)%instr%model, var_token)
+    var_token = CustomVarToken(var_token)
+
+    select case (trim(var_token))
+        case ('flowrate', 'co2', 'h2o', 'ch4', 'n2o', 'int_t', 'int_p')
+            if (LabelHasAlpha(model_token)) then
+                clean_label = trim(var_token) // '_' // trim(model_token)
+            else
+                clean_label = trim(var_token)
+            end if
+        case default
+            label_token = UserCol(ordinal)%label
+            call lowercase(label_token)
+            label_token = replace2(label_token, 'custom_', '')
+            label_token = replace2(label_token, '_mean', '')
+            clean_label = SanitizeOutputToken(label_token)
+            if (.not. LabelHasAlpha(clean_label)) then
+                write(ordinal_label, '(i0)') ordinal
+                clean_label = 'custom_' // trim(adjustl(ordinal_label))
+            end if
+    end select
+
+    if (len_trim(clean_label) <= len(clean_label) - 5) &
+        clean_label = trim(clean_label) // '_mean'
+end function FullOutputCustomLabel
+
+function CustomVarToken(raw_var_token) result(var_token)
+    character(*), intent(in) :: raw_var_token
+    character(32) :: var_token
+
+    var_token = raw_var_token
+    select case (trim(var_token))
+        case ('cell_t', 'int_t_1', 'int_t_2')
+            var_token = 'int_t'
+    end select
+end function CustomVarToken
+
+function CustomModelToken(raw_model, var_token) result(model_token)
+    character(*), intent(in) :: raw_model
+    character(*), intent(in) :: var_token
+    character(32) :: model_token
+
+    model_token = SanitizeOutputToken(raw_model)
+    select case (trim(var_token))
+        case ('co2', 'h2o', 'ch4', 'n2o')
+            if (index(model_token, 'miro_') == 1 .and. len_trim(model_token) > 5) &
+                model_token = model_token(6:len_trim(model_token))
+    end select
+end function CustomModelToken
+
+function SanitizeOutputToken(raw_token) result(clean_token)
+    character(*), intent(in) :: raw_token
+    character(32) :: clean_token
+
+    integer :: i
+    integer :: out_pos
+    character(32) :: tmp
+
+    call clearstr(clean_token)
+    tmp = raw_token
+    call lowercase(tmp)
+
+    out_pos = 0
+    do i = 1, len_trim(tmp)
+        select case (tmp(i:i))
+            case ('a':'z', '0':'9', '_', '-')
+                if (out_pos < len(clean_token)) then
+                    out_pos = out_pos + 1
+                    clean_token(out_pos:out_pos) = tmp(i:i)
+                end if
+            case default
+                if (out_pos < len(clean_token)) then
+                    out_pos = out_pos + 1
+                    clean_token(out_pos:out_pos) = '_'
+                end if
+        end select
+    end do
+
+    do while (index(clean_token, '__') > 0)
+        clean_token = replace2(clean_token, '__', '_')
+    end do
+    do while (len_trim(clean_token) > 0 .and. clean_token(1:1) == '_')
+        clean_token = clean_token(2:len_trim(clean_token))
+    end do
+    do while (len_trim(clean_token) > 0 &
+        .and. clean_token(len_trim(clean_token):len_trim(clean_token)) == '_')
+        clean_token(len_trim(clean_token):len_trim(clean_token)) = ' '
+    end do
+end function SanitizeOutputToken
+
+logical function LabelHasAlpha(label)
+    character(*), intent(in) :: label
+
+    LabelHasAlpha = index(label, 'a') > 0 .or. index(label, 'b') > 0 &
+        .or. index(label, 'c') > 0 .or. index(label, 'd') > 0 &
+        .or. index(label, 'e') > 0 .or. index(label, 'f') > 0 &
+        .or. index(label, 'g') > 0 .or. index(label, 'h') > 0 &
+        .or. index(label, 'i') > 0 .or. index(label, 'j') > 0 &
+        .or. index(label, 'k') > 0 .or. index(label, 'l') > 0 &
+        .or. index(label, 'm') > 0 .or. index(label, 'n') > 0 &
+        .or. index(label, 'o') > 0 .or. index(label, 'p') > 0 &
+        .or. index(label, 'q') > 0 .or. index(label, 'r') > 0 &
+        .or. index(label, 's') > 0 .or. index(label, 't') > 0 &
+        .or. index(label, 'u') > 0 .or. index(label, 'v') > 0 &
+        .or. index(label, 'w') > 0 .or. index(label, 'x') > 0 &
+        .or. index(label, 'y') > 0 .or. index(label, 'z') > 0
+end function LabelHasAlpha
 end subroutine InitOutFiles_rp

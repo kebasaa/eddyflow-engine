@@ -49,7 +49,7 @@ subroutine ReadIniRP(key)
     !> parse processing.eddypro file and store [Project] variables,
     !> common to all programs
     call ParseIniFile(PrjPath, 'Project', EPPrjNTags, EPPrjCTags,&
-        size(EPPrjNTags), size(EPPrjCTags), SNTagFound, SCTagFound, &
+        size(EPPrjNTags), size(EPPrjCTags), EPPrjNTagFound, EPPrjCTagFound, &
         IniFileNotFound)
 
     if (IniFileNotFound) call ExceptionHandler(21)

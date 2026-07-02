@@ -106,7 +106,7 @@ subroutine InformOfMetadataProblem(passed, faulty_col)
         write(*,*) '  Warning(1001)> Invalid metadata.'
         write(*,*) '  Warning(1001)> Invalid units for at least one gas measurement.'
         write(*,*) '  Warning(1001)> Valid units for gas measurements are "ppt", "ppm", "ppb", "mmol/m^3", &
-                                     &"umol/m^3", "g/m3", "mg/m3", "' // char(181) // 'g/m^3".'
+                                     &"umol/m^3", "g/m3", "mg/m3", "' // char(194) // char(181) // 'g/m^3".'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 

@@ -561,6 +561,8 @@ subroutine WriteOutFullFcc(lEx)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumFloat(CECFlux%r_ET_cec, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
+        call WriteDatumInt(lEx%cec%h2o_status, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
     end if
     if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
         call WriteDatumFloat(CECFlux%Reco_cec, field_val, EddyFlowProj%err_label)
@@ -570,6 +572,8 @@ subroutine WriteOutFullFcc(lEx)
         call WriteDatumFloat(CECFlux%NEE_cec, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumFloat(CECFlux%r_Fc_cec, field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumInt(lEx%cec%co2_status, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
 

@@ -67,23 +67,41 @@ subroutine DefineVars(LocCol, ncol, uncol)
     end do
 
     ! Pass 3: collect user columns (not mapped to standard slots above)
-    UserCol%var = 'none';  UserCol%measure_type = 'none'
+    UserCol = NullCol
     usr_cnt = 0
     do idx = 1, ncol
-        if (LocCol(idx)%useit) cycle
-        select case (trim(LocCol(idx)%var))
-            case ('u','v','w','ts','sos','co2','h2o','ch4','n2o', &
-                  'cell_t','int_t_1','int_t_2','int_p','air_t','air_p', &
-                  'flag_1','flag_2')
-                cycle
-            case default
-                usr_cnt = usr_cnt + 1
-                if (usr_cnt > uncol) exit
-                UserCol(usr_cnt) = LocCol(idx)
-                UserCol(usr_cnt)%present = .true.
-                UserCol(usr_cnt)%label = replace(UserCol(usr_cnt)%label, &
-                    ' ', '_', len(UserCol(usr_cnt)%label))
-                if (idx == Gas4CalRefCol) UserCol(usr_cnt)%var = 'cal-ref'
-        end select
+        if (.not. IsCustomOutputColumn(LocCol(idx))) cycle
+        usr_cnt = usr_cnt + 1
+        if (usr_cnt > uncol) then
+            usr_cnt = uncol
+            exit
+        end if
+        UserCol(usr_cnt) = LocCol(idx)
+        UserCol(usr_cnt)%present = .true.
+        UserCol(usr_cnt)%label = replace(UserCol(usr_cnt)%label, &
+            ' ', '_', len(UserCol(usr_cnt)%label))
+        if (idx == Gas4CalRefCol) UserCol(usr_cnt)%var = 'cal-ref'
     end do
+    NumUserVar = usr_cnt
+
+contains
+
+logical function IsCustomOutputColumn(col)
+    type(ColType), intent(in) :: col
+    character(32) :: var
+
+    IsCustomOutputColumn = .false.
+    if (col%useit) return
+
+    var = col%var
+    call lowercase(var)
+    if (len_trim(var) == 0) return
+    select case (trim(var))
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
+              'agc', 'rssi')
+            return
+        case default
+            IsCustomOutputColumn = .true.
+    end select
+end function IsCustomOutputColumn
 end subroutine DefineVars
