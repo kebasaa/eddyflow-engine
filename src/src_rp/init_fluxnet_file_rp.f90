@@ -44,7 +44,7 @@ subroutine InitFluxnetFile_rp()
     integer :: j
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
-    character(32) :: usg(NumUserVar)
+    character(64) :: usg(NumUserVar)
     character(LongOutstringLen) :: csv_row
     include '../src_common/interfaces.inc'
 
@@ -253,19 +253,20 @@ contains
 
 function SafeFluxnetCustomLabel(ordinal) result(clean_label)
     integer, intent(in) :: ordinal
-    character(32) :: clean_label
+    character(64) :: clean_label
 
-    character(32) :: tmp
+    character(64) :: tmp
     character(32) :: model_token
     character(32) :: var_token
     character(16) :: ordinal_label
 
     call clearstr(clean_label)
-    model_token = SanitizeFluxnetToken(UserCol(ordinal)%instr%model)
     var_token = SanitizeFluxnetToken(UserCol(ordinal)%var)
+    model_token = CustomModelToken(UserCol(ordinal)%instr%model, var_token)
+    var_token = CustomVarToken(var_token)
 
     select case (trim(var_token))
-        case ('flowrate', 'co2', 'h2o', 'cell_t', 'int_p')
+        case ('flowrate', 'co2', 'h2o', 'ch4', 'n2o', 'int_t', 'int_p')
             if (LabelHasAlpha(model_token)) then
                 clean_label = trim(var_token) // '_' // trim(model_token)
             else
@@ -292,6 +293,30 @@ function SafeFluxnetCustomLabel(ordinal) result(clean_label)
         end if
     end if
 end function SafeFluxnetCustomLabel
+
+function CustomVarToken(raw_var_token) result(var_token)
+    character(*), intent(in) :: raw_var_token
+    character(32) :: var_token
+
+    var_token = raw_var_token
+    select case (trim(var_token))
+        case ('cell_t', 'int_t_1', 'int_t_2')
+            var_token = 'int_t'
+    end select
+end function CustomVarToken
+
+function CustomModelToken(raw_model, var_token) result(model_token)
+    character(*), intent(in) :: raw_model
+    character(*), intent(in) :: var_token
+    character(32) :: model_token
+
+    model_token = SanitizeFluxnetToken(raw_model)
+    select case (trim(var_token))
+        case ('co2', 'h2o', 'ch4', 'n2o')
+            if (index(model_token, 'miro_') == 1 .and. len_trim(model_token) > 5) &
+                model_token = model_token(6:len_trim(model_token))
+    end select
+end function CustomModelToken
 
 function SanitizeFluxnetToken(raw_token) result(clean_token)
     character(*), intent(in) :: raw_token

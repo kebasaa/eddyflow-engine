@@ -53,7 +53,8 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     integer :: field_count
     integer :: marker_custom
     integer :: marker_biomet
-    character(32) :: custom_label
+    character(128) :: custom_field
+    character(64) :: custom_label
     logical :: label_has_alpha
     logical :: ValidRecord
     logical :: EndOfFileReached
@@ -93,9 +94,10 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
             field_end = field_start + index(fluxnet_header(field_start:), ',') - 2
             if (field_end < field_start) exit
             field_count = field_count + 1
+            call clearstr(custom_field)
             call clearstr(custom_label)
-            custom_label = fluxnet_header(field_start:field_end)
-            custom_label = replace2(custom_label, 'CUSTOM_', '')
+            custom_field = fluxnet_header(field_start:field_end)
+            custom_label = replace2(custom_field, 'CUSTOM_', '')
             call lowercase(custom_label)
             label_has_alpha = index(custom_label, 'a') > 0 .or. index(custom_label, 'b') > 0 &
                 .or. index(custom_label, 'c') > 0 .or. index(custom_label, 'd') > 0 &
@@ -111,7 +113,11 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
                 .or. index(custom_label, 'w') > 0 .or. index(custom_label, 'x') > 0 &
                 .or. index(custom_label, 'y') > 0 .or. index(custom_label, 'z') > 0
             if (label_has_alpha) then
-                if (index(custom_label, '_mean') == 0) &
+                if (len_trim(custom_label) > 5 &
+                    .and. custom_label(len_trim(custom_label) - 4:len_trim(custom_label)) == '_mean') then
+                    custom_label = custom_label(1:len_trim(custom_label) - 5)
+                end if
+                if (len_trim(custom_label) <= len(custom_label) - 5) &
                     custom_label = custom_label(1:len_trim(custom_label)) // '_mean'
                 UserVarHeader(field_count) = custom_label
             end if

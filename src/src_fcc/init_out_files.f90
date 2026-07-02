@@ -49,7 +49,8 @@ subroutine InitOutFiles(lEx)
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
-    character(32) :: custom_label
+    character(64) :: custom_label
+    character(32) :: custom_unit
     character(2) :: utf8_mu
     integer, external :: CreateDir
 
@@ -388,28 +389,26 @@ subroutine InitOutFiles(lEx)
                 do i = 1, lEx%ncustom
                     if (i > 1) call AddDatum(header1, '', separator)
                     call clearstr(custom_label)
+                    call clearstr(custom_unit)
                     if (i <= MaxUserVar) custom_label = UserVarHeader(i)
                     if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
+                    custom_unit = CustomUnitFromLabel(custom_label)
                     call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
-                    if (index(custom_label, 'flowrate_') == 1 .and. index(custom_label, '_mean') > 0) then
-                        call AddDatum(header3, '[m+3s-1]', separator)
-                    else
-                        call AddDatum(header3, '--', separator)
-                    end if
+                    call AddDatum(header3, custom_unit(1:len_trim(custom_unit)), separator)
                 end do
             end if
 
             !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,', separator)
-                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
                 call AddDatum(header3, &
-                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#]', separator)
+                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
             end if
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
-                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec', separator)
-                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,,', separator)
+                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
+                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
             !> Write on output file
@@ -513,29 +512,27 @@ subroutine InitOutFiles(lEx)
                 do i = 1, lEx%ncustom
                     if (i > 1) call AddDatum(header1, '', separator)
                     call clearstr(custom_label)
+                    call clearstr(custom_unit)
                     if (i <= MaxUserVar) custom_label = UserVarHeader(i)
                     if (len_trim(custom_label) == 0) write(custom_label, '("custom_", i0, "_mean")') i
+                    custom_unit = CustomUnitFromLabel(custom_label)
                     call AddDatum(header2, custom_label(1:len_trim(custom_label)), separator)
-                    if (index(custom_label, 'flowrate_') == 1 .and. index(custom_label, '_mean') > 0) then
-                        call AddDatum(header3, '[m+3s-1]', separator)
-                    else
-                        call AddDatum(header3, '--', separator)
-                    end if
+                    call AddDatum(header3, custom_unit(1:len_trim(custom_unit)), separator)
                 end do
             end if
 
             !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,', separator)
-                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(H2O),,,,,', separator)
+                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
                 call AddDatum(header3, &
-                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#]', separator)
+                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
             end if
             if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,', separator)
-                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec', separator)
+                call AddDatum(header1, 'conditional_eddy_covariance_(CO2),,,,', separator)
+                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
                 call AddDatum(header3, &
-                    '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#]', separator)
+                    '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
             end if
 
             !> Write on output file
@@ -613,5 +610,32 @@ subroutine InitOutFiles(lEx)
         !> Write on output file
         write(uflxnt, '(a)') trim(fluxnet_header)
     end if
+
+contains
+
+function CustomUnitFromLabel(label) result(unit_label)
+    character(*), intent(in) :: label
+    character(32) :: unit_label
+    character(64) :: clean_label
+
+    unit_label = '--'
+    clean_label = label
+    call lowercase(clean_label)
+
+    if (index(clean_label, 'flowrate_') == 1) then
+        unit_label = '[m+3s-1]'
+    elseif (index(clean_label, 'co2_') == 1 &
+        .or. index(clean_label, 'n2o_') == 1 &
+        .or. index(clean_label, 'ch4_') == 1) then
+        unit_label = '[' // utf8_mu // 'mol+1mol_a-1]'
+    elseif (index(clean_label, 'h2o_') == 1) then
+        unit_label = '[mmol+1mol_a-1]'
+    elseif (index(clean_label, 'int_t_') == 1 &
+        .or. index(clean_label, 'cell_t_') == 1) then
+        unit_label = '[K]'
+    elseif (index(clean_label, 'int_p_') == 1) then
+        unit_label = '[Pa]'
+    end if
+end function CustomUnitFromLabel
 
 end subroutine InitOutFiles

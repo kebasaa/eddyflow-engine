@@ -360,20 +360,26 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     if (len_trim(dataline) > 0) then
         remaining_fields = count([(dataline(i:i) == ',', &
             i = 1, len_trim(dataline))]) + 1
-        cec_start = strCharIndex(dataline, ',', remaining_fields - 11)
-        if (cec_start > 0) then
-            cec_line = dataline(cec_start + 1:len_trim(dataline))
-            dataline = dataline(1:cec_start - 1)
-        else
-            cec_line = ''
+        cec_line = ''
+        if (remaining_fields == 11) then
+            cec_line = dataline(1:len_trim(dataline))
+            dataline = ''
+        elseif (remaining_fields > 11) then
+            cec_start = strCharIndex(dataline, ',', remaining_fields - 11)
+            if (cec_start > 0) then
+                cec_line = dataline(cec_start + 1:len_trim(dataline))
+                dataline = dataline(1:cec_start - 1)
+            end if
         end if
-        read(cec_line, *, iostat = read_status) lEx%cec%r_ET, lEx%cec%r_Fc, &
-            lEx%cec%n_valid, lEx%cec%n_O1, lEx%cec%n_O2, &
-            lEx%cec%frac_O1, lEx%cec%frac_O2, cec_h2o_valid, cec_co2_valid, &
-            lEx%cec%h2o_status, lEx%cec%co2_status
-        if (read_status == 0) then
-            lEx%cec%h2o_valid = cec_h2o_valid == 1
-            lEx%cec%co2_valid = cec_co2_valid == 1
+        if (len_trim(cec_line) > 0) then
+            read(cec_line, *, iostat = read_status) lEx%cec%r_ET, lEx%cec%r_Fc, &
+                lEx%cec%n_valid, lEx%cec%n_O1, lEx%cec%n_O2, &
+                lEx%cec%frac_O1, lEx%cec%frac_O2, cec_h2o_valid, cec_co2_valid, &
+                lEx%cec%h2o_status, lEx%cec%co2_status
+            if (read_status == 0) then
+                lEx%cec%h2o_valid = cec_h2o_valid == 1
+                lEx%cec%co2_valid = cec_co2_valid == 1
+            end if
         end if
     end if
 

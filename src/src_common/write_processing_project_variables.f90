@@ -51,6 +51,7 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%cec%min_octant = 0.05d0
     EddyFlowProj%cec%min_valid = 0.90d0
     EddyFlowProj%cec%signal_strength = 70d0
+    EddyFlowProj%cec%max_stationarity = 25d0
     EddyFlowProj%cec%max_gap_fill = 4
 
     !> Project general info
@@ -387,6 +388,9 @@ subroutine WriteProcessingProjectVariables()
     if (EPPrjNTagFound(31)) &
         EddyFlowProj%cec%max_gap_fill = NormalizeCecMaxGapFill( &
             EPPrjNTags(31)%value, 4)
+    if (EPPrjNTagFound(32)) &
+        EddyFlowProj%cec%max_stationarity = NormalizeCecStationarity( &
+            EPPrjNTags(32)%value, 25d0)
 
     !> main output directory, only in Desktop mode
     if (EddyFlowProj%run_env /= 'embedded') then
@@ -463,4 +467,15 @@ integer function NormalizeCecMaxGapFill(value, default_value)
         NormalizeCecMaxGapFill = default_value
     end if
 end function NormalizeCecMaxGapFill
+
+real(kind = dbl) function NormalizeCecStationarity(value, default_value)
+    real(kind = dbl), intent(in) :: value
+    real(kind = dbl), intent(in) :: default_value
+
+    if (value >= 0d0) then
+        NormalizeCecStationarity = value
+    else
+        NormalizeCecStationarity = default_value
+    end if
+end function NormalizeCecStationarity
 end subroutine WriteProcessingProjectVariables

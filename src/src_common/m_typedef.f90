@@ -494,6 +494,7 @@ module m_typedef
         real(kind = dbl) :: min_octant
         real(kind = dbl) :: min_valid
         real(kind = dbl) :: signal_strength
+        real(kind = dbl) :: max_stationarity
         integer :: max_gap_fill
     end type CECSetupType
 

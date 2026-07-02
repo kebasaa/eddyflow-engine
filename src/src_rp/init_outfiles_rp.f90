@@ -49,8 +49,8 @@ subroutine InitOutFiles_rp()
     integer :: j
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
-    character(32) :: usg(NumUserVar)
-    character(32) :: user_header(NumUserVar)
+    character(64) :: usg(NumUserVar)
+    character(64) :: user_header(NumUserVar)
     character(32) :: user_unit(NumUserVar)
     character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
     real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
@@ -94,7 +94,7 @@ subroutine InitOutFiles_rp()
         select case (trim(UserCol(j)%var))
             case ('flowrate')
                 user_unit(j) = '[m+3s-1]'
-            case ('cell_t')
+            case ('cell_t', 'int_t_1', 'int_t_2')
                 user_unit(j) = '[K]'
             case ('int_p')
                 user_unit(j) = '[Pa]'
@@ -1035,19 +1035,20 @@ contains
 
 function FullOutputCustomLabel(ordinal) result(clean_label)
     integer, intent(in) :: ordinal
-    character(32) :: clean_label
+    character(64) :: clean_label
 
     character(32) :: model_token
     character(32) :: var_token
-    character(32) :: label_token
+    character(64) :: label_token
     character(16) :: ordinal_label
 
     call clearstr(clean_label)
-    model_token = SanitizeOutputToken(UserCol(ordinal)%instr%model)
     var_token = SanitizeOutputToken(UserCol(ordinal)%var)
+    model_token = CustomModelToken(UserCol(ordinal)%instr%model, var_token)
+    var_token = CustomVarToken(var_token)
 
     select case (trim(var_token))
-        case ('flowrate', 'co2', 'h2o', 'cell_t', 'int_p')
+        case ('flowrate', 'co2', 'h2o', 'ch4', 'n2o', 'int_t', 'int_p')
             if (LabelHasAlpha(model_token)) then
                 clean_label = trim(var_token) // '_' // trim(model_token)
             else
@@ -1068,6 +1069,30 @@ function FullOutputCustomLabel(ordinal) result(clean_label)
     if (len_trim(clean_label) <= len(clean_label) - 5) &
         clean_label = trim(clean_label) // '_mean'
 end function FullOutputCustomLabel
+
+function CustomVarToken(raw_var_token) result(var_token)
+    character(*), intent(in) :: raw_var_token
+    character(32) :: var_token
+
+    var_token = raw_var_token
+    select case (trim(var_token))
+        case ('cell_t', 'int_t_1', 'int_t_2')
+            var_token = 'int_t'
+    end select
+end function CustomVarToken
+
+function CustomModelToken(raw_model, var_token) result(model_token)
+    character(*), intent(in) :: raw_model
+    character(*), intent(in) :: var_token
+    character(32) :: model_token
+
+    model_token = SanitizeOutputToken(raw_model)
+    select case (trim(var_token))
+        case ('co2', 'h2o', 'ch4', 'n2o')
+            if (index(model_token, 'miro_') == 1 .and. len_trim(model_token) > 5) &
+                model_token = model_token(6:len_trim(model_token))
+    end select
+end function CustomModelToken
 
 function SanitizeOutputToken(raw_token) result(clean_token)
     character(*), intent(in) :: raw_token

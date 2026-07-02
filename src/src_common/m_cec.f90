@@ -157,8 +157,11 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
 
     !> Zahn et al. retained periods with at least 90% instantaneous data.
     if (dble(descriptor%n_valid) < active_setup%min_valid * dble(nrow)) return
-    if (stationarity_co2 == ierror .or. stationarity_h2o == ierror) return
-    if (stationarity_co2 > 25 .or. stationarity_h2o > 25) return
+    if (active_setup%max_stationarity > 0d0) then
+        if (stationarity_co2 == ierror .or. stationarity_h2o == ierror) return
+        if (dble(stationarity_co2) > active_setup%max_stationarity &
+            .or. dble(stationarity_h2o) > active_setup%max_stationarity) return
+    end if
 
     descriptor%frac_O1 = dble(descriptor%n_O1) / dble(descriptor%n_valid)
     descriptor%frac_O2 = dble(descriptor%n_O2) / dble(descriptor%n_valid)
@@ -205,6 +208,7 @@ subroutine DefaultCecSetup(setup)
     setup%min_octant = 0.05d0
     setup%min_valid = 0.90d0
     setup%signal_strength = 70d0
+    setup%max_stationarity = 25d0
     setup%max_gap_fill = 4
 end subroutine DefaultCecSetup
 
