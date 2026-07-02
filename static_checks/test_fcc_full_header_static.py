@@ -334,6 +334,148 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertIn("if (active_setup%max_stationarity > 0d0) then", cec_source)
         self.assertNotIn("stationarity_co2 > 25", cec_source)
 
+    def test_processing_variable_contract_is_project_level_and_parsed_by_rp_and_fcc(self):
+        typedefs = read("src/src_common/m_typedef.f90")
+        parser = read("src/src_common/read_processing_variables.f90")
+
+        self.assertIn("integer, parameter :: MaxProcessingVariables = 64", typedefs)
+        self.assertIn("type :: ProcessingVariableType", typedefs)
+        self.assertIn("character(64) :: processing_id", typedefs)
+        self.assertIn("character(64) :: reference_h2o_id", typedefs)
+        self.assertIn("type(GasCollectionType) :: processing", typedefs)
+        self.assertNotIn("canonical_var", typedefs)
+        self.assertIn("subroutine ReadProcessingVariables(IniFile)", parser)
+        self.assertNotIn("MigrateLegacyProcessingVariables", parser)
+        self.assertNotIn("ApplyProcessingVariablesToLegacySlots", parser)
+        self.assertNotIn("CanonicalGasVar", parser)
+
+        for path in ("src/src_rp/read_ini_rp.f90", "src/src_fcc/read_ini_fcc.f90"):
+            source = read(path)
+            self.assertLess(
+                source.index("call ReadProcessingVariables(PrjPath)"),
+                source.index("call WriteProcessingProjectVariables()"),
+            )
+
+    def test_processing_variable_parser_covers_required_errors(self):
+        parser = read("src/src_common/read_processing_variables.f90")
+
+        for text in (
+            "[ProcessingVariables] group is required",
+            "count must be positive",
+            "at least one enabled row",
+            "count exceeds MaxProcessingVariables",
+            "empty id",
+            "empty gas",
+            "non-positive gas_col",
+            "non-positive irga_index",
+            "non-positive gas_index",
+            "id must match gas_irgaIndex_gasIndex",
+            "Duplicate ProcessingVariables id",
+            "Invalid H2O reference",
+            "H2O reference is not an H2O row",
+            "H2O row may only self-reference",
+            "Ambiguous or missing H2O reference",
+        ):
+            self.assertIn(text, parser)
+
+    def test_processing_variable_ids_are_generated_and_validated_from_numeric_identity(self):
+        parser = read("src/src_common/read_processing_variables.f90")
+        docs = read("ENGINE_PROCESSING_VARIABLES.md")
+
+        self.assertIn("ExpectedProcessingId(row%gas_name, row%irga_index, row%gas_instance_index)", parser)
+        self.assertIn("if (len_trim(configured_id) == 0) then", parser)
+        self.assertIn("row%processing_id = expected_id", parser)
+        self.assertIn("ProcessingVariables id must match gas_irgaIndex_gasIndex", parser)
+        self.assertIn("write(ExpectedProcessingId, '(a,a,i0,a,i0)')", parser)
+        self.assertIn("formatted as `gas_irgaIndex_gasIndex`", docs)
+        self.assertIn("Instrument model names may remain metadata", docs)
+
+    def test_processing_variable_h2o_refs_are_exact_row_references(self):
+        parser = read("src/src_common/read_processing_variables.f90")
+
+        self.assertIn("if (h2o_count == 1) then", parser)
+        self.assertIn("EddyFlowProj%processing%rows(i)%reference_h2o_id = EddyFlowProj%processing%rows(only_h2o)%processing_id", parser)
+        self.assertIn("ref_index = FindProcessingVariableById(EddyFlowProj%processing%rows(i)%reference_h2o_id)", parser)
+        self.assertIn("EddyFlowProj%processing%rows(i)%h2o_ref_index = ref_index", parser)
+        self.assertIn("EddyFlowProj%processing%rows(i)%h2o_ref_index = i", parser)
+
+    def test_processing_variable_molecular_constants_are_normalized_at_parse_boundary(self):
+        parser = read("src/src_common/read_processing_variables.f90")
+        docs = read("ENGINE_PROCESSING_VARIABLES.md")
+
+        self.assertIn("row%molecular_weight = row%molecular_weight * 1d-3", parser)
+        self.assertIn("row%molecular_diffusivity = row%molecular_diffusivity * 1d-4", parser)
+        self.assertIn("molecular weight: kg/mol", docs)
+        self.assertIn("molecular diffusivity: m2/s", docs)
+
+    def test_project_parser_no_longer_populates_fixed_gas_slots_from_project_tags(self):
+        parser = read("src/src_common/write_processing_project_variables.f90")
+
+        forbidden = (
+            "EddyFlowProj%col(co2)",
+            "EddyFlowProj%col(h2o)",
+            "EddyFlowProj%col(ch4)",
+            "EddyFlowProj%col(gas4)",
+            "EddyFlowProj%col(tc)",
+            "EddyFlowProj%col(ti1)",
+            "EddyFlowProj%col(ti2)",
+            "EddyFlowProj%col(pi)",
+            "EddyFlowProj%col(te)",
+            "EddyFlowProj%col(pe)",
+            "EddyFlowProj%col(E2NumVar + diag72)",
+            "EddyFlowProj%col(E2NumVar + diag75)",
+            "EddyFlowProj%col(E2NumVar + diag77)",
+            "ApplyProcessingVariablesToLegacySlots",
+        )
+        for text in forbidden:
+            self.assertNotIn(text, parser)
+
+    def test_row_indexed_gas_computational_containers_exist(self):
+        typedefs = read("src/src_common/m_typedef.f90")
+
+        self.assertIn("type :: GasStatsType", typedefs)
+        self.assertIn("type(GasResultType) :: gas(MaxProcessingVariables)", typedefs)
+        self.assertIn("type(GasCollectionType) :: processing", typedefs)
+        self.assertIn("type(InstrumentType) :: processing_instr(MaxProcessingVariables)", typedefs)
+        self.assertIn("processing_measure_type(MaxProcessingVariables)", typedefs)
+        self.assertIn("h2o_ref_index", typedefs)
+        self.assertIn("subroutine EnsureExProcessingRows", typedefs)
+        self.assertIn("logical function IsH2OProcessingRow", typedefs)
+
+    def test_fcc_level1_uses_processing_row_loop_for_gases(self):
+        source = read("src/src_fcc/fluxes1.f90")
+
+        self.assertIn("nrows = ProcessingRowCount(lEx%processing)", source)
+        self.assertIn("do i = 1, nrows", source)
+        self.assertIn("Flux1%gas(i) = lEx%Flux0%gas(i)", source)
+        self.assertIn("IsH2OProcessingRow(lEx%processing%rows(i))", source)
+        self.assertNotIn("lEx%instr(ico2)", source)
+        self.assertNotIn("lEx%instr(ih2o)", source)
+        self.assertNotIn("BPCF%of(w_co2)", source)
+        self.assertNotIn("BPCF%of(w_h2o)", source)
+
+    def test_rp_level1_uses_processing_row_loop_for_gases(self):
+        source = read("src/src_rp/fluxes1_rp.f90")
+
+        self.assertIn("nrows = ProcessingRowCount(EddyFlowProj%processing)", source)
+        self.assertIn("do i = 1, nrows", source)
+        self.assertIn("Flux1%gas(i) = Flux0%gas(i)", source)
+        self.assertIn("IsH2OProcessingRow(EddyFlowProj%processing%rows(i))", source)
+        self.assertNotIn("E2Col(co2)%Instr", source)
+        self.assertNotIn("E2Col(h2o)%Instr", source)
+        self.assertNotIn("BPCF%of(w_co2)", source)
+        self.assertNotIn("BPCF%of(w_h2o)", source)
+
+    def test_fcc_level23_uses_processing_row_h2o_refs(self):
+        source = read("src/src_fcc/fluxes23.f90")
+
+        self.assertIn("nrows = ProcessingRowCount(lEx%processing)", source)
+        self.assertIn("do i = 1, nrows", source)
+        self.assertIn("h2o_i = lEx%processing%rows(i)%h2o_ref_index", source)
+        self.assertIn("Flux2%gas(i)", source)
+        self.assertIn("Flux3%gas(i)", source)
+        self.assertIn("lEx%processing_instr(i)%path_type", source)
+
 
 if __name__ == "__main__":
     unittest.main()

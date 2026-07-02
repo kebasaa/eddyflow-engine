@@ -1,9 +1,9 @@
 !***************************************************************************
 ! read_ini_fcc.f90
 ! ----------------
-! Copyright © 2026-    , ETH Zurich, Jonathan Muller
+! Copyright (c) 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyFlow®.
+! This file is part of EddyFlow.
 !
 ! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
@@ -12,10 +12,10 @@
 ! of the GNU General Public License along with EddyFlow (R). If not,
 ! see <http://www.gnu.org/licenses/>.
 !
-! EddyFlow® contains additional Open Source Components. The licenses
+! EddyFlow contains additional Open Source Components. The licenses
 ! and/or notices these Components can be found in the file LIBRARIES.txt.
 !
-! EddyFlow® is distributed in the hope that it will be useful,
+! EddyFlow is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
@@ -49,6 +49,7 @@ subroutine ReadIniFCC(key)
         EPPrjNTagFound, EPPrjCTagFound, IniFileNotFound)
 
     if (IniFileNotFound) call ExceptionHandler(21)
+    call ReadProcessingVariables(PrjPath)
     call WriteProcessingProjectVariables()
 
     !> parse processing.eddypro file and store all numeric and character tags
@@ -392,3 +393,4 @@ subroutine InitializeGas4FullOutputUnitsFcc()
         gas4_full_flux_label, gas4_full_conc_label, gas4_full_mixr_label, &
         gas4_full_dens_label)
 end subroutine InitializeGas4FullOutputUnitsFcc
+

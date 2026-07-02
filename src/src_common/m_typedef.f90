@@ -1,11 +1,11 @@
 !***************************************************************************
 ! m_typedef.f90
 ! -------------
-! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright © 2026-    , ETH Zurich, Jonathan Muller
+! Copyright (c) 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright (c) 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright (c) 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyFlow®.
+! This file is part of EddyFlow.
 !
 ! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
@@ -14,10 +14,10 @@
 ! of the GNU General Public License along with EddyFlow (R). If not,
 ! see <http://www.gnu.org/licenses/>.
 !
-! EddyFlow® contains additional Open Source Components. The licenses
+! EddyFlow contains additional Open Source Components. The licenses
 ! and/or notices these Components can be found in the file LIBRARIES.txt.
 !
-! EddyFlow® is distributed in the hope that it will be useful,
+! EddyFlow is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
@@ -43,6 +43,7 @@ module m_typedef
     integer, parameter :: MaxAvrgPeriodInHours = 5
     integer, parameter :: MaxNumInstruments = 5
     integer, parameter :: MaxNumRawFlags = 10
+    integer, parameter :: MaxProcessingVariables = 64
     integer, parameter :: NumDegH = 9
     integer, parameter :: MaxNumCol = 100
     integer, parameter :: E2NumVar = 14
@@ -127,6 +128,101 @@ module m_typedef
         character(iniValueLen) :: Value
     end type Text
 
+
+    type :: ProcessingVariableType
+        logical :: enabled = .false.
+        integer :: file_row = 0
+        integer :: gas_col = -1
+        integer :: irga_index = 0
+        integer :: gas_instance_index = 0
+        integer :: h2o_ref_index = 0
+        integer :: col_cell_t = -1
+        integer :: col_int_t_1 = -1
+        integer :: col_int_t_2 = -1
+        integer :: col_int_p = -1
+        integer :: col_air_t = -1
+        integer :: col_air_p = -1
+        integer :: col_diag = -1
+        real(kind = dbl) :: molecular_weight = -9999d0
+        real(kind = dbl) :: molecular_diffusivity = -9999d0
+        character(64) :: processing_id = ''
+        character(32) :: gas_name = ''
+        character(64) :: irga_id = ''
+        character(64) :: reference_h2o_id = ''
+    end type ProcessingVariableType
+
+    type :: GasStatsType
+        logical :: present = .false.
+        integer :: n = 0
+        integer :: n_wcov = 0
+        real(kind = dbl) :: mean = -9999d0
+        real(kind = dbl) :: stdev = -9999d0
+        real(kind = dbl) :: variance = -9999d0
+        real(kind = dbl) :: covariance_w = -9999d0
+        real(kind = dbl) :: d = -9999d0
+        real(kind = dbl) :: r = -9999d0
+        real(kind = dbl) :: chi = -9999d0
+        real(kind = dbl) :: density = -9999d0
+        real(kind = dbl) :: concentration = -9999d0
+        real(kind = dbl) :: mole_fraction = -9999d0
+        real(kind = dbl) :: mixing_ratio = -9999d0
+        real(kind = dbl) :: vcell = -9999d0
+    end type GasStatsType
+
+    type :: GasResultType
+        logical :: present = .false.
+        real(kind = dbl) :: flux0 = -9999d0
+        real(kind = dbl) :: flux1 = -9999d0
+        real(kind = dbl) :: flux2 = -9999d0
+        real(kind = dbl) :: flux3 = -9999d0
+        real(kind = dbl) :: evap0 = -9999d0
+        real(kind = dbl) :: evap1 = -9999d0
+        real(kind = dbl) :: evap2 = -9999d0
+        real(kind = dbl) :: evap3 = -9999d0
+        real(kind = dbl) :: et0 = -9999d0
+        real(kind = dbl) :: et1 = -9999d0
+        real(kind = dbl) :: et2 = -9999d0
+        real(kind = dbl) :: et3 = -9999d0
+        real(kind = dbl) :: le0 = -9999d0
+        real(kind = dbl) :: le1 = -9999d0
+        real(kind = dbl) :: le2 = -9999d0
+        real(kind = dbl) :: le3 = -9999d0
+        real(kind = dbl) :: internal_heat0 = -9999d0
+        real(kind = dbl) :: internal_heat1 = -9999d0
+        real(kind = dbl) :: internal_heat2 = -9999d0
+        real(kind = dbl) :: internal_heat3 = -9999d0
+        real(kind = dbl) :: concentration = -9999d0
+        real(kind = dbl) :: density = -9999d0
+        real(kind = dbl) :: timelag = -9999d0
+        real(kind = dbl) :: actual_timelag = -9999d0
+        real(kind = dbl) :: used_timelag = -9999d0
+        real(kind = dbl) :: random_uncertainty = -9999d0
+        real(kind = dbl) :: spectral_correction = -9999d0
+        real(kind = dbl) :: storage = -9999d0
+        real(kind = dbl) :: vertical_advection = -9999d0
+        real(kind = dbl) :: mole_fraction = -9999d0
+        real(kind = dbl) :: mixing_ratio = -9999d0
+        real(kind = dbl) :: covariance_w = -9999d0
+        real(kind = dbl) :: variance = -9999d0
+        real(kind = dbl) :: stationarity = -9999d0
+        real(kind = dbl) :: developed_turbulence = -9999d0
+        real(kind = dbl) :: signal_strength = -9999d0
+        real(kind = dbl) :: cec_ratio = -9999d0
+        real(kind = dbl) :: bpcf = 1d0
+        integer :: qc_flag = 0
+        integer :: diagnostic_flag = 0
+    end type GasResultType
+
+    type :: GasCollectionType
+        logical :: has_processing_variables = .false.
+        integer :: file_count = 0
+        integer :: count = 0
+        integer :: active_index = 0
+        character(64) :: active_id = ''
+        type(ProcessingVariableType) :: rows(MaxProcessingVariables)
+        type(GasResultType) :: results(MaxProcessingVariables)
+        type(GasStatsType) :: stats(MaxProcessingVariables)
+    end type GasCollectionType
     type GenericE2Var
         real(kind = dbl) :: dbl(E2NumVar)
         integer :: int(E2NumVar)
@@ -502,6 +598,7 @@ module m_typedef
         integer :: sonic_output_rate
         integer :: col(E2NumVar + MaxNumDiag)
         real(kind=dbl) :: new_gas_diff
+        type(GasCollectionType) :: processing
         character(10) :: start_date
         character(5)  :: start_time
         character(10) :: end_date
@@ -667,7 +764,7 @@ module m_typedef
         character(PathLen) :: pf
         character(PathLen) :: to
         character(PathLen) :: sa
-        character(PathLen) :: cec   !< CEC ratios intermediate file (RP→FCC)
+        character(PathLen) :: cec   !< CEC ratios intermediate file (RP->FCC)
     end type FileType
 
     type :: FluxType
@@ -692,6 +789,7 @@ module m_typedef
         real(kind = dbl) :: ustar
         real(kind = dbl) :: L
         real(kind = dbl) :: zL
+        type(GasResultType) :: gas(MaxProcessingVariables)
     end type FluxType
 
     type :: FileCheckType
@@ -1384,6 +1482,9 @@ module m_typedef
         Type(SwVerType) :: logger_swver
         type(StatsType) :: stats
         type(CECDescriptorType) :: cec
+        type(GasCollectionType) :: processing
+        type(InstrumentType) :: processing_instr(MaxProcessingVariables)
+        character(32) :: processing_measure_type(MaxProcessingVariables)
     end type ExType
 
     type fluxnetChunksType
@@ -1449,4 +1550,29 @@ contains
             IrgaPathTypeFromModel = 'none'
         end if
     end function IrgaPathTypeFromModel
+
+    integer function ProcessingRowCount(collection)
+        implicit none
+        type(GasCollectionType), intent(in) :: collection
+        ProcessingRowCount = max(0, min(collection%count, MaxProcessingVariables))
+    end function ProcessingRowCount
+
+    logical function IsH2OProcessingRow(row)
+        implicit none
+        type(ProcessingVariableType), intent(in) :: row
+        character(32) :: gas_name
+        gas_name = trim(adjustl(row%gas_name))
+        call lowercase(gas_name)
+        IsH2OProcessingRow = trim(gas_name) == 'h2o'
+    end function IsH2OProcessingRow
+
+    subroutine EnsureExProcessingRows(lEx, project_processing)
+        implicit none
+        type(ExType), intent(inout) :: lEx
+        type(GasCollectionType), intent(in) :: project_processing
+        if (lEx%processing%count <= 0 .and. project_processing%count > 0) &
+            lEx%processing = project_processing
+    end subroutine EnsureExProcessingRows
 end module m_typedef
+
+

@@ -1,11 +1,11 @@
 !***************************************************************************
 ! read_ini_rp.f90
 ! ---------------
-! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright © 2026-    , ETH Zurich, Jonathan Muller
+! Copyright (c) 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright (c) 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright (c) 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyFlow®.
+! This file is part of EddyFlow.
 !
 ! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
@@ -14,10 +14,10 @@
 ! of the GNU General Public License along with EddyFlow (R). If not,
 ! see <http://www.gnu.org/licenses/>.
 !
-! EddyFlow® contains additional Open Source Components. The licenses
+! EddyFlow contains additional Open Source Components. The licenses
 ! and/or notices these Components can be found in the file LIBRARIES.txt.
 !
-! EddyFlow® is distributed in the hope that it will be useful,
+! EddyFlow is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
@@ -53,6 +53,7 @@ subroutine ReadIniRP(key)
         IniFileNotFound)
 
     if (IniFileNotFound) call ExceptionHandler(21)
+    call ReadProcessingVariables(PrjPath)
     call WriteProcessingProjectVariables()
 
     !> parse processing.eddypro file and store all numeric and character tags
@@ -750,3 +751,4 @@ subroutine WriteVariablesRP()
     call AdjFilePath(AuxFile%pf, slash)
     call AdjFilePath(AuxFile%to, slash)
 end subroutine WriteVariablesRP
+

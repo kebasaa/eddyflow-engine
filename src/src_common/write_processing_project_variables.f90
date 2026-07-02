@@ -1,11 +1,11 @@
 !***************************************************************************
 ! write_processing_project_variables.f90
 ! --------------------------------------
-! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright © 2026-    , ETH Zurich, Jonathan Muller
+! Copyright (c) 2007-2011, Eco2s team, Gerardo Fratini
+! Copyright (c) 2011-2026, LI-COR Biosciences, Gerardo Fratini
+! Copyright (c) 2026-    , ETH Zurich, Jonathan Muller
 !
-! This file is part of EddyFlow®.
+! This file is part of EddyFlow.
 !
 ! EddyFlow (TM) is free software: you can redistribute it and/or modify
 ! it under the terms of the GNU General Public License as published by
@@ -14,10 +14,10 @@
 ! of the GNU General Public License along with EddyFlow (R). If not,
 ! see <http://www.gnu.org/licenses/>.
 !
-! EddyFlow® contains additional Open Source Components. The licenses
+! EddyFlow contains additional Open Source Components. The licenses
 ! and/or notices these Components can be found in the file LIBRARIES.txt.
 !
-! EddyFlow® is distributed in the hope that it will be useful,
+! EddyFlow is distributed in the hope that it will be useful,
 ! but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ! GNU General Public License for more details.
@@ -157,34 +157,13 @@ subroutine WriteProcessingProjectVariables()
 
     !> Master sonic
     EddyFlowProj%master_sonic = trim(adjustl(EPPrjCTags(15)%value))
-    !> Variables to be used other than sonic ones
+    !> Non-gas project variables. Gas and analyzer support columns are owned by
+    !> [ProcessingVariables] rows, not fixed co2/h2o/ch4/gas4 project slots.
     EddyFlowProj%col(ts:pe) = nint(error)
     EddyFlowProj%col(ts)  = nint(EPPrjNTags(3)%value)
-    EddyFlowProj%col(co2) = nint(EPPrjNTags(4)%value)
-    EddyFlowProj%col(h2o) = nint(EPPrjNTags(5)%value)
-    EddyFlowProj%col(ch4) = nint(EPPrjNTags(6)%value)
-    EddyFlowProj%col(gas4) = nint(EPPrjNTags(7)%value)
-    EddyFlowProj%col(tc)  = nint(EPPrjNTags(8)%value)
-    EddyFlowProj%col(ti1) = nint(EPPrjNTags(9)%value)
-    EddyFlowProj%col(ti2) = nint(EPPrjNTags(10)%value)
-    EddyFlowProj%col(pi)  = nint(EPPrjNTags(11)%value)
-    EddyFlowProj%col(te)  = nint(EPPrjNTags(12)%value)
-    EddyFlowProj%col(pe)  = nint(EPPrjNTags(13)%value)
-    EddyFlowProj%col(E2NumVar + diag72) = nint(EPPrjNTags(14)%value)
-    EddyFlowProj%col(E2NumVar + diag75) = nint(EPPrjNTags(15)%value)
-    EddyFlowProj%col(E2NumVar + diag77) = nint(EPPrjNTags(16)%value)
     EddyFlowProj%col(E2NumVar + diagAnem) = nint(EPPrjNTags(20)%value)
     EddyFlowProj%col(E2NumVar + diagStaA) = nint(EPPrjNTags(21)%value)
     EddyFlowProj%col(E2NumVar + diagStaD) = nint(EPPrjNTags(22)%value)
-
-    !> if a column was selected for gas4, read diffusivity. If diffusivity is
-    !> below zero, defaults to gas4 diffusivity
-    if (EddyFlowProj%col(gas4) > 0) then
-        Dc(gas4) = EPPrjNTags(17)%value * 1d-4 !< takes from cm+2s-1 to m+2s-1
-        if (Dc(gas4) <= 0) Dc(gas4) = 0.00001436d0  !< default for N2O from Massman (1998, J. Atm. Env) Table 2.
-        MW(gas4) = sngl(EPPrjNTags(18)%value) * 1e-3 !< takes from g+1mol-1 to kg+1mol-1
-        if (MW(gas4) <= 0) MW(gas4) = 44.01e-3  !< default for N2O
-    end if
 
     !> biomet measurements info
     select case (EPPrjCTags(17)%value(1:1))
@@ -479,3 +458,5 @@ real(kind = dbl) function NormalizeCecStationarity(value, default_value)
     end if
 end function NormalizeCecStationarity
 end subroutine WriteProcessingProjectVariables
+
+

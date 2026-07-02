@@ -35,17 +35,23 @@
 !***************************************************************************
 subroutine Fluxes23(lEx)
     use m_fx_global_var
+    use m_typedef, only: ProcessingRowCount, IsH2OProcessingRow, EnsureExProcessingRows
     implicit none
     !> In/out variables
     type(ExType), intent(inout) :: lEx
     !> local variables
+    integer :: i, h2o_i, nrows
     real(kind = dbl) :: Tp
     real(kind = dbl) :: E_nowpl
+    real(kind = dbl) :: mw_row
+    real(kind = dbl) :: row_bpcf
     real(kind = dbl), parameter :: alpha = 0.51d0
 
 
     Flux2 = errFlux
     Flux3 = errFlux
+    call EnsureExProcessingRows(lEx, EddyFlowProj%processing)
+    nrows = ProcessingRowCount(lEx%processing)
 
     !> Level 2 end 3 internal sensible heat, do nothing
     Flux2%Hi_co2 = Flux1%Hi_co2
@@ -842,6 +848,79 @@ subroutine Fluxes23(lEx)
         !> Level 3, spectral correction was already applied
         Flux3%gas4 = Flux2%gas4
     end if
+
+    do i = 1, nrows
+        row_bpcf = Flux1%gas(i)%bpcf
+        if (row_bpcf == error) row_bpcf = 1d0
+        Flux2%gas(i) = Flux1%gas(i)
+        Flux3%gas(i) = Flux1%gas(i)
+        Flux2%gas(i)%flux2 = Flux1%gas(i)%flux1
+        Flux3%gas(i)%flux3 = Flux2%gas(i)%flux2
+
+        if (IsH2OProcessingRow(lEx%processing%rows(i))) then
+            if (EddyFlowProj%wpl .and. lEx%processing_instr(i)%path_type == 'open' &
+                .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
+                .and. Flux1%gas(i)%evap1 /= error .and. Flux1%H /= error &
+                .and. lEx%sigma /= error) then
+                Flux2%gas(i)%evap2 = (1d0 + mu * lEx%sigma) * Flux1%gas(i)%evap1 &
+                    + (1d0 + mu * lEx%sigma) &
+                    * (Flux1%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) &
+                    * lEx%RHO%w / (lEx%RhoCp * lEx%Ta)
+            else
+                Flux2%gas(i)%evap2 = Flux1%gas(i)%evap1
+            end if
+
+            if (EddyFlowProj%wpl .and. lEx%processing_instr(i)%path_type == 'open' &
+                .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
+                .and. Flux1%gas(i)%evap1 /= error .and. Flux1%H /= error &
+                .and. lEx%sigma /= error) then
+                Flux3%gas(i)%evap3 = (1d0 + mu * lEx%sigma) * Flux1%gas(i)%evap1 &
+                    + (1d0 + mu * lEx%sigma) &
+                    * (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) &
+                    * lEx%RHO%w / (lEx%RhoCp * lEx%Ta)
+            else
+                Flux3%gas(i)%evap3 = Flux2%gas(i)%evap2
+            end if
+
+            mw_row = lEx%processing%rows(i)%molecular_weight
+            if (Flux2%gas(i)%evap2 /= error .and. mw_row > 0d0) then
+                Flux2%gas(i)%flux2 = Flux2%gas(i)%evap2 * 1d3 / mw_row
+                Flux2%gas(i)%et2 = Flux2%gas(i)%flux2 * h2o_to_ET
+                if (lEx%lambda /= error) Flux2%gas(i)%le2 = Flux2%gas(i)%evap2 * lEx%lambda
+            else
+                Flux2%gas(i)%flux2 = error
+                Flux2%gas(i)%et2 = error
+                Flux2%gas(i)%le2 = error
+            end if
+
+            if (Flux3%gas(i)%evap3 /= error .and. mw_row > 0d0) then
+                Flux3%gas(i)%flux3 = Flux3%gas(i)%evap3 * 1d3 / mw_row
+                Flux3%gas(i)%et3 = Flux3%gas(i)%flux3 * h2o_to_ET
+                if (lEx%lambda /= error) Flux3%gas(i)%le3 = Flux3%gas(i)%evap3 * lEx%lambda
+            else
+                Flux3%gas(i)%flux3 = error
+                Flux3%gas(i)%et3 = error
+                Flux3%gas(i)%le3 = error
+            end if
+
+            if (lEx%processing_instr(i)%path_type == 'closed' .and. Flux3%gas(i)%flux3 /= error) then
+                Flux3%gas(i)%flux3 = Flux3%gas(i)%flux3 * row_bpcf
+                Flux3%gas(i)%evap3 = Flux3%gas(i)%evap3 * row_bpcf
+                Flux3%gas(i)%le3 = Flux3%gas(i)%le3 * row_bpcf
+                Flux3%gas(i)%et3 = Flux3%gas(i)%et3 * row_bpcf
+            end if
+        else
+            h2o_i = lEx%processing%rows(i)%h2o_ref_index
+            if (h2o_i <= 0 .or. h2o_i > nrows) then
+                Flux2%gas(i)%flux2 = error
+                Flux3%gas(i)%flux3 = error
+            elseif (lEx%processing_instr(i)%path_type == 'closed' .and. Flux2%gas(i)%flux2 /= error) then
+                Flux3%gas(i)%flux3 = Flux2%gas(i)%flux2 * row_bpcf
+            else
+                Flux3%gas(i)%flux3 = Flux2%gas(i)%flux2
+            end if
+        end if
+    end do
 
     !> Potential temperature
     !> If condition fails, previous value (from Fluxes0) holds for z/Ambient%L

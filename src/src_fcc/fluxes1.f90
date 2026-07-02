@@ -34,116 +34,73 @@
 !***************************************************************************
 subroutine Fluxes1(lEx)
     use m_fx_global_var
+    use m_typedef, only: ProcessingRowCount, IsH2OProcessingRow, EnsureExProcessingRows
     implicit none
     !> In/out variables
     type(ExType), intent(inout) :: lEx
     !> local variables
-    real(kind = dbl)  :: Cox
+    integer :: i, nrows
+    logical :: mirrored_co2, mirrored_h2o, mirrored_ch4, mirrored_other
+    real(kind = dbl) :: row_bpcf
 
     Flux1 = errFlux
-
-    !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
-    !> according to van Dijk et al. (2003, JAOT, eq. 13b)
-    select case (lEx%instr(ih2o)%model(1:len_trim(lEx%instr(ih2o)%model) - 2))
-        case('open_path_krypton','closed_path_krypton', &
-                'open_path_lyman','closed_path_lyman')
-            if (lEx%instr(ih2o)%ko /= error .and. lEx%instr(ih2o)%kw /= 0d0 &
-                .and. lEx%Ta > 0d0 .and. lEx%Bowen /= error &
-                .and. lEx%lambda > 0d0) then
-                Cox = 1d0 + 0.23d0 * lEx%instr(ih2o)%ko / lEx%instr(ih2o)%kw &
-                    * lEx%Bowen * lEx%lambda / lEx%Ta
-                lEx%cov_w(h2o) = Cox * lEx%cov_w(h2o)
-                lEx%var(h2o) = Cox**2 * lEx%var(h2o)
-                !> Alternative formulation by T.W. Horst
-                !> http://www.eol.ucar.edu/instrumentation/&
-                !> &sounding/isfs/isff-support-center/how-tos/&
-                !> &corrections-to-sensible-and-latent-heat-flux-measurements
-                !lEx%cov_w(h2o) = lEx%cov_w(h2o) / (1 - 8d0 * 0.23d0 &
-                !* lEx%instr(ih2o)%ko / lEx%instr(ih2o)%kw * lEx%Bowen)
-            endif
-    end select
+    call EnsureExProcessingRows(lEx, EddyFlowProj%processing)
+    nrows = ProcessingRowCount(lEx%processing)
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = lEx%Flux0%H
 
-    !> Internal sensible heat flux, Hint in [W m-2]
-    Flux1%Hi_co2 = lEx%Flux0%Hi_co2
-    Flux1%Hi_h2o = lEx%Flux0%Hi_h2o
-    Flux1%Hi_ch4 = lEx%Flux0%Hi_ch4
-    Flux1%Hi_gas4 = lEx%Flux0%Hi_gas4
-
-    !> Level 1 all gases
-    !> For all closed-path gases, Level 1 is same as Level 0
-    !> For all open-path gases, applied BPCF to LO get L1
-    !> co2
-    if (lEx%instr(ico2)%path_type == 'closed') then
-        Flux1%co2 = lEx%Flux0%co2
-    else
-        if (BPCF%of(w_co2) /= error) then
-            Flux1%co2 = lEx%Flux0%co2 * BPCF%of(w_co2)
+    mirrored_co2 = .false.
+    mirrored_h2o = .false.
+    mirrored_ch4 = .false.
+    mirrored_other = .false.
+    do i = 1, nrows
+        row_bpcf = lEx%Flux0%gas(i)%bpcf
+        if (row_bpcf == error) row_bpcf = 1d0
+        Flux1%gas(i) = lEx%Flux0%gas(i)
+        if (lEx%Flux0%gas(i)%flux0 /= error) then
+            Flux1%gas(i)%flux1 = lEx%Flux0%gas(i)%flux0 * row_bpcf
         else
-            Flux1%co2 = lEx%Flux0%co2
+            Flux1%gas(i)%flux1 = error
         end if
-    end if
-    if (lEx%Flux0%co2 == error) Flux1%co2 = error
-
-    !> h2o
-    lEx%Flux0%E = lEx%Flux0%LE / lEx%lambda
-    if (lEx%instr(ih2o)%path_type == 'closed') then
-        Flux1%h2o = lEx%Flux0%h2o
-        Flux1%E   = lEx%Flux0%E
-        Flux1%ET  = lEx%Flux0%ET
-        Flux1%LE  = lEx%Flux0%LE
-    else
-        if (BPCF%of(w_h2o) /= error) then
-            Flux1%h2o = lEx%Flux0%h2o * BPCF%of(w_h2o)
-            Flux1%E   = lEx%Flux0%E   * BPCF%of(w_h2o)
-            Flux1%ET  = lEx%Flux0%ET  * BPCF%of(w_h2o)
-            Flux1%LE  = lEx%Flux0%LE  * BPCF%of(w_h2o)
-        else
-            Flux1%h2o = lEx%Flux0%h2o
-            Flux1%E   = lEx%Flux0%E
-            Flux1%ET  = lEx%Flux0%ET
-            Flux1%LE  = lEx%Flux0%LE
+        if (IsH2OProcessingRow(lEx%processing%rows(i))) then
+            if (lEx%Flux0%gas(i)%evap0 == error .and. lEx%Flux0%gas(i)%le0 /= error &
+                .and. lEx%lambda > 0d0) &
+                Flux1%gas(i)%evap1 = lEx%Flux0%gas(i)%le0 / lEx%lambda * row_bpcf
+            if (lEx%Flux0%gas(i)%evap0 /= error) Flux1%gas(i)%evap1 = lEx%Flux0%gas(i)%evap0 * row_bpcf
+            if (lEx%Flux0%gas(i)%et0 /= error) Flux1%gas(i)%et1 = lEx%Flux0%gas(i)%et0 * row_bpcf
+            if (lEx%Flux0%gas(i)%le0 /= error) Flux1%gas(i)%le1 = lEx%Flux0%gas(i)%le0 * row_bpcf
         end if
-    end if
-    if (lEx%Flux0%h2o == error) then
-        Flux1%h2o   = error
-        lEx%Flux0%E = error
-        Flux1%E     = error
-        Flux1%ET  = error
-        Flux1%LE    = error
-    end if
-
-    !> ch4
-    if (lEx%instr(ich4)%path_type == 'closed') then
-        Flux1%ch4 = lEx%Flux0%ch4
-    else
-        if (BPCF%of(w_ch4) /= error) then
-            Flux1%ch4 = lEx%Flux0%ch4 * BPCF%of(w_ch4)
-        else
-            Flux1%ch4 = lEx%Flux0%ch4
-        end if
-    end if
-    if (lEx%Flux0%ch4 == error) Flux1%ch4 = error
-
-    !> n2o
-    if (lEx%instr(igas4)%path_type == 'closed') then
-        Flux1%gas4 = lEx%Flux0%gas4
-    else
-        if (BPCF%of(w_gas4) /= error) then
-            Flux1%gas4 = lEx%Flux0%gas4 * BPCF%of(w_gas4)
-        else
-            Flux1%gas4 = lEx%Flux0%gas4
-        end if
-    end if
-    if (lEx%Flux0%gas4 == error) Flux1%gas4 = error
-
-    !> Level 1 evapotranspiration fluxes with H2O covariances at time-lags
-    !> of other scalars. Do nothing, no spectral correction needed
-    Flux1%E_co2 = lEx%Flux0%E_co2
-    Flux1%E_ch4 = lEx%Flux0%E_ch4
-    Flux1%E_gas4 = lEx%Flux0%E_gas4
+        select case (trim(lEx%processing%rows(i)%gas_name))
+            case ('co2')
+                if (.not. mirrored_co2) then
+                    Flux1%co2 = Flux1%gas(i)%flux1
+                    Flux1%Hi_co2 = Flux1%gas(i)%internal_heat1
+                    mirrored_co2 = .true.
+                end if
+            case ('h2o')
+                if (.not. mirrored_h2o) then
+                    Flux1%h2o = Flux1%gas(i)%flux1
+                    Flux1%E = Flux1%gas(i)%evap1
+                    Flux1%ET = Flux1%gas(i)%et1
+                    Flux1%LE = Flux1%gas(i)%le1
+                    Flux1%Hi_h2o = Flux1%gas(i)%internal_heat1
+                    mirrored_h2o = .true.
+                end if
+            case ('ch4')
+                if (.not. mirrored_ch4) then
+                    Flux1%ch4 = Flux1%gas(i)%flux1
+                    Flux1%Hi_ch4 = Flux1%gas(i)%internal_heat1
+                    mirrored_ch4 = .true.
+                end if
+            case default
+                if (.not. mirrored_other) then
+                    Flux1%gas4 = Flux1%gas(i)%flux1
+                    Flux1%Hi_gas4 = Flux1%gas(i)%internal_heat1
+                    mirrored_other = .true.
+                end if
+        end select
+    end do
 
     !> Momentum flux [kg m-1 s-2] and friction velocity [m s-1]
     if (BPCF%of(w_u) /= error) then

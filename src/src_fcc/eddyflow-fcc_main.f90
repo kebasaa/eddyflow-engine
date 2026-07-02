@@ -26,6 +26,7 @@
 Program EddyFlowFCC
     use m_fx_global_var
     use m_cec
+    use m_typedef, only: EnsureExProcessingRows
     implicit none
 
     integer, external :: CreateDir
@@ -474,6 +475,7 @@ Program EddyFlowFCC
 
         !> If invalid record was found, cycle loop
         if (.not. ValidRecord) cycle ex_loop
+        call EnsureExProcessingRows(lEx, EddyFlowProj%processing)
 
         !> Retrieve timestamp
         call DateTimeToDateType(lEx%end_date, lEx%end_time, CurrentTimestamp)
