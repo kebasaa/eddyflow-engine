@@ -127,6 +127,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                                 call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
                                     .true., def_rl(j), min_rl(j), max_rl(j), &
                                     ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                                lPwbResult%reliability_class = 'fallback'
                                 lPwbResult%fallback_used = .true.
                             end if
                         elseif (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
@@ -161,6 +162,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                                 call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
                                     .true., def_rl(j), min_rl(j), max_rl(j), &
                                     ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                                lPwbResult%reliability_class = 'fallback'
                                 lPwbResult%fallback_used = .true.
                             end if
                         end if
@@ -177,6 +179,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                             call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
                                 .true., def_rl(j), min_rl(j), max_rl(j), &
                                 ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                            lPwbResult%reliability_class = 'fallback'
                             lPwbResult%fallback_used = .true.
                         end if
                     end if

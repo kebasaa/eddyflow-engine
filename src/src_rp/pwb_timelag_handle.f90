@@ -134,7 +134,7 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     call RunPwbCombination(t_fs, s_fs, nrow, min_rl, max_rl, combo(3), candidate(3), ok(3))
     call RunPwbCombination(t_ft, s_ft, nrow, min_rl, max_rl, combo(4), candidate(4), ok(4))
 
-    call SelectBestCandidate(candidate, ok, min_rl, max_rl, LocResult, success)
+    call SelectBestCandidate(candidate, ok, LocResult, success)
     if (success) then
         allocate(raw_ccov(min_rl:max_rl))
         call ComputeCcovWindow(ww, ss, nrow, min_rl, max_rl, raw_ccov)
@@ -548,10 +548,9 @@ subroutine Hdi95(x, n, lo, hi)
     hi = x(best + m)
 end subroutine Hdi95
 
-subroutine SelectBestCandidate(candidate, ok, min_rl, max_rl, res, success)
+subroutine SelectBestCandidate(candidate, ok, res, success)
     type(PWBResultType), intent(in) :: candidate(4)
     logical, intent(in) :: ok(4)
-    integer, intent(in) :: min_rl, max_rl
     type(PWBResultType), intent(out) :: res
     logical, intent(out) :: success
     integer :: i, best
