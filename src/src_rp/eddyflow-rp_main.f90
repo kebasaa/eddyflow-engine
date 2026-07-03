@@ -36,6 +36,7 @@
 program EddyFlowRP
     use m_rp_global_var
     use m_cec
+    use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -200,6 +201,7 @@ program EddyFlowRP
 
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
+    call ResetPwbDiagnostics()
 
     !> EddyFlow Express settings
     if (EddyFlowProj%run_mode == 'express') call ConfigureForExpress()
@@ -2314,6 +2316,7 @@ program EddyFlowRP
         if (allocated(UserSet))  deallocate(UserSet)
     end do periods_loop
     if (allocated(bf)) deallocate(bf)
+    if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
 
     !***************************************************************************
     !**** FLUX COMPUTATION FINISHES HERE.                      *****************

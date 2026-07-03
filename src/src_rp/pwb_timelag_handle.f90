@@ -35,14 +35,20 @@ module m_pwb_timelag
     use m_rp_global_var
     implicit none
     private
-    public :: PwbDetectGas, ResetPwbDiagnostics
+    public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult
 
     logical :: pwb_diag_header_written = .false.
+    integer :: pwb_attempts(E2NumVar) = 0
+    integer :: pwb_successes(E2NumVar) = 0
+    integer :: pwb_fallbacks(E2NumVar) = 0
 
 contains
 
 subroutine ResetPwbDiagnostics()
     pwb_diag_header_written = .false.
+    pwb_attempts = 0
+    pwb_successes = 0
+    pwb_fallbacks = 0
 end subroutine ResetPwbDiagnostics
 
 subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
@@ -597,6 +603,7 @@ subroutine WritePwbDiagnostic(gas, res)
     integer :: u, ios
     character(PathLen) :: path
 
+    call CountPwbDiagnostic(gas, res)
     if (Dir%main_out == 'none') return
     path = Dir%main_out(1:len_trim(Dir%main_out)) &
         // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
@@ -615,6 +622,63 @@ subroutine WritePwbDiagnostic(gas, res)
         trim(res%best_combination), res%edge_pinned, res%fallback_used, res%raw_covariance
     close(u)
 end subroutine WritePwbDiagnostic
+
+subroutine CountPwbDiagnostic(gas, res)
+    integer, intent(in) :: gas
+    type(PWBResultType), intent(in) :: res
+
+    if (gas < co2 .or. gas > gas4) return
+    pwb_attempts(gas) = pwb_attempts(gas) + 1
+    if (res%fallback_used) then
+        pwb_fallbacks(gas) = pwb_fallbacks(gas) + 1
+    else
+        pwb_successes(gas) = pwb_successes(gas) + 1
+    end if
+end subroutine CountPwbDiagnostic
+
+subroutine ReportPwbDiagnostics()
+    integer :: gas, u, ios
+    integer :: total_attempts, total_successes, total_fallbacks
+    character(PathLen) :: path
+
+    total_attempts = sum(pwb_attempts(co2:gas4))
+    if (total_attempts == 0) return
+
+    total_successes = sum(pwb_successes(co2:gas4))
+    total_fallbacks = sum(pwb_fallbacks(co2:gas4))
+
+    write(*, '(a)')
+    write(*, '(a)') ' PWB time-lag detection summary:'
+    do gas = co2, gas4
+        if (pwb_attempts(gas) > 0) then
+            write(*, '(a, a, a, i0, a, i0, a, i0)') '  ', trim(GasLabel(gas)), &
+                ': attempts=', pwb_attempts(gas), ', native=', pwb_successes(gas), &
+                ', fallback=', pwb_fallbacks(gas)
+        end if
+    end do
+    if (total_successes == 0 .and. total_fallbacks > 0) then
+        write(*, '(a)') '  WARNING: all PWB detections fell back to maxcov&default time-lags.'
+        write(*, '(a)') '  Review the PWB diagnostics file before interpreting method 5 as native PWB.'
+    end if
+
+    if (Dir%main_out == 'none') return
+    path = Dir%main_out(1:len_trim(Dir%main_out)) &
+        // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
+        // PwbSummary_FilePadding // Timestamp_FilePadding // CsvExt
+    open(newunit = u, file = path, status = 'replace', iostat = ios, encoding = 'utf-8')
+    if (ios /= 0) return
+    write(u, '(a)') 'gas,attempts,native_pwb,fallback,maxcov_default_fallback_only'
+    do gas = co2, gas4
+        if (pwb_attempts(gas) > 0) then
+            write(u, '(a,",",i0,",",i0,",",i0,",",l1)') trim(GasLabel(gas)), &
+                pwb_attempts(gas), pwb_successes(gas), pwb_fallbacks(gas), &
+                pwb_successes(gas) == 0 .and. pwb_fallbacks(gas) > 0
+        end if
+    end do
+    write(u, '(a,",",i0,",",i0,",",i0,",",l1)') 'all', total_attempts, &
+        total_successes, total_fallbacks, total_successes == 0 .and. total_fallbacks > 0
+    close(u)
+end subroutine ReportPwbDiagnostics
 
 character(8) function GasLabel(gas)
     integer, intent(in) :: gas

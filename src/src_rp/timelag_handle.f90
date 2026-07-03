@@ -56,8 +56,6 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: ColW(nrow)
     real(kind = dbl) :: ColH2O(nrow)
     real(kind = dbl) :: ColTC(nrow)
-    real(kind = dbl) :: FirstCol(nrow)
-    real(kind = dbl) :: SecondCol(nrow)
     real(kind = dbl) :: TmpSet(nrow, ncol)
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
@@ -68,7 +66,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     !> for E2Set scalars, initialise auxiliary vars to zero
     def_rl(:) = 0
     min_rl(:) = 0
-    min_rl(:) = 0
+    max_rl(:) = 0
     !> Define "row-lags" for scalars, using time-lags
     !> retrieved from metadata file
     where (E2Col(ts:pe)%present)
@@ -78,6 +76,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     end where
 
     DefTlagUsed = .false.
+    do j = ts, pe
+        call InitPwbResult(PWBResult(j))
+    end do
+
     !> calculate actual time-lags according to the chosen method
     select case(TlagMeth)
         case ('constant')
@@ -93,21 +95,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 !> with both min and max "row lags" /= 0
                 if (E2Col(j)%present &
                     .and. (min_rl(j) /= 0 .or. max_rl(j) /= 0)) then
-                    FirstCol(:)  = Set(:, RPSetup%covmax_var)
-                    SecondCol(:) = Set(:, j)
-                    call CovMax(min_rl(j), max_rl(j), &
-                        FirstCol, SecondCol, size(FirstCol), &
-                        TLag(j), RowLags(j))
-                    ActTLag(j) = TLag(j)
-                    !> If no max cov has been detected within the interval, \n
-                    !> sets the time lag to the suggested values
-                    if (TlagMeth == 'maxcov&default') then
-                        if ( (RowLags(j) == min_rl(j)) .or. (RowLags(j) == max_rl(j)) ) then
-                            DefTlagUsed(j) = .true.
-                            TLag(j) = dble(def_rl(j)) / Metadata%ac_freq
-                            RowLags(j) = def_rl(j)
-                        end if
-                    end if
+                    call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                        TlagMeth == 'maxcov&default', def_rl(j), &
+                        min_rl(j), max_rl(j), ActTLag(j), TLag(j), &
+                        RowLags(j), DefTlagUsed(j))
                 else
                     RowLags(j) = 0
                     TLag(j) = 0d0
@@ -125,18 +116,9 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         ActTLag(j) = lPwbResult%selected_lag
                         DefTlagUsed(j) = .false.
                     else
-                        FirstCol(:)  = Set(:, RPSetup%covmax_var)
-                        SecondCol(:) = Set(:, j)
-                        call CovMax(min_rl(j), max_rl(j), &
-                            FirstCol, SecondCol, size(FirstCol), &
-                            TLag(j), RowLags(j))
-                        ActTLag(j) = TLag(j)
-                        if ((RowLags(j) == min_rl(j)) .or. (RowLags(j) == max_rl(j))) then
-                            DefTlagUsed(j) = .true.
-                            TLag(j) = dble(def_rl(j)) / Metadata%ac_freq
-                            ActTLag(j) = TLag(j)
-                            RowLags(j) = def_rl(j)
-                        end if
+                        call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                            .true., def_rl(j), min_rl(j), max_rl(j), &
+                            ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
                         PWBResult(j)%fallback_used = .true.
                     end if
                 elseif (E2Col(j)%present) then
@@ -244,6 +226,34 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     Set = TmpSet
     if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
 end subroutine TimeLagHandle
+
+subroutine ApplyCovMaxDefaultFallback(Set, nrow, ncol, gas, use_default_on_edge, &
+    def_rl, min_rl, max_rl, actual_tlag, used_tlag, row_lag, def_tlag_used)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: nrow, ncol, gas
+    integer, intent(in) :: def_rl, min_rl, max_rl
+    logical, intent(in) :: use_default_on_edge
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    real(kind = dbl), intent(out) :: actual_tlag
+    real(kind = dbl), intent(out) :: used_tlag
+    integer, intent(out) :: row_lag
+    logical, intent(out) :: def_tlag_used
+    real(kind = dbl) :: FirstCol(nrow)
+    real(kind = dbl) :: SecondCol(nrow)
+
+    FirstCol(:)  = Set(:, RPSetup%covmax_var)
+    SecondCol(:) = Set(:, gas)
+    call CovMax(min_rl, max_rl, FirstCol, SecondCol, size(FirstCol), &
+        actual_tlag, row_lag)
+    used_tlag = actual_tlag
+    def_tlag_used = .false.
+    if (use_default_on_edge .and. ((row_lag == min_rl) .or. (row_lag == max_rl))) then
+        def_tlag_used = .true.
+        used_tlag = dble(def_rl) / Metadata%ac_freq
+        row_lag = def_rl
+    end if
+end subroutine ApplyCovMaxDefaultFallback
 
 !*******************************************************************************
 !

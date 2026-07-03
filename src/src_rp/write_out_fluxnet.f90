@@ -267,6 +267,18 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
+    !> PWB fallback status (0 = native PWB, 1 = fallback, error = PWB not used/unavailable)
+    do gas = co2, gas4
+        if (Meth%tlag == 'pwb' .and. E2Col(gas)%present) then
+            if (PWBResult(gas)%fallback_used) then
+                call AddDatum(csv_row, '1', separator)
+            else
+                call AddDatum(csv_row, '0', separator)
+            end if
+        else
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end if
+    end do
 
 !> Basic stats
     !> 25-50-75%
