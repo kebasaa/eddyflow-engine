@@ -1776,6 +1776,7 @@ program EddyFlowRP
 
         !> Output first level of stats
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
+            pwb_raw_detection_done = .false.
 
             !> ===== 1. RAW DATA AS READ FROM FILES ============================
             !> Output raw dataset first level
@@ -1800,6 +1801,16 @@ program EddyFlowRP
             if (Stats1%Mean(ts) < 220d0 .or. Stats1%Mean(ts) > 340d0) &
                 call ReplaceSonicTemperature(E2Set, size(E2Set, 1), &
                     size(E2Set, 2), UserSet, size(UserSet, 1), size(UserSet, 2))
+
+            !> Early PWB detection on raw data (if enabled)
+            if (Meth%tlag == 'pwb' .and. PWBSetup%detect_on_raw) then
+                call RetrieveSensorParams()
+                call SetTimelags()
+                call TimeLagHandle('pwb', E2Set, size(E2Set, 1), size(E2Set, 2), &
+                    pwb_raw_ActTLag, pwb_raw_TLag, pwb_raw_DefTlagUsed, &
+                    .false., detect_only=.true.)
+                pwb_raw_detection_done = .true.
+            end if
 
             !> ===== 2. STATISTICAL SCREENING ==================================
             !> Calculate raw screening flags and despike data if requested

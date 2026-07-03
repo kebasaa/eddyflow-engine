@@ -93,6 +93,10 @@ module m_rp_global_var
     type(PWBResultType) :: PWBResult(E2NumVar)
     real(kind = dbl) :: pwb_last_optimal_lag(E2NumVar)
     logical :: pwb_has_previous(E2NumVar)
+    logical :: pwb_raw_detection_done = .false.
+    real(kind = dbl) :: pwb_raw_ActTLag(E2NumVar)
+    real(kind = dbl) :: pwb_raw_TLag(E2NumVar)
+    logical :: pwb_raw_DefTlagUsed(E2NumVar)
     type(TimeLagType) :: toPasGas(E2NumVar)
     type(TimeLagType) :: toH2O(toMaxH2OClass)
     type(StatsType) :: Stats1
@@ -558,7 +562,8 @@ module m_rp_global_var
          SNTags(420)%Label  / 'pwb_smoothing_width'   / &
          SNTags(421)%Label  / 'pwb_random_seed'       / &
          SNTags(422)%Label  / 'pwb_approx_ccf'        / &
-         SNTags(423)%Label  / 'pwb_max_ar_order'      /
+         SNTags(423)%Label  / 'pwb_max_ar_order'      / &
+         SNTags(424)%Label  / 'pwb_detect_on_raw'     /
 
     data SCTags(1)%Label  / 'data_path'    / &
          SCTags(2)%Label  / 'out_path'     / &

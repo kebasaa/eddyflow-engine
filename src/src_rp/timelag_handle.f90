@@ -35,7 +35,7 @@
 ! \todo
 !***************************************************************************
 subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
-    DefTlagUsed, InTimelagOpt)
+    DefTlagUsed, InTimelagOpt, detect_only)
     use m_rp_global_var
     use m_pwb_timelag
     implicit none
@@ -43,6 +43,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     integer, intent(in) :: nrow, ncol
     character(*), intent(in) :: TlagMeth
     logical, intent(in) :: InTimelagOpt
+    logical, intent(in), optional :: detect_only
     logical, intent(out) :: DefTlagUsed(ncol)
     real(kind = dbl), intent(out) :: ActTLag(ncol)
     real(kind = dbl), intent(out) :: TLag(ncol)
@@ -51,6 +52,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     integer :: i = 0
     integer :: j = 0
     integer :: k = 0
+    logical :: skip_apply
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
     integer :: max_rl(ncol)
@@ -61,7 +63,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
 
-    if  (.not. InTimelagOpt) write(*, '(a)', advance = 'no') &
+    skip_apply = .false.
+    if (present(detect_only)) skip_apply = detect_only
+
+    if  (.not. InTimelagOpt .and. .not. skip_apply) write(*, '(a)', advance = 'no') &
         '  Compensating time-lags..'
 
     !> for E2Set scalars, initialise auxiliary vars to zero
@@ -107,6 +112,12 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                end if
             end do
         case ('pwb')
+            if (pwb_raw_detection_done .and. .not. skip_apply) then
+                ActTLag = pwb_raw_ActTLag
+                TLag = pwb_raw_TLag
+                DefTlagUsed = pwb_raw_DefTlagUsed
+                pwb_raw_detection_done = .false.
+            else
             !> Pass 1: Run PWB detection and S1/S2 classification for all gases
             do j = co2, gas4
                 if (.not. E2Col(j)%present) cycle
@@ -223,13 +234,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     ActTLag(j) = 0d0
                 end if
             end do
+            end if  !> pwb_raw_detection_done bypass
         case ('none')
             !> not compensating for timelags
             RowLags(ts:pe) = 0
             TLag(ts:pe) = 0d0
     end select
 
-    if  (.not. InTimelagOpt) then
+    if (.not. skip_apply .and. .not. InTimelagOpt) then
         !> For closed path instruments, calculate H2O covariances
         !> for time-lags of other scalars from the same instrument
         Stats%h2ocov_tl_co2 = error
@@ -289,33 +301,35 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         end if
     end if
 
-    !> Align data according to relevant time-lags,
-    !> filling remaining with error code.
-    do j = u, pe
-        if (E2Col(j)%present) then
-            if (RowLags(j) >= 0) then
-                !> For positive lags
-                do i = 1, nrow - RowLags(j)
-                    TmpSet(i, j) = Set(i + RowLags(j), j)
-                end do
-                do i = nrow - Rowlags(j) + 1, nrow
-                    TmpSet(i, j) = error
-                end do
+    if (.not. skip_apply) then
+        !> Align data according to relevant time-lags,
+        !> filling remaining with error code.
+        do j = u, pe
+            if (E2Col(j)%present) then
+                if (RowLags(j) >= 0) then
+                    !> For positive lags
+                    do i = 1, nrow - RowLags(j)
+                        TmpSet(i, j) = Set(i + RowLags(j), j)
+                    end do
+                    do i = nrow - Rowlags(j) + 1, nrow
+                        TmpSet(i, j) = error
+                    end do
+                else
+                    !> For negative lags
+                    do i = 1, abs(RowLags(j))
+                        TmpSet(i, j) = error
+                    end do
+                    do i = abs(RowLags(j)) + 1, nrow
+                        TmpSet(i, j) = Set(i + RowLags(j), j)
+                    end do
+                end if
             else
-                !> For negative lags
-                do i = 1, abs(RowLags(j))
-                    TmpSet(i, j) = error
-                end do
-                do i = abs(RowLags(j)) + 1, nrow
-                    TmpSet(i, j) = Set(i + RowLags(j), j)
-                end do
+                TmpSet(1:nrow, j) = error
             end if
-        else
-            TmpSet(1:nrow, j) = error
-        end if
-    end do
-    Set = TmpSet
-    if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
+        end do
+        Set = TmpSet
+        if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
+    end if
 end subroutine TimeLagHandle
 
 subroutine ApplyCovMaxDefaultFallback(Set, nrow, ncol, gas, use_default_on_edge, &

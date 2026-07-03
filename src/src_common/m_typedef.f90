@@ -1228,6 +1228,7 @@ module m_typedef
         integer :: random_seed
         logical :: approx_ccf      !< skip CCF normalisation in bootstrap (faster, minor approximation)
         integer :: max_ar_order    !< cap on AR model order in FitArAic (0 = unlimited)
+        logical :: detect_on_raw   !< run PWB detection on raw (unprocessed) data
     end type PWBSetupType
 
     type :: PWBResultType

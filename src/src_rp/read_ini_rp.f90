@@ -481,6 +481,8 @@ subroutine WriteVariablesRP()
     PWBSetup%max_ar_order = 0
     if (SNTagFound(422)) PWBSetup%approx_ccf   = nint(SNTags(422)%value) /= 0
     if (SNTagFound(423)) PWBSetup%max_ar_order = max(0, nint(SNTags(423)%value))
+    PWBSetup%detect_on_raw = .false.
+    if (SNTagFound(424)) PWBSetup%detect_on_raw = nint(SNTags(424)%value) /= 0
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.
