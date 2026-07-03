@@ -158,9 +158,6 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     call RunPwbCombination(t_ft, s_ft, nrow, min_rl, max_rl, gas, combo(4), candidate(4), ok(4))
 
     call SelectBestCandidate(candidate, ok, LocResult, success)
-    if (success .and. PWBSetup%hdi_prefilter_s > 0d0 .and. &
-        LocResult%hdi_range > PWBSetup%hdi_prefilter_s) &
-        LocResult%hdi_prefiltered = .true.
     if (success) then
         allocate(raw_ccov(min_rl:max_rl))
         call ComputeCcovWindow(ww, ss, nrow, min_rl, max_rl, raw_ccov)
@@ -191,7 +188,6 @@ subroutine InitPwbResult(res)
     res%edge_pinned = .false.
     res%fallback_used = .false.
     res%block_length_clamped = .false.
-    res%hdi_prefiltered = .false.
     res%effective_min_lag = error
     res%effective_max_lag = error
     res%effective_block_length_s = error
@@ -339,7 +335,7 @@ subroutine FitArAic(x, n, phi_best, p_best)
     real(kind = dbl) :: meanx, sigma2, kappa, best_aic, aic
     real(kind = dbl), allocatable :: acf(:), phi(:), phi_old(:)
 
-    max_lag = min(int(floor(100d0 * log10(dble(max(n, 2))))), n - 1)
+    max_lag = min(int(floor(10d0 * log10(dble(max(n, 2))))), n - 1)
     if (PWBSetup%max_ar_order > 0) max_lag = min(max_lag, PWBSetup%max_ar_order)
     if (max_lag < 1) then
         allocate(phi_best(0))
@@ -417,11 +413,11 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
     type(PWBResultType), intent(out) :: res
     logical, intent(out) :: ok
     integer :: b, i, pos, block_len, nblocks, start, state
-    integer :: requested_block_len, min_block_len
+    integer :: requested_block_len
     integer :: nboot, lag, best_idx, full_min_rl, full_max_rl
     integer, allocatable :: boot_lags(:), counts(:)
     real(kind = dbl), allocatable :: xb(:), yb(:), ccf(:), smooth(:), hdi_samples(:)
-    real(kind = dbl), allocatable :: mean_smooth(:)
+    real(kind = dbl), allocatable :: mean_smooth(:), mean_ccf(:)
 
     call InitPwbResult(res)
     res%best_combination = combo
@@ -429,16 +425,15 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
     nboot = max(1, PWBSetup%n_bootstrap)
     full_max_rl = max(abs(min_rl), abs(max_rl))
     full_min_rl = -full_max_rl
-    min_block_len = max(1, 2 * full_max_rl)
     requested_block_len = nint(PWBSetup%block_length_s * Metadata%ac_freq)
-    if (requested_block_len <= 0) requested_block_len = min_block_len
-    block_len = max(requested_block_len, min_block_len)
-    res%block_length_clamped = requested_block_len < min_block_len
-    if (res%block_length_clamped .and. .not. pwb_block_warned(gas)) then
+    if (requested_block_len <= 0) requested_block_len = max(1, 2 * full_max_rl)
+    block_len = requested_block_len
+    res%block_length_clamped = .false.
+    if (requested_block_len < 2 * full_max_rl .and. .not. pwb_block_warned(gas)) then
         write(*, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: PWB block length for ', &
-            trim(GasLabel(gas)), ' was raised from ', &
-            dble(requested_block_len) / Metadata%ac_freq, ' s to ', &
-            dble(min_block_len) / Metadata%ac_freq, ' s (2 * lag_max).'
+            trim(GasLabel(gas)), ' (', &
+            dble(requested_block_len) / Metadata%ac_freq, ' s) is shorter than 2*lag_max (', &
+            dble(2 * full_max_rl) / Metadata%ac_freq, ' s).'
         pwb_block_warned(gas) = .true.
     end if
     block_len = min(max(1, block_len), n)
@@ -448,9 +443,9 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
     res%effective_min_lag = dble(min_rl) / Metadata%ac_freq
     res%effective_max_lag = dble(max_rl) / Metadata%ac_freq
     allocate(boot_lags(nboot), xb(n), yb(n), ccf(full_min_rl:full_max_rl), smooth(full_min_rl:full_max_rl))
-    allocate(counts(min_rl:max_rl), mean_smooth(full_min_rl:full_max_rl))
+    allocate(counts(min_rl:max_rl), mean_smooth(full_min_rl:full_max_rl), mean_ccf(full_min_rl:full_max_rl))
     counts = 0
-    mean_smooth = 0d0
+    mean_ccf = 0d0
     state = PWBSetup%random_seed + 7919 * max(1, gas)
     do i = 1, len_trim(combo)
         state = state + 104729 * i * iachar(combo(i:i))
@@ -466,12 +461,13 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
         end do
         call ComputeCcfWindow(xb, yb, n, full_min_rl, full_max_rl, ccf, PWBSetup%approx_ccf)
         call SmoothAndFill(ccf, full_min_rl, full_max_rl, max(1, PWBSetup%smoothing_width), smooth)
-        best_idx = ArgmaxAbs(smooth, min_rl, max_rl)
+        best_idx = ArgmaxAbs(smooth(min_rl:max_rl), min_rl, max_rl)
         boot_lags(b) = best_idx
         counts(best_idx) = counts(best_idx) + 1
-        mean_smooth = mean_smooth + smooth
+        mean_ccf = mean_ccf + ccf
     end do
-    mean_smooth = mean_smooth / dble(nboot)
+    mean_ccf = mean_ccf / dble(nboot)
+    call SmoothAndFill(mean_ccf, full_min_rl, full_max_rl, max(1, PWBSetup%smoothing_width), mean_smooth)
 
     write(*,'(a,a,a,i5,a,i5,a,i4)') '    PWB combo ', combo, &
         ': boot_lag min=', minval(boot_lags), ' max=', maxval(boot_lags), &
@@ -493,7 +489,7 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
         ': map_lag_s=', res%selected_lag, ' hdi_range_s=', res%hdi_range, &
         ' edge=', res%edge_pinned, ' ccf_at_map=', res%ccf_at_mode
     ok = .not. res%edge_pinned
-    deallocate(boot_lags, xb, yb, ccf, smooth, counts, hdi_samples, mean_smooth)
+    deallocate(boot_lags, xb, yb, ccf, smooth, counts, hdi_samples, mean_smooth, mean_ccf)
 end subroutine RunPwbCombination
 
 integer function MapLagEstimate(samples, n)
@@ -765,18 +761,18 @@ subroutine WritePwbDiagnostic(gas, res)
         write(u, '(a)') 'date,time,gas,raw_selected_lag_s,raw_row_lag,applied_lag_s,applied_row_lag,hdi_low_s,' &
             // 'hdi_high_s,hdi_range_s,reliability_class,best_combination,' &
             // 'edge_pinned,fallback_used,fallback_source,effective_min_lag_s,effective_max_lag_s,' &
-            // 'effective_block_length_s,block_length_clamped,hdi_prefiltered,raw_covariance'
+            // 'effective_block_length_s,block_length_clamped,raw_covariance'
         pwb_diag_header_written = .true.
     end if
     write(u, '(a,",",a,",",a,",",f10.4,",",i8,",",f10.4,",",i8,' &
         // '",",f10.4,",",f10.4,",",f10.4,",",a,",",a,",",l1,",",l1,",",a,' &
-        // '",",f10.4,",",f10.4,",",f10.4,",",l1,",",l1,",",f14.6)') &
+        // '",",f10.4,",",f10.4,",",f10.4,",",l1,",",f14.6)') &
         trim(Stats%date), trim(Stats%time), trim(GasLabel(gas)), res%selected_lag, res%row_lag, &
         res%applied_lag, res%applied_row_lag, &
         res%hdi_low, res%hdi_high, res%hdi_range, trim(res%reliability_class), &
         trim(res%best_combination), res%edge_pinned, res%fallback_used, &
         trim(res%fallback_source), res%effective_min_lag, res%effective_max_lag, &
-        res%effective_block_length_s, res%block_length_clamped, res%hdi_prefiltered, &
+        res%effective_block_length_s, res%block_length_clamped, &
         res%raw_covariance
     close(u)
 end subroutine WritePwbDiagnostic

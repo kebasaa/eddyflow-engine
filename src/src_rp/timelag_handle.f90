@@ -113,29 +113,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     !> PWBOPT: S1/S2/S3 classification (Vitale et al. 2024, Section 2.3)
                     !> Detection always returns a result; reliability is assessed here.
                     if (pwb_success .and. .not. lPwbResult%edge_pinned) then
-                        !> HDI prefilter is diagnostic-only in standard streaming PWBOPT.
-                        if (.false. .and. PWBSetup%hdi_prefilter_s > 0d0 .and. &
-                            lPwbResult%hdi_range > PWBSetup%hdi_prefilter_s) then
-                            !> S3: prefiltered — carry forward
-                            if (pwb_has_previous(j)) then
-                                lPwbResult%reliability_class = 'S3_carryforward'
-                                lPwbResult%fallback_source = 'S3_carryforward'
-                                TLag(j) = pwb_last_optimal_lag(j)
-                                if (lPwbResult%selected_lag /= error) then
-                                    ActTLag(j) = lPwbResult%selected_lag
-                                else
-                                    ActTLag(j) = pwb_last_optimal_lag(j)
-                                end if
-                                RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
-                                DefTlagUsed(j) = .false.
-                            else
-                                call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
-                                    .true., def_rl(j), min_rl(j), max_rl(j), &
-                                    ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
-                                lPwbResult%reliability_class = 'fallback'
-                                lPwbResult%fallback_used = .true.
-                            end if
-                        elseif (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
+                        if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
                             !> S1: reliable detection
                             lPwbResult%reliability_class = 'S1_optimal'
                             RowLags(j) = lPwbResult%row_lag

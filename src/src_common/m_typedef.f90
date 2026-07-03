@@ -1244,7 +1244,6 @@ module m_typedef
         logical :: edge_pinned
         logical :: fallback_used
         logical :: block_length_clamped
-        logical :: hdi_prefiltered
         real(kind = dbl) :: effective_min_lag
         real(kind = dbl) :: effective_max_lag
         real(kind = dbl) :: effective_block_length_s

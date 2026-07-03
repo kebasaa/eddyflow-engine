@@ -35,7 +35,6 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("call ApplyCovMaxDefaultFallback", pwb_block)
         self.assertIn("lPwbResult%fallback_source = 'maxcov_default'", pwb_block)
         self.assertIn("lPwbResult%fallback_source = 'S3_carryforward'", pwb_block)
-        self.assertIn(".false. .and. PWBSetup%hdi_prefilter_s", pwb_block)
 
     def test_pwb_run_summary_is_printed_and_saved(self):
         module_source = read("src/src_rp/pwb_timelag_handle.f90")
