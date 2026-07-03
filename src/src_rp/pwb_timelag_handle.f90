@@ -118,6 +118,9 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     call FitArAic(ww, nrow, phi_w, p_w)
     call FitArAic(tt, nrow, phi_t, p_t)
 
+    write(*,'(a,a,a,3i6)') '  PWB AR orders for ', trim(GasLabel(gas)), &
+        ' (scalar, w, t): ', p_scalar, p_w, p_t
+
     allocate(s_fs(nrow), w_fs(nrow), t_fs(nrow))
     allocate(s_fw(nrow), w_fw(nrow), s_ft(nrow), t_ft(nrow))
     call ApplyArFilter(ss, nrow, phi_s, p_scalar, s_fs)
@@ -366,6 +369,10 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, combo, res, ok)
     end do
     mean_smooth = mean_smooth / dble(nboot)
 
+    write(*,'(a,a,a,i5,a,i5,a,i4)') '    PWB combo ', combo, &
+        ': boot_lag min=', minval(boot_lags), ' max=', maxval(boot_lags), &
+        ' unique=', count(counts(min_rl:max_rl) > 0)
+
     lag = min_rl
     do i = min_rl, max_rl
         if (counts(i) > counts(lag)) lag = i
@@ -403,7 +410,10 @@ end subroutine CopyBlock
 integer function LcgRandInt(state, upper)
     integer, intent(inout) :: state
     integer, intent(in) :: upper
-    state = mod(1103515245 * state + 12345, 2147483647)
+    integer(8) :: s64
+    s64 = int(state, 8)
+    s64 = mod(1103515245_8 * s64 + 12345_8, 2147483647_8)
+    state = int(s64, 4)
     if (state < 0) state = -state
     LcgRandInt = mod(state, upper)
 end function LcgRandInt
@@ -492,18 +502,23 @@ subroutine SmoothAndFill(x, min_rl, max_rl, width, y)
     integer, intent(in) :: min_rl, max_rl, width
     real(kind = dbl), intent(in) :: x(min_rl:max_rl)
     real(kind = dbl), intent(out) :: y(min_rl:max_rl)
-    integer :: i, j, lo, hi, n
-    do i = min_rl, max_rl
-        lo = max(min_rl, i - width / 2)
-        hi = min(max_rl, i + width / 2)
+    integer :: i, j, half, first_valid, last_valid
+    half = width / 2
+    first_valid = min_rl + half
+    last_valid = max_rl - half
+    do i = first_valid, last_valid
         y(i) = 0d0
-        n = 0
-        do j = lo, hi
+        do j = i - half, i + half
             y(i) = y(i) + x(j)
-            n = n + 1
         end do
-        if (n > 0) y(i) = y(i) / dble(n)
+        y(i) = y(i) / dble(width)
     end do
+    if (first_valid <= last_valid) then
+        y(min_rl:first_valid - 1) = y(first_valid)
+        y(last_valid + 1:max_rl) = y(last_valid)
+    else
+        y = x
+    end if
 end subroutine SmoothAndFill
 
 integer function ArgmaxAbs(x, min_rl, max_rl)
