@@ -1217,6 +1217,7 @@ module m_typedef
     type :: PWBSetupType
         real(kind = dbl) :: min_lag(GHGNumVar)
         real(kind = dbl) :: max_lag(GHGNumVar)
+        logical :: lag_bounds_provided(GHGNumVar)
         integer :: n_bootstrap
         real(kind = dbl) :: block_length_s
         real(kind = dbl) :: min_valid_frac
@@ -1232,13 +1233,21 @@ module m_typedef
     type :: PWBResultType
         real(kind = dbl) :: selected_lag
         integer :: row_lag
+        real(kind = dbl) :: applied_lag
+        integer :: applied_row_lag
         real(kind = dbl) :: hdi_low
         real(kind = dbl) :: hdi_high
         real(kind = dbl) :: hdi_range
         character(16) :: reliability_class
         character(2) :: best_combination
+        character(24) :: fallback_source
         logical :: edge_pinned
         logical :: fallback_used
+        logical :: block_length_clamped
+        logical :: hdi_prefiltered
+        real(kind = dbl) :: effective_min_lag
+        real(kind = dbl) :: effective_max_lag
+        real(kind = dbl) :: effective_block_length_s
         real(kind = dbl) :: raw_covariance
         real(kind = dbl) :: ccf_at_mode
     end type PWBResultType

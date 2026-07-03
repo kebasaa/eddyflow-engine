@@ -105,6 +105,10 @@ subroutine SetTimelags()
                 if (E2Col(gas)%max_tl == 0d0) &
                     E2Col(gas)%max_tl = dsqrt(E2Col(gas)%instr%hsep**2 + E2Col(gas)%instr%vsep**2) * 2d0 + safety
             end if
+            if (Meth%tlag == 'pwb' .and. .not. PWBSetup%lag_bounds_provided(gas)) then
+                PWBSetup%min_lag(gas) = E2Col(gas)%min_tl
+                PWBSetup%max_lag(gas) = E2Col(gas)%max_tl
+            end if
         end do
     end if
 end subroutine SetTimelags

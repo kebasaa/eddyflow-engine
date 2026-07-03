@@ -113,14 +113,19 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     !> PWBOPT: S1/S2/S3 classification (Vitale et al. 2024, Section 2.3)
                     !> Detection always returns a result; reliability is assessed here.
                     if (pwb_success .and. .not. lPwbResult%edge_pinned) then
-                        !> HDI prefilter: skip S1/S2 for very wide HDI
-                        if (PWBSetup%hdi_prefilter_s > 0d0 .and. &
+                        !> HDI prefilter is diagnostic-only in standard streaming PWBOPT.
+                        if (.false. .and. PWBSetup%hdi_prefilter_s > 0d0 .and. &
                             lPwbResult%hdi_range > PWBSetup%hdi_prefilter_s) then
                             !> S3: prefiltered — carry forward
                             if (pwb_has_previous(j)) then
                                 lPwbResult%reliability_class = 'S3_carryforward'
+                                lPwbResult%fallback_source = 'S3_carryforward'
                                 TLag(j) = pwb_last_optimal_lag(j)
-                                ActTLag(j) = pwb_last_optimal_lag(j)
+                                if (lPwbResult%selected_lag /= error) then
+                                    ActTLag(j) = lPwbResult%selected_lag
+                                else
+                                    ActTLag(j) = pwb_last_optimal_lag(j)
+                                end if
                                 RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
                                 DefTlagUsed(j) = .false.
                             else
@@ -154,8 +159,13 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                             !> S3: unreliable — carry forward
                             if (pwb_has_previous(j)) then
                                 lPwbResult%reliability_class = 'S3_carryforward'
+                                lPwbResult%fallback_source = 'S3_carryforward'
                                 TLag(j) = pwb_last_optimal_lag(j)
-                                ActTLag(j) = pwb_last_optimal_lag(j)
+                                if (lPwbResult%selected_lag /= error) then
+                                    ActTLag(j) = lPwbResult%selected_lag
+                                else
+                                    ActTLag(j) = pwb_last_optimal_lag(j)
+                                end if
                                 RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
                                 DefTlagUsed(j) = .false.
                             else
@@ -171,8 +181,13 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         if (pwb_has_previous(j)) then
                             lPwbResult%reliability_class = 'S3_carryforward'
                             lPwbResult%fallback_used = .false.
+                            lPwbResult%fallback_source = 'S3_carryforward'
                             TLag(j) = pwb_last_optimal_lag(j)
-                            ActTLag(j) = pwb_last_optimal_lag(j)
+                            if (lPwbResult%selected_lag /= error) then
+                                ActTLag(j) = lPwbResult%selected_lag
+                            else
+                                ActTLag(j) = pwb_last_optimal_lag(j)
+                            end if
                             RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
                             DefTlagUsed(j) = .false.
                         else
@@ -183,6 +198,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                             lPwbResult%fallback_used = .true.
                         end if
                     end if
+                    if (lPwbResult%applied_lag == error) then
+                        lPwbResult%applied_lag = TLag(j)
+                        lPwbResult%applied_row_lag = RowLags(j)
+                    end if
+                    if (lPwbResult%fallback_used .and. trim(lPwbResult%fallback_source) == 'none') &
+                        lPwbResult%fallback_source = 'maxcov_default'
+                    if (.not. lPwbResult%fallback_used .and. trim(lPwbResult%fallback_source) == 'none') &
+                        lPwbResult%fallback_source = 'native'
                     PWBResult(j) = lPwbResult
                     call WritePwbDiagnostic(j, lPwbResult)
                 elseif (E2Col(j)%present) then

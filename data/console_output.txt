@@ -1,0 +1,1196 @@
+*******************
+Executing EddyFlow
+*******************
+
+Reading EddyFlow project file: C:/Users/jonmuell/Documents/_data/CH-LAE COS/EP metadata/CH-LAE_COS_old.eddyflow..
+Done.
+Retrieving file names from directory:
+"C:\Users\jonmuell\Documents\_data\CH-LAE COS\Data_202506\"
+and its sub-directories..
+1440 files found.
+Retrieving timestamps from file names..
+Retrieving timestamps from file names.. Done.
+Done.
+Reading alternative metadata file: "C:\Users\jonmuell\Documents\_data\CH-LAE COS\EP metadata\CH-LAE_COS_old.metadata"..
+Reading alternative metadata file: "C:\Users\jonmuell\Documents\_data\CH-LAE COS\EP metadata\CH-LAE_COS_old.metadata".. Done.
+Warning(95)> The selected "w-boost" correction is not applicable
+Warning(95)> to data collected with selected sonic anemometer.
+Warning(95)> Continuing without applying "w-boost" correction.
+Interpreting biomet data..
+File: E:\LAE\biomet\lae_biomet.csv
+Error(2)> Occurred while scanning file for biomet data.
+Error(2)> EddyFlow could not retrieve biomet data from this file.
+Error(2)> File will be ignored.
+Error(71)> No valid biomet record imported.
+Error(71)> EddyFlow will proceed without using biomet data.
+Arranging files in chronological order.. Done.
+Creating master time series.. Done.
+
+Performing PWB time-lag detection pass:
+File(s): ..\CH-LAE_ec-cos_20250601-1000.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+WARNING: broad symmetric PWB lag window for co2 [  -25.00,    35.00] s on a closed-path gas; consider physical positive bounds.
+PWB AR orders for co2 (scalar, w, t):     12    26    41
+PWB combo cw: boot_lag min= -242 max=  350 unique=  70
+PWB combo wc: boot_lag min= -234 max=  344 unique=  75
+PWB combo ct: boot_lag min= -232 max=  343 unique=  46
+PWB combo tc: boot_lag min= -237 max=  347 unique=  56
+WARNING: broad symmetric PWB lag window for h2o [  -25.00,    35.00] s on a closed-path gas; consider physical positive bounds.
+PWB AR orders for h2o (scalar, w, t):    131    26    41
+PWB combo cw: boot_lag min= -239 max=  337 unique=  60
+PWB combo wc: boot_lag min= -218 max=  334 unique=  50
+PWB combo ct: boot_lag min= -237 max=  304 unique=  46
+PWB combo tc: boot_lag min= -246 max=  350 unique=  61
+WARNING: broad symmetric PWB lag window for gas4 [  -25.00,    35.00] s on a closed-path gas; consider physical positive bounds.
+PWB AR orders for gas4 (scalar, w, t):    110    26    41
+PWB combo cw: boot_lag min= -230 max=  350 unique=  71
+PWB combo wc: boot_lag min= -242 max=  331 unique=  66
+PWB combo ct: boot_lag min= -250 max=  319 unique=  75
+PWB combo tc: boot_lag min= -245 max=  302 unique=  64
+File(s): ..\CH-LAE_ec-cos_20250601-1030.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set..
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     49   132   129
+PWB combo cw: boot_lag min= -235 max=  350 unique=  62
+PWB combo wc: boot_lag min= -179 max=  318 unique=  47
+PWB combo ct: boot_lag min=   52 max=  267 unique=  13
+PWB combo tc: boot_lag min= -241 max=  319 unique=  41
+PWB AR orders for h2o (scalar, w, t):     18   132   129
+PWB combo cw: boot_lag min= -221 max=  327 unique=  66
+PWB combo wc: boot_lag min= -198 max=  311 unique=  61
+PWB combo ct: boot_lag min=  -95 max=  274 unique=  36
+PWB combo tc: boot_lag min= -220 max=  301 unique=  43
+PWB AR orders for gas4 (scalar, w, t):    145   132   129
+PWB combo cw: boot_lag min= -245 max=  350 unique=  72
+PWB combo wc: boot_lag min= -240 max=  341 unique=  63
+PWB combo ct: boot_lag min= -205 max=  350 unique=  77
+PWB combo tc: boot_lag min= -234 max=  307 unique=  62
+File(s): ..\CH-LAE_ec-cos_20250601-1100.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):      2    36    75
+PWB combo cw: boot_lag min= -220 max=  349 unique=  66
+PWB combo wc: boot_lag min= -234 max=  349 unique=  76
+PWB combo ct: boot_lag min= -244 max=  344 unique=  66
+PWB combo tc: boot_lag min= -246 max=  297 unique=  55
+PWB AR orders for h2o (scalar, w, t):    128    36    75
+PWB combo cw: boot_lag min= -238 max=  306 unique=  62
+PWB combo wc: boot_lag min= -246 max=  341 unique=  74
+PWB combo ct: boot_lag min= -148 max=  321 unique=  47
+PWB combo tc: boot_lag min= -209 max=  298 unique=  49
+PWB AR orders for gas4 (scalar, w, t):    107    36    75
+PWB combo cw: boot_lag min= -246 max=  350 unique=  86
+PWB combo wc: boot_lag min= -234 max=  335 unique=  53
+PWB combo ct: boot_lag min= -247 max=  346 unique=  76
+PWB combo tc: boot_lag min= -207 max=  344 unique=  60
+File(s): ..\CH-LAE_ec-cos_20250601-1130.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     30    84    52
+PWB combo cw: boot_lag min= -236 max=  345 unique=  66
+PWB combo wc: boot_lag min= -244 max=  307 unique=  75
+PWB combo ct: boot_lag min=  172 max=  265 unique=  10
+PWB combo tc: boot_lag min= -115 max=  266 unique=  34
+PWB AR orders for h2o (scalar, w, t):     20    84    52
+PWB combo cw: boot_lag min= -202 max=  348 unique=  52
+PWB combo wc: boot_lag min= -218 max=  305 unique=  51
+PWB combo ct: boot_lag min=  -31 max=  270 unique=  20
+PWB combo tc: boot_lag min= -187 max=  275 unique=  20
+PWB AR orders for gas4 (scalar, w, t):    127    84    52
+PWB combo cw: boot_lag min= -237 max=  332 unique=  81
+PWB combo wc: boot_lag min= -234 max=  342 unique=  45
+PWB combo ct: boot_lag min= -237 max=  349 unique=  75
+PWB combo tc: boot_lag min= -227 max=  336 unique=  63
+File(s): ..\CH-LAE_ec-cos_20250601-1200.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Despiking user set..
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     72    63    59
+PWB combo cw: boot_lag min= -232 max=  347 unique=  75
+PWB combo wc: boot_lag min= -247 max=  348 unique=  71
+PWB combo ct: boot_lag min= -219 max=  345 unique=  53
+PWB combo tc: boot_lag min= -231 max=  342 unique=  53
+PWB AR orders for h2o (scalar, w, t):    205    63    59
+PWB combo cw: boot_lag min= -212 max=  298 unique=  48
+PWB combo wc: boot_lag min= -237 max=  349 unique=  70
+PWB combo ct: boot_lag min=  -17 max=  205 unique=  19
+PWB combo tc: boot_lag min= -242 max=  350 unique=  58
+PWB AR orders for gas4 (scalar, w, t):    104    63    59
+PWB combo cw: boot_lag min= -237 max=  343 unique=  77
+PWB combo wc: boot_lag min= -245 max=  333 unique=  70
+PWB combo ct: boot_lag min= -239 max=  348 unique=  91
+PWB combo tc: boot_lag min= -231 max=  315 unique=  64
+File(s): ..\CH-LAE_ec-cos_20250601-1230.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     52    55    52
+PWB combo cw: boot_lag min= -234 max=  339 unique=  77
+PWB combo wc: boot_lag min= -246 max=  342 unique=  77
+PWB combo ct: boot_lag min=  135 max=  265 unique=  12
+PWB combo tc: boot_lag min= -164 max=  285 unique=  29
+PWB AR orders for h2o (scalar, w, t):     24    55    52
+PWB combo cw: boot_lag min= -225 max=  335 unique=  72
+PWB combo wc: boot_lag min= -228 max=  313 unique=  71
+PWB combo ct: boot_lag min=   27 max=  269 unique=  17
+PWB combo tc: boot_lag min= -135 max=  269 unique=  21
+PWB AR orders for gas4 (scalar, w, t):    111    55    52
+PWB combo cw: boot_lag min= -242 max=  348 unique=  73
+PWB combo wc: boot_lag min= -243 max=  304 unique=  69
+PWB combo ct: boot_lag min= -209 max=  312 unique=  63
+PWB combo tc: boot_lag min= -200 max=  343 unique=  51
+File(s): ..\CH-LAE_ec-cos_20250601-1300.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Despiking user set..
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     69    33    64
+PWB combo cw: boot_lag min= -244 max=  350 unique=  80
+PWB combo wc: boot_lag min= -242 max=  334 unique=  77
+PWB combo ct: boot_lag min= -240 max=  277 unique=  44
+PWB combo tc: boot_lag min= -195 max=  349 unique=  54
+PWB AR orders for h2o (scalar, w, t):    136    33    64
+PWB combo cw: boot_lag min= -231 max=  197 unique=  21
+PWB combo wc: boot_lag min= -234 max=  345 unique=  67
+PWB combo ct: boot_lag min=   28 max=  268 unique=  30
+PWB combo tc: boot_lag min= -221 max=  339 unique=  45
+PWB AR orders for gas4 (scalar, w, t):     91    33    64
+PWB combo cw: boot_lag min= -238 max=  349 unique=  75
+PWB combo wc: boot_lag min= -228 max=  350 unique=  67
+PWB combo ct: boot_lag min= -212 max=  345 unique=  75
+PWB combo tc: boot_lag min= -147 max=  310 unique=  60
+File(s): ..\CH-LAE_ec-cos_20250601-1330.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     41    36    40
+PWB combo cw: boot_lag min= -245 max=  326 unique=  58
+PWB combo wc: boot_lag min= -204 max=  333 unique=  61
+PWB combo ct: boot_lag min= -247 max=  263 unique=  14
+PWB combo tc: boot_lag min=  -70 max=  285 unique=  42
+PWB AR orders for h2o (scalar, w, t):     14    36    40
+PWB combo cw: boot_lag min= -227 max=  348 unique=  63
+PWB combo wc: boot_lag min= -142 max=  284 unique=  54
+PWB combo ct: boot_lag min=  -85 max=  268 unique=  16
+PWB combo tc: boot_lag min=   37 max=  270 unique=  19
+PWB AR orders for gas4 (scalar, w, t):     93    36    40
+PWB combo cw: boot_lag min= -244 max=  349 unique=  69
+PWB combo wc: boot_lag min= -179 max=  326 unique=  64
+PWB combo ct: boot_lag min= -247 max=  350 unique=  56
+PWB combo tc: boot_lag min= -199 max=  350 unique=  65
+File(s): ..\CH-LAE_ec-cos_20250601-1400.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     37    39    13
+PWB combo cw: boot_lag min= -234 max=  312 unique=  66
+PWB combo wc: boot_lag min= -221 max=  346 unique=  62
+PWB combo ct: boot_lag min= -203 max=  332 unique=  36
+PWB combo tc: boot_lag min= -195 max=  340 unique=  57
+PWB AR orders for h2o (scalar, w, t):    138    39    13
+PWB combo cw: boot_lag min= -122 max=  164 unique=  33
+PWB combo wc: boot_lag min= -236 max=  339 unique=  43
+PWB combo ct: boot_lag min= -170 max=  289 unique=  41
+PWB combo tc: boot_lag min=   43 max=  310 unique=  26
+PWB AR orders for gas4 (scalar, w, t):      9    39    13
+PWB combo cw: boot_lag min= -247 max=  349 unique=  73
+PWB combo wc: boot_lag min= -222 max=  349 unique=  61
+PWB combo ct: boot_lag min= -250 max=  350 unique=  81
+PWB combo tc: boot_lag min= -238 max=  329 unique=  65
+File(s): ..\CH-LAE_ec-cos_20250601-1430.csv
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Despiking user set..
+Despiking user set.. Done.
+Re-calculating user statistics (5).. Done.
+PWB AR orders for co2 (scalar, w, t):     50    50    68
+PWB combo cw: boot_lag min= -246 max=  344 unique=  65
+PWB combo wc: boot_lag min= -242 max=  348 unique=  62
+PWB combo ct: boot_lag min=  -63 max=  262 unique=  10
+PWB combo tc: boot_lag min=  -31 max=  263 unique=  17
+PWB AR orders for h2o (scalar, w, t):     27    50    68
+PWB combo cw: boot_lag min= -194 max=  339 unique=  63
+PWB combo wc: boot_lag min= -191 max=  338 unique=  53
+PWB combo ct: boot_lag min=   14 max=  317 unique=  16
+PWB combo tc: boot_lag min=  -57 max=  269 unique=  23
+PWB AR orders for gas4 (scalar, w, t):     89    50    68
+PWB combo cw: boot_lag min= -239 max=  348 unique=  69
+PWB combo wc: boot_lag min= -222 max=  321 unique=  66
+PWB combo ct: boot_lag min= -250 max=  335 unique=  73
+PWB combo tc: boot_lag min= -245 max=  323 unique=  66
+PWB time-lag detection pass completed.
+Start raw data processing: 0:00:00.000
+Processing time period:
+Start: 2025-06-01 10:00
+End: 2025-06-01 15:00
+Total number of flux averaging periods: 10
+
+
+2026-07-03 14:28:25.876: processing new flux averaging period
+From: 2025-06-01 10:00
+To: 2025-06-01 10:30
+File(s): ..\CH-LAE_ec-cos_20250601-1000.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity..
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2)..
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible..
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6)..
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing..
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.647
+
+
+2026-07-03 14:28:26.523: processing new flux averaging period
+From: 2025-06-01 10:30
+To: 2025-06-01 11:00
+File(s): ..\CH-LAE_ec-cos_20250601-1030.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set..
+Detrending user set.. Done.
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.619
+
+
+2026-07-03 14:28:27.142: processing new flux averaging period
+From: 2025-06-01 11:00
+To: 2025-06-01 11:30
+File(s): ..\CH-LAE_ec-cos_20250601-1100.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2)..
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible..
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6)..
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.644
+
+
+2026-07-03 14:28:27.786: processing new flux averaging period
+From: 2025-06-01 11:30
+To: 2025-06-01 12:00
+File(s): ..\CH-LAE_ec-cos_20250601-1130.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6)..
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing..
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.582
+
+
+2026-07-03 14:28:28.368: processing new flux averaging period
+From: 2025-06-01 12:00
+To: 2025-06-01 12:30
+File(s): ..\CH-LAE_ec-cos_20250601-1200.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test..
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity..
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2)..
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.740
+
+
+2026-07-03 14:28:29.108: processing new flux averaging period
+From: 2025-06-01 12:30
+To: 2025-06-01 13:00
+File(s): ..\CH-LAE_ec-cos_20250601-1230.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6).. Done.
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.615
+
+
+2026-07-03 14:28:29.723: processing new flux averaging period
+From: 2025-06-01 13:00
+To: 2025-06-01 13:30
+File(s): ..\CH-LAE_ec-cos_20250601-1300.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test..
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity..
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible..
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set..
+Detrending user set.. Done.
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing..
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.705
+
+
+2026-07-03 14:28:30.429: processing new flux averaging period
+From: 2025-06-01 13:30
+To: 2025-06-01 14:00
+File(s): ..\CH-LAE_ec-cos_20250601-1330.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test..
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (2)..
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2)..
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4)..
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible..
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6)..
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.805
+
+
+2026-07-03 14:28:31.234: processing new flux averaging period
+From: 2025-06-01 14:00
+To: 2025-06-01 14:30
+File(s): ..\CH-LAE_ec-cos_20250601-1400.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics..
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity..
+Verifying time series integrity.. Done.
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3)..
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible..
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6)..
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.608
+
+
+2026-07-03 14:28:31.841: processing new flux averaging period
+From: 2025-06-01 14:30
+To: 2025-06-01 15:00
+File(s): ..\CH-LAE_ec-cos_20250601-1430.csv
+Number of valid records available for this period:  18000
+Calculating statistics.. Done.
+Calculating user statistics.. Done.
+Raw level statistical screening..
+Absolute limits test.. Done.
+Spike detection/removal test..
+Spike detection/removal test.. Done.
+Amplitude resolution and/or dropouts test.. Done.
+Skewness & kurtosis test.. Done.
+Done.
+Despiking user set..
+Despiking user set.. Done.
+Verifying time series integrity.. Done.
+Re-calculating statistics (2).. Done.
+Re-calculating user statistics (2).. Done.
+Cross-wind correction not requested or not applicable
+Re-calculating statistics (3)..
+Re-calculating statistics (3).. Done.
+Re-calculating user statistics (3).. Done.
+Re-calculating statistics (4)..
+Re-calculating statistics (4).. Done.
+Re-calculating user statistics (4).. Done.
+WPL step: converting into mixing ratios wherever possible.. Done.
+Performing tilt correction by: double_rotation
+Done.
+Re-calculating statistics (5)..
+Re-calculating statistics (5).. Done.
+Re-calculating user statistics (5)..
+Re-calculating user statistics (5).. Done.
+Compensating time-lags..
+Compensating time-lags.. Done.
+Verifying time series integrity..
+Verifying time series integrity.. Done.
+Re-calculating statistics (6)..
+Re-calculating statistics (6).. Done.
+Re-calculating user statistics (6).. Done.
+Performing stationarity test..
+Performing stationarity test.. Done.
+Detrending.. Done.
+Detrending user set.. Done.
+Re-calculating statistics (7)..
+Re-calculating statistics (7).. Done.
+Re-calculating user statistics (7)..
+Re-calculating user statistics (7).. Done.
+Computing correlation-matrix difference with/without repeated values..
+Computing correlation-matrix difference with/without repeated values..  Done.
+Evaluating R2 on CCFs with and without repeated values..  Done.
+Estimating random uncertainty..
+Done.
+Calculating CEC partitioning..
+Calculating CEC partitioning.. Done.
+Re-calculating statistics (8)..
+Re-calculating statistics (8).. Done.
+Calculating (co)spectra..
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities.. Done.
+Writing requested full (co)spectra on output file..
+Writing requested full (co)spectra on output file..  Done.
+Tapering timeseries.. Done.
+FFT-ing.. Done.
+Cospectral densities..
+Cospectral densities.. Done.
+Binning spectra and cospectra.. Done.
+Done.
+Calculating auxiliary variables.. Done.
+Calculating fluxes Level 0.. Done.
+High-pass correction for anemometric fluxes. Method: Moncrieff et al. (2004)..
+Done.
+Low-pass correction for anemometric fluxes. Method: Moncrieff et al. (1997)..
+Done.
+Calculating fluxes Level 1.. Done.
+Calculating fluxes Level 2 and 3.. Done.
+Calculating storage terms.. Done.
+Calculating quality flags.. Done.
+Flux averaging period processing time: 0:00:00.694
+
+
+PWB time-lag detection summary:
+co2: attempts=10, S1/S2=0, S3=0, fallback=10
+h2o: attempts=10, S1/S2=0, S3=0, fallback=10
+gas4: attempts=10, S1/S2=0, S3=0, fallback=10
+WARNING: all PWB detections fell back to maxcov&default time-lags.
+Review the PWB diagnostics file before interpreting method 5 as native PWB.
+
+Raw data processing terminated. Creating continuous datasets if necessary..
+Closing COMMON output files..
+Closing COMMON output files.. Done.
+Creating QC details dataset.. Done.
+Done.
+FLUXNET file path: C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF/eddyflow_CH-LAE_COS25_fluxnet_2026-07-03T142717_adv.csv
+
+Starting flux computation and correction session..
+
+Reading EddyFlow project file: C:/Users/jonmuell/Documents/_data/CH-LAE COS/EP metadata/CH-LAE_COS_old.eddyflow..
+Done.
+Initializing retrieval of EddyFlow-RP results from file:
+"C:\Users\jonmuell\Documents\_data\CH-LAE COS\Out-EF\eddyflow_CH-LAE_COS25_fluxnet_2026-07-03T142717_adv.csv"..
+File found, importing content..
+Done.
+Creating master time series.. Done.
+Retrieving file names from directory:
+"C:\Users\jonmuell\Documents\_data\CH-LAE COS\Out-EF\EddyFlow_full_cospectra\"
+and its sub-directories..
+10 files found.
+Retrieving timestamps from file names..
+Retrieving timestamps from file names.. Done.
+Done.
+Starting "spectral assessment" session..
+Reading (co)spectra from:
+C:\Users\jonmuell\Documents\_data\CH-LAE COS\Out-EF\EddyFlow_binned_cospectra\
+
+Retrieving file names from directory:
+"C:\Users\jonmuell\Documents\_data\CH-LAE COS\Out-EF\EddyFlow_binned_cospectra\"
+and its sub-directories..
+10 files found.
+Retrieving timestamps from file names..
+Retrieving timestamps from file names.. Done.
+Done.
+Arranging files in chronological order.. Done.
+
+Period covered by available binned (co)spectra files:
+Start: 2025-06-01 10:00
+End:   2025-06-01 15:00
+
+Selected (co)spectra sub-period:
+Start: 2025-06-01 10:30
+End:   2025-06-01 15:01
+
+Importing, sorting and ensemble-averaging up to 9 binned (co)spectra from files..
+Importing binned (co)spectra for 01 June 2025
+Done.
+Imported gas binned spectra:
+CO2:       4
+H2O:       3
+CH4:       0
+Gas 4:     0
+Done.
+Fitting model cospectra to unstable w/T cospectra..
+Fitting model cospectra to unstable w/T cospectra.. Done
+Sorting cospectra in stability classes..  Done.
+Eliminating high-frequency noise from ensemble spectra if requested..  Done.
+Assessing spectral attenuations.. Done.
+Fitting in-situ assessment of cut-off frequencies vs. RH.. Done.
+Fitting low-pass correction factor model as from Ibrom et al. (2007)..
+Error(76)> EddyFlow could not calculate ensemble spectra.
+Error(76)> Spectral assessment failed. Spectral assessment file not created.
+Error(77)> EddyFlow could not calculate ensemble spectra.
+Error(77)> Ensemble averaged spectral output not created.
+Error(45)> Not enough valid co-spectra were found for fitting models, or fitting procedure failed.
+Error(45)> Stability-sorted ensemble averaged cospectra outputs not created.
+
+Calculating fluxes for 01 June 2025
+
+Error(69)> There is a problem with results of the spectral assessment.
+Error(69)> High-frequency spectral correction method switched to Moncrieff et al. (1997).
+
+
+Closing Full Output file.. Done.
+Closing FLUXNET output file..
+Closing FLUXNET output file.. Done.
+Closing Metadata file..
+Closing Metadata file.. Done.
+
+****************************************************
+Program EddyFlow executed gracefully.
+Check results in the selected output directory.
+****************************************************

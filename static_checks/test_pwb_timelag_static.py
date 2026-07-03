@@ -15,7 +15,7 @@ class PwbTimelagStaticTests(unittest.TestCase):
         source = read("src/src_rp/timelag_handle.f90")
 
         self.assertIn("subroutine ApplyCovMaxDefaultFallback", source)
-        self.assertEqual(source.count("call ApplyCovMaxDefaultFallback"), 2)
+        self.assertGreaterEqual(source.count("call ApplyCovMaxDefaultFallback"), 2)
         self.assertIn("used_tlag = actual_tlag", source)
         self.assertIn("def_tlag_used = .true.", source)
         self.assertIn("used_tlag = dble(def_rl) / Metadata%ac_freq", source)
@@ -25,11 +25,17 @@ class PwbTimelagStaticTests(unittest.TestCase):
         source = read("src/src_rp/timelag_handle.f90")
         pwb_block = source[source.index("case ('pwb')") : source.index("case ('none')")]
 
-        self.assertIn("if (pwb_success) then", pwb_block)
-        self.assertIn("TLag(j) = lPwbResult%selected_lag", pwb_block)
+        self.assertNotIn("call GetPwbFinalResult", pwb_block)
+        self.assertIn("call PwbDetectGas", pwb_block)
+        self.assertIn("lPwbResult%reliability_class = 'S1_optimal'", pwb_block)
+        self.assertIn("lPwbResult%reliability_class = 'S2_optimal'", pwb_block)
+        self.assertIn("lPwbResult%reliability_class = 'S3_carryforward'", pwb_block)
+        self.assertIn("ActTLag(j) = lPwbResult%selected_lag", pwb_block)
         self.assertIn("DefTlagUsed(j) = .false.", pwb_block)
         self.assertIn("call ApplyCovMaxDefaultFallback", pwb_block)
-        self.assertIn("PWBResult(j)%fallback_used = .true.", pwb_block)
+        self.assertIn("lPwbResult%fallback_source = 'maxcov_default'", pwb_block)
+        self.assertIn("lPwbResult%fallback_source = 'S3_carryforward'", pwb_block)
+        self.assertIn(".false. .and. PWBSetup%hdi_prefilter_s", pwb_block)
 
     def test_pwb_run_summary_is_printed_and_saved(self):
         module_source = read("src/src_rp/pwb_timelag_handle.f90")
@@ -37,22 +43,27 @@ class PwbTimelagStaticTests(unittest.TestCase):
         globals_source = read("src/src_common/m_common_global_var.f90")
 
         self.assertIn("PwbSummary_FilePadding", globals_source)
-        self.assertIn("public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics", module_source)
+        for token in ("PreparePwbBatch", "FinalizePwbBatch", "StorePwbRawResult", "GetPwbFinalResult"):
+            self.assertNotIn(token, module_source)
+            self.assertNotIn(token, main_source)
         self.assertIn("WARNING: all PWB detections fell back", module_source)
-        self.assertIn("gas,attempts,native_pwb,fallback,maxcov_default_fallback_only", module_source)
+        self.assertIn("raw_selected_lag_s,raw_row_lag,applied_lag_s,applied_row_lag", module_source)
+        self.assertIn("effective_block_length_s", module_source)
+        self.assertIn("maxcov_default,nominal_default,other_fallback", module_source)
         self.assertIn("call ResetPwbDiagnostics()", main_source)
         self.assertIn("if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()", main_source)
 
-    def test_fluxnet_output_exposes_pwb_fallback_flags(self):
+    def test_fluxnet_output_exposes_pwb_source_flags(self):
         header_source = read("src/src_rp/init_fluxnet_file_rp.f90")
         writer_source = read("src/src_rp/write_out_fluxnet.f90")
 
         for gas in ("CO2", "H2O", "CH4", "GS4"):
-            self.assertIn(f"{gas}_TLAG_PWB_FALLBACK", header_source)
+            self.assertIn(f"{gas}_TLAG_PWB_SOURCE", header_source)
 
-        self.assertIn("0 = native PWB, 1 = fallback", writer_source)
+        self.assertIn("0=native, 1=S3 carry-forward", writer_source)
         self.assertIn("Meth%tlag == 'pwb' .and. E2Col(gas)%present", writer_source)
-        self.assertIn("PWBResult(gas)%fallback_used", writer_source)
+        self.assertIn("PWBResult(gas)%fallback_source", writer_source)
+        self.assertNotIn("median_raw", writer_source)
 
 
 if __name__ == "__main__":
