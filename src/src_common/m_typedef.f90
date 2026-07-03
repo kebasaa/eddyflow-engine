@@ -1238,9 +1238,10 @@ module m_typedef
         real(kind = dbl) :: hdi_low
         real(kind = dbl) :: hdi_high
         real(kind = dbl) :: hdi_range
-        character(16) :: reliability_class
+        character(24) :: reliability_class
         character(2) :: best_combination
         character(24) :: fallback_source
+        character(8) :: donor_gas
         logical :: edge_pinned
         logical :: fallback_used
         logical :: block_length_clamped

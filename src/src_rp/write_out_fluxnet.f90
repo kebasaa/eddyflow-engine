@@ -267,7 +267,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
-    !> PWB lag source (0=native, 1=S3 carry-forward, 3=nominal/default, 4=maxcov/default)
+    !> PWB lag source (0=native, 1=S3 carry-forward, 2=instrument_shared, 3=nominal/default, 4=maxcov/default)
     do gas = co2, gas4
         if (Meth%tlag == 'pwb' .and. E2Col(gas)%present) then
             select case(trim(PWBResult(gas)%fallback_source))
@@ -275,6 +275,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
                 call AddDatum(csv_row, '0', separator)
             case('S3_carryforward')
                 call AddDatum(csv_row, '1', separator)
+            case('instrument_shared')
+                call AddDatum(csv_row, '2', separator)
             case('nominal/default')
                 call AddDatum(csv_row, '3', separator)
             case('maxcov_default')

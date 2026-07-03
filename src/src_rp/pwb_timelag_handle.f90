@@ -35,7 +35,7 @@ module m_pwb_timelag
     use m_rp_global_var
     implicit none
     private
-    public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic
+    public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic, GasLabel
 
     logical :: pwb_diag_header_written = .false.
     integer :: pwb_attempts(E2NumVar) = 0
@@ -45,6 +45,7 @@ module m_pwb_timelag
     integer :: pwb_fallback_maxcov(E2NumVar) = 0
     integer :: pwb_fallback_nominal(E2NumVar) = 0
     integer :: pwb_fallback_other(E2NumVar) = 0
+    integer :: pwb_instrument_shared(E2NumVar) = 0
     logical :: pwb_bounds_warned(E2NumVar) = .false.
     logical :: pwb_block_warned(E2NumVar) = .false.
 
@@ -59,6 +60,7 @@ subroutine ResetPwbDiagnostics()
     pwb_fallback_maxcov = 0
     pwb_fallback_nominal = 0
     pwb_fallback_other = 0
+    pwb_instrument_shared = 0
     pwb_bounds_warned = .false.
     pwb_block_warned = .false.
 end subroutine ResetPwbDiagnostics
@@ -185,6 +187,7 @@ subroutine InitPwbResult(res)
     res%reliability_class = 'failed'
     res%best_combination = '--'
     res%fallback_source = 'none'
+    res%donor_gas = ''
     res%edge_pinned = .false.
     res%fallback_used = .false.
     res%block_length_clamped = .false.
@@ -760,18 +763,18 @@ subroutine WritePwbDiagnostic(gas, res)
     if (.not. pwb_diag_header_written) then
         write(u, '(a)') 'date,time,gas,raw_selected_lag_s,raw_row_lag,applied_lag_s,applied_row_lag,hdi_low_s,' &
             // 'hdi_high_s,hdi_range_s,reliability_class,best_combination,' &
-            // 'edge_pinned,fallback_used,fallback_source,effective_min_lag_s,effective_max_lag_s,' &
+            // 'edge_pinned,fallback_used,fallback_source,donor_gas,effective_min_lag_s,effective_max_lag_s,' &
             // 'effective_block_length_s,block_length_clamped,raw_covariance'
         pwb_diag_header_written = .true.
     end if
     write(u, '(a,",",a,",",a,",",f10.4,",",i8,",",f10.4,",",i8,' &
-        // '",",f10.4,",",f10.4,",",f10.4,",",a,",",a,",",l1,",",l1,",",a,' &
+        // '",",f10.4,",",f10.4,",",f10.4,",",a,",",a,",",l1,",",l1,",",a,",",a,' &
         // '",",f10.4,",",f10.4,",",f10.4,",",l1,",",f14.6)') &
         trim(Stats%date), trim(Stats%time), trim(GasLabel(gas)), res%selected_lag, res%row_lag, &
         res%applied_lag, res%applied_row_lag, &
         res%hdi_low, res%hdi_high, res%hdi_range, trim(res%reliability_class), &
         trim(res%best_combination), res%edge_pinned, res%fallback_used, &
-        trim(res%fallback_source), res%effective_min_lag, res%effective_max_lag, &
+        trim(res%fallback_source), trim(res%donor_gas), res%effective_min_lag, res%effective_max_lag, &
         res%effective_block_length_s, res%block_length_clamped, &
         res%raw_covariance
     close(u)
@@ -795,6 +798,8 @@ subroutine CountPwbDiagnostic(gas, res)
         end select
     elseif (trim(res%reliability_class) == 'S3_carryforward') then
         pwb_carryforwards(gas) = pwb_carryforwards(gas) + 1
+    elseif (trim(res%reliability_class) == 'S4_instrument_shared') then
+        pwb_instrument_shared(gas) = pwb_instrument_shared(gas) + 1
     else
         pwb_successes(gas) = pwb_successes(gas) + 1
     end if
@@ -803,6 +808,7 @@ end subroutine CountPwbDiagnostic
 subroutine ReportPwbDiagnostics()
     integer :: gas, u, ios
     integer :: total_attempts, total_successes, total_carryforwards, total_fallbacks
+    integer :: total_instrument_shared
     integer :: total_fallback_maxcov, total_fallback_nominal, total_fallback_other
     character(PathLen) :: path
 
@@ -810,6 +816,7 @@ subroutine ReportPwbDiagnostics()
     if (total_attempts == 0) return
 
     total_successes = sum(pwb_successes(co2:gas4))
+    total_instrument_shared = sum(pwb_instrument_shared(co2:gas4))
     total_carryforwards = sum(pwb_carryforwards(co2:gas4))
     total_fallbacks = sum(pwb_fallbacks(co2:gas4))
     total_fallback_maxcov = sum(pwb_fallback_maxcov(co2:gas4))
@@ -820,10 +827,11 @@ subroutine ReportPwbDiagnostics()
     write(*, '(a)') ' PWB time-lag detection summary:'
     do gas = co2, gas4
         if (pwb_attempts(gas) > 0) then
-            write(*, '(a, a, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a)') &
+            write(*, '(a, a, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a)') &
                 '  ', trim(GasLabel(gas)), &
                 ': attempts=', pwb_attempts(gas), &
                 ', S1/S2=', pwb_successes(gas), &
+                ', S4_shared=', pwb_instrument_shared(gas), &
                 ', S3=', pwb_carryforwards(gas), &
                 ', fallback=', pwb_fallbacks(gas), &
                 ' (maxcov/default=', pwb_fallback_maxcov(gas), &
@@ -831,7 +839,8 @@ subroutine ReportPwbDiagnostics()
                 ', other=', pwb_fallback_other(gas), ')'
         end if
     end do
-    if (total_successes == 0 .and. total_carryforwards == 0 .and. total_fallbacks > 0) then
+    if (total_successes == 0 .and. total_instrument_shared == 0 &
+        .and. total_carryforwards == 0 .and. total_fallbacks > 0) then
         write(*, '(a, i0, a, i0, a, i0, a)') '  WARNING: all PWB detections fell back: maxcov/default=', &
             total_fallback_maxcov, ', nominal/default=', total_fallback_nominal, &
             ', other=', total_fallback_other, '.'
@@ -844,17 +853,18 @@ subroutine ReportPwbDiagnostics()
         // PwbSummary_FilePadding // Timestamp_FilePadding // CsvExt
     open(newunit = u, file = path, status = 'replace', iostat = ios, encoding = 'utf-8')
     if (ios /= 0) return
-    write(u, '(a)') 'gas,attempts,S1_S2_optimal,S3_carryforward,fallback,maxcov_default,nominal_default,other_fallback'
+    write(u, '(a)') 'gas,attempts,S1_S2_optimal,S4_instrument_shared,S3_carryforward,' &
+        // 'fallback,maxcov_default,nominal_default,other_fallback'
     do gas = co2, gas4
         if (pwb_attempts(gas) > 0) then
-            write(u, '(a,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0)') trim(GasLabel(gas)), &
-                pwb_attempts(gas), pwb_successes(gas), pwb_carryforwards(gas), &
-                pwb_fallbacks(gas), pwb_fallback_maxcov(gas), &
+            write(u, '(a,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0)') trim(GasLabel(gas)), &
+                pwb_attempts(gas), pwb_successes(gas), pwb_instrument_shared(gas), &
+                pwb_carryforwards(gas), pwb_fallbacks(gas), pwb_fallback_maxcov(gas), &
                 pwb_fallback_nominal(gas), pwb_fallback_other(gas)
         end if
     end do
-    write(u, '(a,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0)') 'all', total_attempts, &
-        total_successes, total_carryforwards, total_fallbacks, &
+    write(u, '(a,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0)') 'all', total_attempts, &
+        total_successes, total_instrument_shared, total_carryforwards, total_fallbacks, &
         total_fallback_maxcov, total_fallback_nominal, total_fallback_other
     close(u)
 end subroutine ReportPwbDiagnostics

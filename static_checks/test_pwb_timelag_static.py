@@ -29,12 +29,12 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("call PwbDetectGas", pwb_block)
         self.assertIn("lPwbResult%reliability_class = 'S1_optimal'", pwb_block)
         self.assertIn("lPwbResult%reliability_class = 'S2_optimal'", pwb_block)
-        self.assertIn("lPwbResult%reliability_class = 'S3_carryforward'", pwb_block)
-        self.assertIn("ActTLag(j) = lPwbResult%selected_lag", pwb_block)
+        self.assertIn("PWBResult(j)%reliability_class = 'S3_carryforward'", pwb_block)
         self.assertIn("DefTlagUsed(j) = .false.", pwb_block)
         self.assertIn("call ApplyCovMaxDefaultFallback", pwb_block)
-        self.assertIn("lPwbResult%fallback_source = 'maxcov_default'", pwb_block)
-        self.assertIn("lPwbResult%fallback_source = 'S3_carryforward'", pwb_block)
+        self.assertIn("PWBResult(j)%reliability_class = 'S4_instrument_shared'", pwb_block)
+        self.assertIn("PWBResult(j)%fallback_source = 'instrument_shared'", pwb_block)
+        self.assertIn("PWBResult(j)%donor_gas = GasLabel(k)", pwb_block)
 
     def test_pwb_run_summary_is_printed_and_saved(self):
         module_source = read("src/src_rp/pwb_timelag_handle.f90")
@@ -48,6 +48,7 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("WARNING: all PWB detections fell back", module_source)
         self.assertIn("raw_selected_lag_s,raw_row_lag,applied_lag_s,applied_row_lag", module_source)
         self.assertIn("effective_block_length_s", module_source)
+        self.assertIn("donor_gas", module_source)
         self.assertIn("maxcov_default,nominal_default,other_fallback", module_source)
         self.assertIn("call ResetPwbDiagnostics()", main_source)
         self.assertIn("if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()", main_source)
@@ -59,7 +60,7 @@ class PwbTimelagStaticTests(unittest.TestCase):
         for gas in ("CO2", "H2O", "CH4", "GS4"):
             self.assertIn(f"{gas}_TLAG_PWB_SOURCE", header_source)
 
-        self.assertIn("0=native, 1=S3 carry-forward", writer_source)
+        self.assertIn("0=native, 1=S3 carry-forward, 2=instrument_shared", writer_source)
         self.assertIn("Meth%tlag == 'pwb' .and. E2Col(gas)%present", writer_source)
         self.assertIn("PWBResult(gas)%fallback_source", writer_source)
         self.assertNotIn("median_raw", writer_source)
