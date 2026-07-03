@@ -338,7 +338,7 @@ subroutine FitArAic(x, n, phi_best, p_best)
     real(kind = dbl) :: meanx, sigma2, kappa, best_aic, aic
     real(kind = dbl), allocatable :: acf(:), phi(:), phi_old(:)
 
-    max_lag = min(int(floor(10d0 * log10(dble(max(n, 2))))), n - 1)
+    max_lag = min(int(floor(100d0 * log10(dble(max(n, 2))))), n - 1)
     if (PWBSetup%max_ar_order > 0) max_lag = min(max_lag, PWBSetup%max_ar_order)
     if (max_lag < 1) then
         allocate(phi_best(0))
