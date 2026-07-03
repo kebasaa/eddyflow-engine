@@ -1240,6 +1240,7 @@ module m_typedef
         logical :: edge_pinned
         logical :: fallback_used
         real(kind = dbl) :: raw_covariance
+        real(kind = dbl) :: ccf_at_mode
     end type PWBResultType
 
     type :: TLType

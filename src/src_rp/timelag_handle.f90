@@ -109,18 +109,79 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             do j = ts, pe
                 if (E2Col(j)%present .and. (j >= co2 .and. j <= gas4)) then
                     call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
-                    PWBResult(j) = lPwbResult
-                    if (pwb_success) then
-                        RowLags(j) = lPwbResult%row_lag
-                        TLag(j) = lPwbResult%selected_lag
-                        ActTLag(j) = lPwbResult%selected_lag
-                        DefTlagUsed(j) = .false.
+
+                    !> PWBOPT: S1/S2/S3 classification (Vitale et al. 2024, Section 2.3)
+                    !> Detection always returns a result; reliability is assessed here.
+                    if (pwb_success .and. .not. lPwbResult%edge_pinned) then
+                        !> HDI prefilter: skip S1/S2 for very wide HDI
+                        if (PWBSetup%hdi_prefilter_s > 0d0 .and. &
+                            lPwbResult%hdi_range > PWBSetup%hdi_prefilter_s) then
+                            !> S3: prefiltered — carry forward
+                            if (pwb_has_previous(j)) then
+                                lPwbResult%reliability_class = 'S3_carryforward'
+                                TLag(j) = pwb_last_optimal_lag(j)
+                                ActTLag(j) = pwb_last_optimal_lag(j)
+                                RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
+                                DefTlagUsed(j) = .false.
+                            else
+                                call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                                    .true., def_rl(j), min_rl(j), max_rl(j), &
+                                    ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                                lPwbResult%fallback_used = .true.
+                            end if
+                        elseif (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
+                            !> S1: reliable detection
+                            lPwbResult%reliability_class = 'S1_optimal'
+                            RowLags(j) = lPwbResult%row_lag
+                            TLag(j) = lPwbResult%selected_lag
+                            ActTLag(j) = lPwbResult%selected_lag
+                            DefTlagUsed(j) = .false.
+                            pwb_last_optimal_lag(j) = lPwbResult%selected_lag
+                            pwb_has_previous(j) = .true.
+                        elseif (pwb_has_previous(j) .and. &
+                            abs(lPwbResult%selected_lag - pwb_last_optimal_lag(j)) &
+                            <= PWBSetup%dev_thresh_s) then
+                            !> S2: uncertain but close to previous optimal
+                            lPwbResult%reliability_class = 'S2_optimal'
+                            RowLags(j) = lPwbResult%row_lag
+                            TLag(j) = lPwbResult%selected_lag
+                            ActTLag(j) = lPwbResult%selected_lag
+                            DefTlagUsed(j) = .false.
+                            pwb_last_optimal_lag(j) = lPwbResult%selected_lag
+                            pwb_has_previous(j) = .true.
+                        else
+                            !> S3: unreliable — carry forward
+                            if (pwb_has_previous(j)) then
+                                lPwbResult%reliability_class = 'S3_carryforward'
+                                TLag(j) = pwb_last_optimal_lag(j)
+                                ActTLag(j) = pwb_last_optimal_lag(j)
+                                RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
+                                DefTlagUsed(j) = .false.
+                            else
+                                call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                                    .true., def_rl(j), min_rl(j), max_rl(j), &
+                                    ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                                lPwbResult%fallback_used = .true.
+                            end if
+                        end if
                     else
-                        call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
-                            .true., def_rl(j), min_rl(j), max_rl(j), &
-                            ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
-                        PWBResult(j)%fallback_used = .true.
+                        !> Detection failed (edge-pinned or hard failure)
+                        if (pwb_has_previous(j)) then
+                            lPwbResult%reliability_class = 'S3_carryforward'
+                            lPwbResult%fallback_used = .false.
+                            TLag(j) = pwb_last_optimal_lag(j)
+                            ActTLag(j) = pwb_last_optimal_lag(j)
+                            RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
+                            DefTlagUsed(j) = .false.
+                        else
+                            call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                                .true., def_rl(j), min_rl(j), max_rl(j), &
+                                ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                            lPwbResult%fallback_used = .true.
+                        end if
                     end if
+                    PWBResult(j) = lPwbResult
+                    call WritePwbDiagnostic(j, lPwbResult)
                 elseif (E2Col(j)%present) then
                     RowLags(j) = def_rl(j)
                     TLag(j) = E2Col(j)%def_tl

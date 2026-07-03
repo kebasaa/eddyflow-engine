@@ -91,6 +91,8 @@ module m_rp_global_var
     type(TOSetupType) :: TOSetup
     type(PWBSetupType) :: PWBSetup
     type(PWBResultType) :: PWBResult(E2NumVar)
+    real(kind = dbl) :: pwb_last_optimal_lag(E2NumVar)
+    logical :: pwb_has_previous(E2NumVar)
     type(TimeLagType) :: toPasGas(E2NumVar)
     type(TimeLagType) :: toH2O(toMaxH2OClass)
     type(StatsType) :: Stats1

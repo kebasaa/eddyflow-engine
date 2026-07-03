@@ -35,11 +35,12 @@ module m_pwb_timelag
     use m_rp_global_var
     implicit none
     private
-    public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult
+    public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic
 
     logical :: pwb_diag_header_written = .false.
     integer :: pwb_attempts(E2NumVar) = 0
     integer :: pwb_successes(E2NumVar) = 0
+    integer :: pwb_carryforwards(E2NumVar) = 0
     integer :: pwb_fallbacks(E2NumVar) = 0
 
 contains
@@ -48,6 +49,7 @@ subroutine ResetPwbDiagnostics()
     pwb_diag_header_written = .false.
     pwb_attempts = 0
     pwb_successes = 0
+    pwb_carryforwards = 0
     pwb_fallbacks = 0
 end subroutine ResetPwbDiagnostics
 
@@ -77,7 +79,6 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     if (gas < co2 .or. gas > gas4) return
     if (.not. E2Col(gas)%present .or. .not. E2Col(ts)%present) then
         LocResult%fallback_used = .true.
-        call WritePwbDiagnostic(gas, LocResult)
         return
     end if
 
@@ -85,7 +86,6 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     max_rl = nint(PWBSetup%max_lag(gas) * Metadata%ac_freq)
     if (min_rl >= max_rl) then
         LocResult%fallback_used = .true.
-        call WritePwbDiagnostic(gas, LocResult)
         return
     end if
 
@@ -100,7 +100,6 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     min_valid = max(0d0, min(1d0, PWBSetup%min_valid_frac)) * dble(nrow)
     if (dble(nvalid_w) < min_valid .or. dble(nvalid_t) < min_valid .or. dble(nvalid_s) < min_valid) then
         LocResult%fallback_used = .true.
-        call WritePwbDiagnostic(gas, LocResult)
         deallocate(ww, tt, ss)
         return
     end if
@@ -142,11 +141,7 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
         lag = LocResult%row_lag
         if (lag >= min_rl .and. lag <= max_rl) LocResult%raw_covariance = raw_ccov(lag)
         deallocate(raw_ccov)
-    else
-        LocResult%fallback_used = .true.
     end if
-
-    call WritePwbDiagnostic(gas, LocResult)
 
     deallocate(ww, tt, ss)
     if (allocated(phi_s)) deallocate(phi_s)
@@ -167,6 +162,7 @@ subroutine InitPwbResult(res)
     res%edge_pinned = .false.
     res%fallback_used = .false.
     res%raw_covariance = error
+    res%ccf_at_mode = 0d0
 end subroutine InitPwbResult
 
 subroutine FillMissingLinear(x, n)
@@ -337,6 +333,7 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, combo, res, ok)
     integer :: nboot, lag, best_idx
     integer, allocatable :: boot_lags(:), counts(:)
     real(kind = dbl), allocatable :: xb(:), yb(:), ccf(:), smooth(:), hdi_samples(:)
+    real(kind = dbl), allocatable :: mean_smooth(:)
 
     call InitPwbResult(res)
     res%best_combination = combo
@@ -348,8 +345,9 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, combo, res, ok)
     nblocks = (n + block_len - 1) / block_len
 
     allocate(boot_lags(nboot), xb(n), yb(n), ccf(min_rl:max_rl), smooth(min_rl:max_rl))
-    allocate(counts(min_rl:max_rl))
+    allocate(counts(min_rl:max_rl), mean_smooth(min_rl:max_rl))
     counts = 0
+    mean_smooth = 0d0
     state = max(1, PWBSetup%random_seed + 7919 * max(1, gas4 - co2 + 1) + iachar(combo(1:1)))
 
     do b = 1, nboot
@@ -364,7 +362,9 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, combo, res, ok)
         best_idx = ArgmaxAbs(smooth, min_rl, max_rl)
         boot_lags(b) = best_idx
         counts(best_idx) = counts(best_idx) + 1
+        mean_smooth = mean_smooth + smooth
     end do
+    mean_smooth = mean_smooth / dble(nboot)
 
     lag = min_rl
     do i = min_rl, max_rl
@@ -379,23 +379,10 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, combo, res, ok)
     res%selected_lag = dble(lag) / Metadata%ac_freq
     res%hdi_range = res%hdi_high - res%hdi_low
     res%edge_pinned = lag == min_rl .or. lag == max_rl
-    if (res%edge_pinned) then
-        res%reliability_class = 'edge_pinned'
-        ok = .false.
-    elseif (PWBSetup%hdi_prefilter_s > 0d0 .and. res%hdi_range > PWBSetup%hdi_prefilter_s) then
-        res%reliability_class = 'prefiltered'
-        ok = .false.
-    elseif (res%hdi_range < PWBSetup%hdi_thresh_s) then
-        res%reliability_class = 'S1_optimal'
-        ok = .true.
-    elseif (res%hdi_range < PWBSetup%hdi_thresh_s + PWBSetup%dev_thresh_s) then
-        res%reliability_class = 'S2_optimal'
-        ok = .true.
-    else
-        res%reliability_class = 'uncertain'
-        ok = .false.
-    end if
-    deallocate(boot_lags, xb, yb, ccf, smooth, counts, hdi_samples)
+    res%ccf_at_mode = abs(mean_smooth(lag))
+    res%reliability_class = 'detected'
+    ok = .not. res%edge_pinned
+    deallocate(boot_lags, xb, yb, ccf, smooth, counts, hdi_samples, mean_smooth)
 end subroutine RunPwbCombination
 
 subroutine CopyBlock(x, y, n, start, block_len, xb, yb, pos)
@@ -571,30 +558,33 @@ subroutine SelectBestCandidate(candidate, ok, min_rl, max_rl, res, success)
 
     call InitPwbResult(res)
     success = .false.
+
+    !> Select by highest |mean_smooth_ccf| at mode lag (matching R/Python)
+    !> First try non-edge-pinned candidates
     best = 0
     do i = 1, 4
         if (ok(i)) then
             if (best == 0) then
                 best = i
-            elseif (candidate(i)%hdi_range < candidate(best)%hdi_range) then
+            elseif (candidate(i)%ccf_at_mode > candidate(best)%ccf_at_mode) then
                 best = i
             end if
         end if
     end do
+    !> If all edge-pinned, pick the one with highest CCF anyway
     if (best == 0) then
         do i = 1, 4
             if (best == 0) then
                 best = i
-            elseif (candidate(i)%hdi_range /= error .and. candidate(i)%hdi_range < candidate(best)%hdi_range) then
+            elseif (candidate(i)%ccf_at_mode > candidate(best)%ccf_at_mode) then
                 best = i
             end if
         end do
-        if (best > 0) res = candidate(best)
-        res%fallback_used = .true.
-        return
     end if
-    res = candidate(best)
-    success = res%row_lag > min_rl .and. res%row_lag < max_rl
+    if (best > 0) then
+        res = candidate(best)
+        success = .not. res%edge_pinned
+    end if
 end subroutine SelectBestCandidate
 
 subroutine WritePwbDiagnostic(gas, res)
@@ -631,6 +621,8 @@ subroutine CountPwbDiagnostic(gas, res)
     pwb_attempts(gas) = pwb_attempts(gas) + 1
     if (res%fallback_used) then
         pwb_fallbacks(gas) = pwb_fallbacks(gas) + 1
+    elseif (trim(res%reliability_class) == 'S3_carryforward') then
+        pwb_carryforwards(gas) = pwb_carryforwards(gas) + 1
     else
         pwb_successes(gas) = pwb_successes(gas) + 1
     end if
@@ -638,25 +630,29 @@ end subroutine CountPwbDiagnostic
 
 subroutine ReportPwbDiagnostics()
     integer :: gas, u, ios
-    integer :: total_attempts, total_successes, total_fallbacks
+    integer :: total_attempts, total_successes, total_carryforwards, total_fallbacks
     character(PathLen) :: path
 
     total_attempts = sum(pwb_attempts(co2:gas4))
     if (total_attempts == 0) return
 
     total_successes = sum(pwb_successes(co2:gas4))
+    total_carryforwards = sum(pwb_carryforwards(co2:gas4))
     total_fallbacks = sum(pwb_fallbacks(co2:gas4))
 
     write(*, '(a)')
     write(*, '(a)') ' PWB time-lag detection summary:'
     do gas = co2, gas4
         if (pwb_attempts(gas) > 0) then
-            write(*, '(a, a, a, i0, a, i0, a, i0)') '  ', trim(GasLabel(gas)), &
-                ': attempts=', pwb_attempts(gas), ', native=', pwb_successes(gas), &
+            write(*, '(a, a, a, i0, a, i0, a, i0, a, i0)') &
+                '  ', trim(GasLabel(gas)), &
+                ': attempts=', pwb_attempts(gas), &
+                ', S1/S2=', pwb_successes(gas), &
+                ', S3=', pwb_carryforwards(gas), &
                 ', fallback=', pwb_fallbacks(gas)
         end if
     end do
-    if (total_successes == 0 .and. total_fallbacks > 0) then
+    if (total_successes == 0 .and. total_carryforwards == 0 .and. total_fallbacks > 0) then
         write(*, '(a)') '  WARNING: all PWB detections fell back to maxcov&default time-lags.'
         write(*, '(a)') '  Review the PWB diagnostics file before interpreting method 5 as native PWB.'
     end if
@@ -667,16 +663,16 @@ subroutine ReportPwbDiagnostics()
         // PwbSummary_FilePadding // Timestamp_FilePadding // CsvExt
     open(newunit = u, file = path, status = 'replace', iostat = ios, encoding = 'utf-8')
     if (ios /= 0) return
-    write(u, '(a)') 'gas,attempts,native_pwb,fallback,maxcov_default_fallback_only'
+    write(u, '(a)') 'gas,attempts,S1_S2_optimal,S3_carryforward,fallback'
     do gas = co2, gas4
         if (pwb_attempts(gas) > 0) then
-            write(u, '(a,",",i0,",",i0,",",i0,",",l1)') trim(GasLabel(gas)), &
-                pwb_attempts(gas), pwb_successes(gas), pwb_fallbacks(gas), &
-                pwb_successes(gas) == 0 .and. pwb_fallbacks(gas) > 0
+            write(u, '(a,",",i0,",",i0,",",i0,",",i0)') trim(GasLabel(gas)), &
+                pwb_attempts(gas), pwb_successes(gas), pwb_carryforwards(gas), &
+                pwb_fallbacks(gas)
         end if
     end do
-    write(u, '(a,",",i0,",",i0,",",i0,",",l1)') 'all', total_attempts, &
-        total_successes, total_fallbacks, total_successes == 0 .and. total_fallbacks > 0
+    write(u, '(a,",",i0,",",i0,",",i0,",",i0)') 'all', total_attempts, &
+        total_successes, total_carryforwards, total_fallbacks
     close(u)
 end subroutine ReportPwbDiagnostics
 

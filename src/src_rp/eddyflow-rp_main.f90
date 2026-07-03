@@ -202,6 +202,8 @@ program EddyFlowRP
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
     call ResetPwbDiagnostics()
+    pwb_last_optimal_lag = error
+    pwb_has_previous = .false.
 
     !> EddyFlow Express settings
     if (EddyFlowProj%run_mode == 'express') call ConfigureForExpress()
