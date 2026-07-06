@@ -140,9 +140,6 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     call FitArAic(ww, nrow, phi_w, p_w)
     call FitArAic(tt, nrow, phi_t, p_t)
 
-    write(*,'(a,a,a,3i6)') '  PWB AR orders for ', trim(GasLabel(gas)), &
-        ' (scalar, w, t): ', p_scalar, p_w, p_t
-
     allocate(s_fs(nrow), w_fs(nrow), t_fs(nrow))
     allocate(s_fw(nrow), w_fw(nrow), s_ft(nrow), t_ft(nrow))
     call ApplyArFilter(ss, nrow, phi_s, p_scalar, s_fs)
@@ -197,59 +194,6 @@ subroutine InitPwbResult(res)
     res%raw_covariance = error
     res%ccf_at_mode = 0d0
 end subroutine InitPwbResult
-
-subroutine ApplyNativePwbResult(res, class_name)
-    type(PWBResultType), intent(inout) :: res
-    character(*), intent(in) :: class_name
-
-    res%reliability_class = class_name
-    res%applied_lag = res%selected_lag
-    res%applied_row_lag = res%row_lag
-    res%fallback_used = .false.
-    res%fallback_source = 'native'
-end subroutine ApplyNativePwbResult
-
-subroutine ApplyCarriedPwbResult(res, lag_s, source)
-    type(PWBResultType), intent(inout) :: res
-    real(kind = dbl), intent(in) :: lag_s
-    character(*), intent(in) :: source
-
-    res%reliability_class = 'S3_carryforward'
-    res%applied_lag = lag_s
-    res%applied_row_lag = nint(lag_s * Metadata%ac_freq)
-    res%fallback_used = .false.
-    res%fallback_source = source
-end subroutine ApplyCarriedPwbResult
-
-subroutine ApplyFallbackPwbResult(res, lag_s, source)
-    type(PWBResultType), intent(inout) :: res
-    real(kind = dbl), intent(in) :: lag_s
-    character(*), intent(in) :: source
-
-    res%reliability_class = 'fallback'
-    res%applied_lag = lag_s
-    res%applied_row_lag = nint(lag_s * Metadata%ac_freq)
-    res%fallback_used = .true.
-    res%fallback_source = source
-end subroutine ApplyFallbackPwbResult
-
-subroutine SortReal(x, n)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(inout) :: x(:)
-    integer :: i, j
-    real(kind = dbl) :: tmp
-
-    do i = 2, n
-        tmp = x(i)
-        j = i - 1
-        do while (j >= 1)
-            if (x(j) <= tmp) exit
-            x(j + 1) = x(j)
-            j = j - 1
-        end do
-        x(j + 1) = tmp
-    end do
-end subroutine SortReal
 
 subroutine FillMissingLinear(x, n)
     integer, intent(in) :: n
@@ -472,10 +416,6 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
     mean_ccf = mean_ccf / dble(nboot)
     call SmoothAndFill(mean_ccf, full_min_rl, full_max_rl, max(1, PWBSetup%smoothing_width), mean_smooth)
 
-    write(*,'(a,a,a,i5,a,i5,a,i4)') '    PWB combo ', combo, &
-        ': boot_lag min=', minval(boot_lags), ' max=', maxval(boot_lags), &
-        ' unique=', count(counts(min_rl:max_rl) > 0)
-
     lag = MapLagEstimate(boot_lags, nboot)
     allocate(hdi_samples(nboot))
     do i = 1, nboot
@@ -488,9 +428,6 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
     res%edge_pinned = lag == min_rl .or. lag == max_rl
     res%ccf_at_mode = abs(mean_smooth(lag))
     res%reliability_class = 'detected'
-    write(*,'(a,a,a,f9.3,a,f9.3,a,l1,a,f12.6)') '    PWB combo ', combo, &
-        ': map_lag_s=', res%selected_lag, ' hdi_range_s=', res%hdi_range, &
-        ' edge=', res%edge_pinned, ' ccf_at_map=', res%ccf_at_mode
     ok = .not. res%edge_pinned
     deallocate(boot_lags, xb, yb, ccf, smooth, counts, hdi_samples, mean_smooth, mean_ccf)
 end subroutine RunPwbCombination
