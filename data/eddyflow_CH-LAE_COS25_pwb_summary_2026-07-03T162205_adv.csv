@@ -1,5 +1,0 @@
-gas,attempts,S1_S2_optimal,S3_carryforward,fallback,maxcov_default,nominal_default,other_fallback
-co2,10,9,0,1,1,0,0
-h2o,10,5,0,5,5,0,0
-gas4,10,0,0,10,10,0,0
-all,30,14,0,16,16,0,0
