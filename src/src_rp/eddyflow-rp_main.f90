@@ -1808,7 +1808,7 @@ program EddyFlowRP
                 call SetTimelags()
                 call TimeLagHandle('pwb', E2Set, size(E2Set, 1), size(E2Set, 2), &
                     pwb_raw_ActTLag, pwb_raw_TLag, pwb_raw_DefTlagUsed, &
-                    .false., detect_only=.true.)
+                    .false., .true.)
                 pwb_raw_detection_done = .true.
             end if
 
