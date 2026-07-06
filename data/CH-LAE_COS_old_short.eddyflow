@@ -1,7 +1,7 @@
 ;EDDYFLOW_PROCESSING
 [Project]
 creation_date=2026-02-17T09:09:37
-last_change_date=2026-07-06T09:44:50
+last_change_date=2026-07-06T11:20:14
 file_name=C:/Users/jonmuell/Documents/_data/CH-LAE COS/EP metadata/CH-LAE_COS_old_short.eddyflow
 run_mode=0
 run_fcc=0
@@ -106,7 +106,7 @@ sa_min_st_le=3.0000
 sa_min_st_h=5.0000
 add_sonic_lptf=1
 horst_lens=2
-ex_file=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF/eddyflow_CH-LAE_COS25_fluxnet_2026-07-06T094357_adv.csv
+ex_file=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF/eddyflow_CH-LAE_COS25_fluxnet_2026-07-06T111919_adv.csv
 sa_bin_spectra=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF/EddyFlow_binned_cospectra
 sa_full_spectra=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF/EddyFlow_full_cospectra
 ex_dir=
@@ -391,7 +391,7 @@ pwb_ch4_max_lag=25.0
 pwb_gas4_min_lag=-5.0
 pwb_gas4_max_lag=25.0
 pwb_n_bootstrap=99
-pwb_block_length_s=20.0
+pwb_block_length_s=0.0
 pwb_min_valid_frac=0.300
 pwb_hdi_thresh_s=2.00
 pwb_dev_thresh_s=2.00
@@ -400,7 +400,7 @@ pwb_smoothing_width=6
 pwb_random_seed=2024
 pwb_approx_ccf=0
 pwb_max_ar_order=0
-pwb_detect_on_raw=0
+pwb_detect_on_raw=1
 
 [RawProcess_RandomUncertainty_Settings]
 ru_meth=0
