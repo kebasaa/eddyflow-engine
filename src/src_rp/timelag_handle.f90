@@ -35,7 +35,7 @@
 ! \todo
 !***************************************************************************
 subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
-    DefTlagUsed, InTimelagOpt, detect_only)
+    DefTlagUsed, InTimelagOpt)
     use m_rp_global_var
     use m_pwb_timelag
     implicit none
@@ -43,7 +43,6 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     integer, intent(in) :: nrow, ncol
     character(*), intent(in) :: TlagMeth
     logical, intent(in) :: InTimelagOpt
-    logical, intent(in), optional :: detect_only
     logical, intent(out) :: DefTlagUsed(ncol)
     real(kind = dbl), intent(out) :: ActTLag(ncol)
     real(kind = dbl), intent(out) :: TLag(ncol)
@@ -63,8 +62,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
 
-    skip_apply = .false.
-    if (present(detect_only)) skip_apply = detect_only
+    skip_apply = pwb_detect_only_mode
+    pwb_detect_only_mode = .false.
 
     if  (.not. InTimelagOpt .and. .not. skip_apply) write(*, '(a)', advance = 'no') &
         '  Compensating time-lags..'

@@ -94,6 +94,7 @@ module m_rp_global_var
     real(kind = dbl) :: pwb_last_optimal_lag(E2NumVar)
     logical :: pwb_has_previous(E2NumVar)
     logical :: pwb_raw_detection_done = .false.
+    logical :: pwb_detect_only_mode = .false.
     real(kind = dbl) :: pwb_raw_ActTLag(E2NumVar)
     real(kind = dbl) :: pwb_raw_TLag(E2NumVar)
     logical :: pwb_raw_DefTlagUsed(E2NumVar)
