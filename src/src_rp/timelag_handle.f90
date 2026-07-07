@@ -50,25 +50,28 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     !> local variables
     integer :: i = 0
     integer :: j = 0
+    integer :: k = 0
+    logical :: skip_apply
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
     integer :: max_rl(ncol)
     real(kind = dbl) :: ColW(nrow)
     real(kind = dbl) :: ColH2O(nrow)
     real(kind = dbl) :: ColTC(nrow)
-    real(kind = dbl) :: FirstCol(nrow)
-    real(kind = dbl) :: SecondCol(nrow)
     real(kind = dbl) :: TmpSet(nrow, ncol)
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
 
-    if  (.not. InTimelagOpt) write(*, '(a)', advance = 'no') &
+    skip_apply = pwb_detect_only_mode
+    pwb_detect_only_mode = .false.
+
+    if  (.not. InTimelagOpt .and. .not. skip_apply) write(*, '(a)', advance = 'no') &
         '  Compensating time-lags..'
 
     !> for E2Set scalars, initialise auxiliary vars to zero
     def_rl(:) = 0
     min_rl(:) = 0
-    min_rl(:) = 0
+    max_rl(:) = 0
     !> Define "row-lags" for scalars, using time-lags
     !> retrieved from metadata file
     where (E2Col(ts:pe)%present)
@@ -78,6 +81,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     end where
 
     DefTlagUsed = .false.
+    do j = ts, pe
+        call InitPwbResult(PWBResult(j))
+    end do
+
     !> calculate actual time-lags according to the chosen method
     select case(TlagMeth)
         case ('constant')
@@ -93,21 +100,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 !> with both min and max "row lags" /= 0
                 if (E2Col(j)%present &
                     .and. (min_rl(j) /= 0 .or. max_rl(j) /= 0)) then
-                    FirstCol(:)  = Set(:, RPSetup%covmax_var)
-                    SecondCol(:) = Set(:, j)
-                    call CovMax(min_rl(j), max_rl(j), &
-                        FirstCol, SecondCol, size(FirstCol), &
-                        TLag(j), RowLags(j))
-                    ActTLag(j) = TLag(j)
-                    !> If no max cov has been detected within the interval, \n
-                    !> sets the time lag to the suggested values
-                    if (TlagMeth == 'maxcov&default') then
-                        if ( (RowLags(j) == min_rl(j)) .or. (RowLags(j) == max_rl(j)) ) then
-                            DefTlagUsed(j) = .true.
-                            TLag(j) = dble(def_rl(j)) / Metadata%ac_freq
-                            RowLags(j) = def_rl(j)
-                        end if
-                    end if
+                    call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                        TlagMeth == 'maxcov&default', def_rl(j), &
+                        min_rl(j), max_rl(j), ActTLag(j), TLag(j), &
+                        RowLags(j), DefTlagUsed(j))
                 else
                     RowLags(j) = 0
                     TLag(j) = 0d0
@@ -115,31 +111,118 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                end if
             end do
         case ('pwb')
-            do j = ts, pe
-                if (E2Col(j)%present .and. (j >= co2 .and. j <= gas4)) then
-                    call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
-                    PWBResult(j) = lPwbResult
-                    if (pwb_success) then
+            if (pwb_raw_detection_done .and. .not. skip_apply) then
+                ActTLag = pwb_raw_ActTLag
+                TLag = pwb_raw_TLag
+                DefTlagUsed = pwb_raw_DefTlagUsed
+                pwb_raw_detection_done = .false.
+            else
+            !> Pass 1: Run PWB detection and S1/S2 classification for all gases
+            do j = co2, gas4
+                if (.not. E2Col(j)%present) cycle
+                call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
+
+                if (pwb_success .and. .not. lPwbResult%edge_pinned) then
+                    if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
+                        lPwbResult%reliability_class = 'S1_optimal'
                         RowLags(j) = lPwbResult%row_lag
                         TLag(j) = lPwbResult%selected_lag
                         ActTLag(j) = lPwbResult%selected_lag
                         DefTlagUsed(j) = .false.
+                        pwb_last_optimal_lag(j) = lPwbResult%selected_lag
+                        pwb_has_previous(j) = .true.
+                    elseif (pwb_has_previous(j) .and. &
+                        abs(lPwbResult%selected_lag - pwb_last_optimal_lag(j)) &
+                        <= PWBSetup%dev_thresh_s) then
+                        lPwbResult%reliability_class = 'S2_optimal'
+                        RowLags(j) = lPwbResult%row_lag
+                        TLag(j) = lPwbResult%selected_lag
+                        ActTLag(j) = lPwbResult%selected_lag
+                        DefTlagUsed(j) = .false.
+                        pwb_last_optimal_lag(j) = lPwbResult%selected_lag
+                        pwb_has_previous(j) = .true.
                     else
-                        FirstCol(:)  = Set(:, RPSetup%covmax_var)
-                        SecondCol(:) = Set(:, j)
-                        call CovMax(min_rl(j), max_rl(j), &
-                            FirstCol, SecondCol, size(FirstCol), &
-                            TLag(j), RowLags(j))
-                        ActTLag(j) = TLag(j)
-                        if ((RowLags(j) == min_rl(j)) .or. (RowLags(j) == max_rl(j))) then
-                            DefTlagUsed(j) = .true.
-                            TLag(j) = dble(def_rl(j)) / Metadata%ac_freq
-                            ActTLag(j) = TLag(j)
-                            RowLags(j) = def_rl(j)
-                        end if
-                        PWBResult(j)%fallback_used = .true.
+                        lPwbResult%reliability_class = 'pending'
                     end if
-                elseif (E2Col(j)%present) then
+                else
+                    lPwbResult%reliability_class = 'pending'
+                end if
+                if (lPwbResult%applied_lag == error .and. &
+                    trim(lPwbResult%reliability_class) /= 'pending') then
+                    lPwbResult%applied_lag = TLag(j)
+                    lPwbResult%applied_row_lag = RowLags(j)
+                end if
+                PWBResult(j) = lPwbResult
+            end do
+
+            !> Pass 2: Same-instrument lag sharing for gases that didn't get S1/S2
+            do j = co2, gas4
+                if (.not. E2Col(j)%present) cycle
+                if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
+                do k = co2, gas4
+                    if (k == j) cycle
+                    if (.not. E2Col(k)%present) cycle
+                    if (E2Col(k)%instr%model /= E2Col(j)%instr%model) cycle
+                    if (trim(PWBResult(k)%reliability_class) /= 'S1_optimal' &
+                        .and. trim(PWBResult(k)%reliability_class) /= 'S2_optimal') cycle
+                    PWBResult(j)%reliability_class = 'S4_instrument_shared'
+                    PWBResult(j)%fallback_used = .false.
+                    PWBResult(j)%fallback_source = 'instrument_shared'
+                    PWBResult(j)%donor_gas = GasLabel(k)
+                    PWBResult(j)%applied_lag = TLag(k)
+                    PWBResult(j)%applied_row_lag = RowLags(k)
+                    TLag(j) = TLag(k)
+                    RowLags(j) = RowLags(k)
+                    ActTLag(j) = ActTLag(k)
+                    DefTlagUsed(j) = .false.
+                    pwb_last_optimal_lag(j) = TLag(k)
+                    pwb_has_previous(j) = .true.
+                    exit
+                end do
+            end do
+
+            !> Pass 3: S3 carry-forward or maxcov/default fallback for remaining gases
+            do j = co2, gas4
+                if (.not. E2Col(j)%present) cycle
+                if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
+                if (pwb_has_previous(j)) then
+                    PWBResult(j)%reliability_class = 'S3_carryforward'
+                    PWBResult(j)%fallback_source = 'S3_carryforward'
+                    TLag(j) = pwb_last_optimal_lag(j)
+                    if (PWBResult(j)%selected_lag /= error) then
+                        ActTLag(j) = PWBResult(j)%selected_lag
+                    else
+                        ActTLag(j) = pwb_last_optimal_lag(j)
+                    end if
+                    RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
+                    DefTlagUsed(j) = .false.
+                else
+                    call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
+                        .true., def_rl(j), min_rl(j), max_rl(j), &
+                        ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
+                    PWBResult(j)%reliability_class = 'fallback'
+                    PWBResult(j)%fallback_used = .true.
+                end if
+                if (PWBResult(j)%applied_lag == error) then
+                    PWBResult(j)%applied_lag = TLag(j)
+                    PWBResult(j)%applied_row_lag = RowLags(j)
+                end if
+            end do
+
+            !> Finalize: set fallback_source labels and write diagnostics
+            do j = co2, gas4
+                if (.not. E2Col(j)%present) cycle
+                if (PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
+                    PWBResult(j)%fallback_source = 'maxcov_default'
+                if (.not. PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
+                    PWBResult(j)%fallback_source = 'native'
+                call WritePwbDiagnostic(j, PWBResult(j))
+            end do
+
+            !> Handle non-gas scalars (ts, etc.)
+            do j = ts, pe
+                if (j >= co2 .and. j <= gas4) cycle
+                if (E2Col(j)%present) then
                     RowLags(j) = def_rl(j)
                     TLag(j) = E2Col(j)%def_tl
                     ActTLag(j) = E2Col(j)%def_tl
@@ -150,13 +233,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     ActTLag(j) = 0d0
                 end if
             end do
+            end if  !> pwb_raw_detection_done bypass
         case ('none')
             !> not compensating for timelags
             RowLags(ts:pe) = 0
             TLag(ts:pe) = 0d0
     end select
 
-    if  (.not. InTimelagOpt) then
+    if (.not. skip_apply .and. .not. InTimelagOpt) then
         !> For closed path instruments, calculate H2O covariances
         !> for time-lags of other scalars from the same instrument
         Stats%h2ocov_tl_co2 = error
@@ -216,34 +300,64 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         end if
     end if
 
-    !> Align data according to relevant time-lags,
-    !> filling remaining with error code.
-    do j = u, pe
-        if (E2Col(j)%present) then
-            if (RowLags(j) >= 0) then
-                !> For positive lags
-                do i = 1, nrow - RowLags(j)
-                    TmpSet(i, j) = Set(i + RowLags(j), j)
-                end do
-                do i = nrow - Rowlags(j) + 1, nrow
-                    TmpSet(i, j) = error
-                end do
+    if (.not. skip_apply) then
+        !> Align data according to relevant time-lags,
+        !> filling remaining with error code.
+        do j = u, pe
+            if (E2Col(j)%present) then
+                if (RowLags(j) >= 0) then
+                    !> For positive lags
+                    do i = 1, nrow - RowLags(j)
+                        TmpSet(i, j) = Set(i + RowLags(j), j)
+                    end do
+                    do i = nrow - Rowlags(j) + 1, nrow
+                        TmpSet(i, j) = error
+                    end do
+                else
+                    !> For negative lags
+                    do i = 1, abs(RowLags(j))
+                        TmpSet(i, j) = error
+                    end do
+                    do i = abs(RowLags(j)) + 1, nrow
+                        TmpSet(i, j) = Set(i + RowLags(j), j)
+                    end do
+                end if
             else
-                !> For negative lags
-                do i = 1, abs(RowLags(j))
-                    TmpSet(i, j) = error
-                end do
-                do i = abs(RowLags(j)) + 1, nrow
-                    TmpSet(i, j) = Set(i + RowLags(j), j)
-                end do
+                TmpSet(1:nrow, j) = error
             end if
-        else
-            TmpSet(1:nrow, j) = error
-        end if
-    end do
-    Set = TmpSet
-    if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
+        end do
+        Set = TmpSet
+        if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
+    end if
 end subroutine TimeLagHandle
+
+subroutine ApplyCovMaxDefaultFallback(Set, nrow, ncol, gas, use_default_on_edge, &
+    def_rl, min_rl, max_rl, actual_tlag, used_tlag, row_lag, def_tlag_used)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: nrow, ncol, gas
+    integer, intent(in) :: def_rl, min_rl, max_rl
+    logical, intent(in) :: use_default_on_edge
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    real(kind = dbl), intent(out) :: actual_tlag
+    real(kind = dbl), intent(out) :: used_tlag
+    integer, intent(out) :: row_lag
+    logical, intent(out) :: def_tlag_used
+    real(kind = dbl) :: FirstCol(nrow)
+    real(kind = dbl) :: SecondCol(nrow)
+
+    FirstCol(:)  = Set(:, RPSetup%covmax_var)
+    SecondCol(:) = Set(:, gas)
+    call CovMax(min_rl, max_rl, FirstCol, SecondCol, size(FirstCol), &
+        actual_tlag, row_lag)
+    used_tlag = actual_tlag
+    def_tlag_used = .false.
+    if (use_default_on_edge .and. ((row_lag == min_rl) .or. (row_lag == max_rl))) then
+        def_tlag_used = .true.
+        used_tlag = dble(def_rl) / Metadata%ac_freq
+        row_lag = def_rl
+    end if
+end subroutine ApplyCovMaxDefaultFallback
 
 !*******************************************************************************
 !

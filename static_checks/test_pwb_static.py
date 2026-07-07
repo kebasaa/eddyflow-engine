@@ -50,9 +50,12 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertIn("subroutine PwbDetectGas", source)
         self.assertIn("FitArAic", source)
         self.assertIn("RunPwbCombination", source)
+        self.assertIn("MapLagEstimate", source)
         self.assertIn("Hdi95", source)
         self.assertIn("edge_pinned", source)
         self.assertIn("fallback_used", source)
+        self.assertIn("block_length_clamped", source)
+        self.assertIn("effective_block_length_s", source)
         self.assertIn("EddyFlowProj%id(1:len_trim(EddyFlowProj%id))", source)
         self.assertIn("PwbTimelagDiag_FilePadding", source)
         self.assertIn("Timestamp_FilePadding", source)
@@ -71,11 +74,15 @@ class PwbStaticIntegrationTests(unittest.TestCase):
 
     def test_timelag_handle_falls_back_and_makefile_references_source(self):
         handler = read("src/src_rp/timelag_handle.f90")
+        main = read("src/src_rp/eddyflow-rp_main.f90")
         makefile = read("prj/Makefile")
         self.assertIn("case ('pwb')", handler)
         self.assertIn("call PwbDetectGas", handler)
         self.assertIn("call CovMax", handler)
-        self.assertIn("PWBResult(j)%fallback_used = .true.", handler)
+        self.assertIn("lPwbResult%fallback_used = .true.", handler)
+        self.assertNotIn("call GetPwbFinalResult", handler)
+        self.assertNotIn("pwb_prepass_loop", main)
+        self.assertNotIn("PreparePwbBatch", main)
         self.assertIn("pwb_timelag_handle.o", makefile)
 
 

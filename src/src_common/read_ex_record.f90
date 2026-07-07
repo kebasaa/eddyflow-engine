@@ -125,6 +125,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%act_tlag(h2o), lEx%used_tlag(h2o), lEx%nom_tlag(h2o), lEx%min_tlag(h2o), lEx%max_tlag(h2o),&
         lEx%act_tlag(ch4), lEx%used_tlag(ch4), lEx%nom_tlag(ch4), lEx%min_tlag(ch4), lEx%max_tlag(ch4),&
         lEx%act_tlag(gas4), lEx%used_tlag(gas4), lEx%nom_tlag(gas4), lEx%min_tlag(gas4), lEx%max_tlag(gas4), &
+        aux(1:4), &
         lEx%stats%median(u:gas4), lEx%stats%Q1(u:gas4), lEx%stats%Q3(u:gas4), &
         (lEx%stats%Cov(var, var), var=u, gas4), lEx%stats%Skw(u:gas4), lEx%stats%Kur(u:gas4), &
         lEx%stats%Cov(w, u), lEx%stats%Cov(w, ts:gas4), lEx%stats%Cov(co2, h2o:gas4), &
@@ -150,7 +151,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         call InvalidateRecord()
         return
     end if
-    ix = strCharIndex(dataline, ',', 259)
+    ix = strCharIndex(dataline, ',', 263)
     if (ix <= 0) then
         call InvalidateRecord()
         return

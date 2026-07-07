@@ -448,6 +448,7 @@ subroutine WriteVariablesRP()
     PWBSetup%max_lag(ch4) =  10d0
     PWBSetup%min_lag(gas4) = -10d0
     PWBSetup%max_lag(gas4) =  10d0
+    PWBSetup%lag_bounds_provided = .false.
     PWBSetup%n_bootstrap = 99
     PWBSetup%block_length_s = 20d0
     PWBSetup%min_valid_frac = 0.3d0
@@ -458,12 +459,16 @@ subroutine WriteVariablesRP()
     PWBSetup%random_seed = 2024
     if (SNTagFound(406)) PWBSetup%min_lag(co2) = SNTags(406)%value
     if (SNTagFound(407)) PWBSetup%max_lag(co2) = SNTags(407)%value
+    if (SNTagFound(406) .or. SNTagFound(407)) PWBSetup%lag_bounds_provided(co2) = .true.
     if (SNTagFound(408)) PWBSetup%min_lag(h2o) = SNTags(408)%value
     if (SNTagFound(409)) PWBSetup%max_lag(h2o) = SNTags(409)%value
+    if (SNTagFound(408) .or. SNTagFound(409)) PWBSetup%lag_bounds_provided(h2o) = .true.
     if (SNTagFound(410)) PWBSetup%min_lag(ch4) = SNTags(410)%value
     if (SNTagFound(411)) PWBSetup%max_lag(ch4) = SNTags(411)%value
+    if (SNTagFound(410) .or. SNTagFound(411)) PWBSetup%lag_bounds_provided(ch4) = .true.
     if (SNTagFound(412)) PWBSetup%min_lag(gas4) = SNTags(412)%value
     if (SNTagFound(413)) PWBSetup%max_lag(gas4) = SNTags(413)%value
+    if (SNTagFound(412) .or. SNTagFound(413)) PWBSetup%lag_bounds_provided(gas4) = .true.
     if (SNTagFound(414)) PWBSetup%n_bootstrap = max(1, nint(SNTags(414)%value))
     if (SNTagFound(415)) PWBSetup%block_length_s = SNTags(415)%value
     if (SNTagFound(416)) PWBSetup%min_valid_frac = SNTags(416)%value
@@ -476,6 +481,8 @@ subroutine WriteVariablesRP()
     PWBSetup%max_ar_order = 0
     if (SNTagFound(422)) PWBSetup%approx_ccf   = nint(SNTags(422)%value) /= 0
     if (SNTagFound(423)) PWBSetup%max_ar_order = max(0, nint(SNTags(423)%value))
+    PWBSetup%detect_prewpl = .false.
+    if (SNTagFound(424)) PWBSetup%detect_prewpl = nint(SNTags(424)%value) /= 0
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.

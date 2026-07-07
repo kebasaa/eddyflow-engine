@@ -35,3 +35,6 @@ src/src_rp/deprecated
 /static_checks/*
 !/static_checks/test_irga_path_classification_static.py
 !/static_checks/test_fcc_full_header_static.py
+!/static_checks/test_pwb_timelag_static.py
+/data/__pycache__
+/data_test

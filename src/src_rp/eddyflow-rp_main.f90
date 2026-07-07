@@ -36,6 +36,7 @@
 program EddyFlowRP
     use m_rp_global_var
     use m_cec
+    use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -200,6 +201,9 @@ program EddyFlowRP
 
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
+    call ResetPwbDiagnostics()
+    pwb_last_optimal_lag = error
+    pwb_has_previous = .false.
 
     !> EddyFlow Express settings
     if (EddyFlowProj%run_mode == 'express') call ConfigureForExpress()
@@ -1772,6 +1776,7 @@ program EddyFlowRP
 
         !> Output first level of stats
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
+            pwb_raw_detection_done = .false.
 
             !> ===== 1. RAW DATA AS READ FROM FILES ============================
             !> Output raw dataset first level
@@ -1927,16 +1932,33 @@ program EddyFlowRP
                 call DriftCorrection(E2Set, size(E2Set, 1), size(E2Set, 2), &
                     E2Col, size(E2Col), nCalibEvents, tsStart)
 
+            !> ===== 5. TILT CORRECTION ========================================
+            !> Apply rotations for tilt correction, if requested.
+            !> NOTE: rotation is applied BEFORE the WPL mixing-ratio conversion so
+            !> that (optional) pre-WPL PWB time-lag detection sees despiked + rotated
+            !> concentrations, matching the Python/RFlux reference. TiltCorrection
+            !> only touches wind (u,v,w) and PointByPointToMixingRatio only touches
+            !> gas columns, so the two operations commute and the final E2Set is
+            !> identical regardless of their order.
+            call TiltCorrection(Meth%rot, GoPlanarFit, E2Set, &
+                size(E2Set, 1), size(E2Set, 2), PFSetup%num_sec, &
+                Essentials%yaw, Essentials%pitch, Essentials%roll, .true.)
+
+            !> Optional PWB time-lag detection on despiked + rotated, pre-WPL data.
+            !> Lags are stored now and applied later at the normal timelag stage.
+            if (Meth%tlag == 'pwb' .and. PWBSetup%detect_prewpl) then
+                call RetrieveSensorParams()
+                call SetTimelags()
+                pwb_detect_only_mode = .true.
+                call TimeLagHandle('pwb', E2Set, size(E2Set, 1), size(E2Set, 2), &
+                    pwb_raw_ActTLag, pwb_raw_TLag, pwb_raw_DefTlagUsed, .false.)
+                pwb_raw_detection_done = .true.
+            end if
+
             !> Convert to mixing ratios (if WPL requested, and if the case)
             if (EddyFlowProj%wpl) &
                 call PointByPointToMixingRatio(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), .true.)
-
-            !> ===== 5. TILT CORRECTION ========================================
-            !> Apply rotations for tilt correction, if requested
-            call TiltCorrection(Meth%rot, GoPlanarFit, E2Set, &
-                size(E2Set, 1), size(E2Set, 2), PFSetup%num_sec, &
-                Essentials%yaw, Essentials%pitch, Essentials%roll, .true.)
 
             !> Output raw dataset fifth level
             if (RPsetup%out_raw(5)) call OutRawData(Stats%date, Stats%time, &
@@ -2314,6 +2336,7 @@ program EddyFlowRP
         if (allocated(UserSet))  deallocate(UserSet)
     end do periods_loop
     if (allocated(bf)) deallocate(bf)
+    if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
 
     !***************************************************************************
     !**** FLUX COMPUTATION FINISHES HERE.                      *****************

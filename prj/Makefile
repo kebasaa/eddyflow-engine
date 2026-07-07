@@ -577,7 +577,8 @@ replace_gap_with_linear_interpolation.o: \
 eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	m_rp_global_var.o \
-	m_cec.o
+	m_cec.o \
+	pwb_timelag_handle.o
 import_current_period.o: \
 	import_current_period.f90 \
 	m_rp_global_var.o
