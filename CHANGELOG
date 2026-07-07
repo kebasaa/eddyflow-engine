@@ -1,3 +1,11 @@
+7.2.4 (2026-07-07)
+
+    Engine:
+	- Fix: AR max order corrected to 100*log10(N) to match R/Python reference
+	- New feature: PWB time-lag detection optionally runs pre-WPL (pwb_detect_prewpl)
+	- New feature: S4_instrument_shared lag sharing between co-located sensors
+	- Fix: Remove verbose per-period PWB console output
+
 7.2.3 (2026-07-02)
 
     Engine:
