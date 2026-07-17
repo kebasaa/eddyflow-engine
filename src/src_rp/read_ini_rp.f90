@@ -491,6 +491,10 @@ subroutine WriteVariablesRP()
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.
+    PwbCacheGenerate = .false.
+    PwbCacheLoaded = .false.
+    PwbCacheDirty = .false.
+    PwbCacheUpdateRequested = .false.
     RPsetup%tlag_assessment_only = SCTagFound(101) .and. &
         SCTags(101)%value(1:1) == '1'
     TimeLagOptSelected = .false.
@@ -500,6 +504,16 @@ subroutine WriteVariablesRP()
             RPsetup%to_onthefly = .true.
         else
             AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
+        end if
+    elseif (Meth%tlag == 'pwb') then
+        if (SCTags(91)%value(1:1) == '1') then
+            !> PWB on-the-fly means generate a per-period PWB cache before
+            !> production processing, not an aggregate time-lag optimization.
+            RPsetup%to_onthefly = .true.
+            PwbCacheGenerate = .true.
+        else
+            AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
+            PwbCacheUpdateRequested = .true.
         end if
     end if
     !> Assessment-only time-lag optimization applies only to an on-the-fly optimizer.

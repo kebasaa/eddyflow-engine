@@ -80,6 +80,12 @@ module m_fx_global_var
     integer :: SADiagAccepted(GHGNumVar)
     integer :: SADiagDegradedUnstable
     integer :: SADiagDegradedStable
+    integer, parameter :: SADiagUnstable = 1
+    integer, parameter :: SADiagStable = 2
+    integer :: SADiagFluxCandidateCount(2, GHGNumVar)
+    integer :: SADiagFluxCandidateCapacity
+    real(kind = dbl), allocatable :: SADiagFluxCandidate(:, :, :)
+    integer, allocatable :: SADiagFluxCandidateClass(:, :, :)
 
     type(FCCsetupType) :: FCCsetup
     type(FileListType), allocatable :: FullFileList(:)

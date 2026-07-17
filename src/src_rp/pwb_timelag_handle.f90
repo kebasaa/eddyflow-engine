@@ -36,6 +36,8 @@ module m_pwb_timelag
     implicit none
     private
     public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic, GasLabel
+    public :: InitPwbTimelagCache, ReadPwbTimelagCache, WritePwbTimelagCache
+    public :: LookupPwbTimelagCache, StorePwbTimelagCache
 
     logical :: pwb_diag_header_written = .false.
     integer :: pwb_attempts(E2NumVar) = 0
@@ -64,6 +66,255 @@ subroutine ResetPwbDiagnostics()
     pwb_bounds_warned = .false.
     pwb_block_warned = .false.
 end subroutine ResetPwbDiagnostics
+
+subroutine InitPwbTimelagCache()
+    if (allocated(PwbTimelagCache)) deallocate(PwbTimelagCache)
+    PwbTimelagCacheN = 0
+    PwbCacheLoaded = .false.
+    PwbCacheDirty = .false.
+end subroutine InitPwbTimelagCache
+
+subroutine StorePwbTimelagCache(gas, stage, actual_lag, used_lag, row_lag, default_used, res)
+    integer, intent(in) :: gas, row_lag
+    character(*), intent(in) :: stage
+    real(kind = dbl), intent(in) :: actual_lag, used_lag
+    logical, intent(in) :: default_used
+    type(PWBResultType), intent(in) :: res
+    type(PWBTimelagCacheEntryType), allocatable :: tmp(:)
+    integer :: i
+
+    do i = 1, PwbTimelagCacheN
+        if (PwbTimelagCache(i)%date == Stats%date .and. PwbTimelagCache(i)%time == Stats%time &
+            .and. PwbTimelagCache(i)%gas == gas .and. trim(PwbTimelagCache(i)%stage) == trim(stage)) then
+            PwbTimelagCache(i)%actual_lag = actual_lag
+            PwbTimelagCache(i)%used_lag = used_lag
+            PwbTimelagCache(i)%row_lag = row_lag
+            PwbTimelagCache(i)%default_used = default_used
+            PwbTimelagCache(i)%result = res
+            PwbCacheDirty = .true.
+            return
+        end if
+    end do
+
+    allocate(tmp(PwbTimelagCacheN + 1))
+    if (PwbTimelagCacheN > 0) tmp(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
+    tmp(PwbTimelagCacheN + 1)%date = Stats%date
+    tmp(PwbTimelagCacheN + 1)%time = Stats%time
+    tmp(PwbTimelagCacheN + 1)%gas = gas
+    tmp(PwbTimelagCacheN + 1)%stage = stage
+    tmp(PwbTimelagCacheN + 1)%actual_lag = actual_lag
+    tmp(PwbTimelagCacheN + 1)%used_lag = used_lag
+    tmp(PwbTimelagCacheN + 1)%row_lag = row_lag
+    tmp(PwbTimelagCacheN + 1)%default_used = default_used
+    tmp(PwbTimelagCacheN + 1)%result = res
+    call move_alloc(tmp, PwbTimelagCache)
+    PwbTimelagCacheN = PwbTimelagCacheN + 1
+    PwbCacheDirty = .true.
+end subroutine StorePwbTimelagCache
+
+subroutine LookupPwbTimelagCache(gas, stage, found, actual_lag, used_lag, row_lag, default_used, res)
+    integer, intent(in) :: gas
+    character(*), intent(in) :: stage
+    logical, intent(out) :: found, default_used
+    real(kind = dbl), intent(out) :: actual_lag, used_lag
+    integer, intent(out) :: row_lag
+    type(PWBResultType), intent(out) :: res
+    integer :: i
+
+    found = .false.
+    actual_lag = error
+    used_lag = error
+    row_lag = 0
+    default_used = .false.
+    call InitPwbResult(res)
+    if (.not. PwbCacheLoaded) return
+    do i = 1, PwbTimelagCacheN
+        if (PwbTimelagCache(i)%date == Stats%date .and. PwbTimelagCache(i)%time == Stats%time &
+            .and. PwbTimelagCache(i)%gas == gas .and. trim(PwbTimelagCache(i)%stage) == trim(stage)) then
+            found = .true.
+            actual_lag = PwbTimelagCache(i)%actual_lag
+            used_lag = PwbTimelagCache(i)%used_lag
+            row_lag = PwbTimelagCache(i)%row_lag
+            default_used = PwbTimelagCache(i)%default_used
+            res = PwbTimelagCache(i)%result
+            return
+        end if
+    end do
+end subroutine LookupPwbTimelagCache
+
+character(256) function PwbCacheFingerprint()
+    write(PwbCacheFingerprint, '(a,4(l1,":"),a,8(f10.4,":"),a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,i0,a,i0,a,l1,a,i0,a,l1)') &
+        'provided=', PWBSetup%lag_bounds_provided(co2), PWBSetup%lag_bounds_provided(h2o), &
+        PWBSetup%lag_bounds_provided(ch4), PWBSetup%lag_bounds_provided(gas4), 'bounds=', &
+        merge(PWBSetup%min_lag(co2), 0d0, PWBSetup%lag_bounds_provided(co2)), &
+        merge(PWBSetup%max_lag(co2), 0d0, PWBSetup%lag_bounds_provided(co2)), &
+        merge(PWBSetup%min_lag(h2o), 0d0, PWBSetup%lag_bounds_provided(h2o)), &
+        merge(PWBSetup%max_lag(h2o), 0d0, PWBSetup%lag_bounds_provided(h2o)), &
+        merge(PWBSetup%min_lag(ch4), 0d0, PWBSetup%lag_bounds_provided(ch4)), &
+        merge(PWBSetup%max_lag(ch4), 0d0, PWBSetup%lag_bounds_provided(ch4)), &
+        merge(PWBSetup%min_lag(gas4), 0d0, PWBSetup%lag_bounds_provided(gas4)), &
+        merge(PWBSetup%max_lag(gas4), 0d0, PWBSetup%lag_bounds_provided(gas4)), &
+        'n=', PWBSetup%n_bootstrap, '_block=', PWBSetup%block_length_s, '_valid=', PWBSetup%min_valid_frac, &
+        '_hdi=', PWBSetup%hdi_thresh_s, '_dev=', PWBSetup%dev_thresh_s, '_prefilter=', PWBSetup%hdi_prefilter_s, &
+        '_smooth=', PWBSetup%smoothing_width, '_seed=', PWBSetup%random_seed, '_approx=', PWBSetup%approx_ccf, &
+        '_ar=', PWBSetup%max_ar_order, '_pre=', PWBSetup%detect_prewpl
+end function PwbCacheFingerprint
+
+subroutine ReadPwbTimelagCache(path, recognized, valid)
+    character(*), intent(in) :: path
+    logical, intent(out) :: recognized, valid
+    integer :: u, ios, gas, row_lag, period_seconds
+    character(1024) :: line
+    character(256) :: fingerprint
+    character(10) :: date
+    character(5) :: time
+    character(8) :: stage
+    character(24) :: reliability, fallback
+    character(8) :: donor
+    real(kind = dbl) :: actual_lag, used_lag, selected_lag, hdi_low, hdi_high, hdi_range
+    logical :: default_used
+    type(PWBResultType) :: res
+
+    recognized = .false.
+    valid = .false.
+    call InitPwbTimelagCache()
+    open(newunit=u, file=path, status='old', action='read', iostat=ios, encoding='utf-8')
+    if (ios /= 0) return
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0) then
+        close(u)
+        return
+    end if
+    if (index(line, 'PWB_TIMELAG_CACHE_VERSION=') == 1) then
+        recognized = .true.
+    elseif (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=1') then
+        close(u)
+        return
+    end if
+    if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=1') then
+        close(u)
+        return
+    end if
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0 .or. index(line, 'fingerprint=') /= 1) then
+        close(u)
+        return
+    end if
+    fingerprint = line(13:len_trim(line))
+    if (trim(fingerprint) /= trim(PwbCacheFingerprint())) then
+        write(*, '(a)') ' Fatal> PWB time-lag cache is incompatible with the selected PWB settings.'
+        close(u)
+        return
+    end if
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0 .or. index(line, 'project_id=') /= 1) then
+        close(u)
+        return
+    end if
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0 .or. index(line, 'period_seconds=') /= 1) then
+        close(u)
+        return
+    end if
+    read(line(16:len_trim(line)), *, iostat=ios) period_seconds
+    if (ios /= 0 .or. period_seconds /= RPsetup%avrg_len) then
+        write(*, '(a)') ' Fatal> PWB time-lag cache averaging-period duration is incompatible with this project.'
+        close(u)
+        return
+    end if
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0 .or. trim(line) /= 'data') then
+        close(u)
+        return
+    end if
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0 .or. index(line, 'date,time,gas,stage,') /= 1) then
+        close(u)
+        return
+    end if
+    do
+        read(u, '(a)', iostat=ios) line
+        if (ios /= 0) exit
+        call InitPwbResult(res)
+        read(line, *, iostat=ios) date, time, gas, stage, actual_lag, used_lag, row_lag, default_used, &
+            reliability, fallback, donor, selected_lag, hdi_low, hdi_high, hdi_range
+        if (ios /= 0) then
+            close(u)
+            return
+        end if
+        res%reliability_class = reliability
+        res%fallback_source = fallback
+        res%donor_gas = donor
+        res%selected_lag = selected_lag
+        res%hdi_low = hdi_low
+        res%hdi_high = hdi_high
+        res%hdi_range = hdi_range
+        res%applied_lag = used_lag
+        res%applied_row_lag = row_lag
+        res%fallback_used = default_used .or. trim(reliability) == 'fallback'
+        call StorePwbTimelagCacheAt(date, time, gas, stage, actual_lag, used_lag, row_lag, default_used, res)
+    end do
+    close(u)
+    PwbCacheLoaded = .true.
+    PwbCacheDirty = .false.
+    valid = PwbTimelagCacheN > 0
+end subroutine ReadPwbTimelagCache
+
+subroutine StorePwbTimelagCacheAt(date, time, gas, stage, actual_lag, used_lag, row_lag, default_used, res)
+    character(*), intent(in) :: date, time, stage
+    integer, intent(in) :: gas, row_lag
+    real(kind = dbl), intent(in) :: actual_lag, used_lag
+    logical, intent(in) :: default_used
+    type(PWBResultType), intent(in) :: res
+    type(PWBTimelagCacheEntryType), allocatable :: tmp(:)
+
+    allocate(tmp(PwbTimelagCacheN + 1))
+    if (PwbTimelagCacheN > 0) tmp(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
+    tmp(PwbTimelagCacheN + 1)%date = date
+    tmp(PwbTimelagCacheN + 1)%time = time
+    tmp(PwbTimelagCacheN + 1)%gas = gas
+    tmp(PwbTimelagCacheN + 1)%stage = stage
+    tmp(PwbTimelagCacheN + 1)%actual_lag = actual_lag
+    tmp(PwbTimelagCacheN + 1)%used_lag = used_lag
+    tmp(PwbTimelagCacheN + 1)%row_lag = row_lag
+    tmp(PwbTimelagCacheN + 1)%default_used = default_used
+    tmp(PwbTimelagCacheN + 1)%result = res
+    call move_alloc(tmp, PwbTimelagCache)
+    PwbTimelagCacheN = PwbTimelagCacheN + 1
+end subroutine StorePwbTimelagCacheAt
+
+subroutine WritePwbTimelagCache()
+    integer :: u, ios, i
+    character(PathLen) :: path
+
+    if (.not. PwbCacheDirty .or. PwbTimelagCacheN == 0 .or. Dir%main_out == 'none') return
+    path = Dir%main_out(1:len_trim(Dir%main_out)) // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
+        // '_pwb_timelag_cache' // Timestamp_FilePadding // CsvExt
+    open(newunit=u, file=path, status='replace', iostat=ios, encoding='utf-8')
+    if (ios /= 0) return
+    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=1'
+    write(u, '(a)') 'fingerprint=' // trim(PwbCacheFingerprint())
+    write(u, '(a)') 'project_id=' // trim(EddyFlowProj%id)
+    write(u, '(a,i0)') 'period_seconds=', RPsetup%avrg_len
+    write(u, '(a)') 'data'
+    write(u, '(a)') 'date,time,gas,stage,actual_lag_s,used_lag_s,row_lag,default_used,reliability_class,' &
+        // 'fallback_source,donor_gas,selected_lag_s,hdi_low_s,hdi_high_s,hdi_range_s'
+    do i = 1, PwbTimelagCacheN
+        write(u, '(a,",",a,",",i0,",",a,",",f12.6,",",f12.6,",",i0,",",l1,",",a,",",a,' &
+            // '",",a,",",f12.6,",",f12.6,",",f12.6,",",f12.6)') &
+            trim(PwbTimelagCache(i)%date), trim(PwbTimelagCache(i)%time), PwbTimelagCache(i)%gas, &
+            trim(PwbTimelagCache(i)%stage), PwbTimelagCache(i)%actual_lag, PwbTimelagCache(i)%used_lag, &
+            PwbTimelagCache(i)%row_lag, PwbTimelagCache(i)%default_used, &
+            trim(PwbTimelagCache(i)%result%reliability_class), trim(PwbTimelagCache(i)%result%fallback_source), &
+            trim(PwbTimelagCache(i)%result%donor_gas), PwbTimelagCache(i)%result%selected_lag, &
+            PwbTimelagCache(i)%result%hdi_low, PwbTimelagCache(i)%result%hdi_high, PwbTimelagCache(i)%result%hdi_range
+    end do
+    close(u)
+    PwbTimelagCache_Path = path
+    PwbCacheLoaded = .true.
+    PwbCacheDirty = .false.
+    write(*, '(a)') ' PWB per-period time-lag cache written to: ' // trim(path)
+end subroutine WritePwbTimelagCache
 
 subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     implicit none

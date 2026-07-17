@@ -80,6 +80,7 @@ module m_rp_global_var
     character(PathLen) :: Biomet_Path
     character(PathLen) :: PlanarFit_Path
     character(PathLen) :: TimelagOpt_Path
+    character(PathLen) :: PwbTimelagCache_Path
     character(PathLen) :: QCdetails_Path
     logical :: OutVarPresent(E2NumVar)
     logical :: TimeLagOptSelected
@@ -98,6 +99,13 @@ module m_rp_global_var
     real(kind = dbl) :: pwb_raw_ActTLag(E2NumVar)
     real(kind = dbl) :: pwb_raw_TLag(E2NumVar)
     logical :: pwb_raw_DefTlagUsed(E2NumVar)
+    type(PWBResultType) :: pwb_raw_Result(E2NumVar)
+    logical :: PwbCacheGenerate = .false.
+    logical :: PwbCacheLoaded = .false.
+    logical :: PwbCacheDirty = .false.
+    logical :: PwbCacheUpdateRequested = .false.
+    type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
+    integer :: PwbTimelagCacheN = 0
     type(TimeLagType) :: toPasGas(E2NumVar)
     type(TimeLagType) :: toH2O(toMaxH2OClass)
     type(StatsType) :: Stats1

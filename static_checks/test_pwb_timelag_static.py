@@ -65,6 +65,33 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("PWBResult(gas)%fallback_source", writer_source)
         self.assertNotIn("median_raw", writer_source)
 
+    def test_pwb_per_period_cache_is_versioned_and_cache_aware(self):
+        module_source = read("src/src_rp/pwb_timelag_handle.f90")
+        handle_source = read("src/src_rp/timelag_handle.f90")
+
+        self.assertIn("PWB_TIMELAG_CACHE_VERSION=1", module_source)
+        self.assertIn("fingerprint=", module_source)
+        self.assertIn("period_seconds=", module_source)
+        self.assertIn("date,time,gas,stage,actual_lag_s,used_lag_s", module_source)
+        self.assertIn("subroutine ReadPwbTimelagCache", module_source)
+        self.assertIn("subroutine WritePwbTimelagCache", module_source)
+        self.assertIn("call LookupPwbTimelagCache", handle_source)
+        self.assertIn("call StorePwbTimelagCache", handle_source)
+        self.assertIn("cache_stage = 'pre_wpl'", handle_source)
+        self.assertIn("cache_stage = 'post_wpl'", handle_source)
+        self.assertIn("PWBResult = pwb_raw_Result", handle_source)
+
+    def test_pwb_cache_generation_precedes_production_and_supports_assessment_only(self):
+        parser_source = read("src/src_rp/read_ini_rp.f90")
+        main_source = read("src/src_rp/eddyflow-rp_main.f90")
+
+        self.assertIn("PwbCacheGenerate = .true.", parser_source)
+        self.assertIn("PwbCacheUpdateRequested = .true.", parser_source)
+        self.assertIn("call WritePwbTimelagCache()", main_source)
+        self.assertIn("PWB time-lag cache generation session terminated.", main_source)
+        self.assertIn("PwbCacheGenerate .and. PWBSetup%detect_prewpl", main_source)
+        self.assertIn("PwbCacheUpdateRequested .and. PwbCacheDirty", main_source)
+
 
 if __name__ == "__main__":
     unittest.main()

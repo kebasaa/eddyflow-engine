@@ -1255,6 +1255,19 @@ module m_typedef
         real(kind = dbl) :: ccf_at_mode
     end type PWBResultType
 
+    !> One PWB result as persisted in a per-period time-lag cache.
+    type :: PWBTimelagCacheEntryType
+        character(10) :: date
+        character(5) :: time
+        integer :: gas
+        character(8) :: stage
+        real(kind = dbl) :: actual_lag
+        real(kind = dbl) :: used_lag
+        integer :: row_lag
+        logical :: default_used
+        type(PWBResultType) :: result
+    end type PWBTimelagCacheEntryType
+
     type :: TLType
         real(kind = dbl) :: def_co2
         real(kind = dbl) :: def_h2o

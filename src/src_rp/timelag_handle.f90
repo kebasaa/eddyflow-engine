@@ -52,6 +52,9 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     integer :: j = 0
     integer :: k = 0
     logical :: skip_apply
+    logical :: cache_found
+    logical :: cache_default_used
+    logical :: cache_hit(E2NumVar)
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
     integer :: max_rl(ncol)
@@ -61,6 +64,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: TmpSet(nrow, ncol)
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
+    character(8) :: cache_stage
+    real(kind = dbl) :: cache_actual_lag
+    real(kind = dbl) :: cache_used_lag
+    integer :: cache_row_lag
 
     skip_apply = pwb_detect_only_mode
     pwb_detect_only_mode = .false.
@@ -81,6 +88,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     end where
 
     DefTlagUsed = .false.
+    cache_hit = .false.
     do j = ts, pe
         call InitPwbResult(PWBResult(j))
     end do
@@ -115,11 +123,34 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 ActTLag = pwb_raw_ActTLag
                 TLag = pwb_raw_TLag
                 DefTlagUsed = pwb_raw_DefTlagUsed
+                PWBResult = pwb_raw_Result
                 pwb_raw_detection_done = .false.
             else
+            if (skip_apply) then
+                cache_stage = 'pre_wpl'
+            else
+                cache_stage = 'post_wpl'
+            end if
             !> Pass 1: Run PWB detection and S1/S2 classification for all gases
             do j = co2, gas4
                 if (.not. E2Col(j)%present) cycle
+                call LookupPwbTimelagCache(j, cache_stage, cache_found, cache_actual_lag, &
+                    cache_used_lag, cache_row_lag, cache_default_used, lPwbResult)
+                if (cache_found) then
+                    cache_hit(j) = .true.
+                    PWBResult(j) = lPwbResult
+                    RowLags(j) = cache_row_lag
+                    TLag(j) = cache_used_lag
+                    ActTLag(j) = cache_actual_lag
+                    DefTlagUsed(j) = cache_default_used
+                    if (trim(lPwbResult%reliability_class) == 'S1_optimal' .or. &
+                        trim(lPwbResult%reliability_class) == 'S2_optimal' .or. &
+                        trim(lPwbResult%reliability_class) == 'S4_instrument_shared') then
+                        pwb_last_optimal_lag(j) = cache_used_lag
+                        pwb_has_previous(j) = .true.
+                    end if
+                    cycle
+                end if
                 call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
 
                 if (pwb_success .and. .not. lPwbResult%edge_pinned) then
@@ -216,7 +247,12 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     PWBResult(j)%fallback_source = 'maxcov_default'
                 if (.not. PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
                     PWBResult(j)%fallback_source = 'native'
-                call WritePwbDiagnostic(j, PWBResult(j))
+                if (.not. cache_hit(j)) then
+                    call WritePwbDiagnostic(j, PWBResult(j))
+                    if (PwbCacheGenerate .or. PwbCacheUpdateRequested) &
+                        call StorePwbTimelagCache(j, cache_stage, ActTLag(j), TLag(j), &
+                            RowLags(j), DefTlagUsed(j), PWBResult(j))
+                end if
             end do
 
             !> Handle non-gas scalars (ts, etc.)
