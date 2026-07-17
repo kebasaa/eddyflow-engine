@@ -410,6 +410,8 @@ subroutine WriteVariablesRP()
 
     !> Planar fit extra settings
     RPsetup%pf_onthefly = .false.
+    RPsetup%pf_assessment_only = SCTagFound(100) .and. &
+        SCTags(100)%value(1:1) == '1'
     if (index(Meth%rot, 'planar_fit') /= 0) then
         !> Whether to perfom planar fit on the fly or use previous results file
         if (SCTags(56)%value(1:1) == '1') then
@@ -420,6 +422,9 @@ subroutine WriteVariablesRP()
         !> Whether to subtract b0 from mean w
         RPsetup%pf_subtract_b0 = SCTags(96)%value(1:1) /= '1'
     end if
+    !> Assessment-only planar fit applies only to an on-the-fly planar fit.
+    RPsetup%pf_assessment_only = RPsetup%pf_assessment_only .and. &
+        RPsetup%pf_onthefly
 
     !> select time lag handling method
     select case (SCTags(16)%value(1:1))
@@ -486,6 +491,8 @@ subroutine WriteVariablesRP()
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.
+    RPsetup%tlag_assessment_only = SCTagFound(101) .and. &
+        SCTags(101)%value(1:1) == '1'
     TimeLagOptSelected = .false.
     if (Meth%tlag == 'tlag_opt') then
         TimeLagOptSelected = .true.
@@ -495,6 +502,9 @@ subroutine WriteVariablesRP()
             AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
         end if
     end if
+    !> Assessment-only time-lag optimization applies only to an on-the-fly optimizer.
+    RPsetup%tlag_assessment_only = RPsetup%tlag_assessment_only .and. &
+        RPsetup%to_onthefly
 
     !>  tapering window
     select case (SCTags(17)%value(1:1))

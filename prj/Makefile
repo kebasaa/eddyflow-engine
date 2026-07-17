@@ -844,6 +844,9 @@ retrieve_ex_var_by_timestamp.o: \
 spectra_sorting_and_averaging.o: \
 	spectra_sorting_and_averaging.f90 \
 	m_fx_global_var_mod.o
+spectral_assessment_diagnostics.o: \
+	spectral_assessment_diagnostics.f90 \
+	m_fx_global_var_mod.o
 subtract_high_freq_noise.o: \
 	subtract_high_freq_noise.f90 \
 	m_fx_global_var_mod.o

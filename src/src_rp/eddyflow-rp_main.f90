@@ -143,6 +143,7 @@ program EddyFlowRP
     logical :: FileEndReached
     logical :: toInit
     logical :: BiometDataFound
+    logical :: AssessmentOnly
     logical :: FakeGoPlanarFit(1)
 
     logical, allocatable :: GoPlanarFit(:)
@@ -197,6 +198,8 @@ program EddyFlowRP
 
     !> Read setup file
     call ReadIniRP('RawProcess')
+    AssessmentOnly = RPsetup%pf_assessment_only .or. &
+        RPsetup%tlag_assessment_only
     allocate(bf(Meth%spec%nbins + 1))
 
     !> Add run-mode tag to Timestamp_FilePadding
@@ -442,7 +445,17 @@ program EddyFlowRP
     !***************************************************************************
     !***************************************************************************
 
-    if (trim(adjustl(Meth%tlag)) == 'tlag_opt') then
+    if (AssessmentOnly) then
+        write(*,'(a)') ' Auxiliary assessment-only session requested.'
+        if (RPsetup%tlag_assessment_only) &
+            write(*,'(a)') '  Time-lag optimization will be created.'
+        if (RPsetup%pf_assessment_only) &
+            write(*,'(a)') '  Planar-fit file will be created.'
+        write(*,'(a)') ''
+    end if
+
+    if (trim(adjustl(Meth%tlag)) == 'tlag_opt' .and. &
+        (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only)) then
         if (.not. RPsetup%to_onthefly) then
             call ReadTimelagOptFile(TOSetup%h2o_nclass)
             if (TOSetup%h2o_nclass > 1) &
@@ -833,7 +846,8 @@ program EddyFlowRP
     !********************** PLANAR FIT IF REQUESTED ****************************
     !***************************************************************************
     !***************************************************************************
-    if (index(Meth%rot(1:len_trim(Meth%rot)), 'planar_fit') /= 0) then
+    if (index(Meth%rot(1:len_trim(Meth%rot)), 'planar_fit') /= 0 .and. &
+        (.not. AssessmentOnly .or. RPsetup%pf_assessment_only)) then
         if (.not. RPsetup%pf_onthefly) then
             call ReadPlanarFitFile()
             if (.not. allocated(GoPlanarFit)) &
@@ -1242,8 +1256,16 @@ program EddyFlowRP
             write(*,'(a)') ' Planar Fit session terminated.'
             write(*,'(a)')
         end if
-    else
+    elseif (.not. AssessmentOnly) then
         if (.not. allocated(GoPlanarFit)) allocate(GoPlanarFit(PFSetup%num_sec))
+    end if
+
+    if (AssessmentOnly) then
+        if (allocated(bf)) deallocate(bf)
+        if (allocated(Raw)) deallocate(Raw)
+        write(*,'(a)') ' Auxiliary assessment-only session completed.'
+        write(*,'(a)') ' Normal raw-data processing and flux calculation were not run.'
+        stop ''
     end if
 
     !***************************************************************************

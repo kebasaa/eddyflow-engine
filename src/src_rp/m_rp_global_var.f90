@@ -161,7 +161,7 @@ module m_rp_global_var
 
     !> Tags of the setup ".ini" file for rawscreening
     integer, parameter :: Nsn = 450
-    integer, parameter :: Nsc = 100
+    integer, parameter :: Nsc = 102
     logical :: SNTagFound(Nsn)
     logical :: SCTagFound(Nsc)
     type (Numerical) :: SNTags(Nsn)
@@ -664,5 +664,7 @@ module m_rp_global_var
          SCTags(96)%Label / 'pf_subtract_b0'   / &
          SCTags(97)%Label / 'pf_subset'        / &
          SCTags(98)%Label / 'to_subset'        / &
-         SCTags(99)%Label / 'wdf_apply'        /
+         SCTags(99)%Label / 'wdf_apply'        / &
+         SCTags(100)%Label / 'rot_pf_assessment_only' / &
+         SCTags(101)%Label / 'tlag_assessment_only'   /
 end module m_rp_global_var

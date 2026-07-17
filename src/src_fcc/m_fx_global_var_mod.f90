@@ -68,6 +68,19 @@ module m_fx_global_var
     logical :: MeanStabCospAvailable(MaxGasClasses, GHGNumVar)
     logical :: fcc_var_present(GHGNumVar)
 
+    !> Counters used to explain spectral-assessment eligibility and failures.
+    integer :: SADiagSelectedFiles
+    integer :: SADiagReadableFiles
+    integer :: SADiagMatchedRecords
+    integer :: SADiagUsableWT
+    integer :: SADiagRejectedUstar
+    integer :: SADiagRejectedVM(GHGNumVar)
+    integer :: SADiagRejectedFoken(GHGNumVar)
+    integer :: SADiagRejectedFlux(GHGNumVar)
+    integer :: SADiagAccepted(GHGNumVar)
+    integer :: SADiagDegradedUnstable
+    integer :: SADiagDegradedStable
+
     type(FCCsetupType) :: FCCsetup
     type(FileListType), allocatable :: FullFileList(:)
     type(FileListType), allocatable :: BinnedFileList(:)

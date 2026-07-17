@@ -197,6 +197,7 @@ Program EddyFlowFCC
     !> If spectral analysis must be performed or co-spectral
     !> outputs are requested, start loop on cospectra files
     if (FCCsetup%pass_thru_spectral_assessment) then
+        call ResetSpectralAssessmentDiagnostics()
         if (FCCsetup%do_spectral_assessment) write(*, '(a)') &
             ' Starting "spectral assessment" session..'
         if (EddyFlowProj%out_avrg_cosp .or. EddyFlowProj%out_avrg_spec) then
@@ -317,9 +318,11 @@ Program EddyFlowFCC
             if (fcount > saEndTimestampIndx) exit binned_loop
 
             !> Read (co)spectra from file
+            SADiagSelectedFiles = SADiagSelectedFiles + 1
             call ReadBinnedFile(BinnedFileList(fcount), BinSpec, BinCosp, &
                 size(BinSpec), nbins, skip)
             if (skip) cycle binned_loop
+            SADiagReadableFiles = SADiagReadableFiles + 1
 
             !> Show advancement
             if (day /= BinnedFileList(fcount)%timestamp%Day &
@@ -337,6 +340,7 @@ Program EddyFlowFCC
 
             if (exEndReached) exit binned_loop
             if (skip) cycle binned_loop
+            SADiagMatchedRecords = SADiagMatchedRecords + 1
 
             !> Allocate variables that depend upon nbins and initialize them
             if (.not. allocated(MeanBinSpec)) then
@@ -425,6 +429,8 @@ Program EddyFlowFCC
             !> assessment file is available, read file
             if (FCCsetup%SA%in_situ) call ReadSpectralAssessmentFile()
         end if
+
+        call ReportSpectralAssessmentDiagnostics(skip_spectra)
 
         !> Write everything on output files
         call OutputSpectralAssessmentResults(nbins)
