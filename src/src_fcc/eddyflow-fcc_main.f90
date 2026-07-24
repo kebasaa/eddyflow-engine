@@ -114,6 +114,7 @@ Program EddyFlowFCC
 
     !> Read ".eddypro" file for both spectral analysis and flux correction
     call ReadIniFCC('FluxCorrection')
+    call ResetSpectralAssessmentDiagnostics()
 
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
@@ -591,6 +592,8 @@ Program EddyFlowFCC
     call CopyFile(trim(adjustl(PrjPath)), &
     trim(adjustl(Dir%main_out)) // 'processing' &
     // Timestamp_FilePadding // '.eddyflow')
+    call ApplyAutomaticSpectralConfiguration(trim(adjustl(Dir%main_out)) // 'processing' &
+        // Timestamp_FilePadding // '.eddyflow')
 
 
     write(*, '(a)') ''

@@ -147,6 +147,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         trim(lPwbResult%reliability_class) == 'S2_optimal' .or. &
                         trim(lPwbResult%reliability_class) == 'S4_instrument_shared') then
                         pwb_last_optimal_lag(j) = cache_used_lag
+                        pwb_last_optimal_origin(j) = lPwbResult%origin_gas
                         pwb_has_previous(j) = .true.
                     end if
                     cycle
@@ -161,6 +162,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         ActTLag(j) = lPwbResult%selected_lag
                         DefTlagUsed(j) = .false.
                         pwb_last_optimal_lag(j) = lPwbResult%selected_lag
+                        pwb_last_optimal_origin(j) = j
+                        lPwbResult%origin_gas = j
                         pwb_has_previous(j) = .true.
                     elseif (pwb_has_previous(j) .and. &
                         abs(lPwbResult%selected_lag - pwb_last_optimal_lag(j)) &
@@ -171,6 +174,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         ActTLag(j) = lPwbResult%selected_lag
                         DefTlagUsed(j) = .false.
                         pwb_last_optimal_lag(j) = lPwbResult%selected_lag
+                        pwb_last_optimal_origin(j) = j
+                        lPwbResult%origin_gas = j
                         pwb_has_previous(j) = .true.
                     else
                         lPwbResult%reliability_class = 'pending'
@@ -200,6 +205,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     PWBResult(j)%fallback_used = .false.
                     PWBResult(j)%fallback_source = 'instrument_shared'
                     PWBResult(j)%donor_gas = GasLabel(k)
+                    PWBResult(j)%origin_gas = merge(PWBResult(k)%origin_gas, k, &
+                        PWBResult(k)%origin_gas > 0)
                     PWBResult(j)%applied_lag = TLag(k)
                     PWBResult(j)%applied_row_lag = RowLags(k)
                     TLag(j) = TLag(k)
@@ -207,6 +214,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     ActTLag(j) = ActTLag(k)
                     DefTlagUsed(j) = .false.
                     pwb_last_optimal_lag(j) = TLag(k)
+                    pwb_last_optimal_origin(j) = PWBResult(j)%origin_gas
                     pwb_has_previous(j) = .true.
                     exit
                 end do
@@ -219,6 +227,9 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 if (pwb_has_previous(j)) then
                     PWBResult(j)%reliability_class = 'S3_carryforward'
                     PWBResult(j)%fallback_source = 'S3_carryforward'
+                    PWBResult(j)%origin_gas = pwb_last_optimal_origin(j)
+                    if (PWBResult(j)%origin_gas > 0) &
+                        PWBResult(j)%donor_gas = GasLabel(PWBResult(j)%origin_gas)
                     TLag(j) = pwb_last_optimal_lag(j)
                     if (PWBResult(j)%selected_lag /= error) then
                         ActTLag(j) = PWBResult(j)%selected_lag
@@ -249,9 +260,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     PWBResult(j)%fallback_source = 'native'
                 if (.not. cache_hit(j)) then
                     call WritePwbDiagnostic(j, PWBResult(j))
-                    if (PwbCacheGenerate .or. PwbCacheUpdateRequested) &
-                        call StorePwbTimelagCache(j, cache_stage, ActTLag(j), TLag(j), &
-                            RowLags(j), DefTlagUsed(j), PWBResult(j))
+                    call StorePwbTimelagCache(j, cache_stage, ActTLag(j), TLag(j), &
+                        RowLags(j), DefTlagUsed(j), PWBResult(j))
                 end if
             end do
 

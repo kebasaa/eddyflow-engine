@@ -61,6 +61,28 @@ class SpectralAssessmentDiagnosticsStaticTests(unittest.TestCase):
         self.assertIn("call ExceptionHandler(76)", source)
         self.assertIn("call ExceptionHandler(77)", source)
 
+    def test_automatic_configuration_is_optional_and_updates_only_output_project(self):
+        globals_source = read("src/src_fcc/m_fx_global_var_mod.f90")
+        parser = read("src/src_fcc/read_ini_fcc.f90")
+        diagnostics = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        main = read("src/src_fcc/eddyflow-fcc_main.f90")
+
+        self.assertIn("automatic_spectra_config", globals_source)
+        self.assertIn("if (SCTagFound(27))", parser)
+        self.assertIn("FCCsetup%SA%automatic_config = .false.", parser)
+        self.assertIn("subroutine ApplyAutomaticSpectralConfiguration(output_project)", diagnostics)
+        self.assertIn("call EditIniFile(trim(output_project)", diagnostics)
+        self.assertIn("'automatic_spectra_config', '0'", diagnostics)
+        copy = main.index("call CopyFile(trim(adjustl(PrjPath))")
+        automatic = main.index("call ApplyAutomaticSpectralConfiguration")
+        self.assertLess(copy, automatic)
+
+    def test_automatic_flux_recommendations_require_usable_class_coverage(self):
+        source = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        self.assertIn("suggested_min < current_min .and. valid_classes >= 1", source)
+        self.assertIn("valid_classes > current_valid_classes", source)
+        self.assertIn("'(f0.6)'", source)
+
     def test_assessment_only_mode_runs_requested_auxiliary_work_then_exits(self):
         tags = read("src/src_rp/m_rp_global_var.f90")
         parser = read("src/src_rp/read_ini_rp.f90")

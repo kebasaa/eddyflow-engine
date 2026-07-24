@@ -86,6 +86,11 @@ module m_fx_global_var
     integer :: SADiagFluxCandidateCapacity
     real(kind = dbl), allocatable :: SADiagFluxCandidate(:, :, :)
     integer, allocatable :: SADiagFluxCandidateClass(:, :, :)
+    real(kind = dbl) :: SAAutoMin(2, GHGNumVar)
+    real(kind = dbl) :: SAAutoMax(GHGNumVar)
+    logical :: SAAutoApplyMin(2, GHGNumVar)
+    logical :: SAAutoApplyMax(GHGNumVar)
+    character(PathLen) :: SADiagFilePath
 
     type(FCCsetupType) :: FCCsetup
     type(FileListType), allocatable :: FullFileList(:)
@@ -105,7 +110,7 @@ module m_fx_global_var
 
     !> tags of the setup ".ini" file for eccoce
     integer, parameter :: Nsn = 109
-    integer, parameter :: Nsc = 30
+    integer, parameter :: Nsc = 31
     logical            :: SNTagFound(Nsn)
     logical            :: SCTagFound(Nsc)
     type (Numerical)   :: SNTags(Nsn)
@@ -245,5 +250,6 @@ module m_fx_global_var
          SCTags(23)%Label / 'sa_use_vm_flags'   / &
          SCTags(24)%Label / 'sa_use_foken_low'  / &
          SCTags(25)%Label / 'sa_use_foken_mid'  / &
-         SCTags(26)%Label / 'keep_parent_fluxnet_file'  /
+         SCTags(26)%Label / 'keep_parent_fluxnet_file'  / &
+         SCTags(27)%Label / 'automatic_spectra_config'  /
 end module m_fx_global_var

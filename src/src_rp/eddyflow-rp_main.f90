@@ -37,7 +37,8 @@ program EddyFlowRP
     use m_rp_global_var
     use m_cec
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
-        ReadPwbTimelagCache, WritePwbTimelagCache
+        ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
+        ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -69,6 +70,7 @@ program EddyFlowRP
     integer :: day
     integer :: PeriodActualRecords
     integer :: ton
+    integer :: PwbTimelagN
     integer :: int_doy
     integer :: bLastFile
     integer :: bLastRec
@@ -170,7 +172,10 @@ program EddyFlowRP
     type (ColType) :: BypassCol(MaxNumCol)
     type (TestType) :: auxTest
     type(TimeLagOptType), allocatable :: TimelagOpt(:)
+    type(TimeLagOptType), allocatable :: PwbTimelagOpt(:)
     type(TimeLagDatasetType), allocatable :: toSet(:)
+    integer :: TimelagOptSize = 0
+    integer :: PwbTimelagOptSize = 0
 
     integer, external :: NumOfPeriods
     integer, external :: NumberOfFilesInSubperiod
@@ -208,7 +213,9 @@ program EddyFlowRP
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
     call ResetPwbDiagnostics()
+    call ResetPwbAggregateSummary()
     pwb_last_optimal_lag = error
+    pwb_last_optimal_origin = 0
     pwb_has_previous = .false.
 
     !> EddyFlow Express settings
@@ -464,12 +471,23 @@ program EddyFlowRP
         if (PwbCacheRecognized) then
             if (.not. PwbCacheValid) error stop 'PWB time-lag cache could not be read safely.'
             write(*, '(a)') ' PWB per-period time-lag cache found, retrieving content..'
+            write(*, '(a)') ' PWB mode: exact per-period cache reuse; missing entries will be detected.'
         else
             TimeLagOptSelected = .true.
             Meth%tlag = 'tlag_opt'
+            write(*, '(a)') ' PWB mode: aggregate/RH-class time-lag reuse; PWB detection is disabled.'
         end if
     elseif (PwbCacheGenerate) then
         call InitPwbTimelagCache()
+        write(*, '(a)') ' PWB mode: pre-generation followed by cache-backed production processing.'
+    elseif (trim(adjustl(Meth%tlag)) == 'pwb') then
+        call InitPwbTimelagCache()
+        write(*, '(a)') ' PWB mode: live detection during production processing.'
+    end if
+    if (Meth%tlag == 'pwb') then
+        PwbTimelagOptSize = size(RawTimeSeries) - 1
+        allocate(PwbTimelagOpt(PwbTimelagOptSize))
+        PwbTimelagN = 0
     end if
 
     if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
@@ -518,8 +536,10 @@ program EddyFlowRP
                 // trim(adjustl(TmpString1))
 
             !> Allocate variables that depend upon maximum number of periods
-            if (.not. PwbCacheGenerate) &
-                allocate(TimelagOpt(toEndTimestampIndx - toStartTimestampIndx))
+            if (.not. PwbCacheGenerate) then
+                TimelagOptSize = toEndTimestampIndx - toStartTimestampIndx
+                allocate(TimelagOpt(TimelagOptSize))
+            end if
 
             !> Loop on selected files and calculate relevant statistics
             ton = 0
@@ -552,6 +572,8 @@ program EddyFlowRP
                 !> of current period, say [8:00 - 8:30)
                 tsStart = RawTimeSeries(pcount)
                 tsEnd   = RawTimeSeries(pcount + 1)
+                call DateTypeToDateTime(tsEnd, tmpDate, tmpTime)
+                call SetPwbPeriodTimestamp(tmpDate, tmpTime)
 
                 !> Search file containing data starting from the
                 !> time closest to tsStart. Searches only from most current
@@ -848,10 +870,19 @@ program EddyFlowRP
                 !> Calculate fluxes at Level 0
                 call Fluxes0_rp(.false.)
 
-                if (.not. PwbCacheGenerate) then
+                if (PwbCacheGenerate) then
+                    PwbTimelagN = PwbTimelagN + 1
+                    if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
+                        .or. PwbTimelagN > PwbTimelagOptSize) &
+                        error stop 'PWB time-lag optimization dataset is not allocated safely.'
+                    call AddPwbTimelagSummaryDataset(PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
+                else
                     !> Store values only for aggregate time-lag optimization.
                     ton = ton + 1
-                    call AddToTimelagOptDataset(TimelagOpt, size(TimelagOpt),ton)
+                    if (.not. allocated(TimelagOpt) .or. TimelagOptSize <= 0 &
+                        .or. ton > TimelagOptSize) &
+                        error stop 'Time-lag optimization dataset is not allocated safely.'
+                    call AddToTimelagOptDataset(TimelagOpt, TimelagOptSize, ton)
                 end if
 
             end do to_periods_loop
@@ -865,6 +896,26 @@ program EddyFlowRP
 
             if (PwbCacheGenerate) then
                 call WritePwbTimelagCache()
+                if (PwbTimelagN > 0) then
+                    if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
+                        .or. PwbTimelagN > PwbTimelagOptSize) &
+                        error stop 'PWB time-lag optimization dataset is not allocated safely.'
+                    allocate(toSet(PwbTimelagN))
+                    call FixTimelagOptDataset(PwbTimelagOpt, PwbTimelagOptSize, &
+                        toSet, size(toSet), tlagn, size(tlagn))
+                    allocate(toH2On(TOSetup%h2o_nclass))
+                    call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
+                        TOSetup%h2o_nclass, TOSetup%h2o_class_size)
+                    call ResolvePwbAggregateSummary(tlagn)
+                    PwbAggregateSummary = .true.
+                    call WriteOutTimelagOptimization(tlagn, E2NumVar, toH2On, &
+                        TOSetup%h2o_nclass, TOSetup%h2o_class_size)
+                    PwbAggregateSummary = .false.
+                    deallocate(toSet)
+                    deallocate(toH2On)
+                    PwbTimelagN = 0
+                    call ResetPwbAggregateSummary()
+                end if
                 call ReportPwbDiagnostics()
                 call ResetPwbDiagnostics()
                 write(*,'(a)') ' PWB time-lag cache generation session terminated.'
@@ -872,9 +923,10 @@ program EddyFlowRP
             !> Adjust time-lag opt dataset to eliminate errors,
             !> so that it's easier to treat them later
             allocate (toSet(ton))
-            call FixTimelagOptDataset(TimelagOpt, size(TimelagOpt), &
+            call FixTimelagOptDataset(TimelagOpt, TimelagOptSize, &
                 toSet, size(toSet), tlagn, size(tlagn))
             if (allocated(TimelagOpt)) deallocate(TimelagOpt)
+            TimelagOptSize = 0
 
             allocate(toH2On(TOSetup%h2o_nclass))
 
@@ -1581,6 +1633,7 @@ program EddyFlowRP
         call DateTypeToDateTime(tsStart, date, time)
         call DateTypeToDateTime(tsStart, Stats%start_date, Stats%start_time)
         call DateTypeToDateTime(tsEnd, Stats%date, Stats%time)
+        call SetPwbPeriodTimestamp(Stats%date, Stats%time)
 
         !> Some logging
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
@@ -2088,6 +2141,13 @@ program EddyFlowRP
                 size(E2Set, 1), size(E2Set, 2), Essentials%actual_timelag, &
                 Essentials%used_timelag, Essentials%def_tlag, .false.)
             if (TimeLagOptSelected) Meth%tlag = 'tlag_opt'
+            if (Meth%tlag == 'pwb') then
+                PwbTimelagN = PwbTimelagN + 1
+                if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
+                    .or. PwbTimelagN > PwbTimelagOptSize) &
+                    error stop 'PWB time-lag optimization dataset is not allocated safely.'
+                call AddPwbTimelagSummaryDataset(PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
+            end if
 
             !> ===== 6.1 FILTERING MOLAR DENSITY DATA FOR ABSOLUTE LIMITS TEST  ====================
             if (EddyFlowProj%run_mode /= 'md_retrieval') then
@@ -2413,7 +2473,26 @@ program EddyFlowRP
     end do periods_loop
     if (allocated(bf)) deallocate(bf)
     if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
-    if (PwbCacheUpdateRequested .and. PwbCacheDirty) call WritePwbTimelagCache()
+    if (Meth%tlag == 'pwb' .and. PwbCacheDirty) call WritePwbTimelagCache()
+    if (Meth%tlag == 'pwb' .and. PwbTimelagN > 0) then
+        if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
+            .or. PwbTimelagN > PwbTimelagOptSize) &
+            error stop 'PWB time-lag optimization dataset is not allocated safely.'
+        allocate(toSet(PwbTimelagN))
+        call FixTimelagOptDataset(PwbTimelagOpt, PwbTimelagOptSize, &
+            toSet, size(toSet), tlagn, size(tlagn))
+        allocate(toH2On(TOSetup%h2o_nclass))
+        call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
+            TOSetup%h2o_nclass, TOSetup%h2o_class_size)
+        call ResolvePwbAggregateSummary(tlagn)
+        PwbAggregateSummary = .true.
+        call WriteOutTimelagOptimization(tlagn, E2NumVar, toH2On, &
+            TOSetup%h2o_nclass, TOSetup%h2o_class_size)
+        PwbAggregateSummary = .false.
+        deallocate(toSet)
+        deallocate(toH2On)
+        deallocate(PwbTimelagOpt)
+    end if
 
     !***************************************************************************
     !**** FLUX COMPUTATION FINISHES HERE.                      *****************

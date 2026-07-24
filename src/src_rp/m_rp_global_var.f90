@@ -93,6 +93,7 @@ module m_rp_global_var
     type(PWBSetupType) :: PWBSetup
     type(PWBResultType) :: PWBResult(E2NumVar)
     real(kind = dbl) :: pwb_last_optimal_lag(E2NumVar)
+    integer :: pwb_last_optimal_origin(E2NumVar)
     logical :: pwb_has_previous(E2NumVar)
     logical :: pwb_raw_detection_done = .false.
     logical :: pwb_detect_only_mode = .false.
@@ -104,6 +105,12 @@ module m_rp_global_var
     logical :: PwbCacheLoaded = .false.
     logical :: PwbCacheDirty = .false.
     logical :: PwbCacheUpdateRequested = .false.
+    logical :: PwbAggregateSummary = .false.
+    integer :: PwbSummaryDonorCount(E2NumVar, E2NumVar) = 0
+    integer :: PwbSummarySource(E2NumVar) = 0
+    integer :: PwbSummaryEvidence(E2NumVar) = 0
+    character(10) :: PwbPeriodDate = ''
+    character(5) :: PwbPeriodTime = ''
     type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
     integer :: PwbTimelagCacheN = 0
     type(TimeLagType) :: toPasGas(E2NumVar)

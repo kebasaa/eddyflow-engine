@@ -628,6 +628,7 @@ module m_typedef
         character(5) :: end_time
         logical :: filter_cosp_by_vm_flags
         logical :: add_sonic_lptf
+        logical :: automatic_config
         logical :: ibrom_model
         logical :: in_situ
         logical :: subperiod
@@ -1245,6 +1246,7 @@ module m_typedef
         character(2) :: best_combination
         character(24) :: fallback_source
         character(8) :: donor_gas
+        integer :: origin_gas
         logical :: edge_pinned
         logical :: fallback_used
         logical :: block_length_clamped

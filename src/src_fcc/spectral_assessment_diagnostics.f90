@@ -20,6 +20,11 @@ subroutine ResetSpectralAssessmentDiagnostics()
     SADiagDegradedStable = 0
     SADiagFluxCandidateCount = 0
     SADiagFluxCandidateCapacity = 0
+    SAAutoMin = error
+    SAAutoMax = error
+    SAAutoApplyMin = .false.
+    SAAutoApplyMax = .false.
+    SADiagFilePath = 'none'
     if (allocated(SADiagFluxCandidate)) deallocate(SADiagFluxCandidate)
     if (allocated(SADiagFluxCandidateClass)) deallocate(SADiagFluxCandidateClass)
 end subroutine ResetSpectralAssessmentDiagnostics
@@ -122,6 +127,7 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // &
         '_spectral_correction_diagnostics' // Timestamp_FilePadding // TxtExt
     FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
+    SADiagFilePath = FilePath
     open(newunit = report_unit, file = FilePath, status = 'replace', &
         action = 'write', iostat = open_status)
 
@@ -162,6 +168,12 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
             trim(IntToText(FCCsetup%SA%foken_lim)) // ')... PASS (rejections reported per gas)')
     else
         call EmitReportLine(report_unit, open_status, 'Foken filtering... NOT APPLIED')
+    end if
+    if (FCCsetup%SA%automatic_config) then
+        call EmitReportLine(report_unit, open_status, &
+            'Automatic spectral configuration: ENABLED - qualifying recommendations will be saved to the output project.')
+    else
+        call EmitReportLine(report_unit, open_status, 'Automatic spectral configuration: DISABLED')
     end if
 
     do gas = co2, gas4
@@ -223,7 +235,9 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
     integer :: i
     integer :: projected
     integer :: valid_classes
+    integer :: current_valid_classes
     integer :: class_counts(MaxGasClasses)
+    integer :: current_class_counts(MaxGasClasses)
     real(kind = dbl) :: current_min
     real(kind = dbl) :: current_max
     real(kind = dbl) :: suggested_min
@@ -275,6 +289,26 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
             end if
         end do
         valid_classes = count(class_counts >= FCCsetup%SA%min_smpl)
+        current_valid_classes = 0
+        current_class_counts = 0
+        do i = 1, n
+            if (SADiagFluxCandidate(i, stability, gas) >= current_min .and. &
+                SADiagFluxCandidate(i, stability, gas) <= current_max) then
+                current_class_counts(SADiagFluxCandidateClass(i, stability, gas)) = &
+                    current_class_counts(SADiagFluxCandidateClass(i, stability, gas)) + 1
+            end if
+        end do
+        current_valid_classes = count(current_class_counts >= FCCsetup%SA%min_smpl)
+        if (suggested_min < current_min .and. valid_classes >= 1) then
+            SAAutoMin(stability, gas) = suggested_min
+            SAAutoApplyMin(stability, gas) = .true.
+        end if
+        if (upper_limited .and. suggested_max > current_max .and. &
+            valid_classes > current_valid_classes) then
+            if (.not. SAAutoApplyMax(gas) .or. suggested_max > SAAutoMax(gas)) &
+                SAAutoMax(gas) = suggested_max
+            SAAutoApplyMax(gas) = .true.
+        end if
         write(current_min_text, '(g0.6)') current_min
         write(current_max_text, '(g0.6)') current_max
         write(suggested_min_text, '(g0.6)') suggested_min
@@ -292,6 +326,93 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
         deallocate(values)
     end do
 end subroutine ReportFluxLimitSuggestions
+
+!*******************************************************************************
+subroutine ApplyAutomaticSpectralConfiguration(output_project)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: output_project
+    integer :: gas
+    integer :: stability
+    integer :: report_unit
+    integer :: open_status
+    real(kind = dbl) :: current_min
+    real(kind = dbl) :: current_max
+    character(32) :: min_label
+    character(32) :: max_label
+    logical :: changes_written
+
+    if (.not. FCCsetup%SA%automatic_config) return
+
+    changes_written = any(SAAutoApplyMin) .or. any(SAAutoApplyMax)
+    if (changes_written) then
+        write(*, '(a)') ' Automatic spectral configuration: updating output project file.'
+        do gas = co2, gas4
+            do stability = SADiagUnstable, SADiagStable
+                if (.not. SAAutoApplyMin(stability, gas)) cycle
+                call SpectralFluxLimitSettings(gas, stability, current_min, current_max, min_label, max_label)
+                call WriteAutomaticSpectralSetting(output_project, trim(min_label), current_min, &
+                    SAAutoMin(stability, gas), '10th-percentile eligible flux minimum')
+            end do
+            if (.not. SAAutoApplyMax(gas)) cycle
+            call SpectralFluxLimitSettings(gas, SADiagUnstable, current_min, current_max, &
+                min_label, max_label)
+            call WriteAutomaticSpectralSetting(output_project, trim(max_label), current_max, &
+                SAAutoMax(gas), &
+                '99th-percentile eligible flux maximum')
+        end do
+        call EditIniFile(trim(output_project), 'automatic_spectra_config', '0')
+        call AppendAutomaticSpectralConfigDiagnostic('Automatic spectral configuration: applied to output project: ' // &
+            trim(output_project))
+        call AppendAutomaticSpectralConfigDiagnostic( &
+            'Automatic spectral configuration: current FCC results used the original settings; ' // &
+            'rerun with this output project.')
+        write(*, '(a)') ' Automatic spectral configuration saved to: ' // trim(output_project)
+        write(*, '(a)') ' Current FCC results used the original settings; rerun with this output project.'
+    else
+        call AppendAutomaticSpectralConfigDiagnostic( &
+            'Automatic spectral configuration: no qualifying recommendations; output project unchanged.')
+        write(*, '(a)') ' Automatic spectral configuration: no qualifying recommendations; output project unchanged.'
+    end if
+end subroutine ApplyAutomaticSpectralConfiguration
+
+!*******************************************************************************
+subroutine WriteAutomaticSpectralSetting(output_project, tag, original, replacement, reason)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: output_project
+    character(*), intent(in) :: tag
+    real(kind = dbl), intent(in) :: original
+    real(kind = dbl), intent(in) :: replacement
+    character(*), intent(in) :: reason
+    character(32) :: original_text
+    character(32) :: replacement_text
+    character(512) :: line
+
+    write(original_text, '(f0.6)') original
+    write(replacement_text, '(f0.6)') replacement
+    call EditIniFile(trim(output_project), trim(tag), trim(replacement_text))
+    line = '  ' // trim(tag) // ': ' // trim(original_text) // ' -> ' // &
+        trim(replacement_text) // ' (' // trim(reason) // ').'
+    call AppendAutomaticSpectralConfigDiagnostic(trim(line))
+    write(*, '(a)') trim(line)
+end subroutine WriteAutomaticSpectralSetting
+
+!*******************************************************************************
+subroutine AppendAutomaticSpectralConfigDiagnostic(line)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: line
+    integer :: report_unit
+    integer :: open_status
+
+    if (trim(SADiagFilePath) == 'none') return
+    open(newunit = report_unit, file = trim(SADiagFilePath), status = 'old', &
+        position = 'append', action = 'write', iostat = open_status)
+    if (open_status /= 0) return
+    write(report_unit, '(a)') trim(line)
+    close(report_unit)
+end subroutine AppendAutomaticSpectralConfigDiagnostic
 
 !*******************************************************************************
 subroutine SpectralFluxLimitSettings(gas, stability, minimum, maximum, min_label, max_label)

@@ -503,7 +503,9 @@ subroutine WriteVariablesRP()
         if (SCTags(91)%value(1:1) == '1') then
             RPsetup%to_onthefly = .true.
         else
-            AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
+            AuxFile%to = ''
+            if (len_trim(SCTags(92)%value) > 0) &
+                AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
         end if
     elseif (Meth%tlag == 'pwb') then
         if (SCTags(91)%value(1:1) == '1') then
@@ -512,9 +514,18 @@ subroutine WriteVariablesRP()
             RPsetup%to_onthefly = .true.
             PwbCacheGenerate = .true.
         else
-            AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
-            PwbCacheUpdateRequested = .true.
+            AuxFile%to = ''
+            if (len_trim(SCTags(92)%value) > 0) &
+                AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
+            !> An empty selected-file field is live PWB: detect during the
+            !> production pass and persist the resulting cache afterwards.
+            PwbCacheUpdateRequested = len_trim(AuxFile%to) > 0
         end if
+        !> PWB aggregate summaries use the existing H2O RH-class layout even
+        !> when no aggregate optimizer prepass was requested.
+        TOSetup%h2o_nclass = max(1, nint(SNTags(207)%value))
+        TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)
+        TOSetup%pg_range = SNTags(198)%value
     end if
     !> Assessment-only time-lag optimization applies only to an on-the-fly optimizer.
     RPsetup%tlag_assessment_only = RPsetup%tlag_assessment_only .and. &

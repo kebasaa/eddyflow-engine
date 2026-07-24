@@ -52,12 +52,17 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
 
     !> Create output file
     TimelagOpt_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
-              // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
-              // TimelagOpt_FilePadding // Timestamp_FilePadding // TxtExt
+              // EddyFlowProj%id(1:len_trim(EddyFlowProj%id))
+    if (PwbAggregateSummary) then
+        TimelagOpt_Path = trim(TimelagOpt_Path) // '_pwb_timelag_opt' // Timestamp_FilePadding // TxtExt
+    else
+        TimelagOpt_Path = trim(TimelagOpt_Path) // TimelagOpt_FilePadding // Timestamp_FilePadding // TxtExt
+    end if
     open(uto, file = TimelagOpt_Path, iostat = open_status, encoding = 'utf-8')
 
     !> Write on output file time-lag optimization results
     write(uto, '(a)') 'Time-lag_optimisation_results'
+    if (PwbAggregateSummary) write(uto, '(a)') 'PWB_aggregate_summary: true'
     write(uto, '(a, f7.2)') 'Plausibility_range_[timefolds_standard_deviation]:',TOSetup%pg_range
     write(uto, '(a, a)') 'Beginning_of_timelag_optimization_period: ', TOSetup%start_date
     write(uto, '(a, a)') 'End_of_timelag_optimization_period: ', TOSetup%end_date
@@ -65,6 +70,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
 
     if (E2Col(co2)%present) then
         write(uto, '(a, i5)') 'Number_of_timelags_used_for_co2:', actn(co2)
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, co2)
         write(uto, '(a, f6.2)') 'Median_co2_timelag_[s]:', toPasGas(co2)%def
         write(uto, '(a, f6.2)') 'Mimimum_co2_timelag_[s]:', toPasGas(co2)%min
         write(uto, '(a, f6.2)') 'Maximum_co2_timelag_[s]:', toPasGas(co2)%max
@@ -73,6 +79,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
 
     if (E2Col(h2o)%present .and. ncls <= 1) then
         write(uto, '(a, i5)') 'Number_of_timelags_used_for_h2o:', actn(h2o)
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, h2o)
         write(uto, '(a, f6.2)') 'Median_h2o_timelag_[s]:', toPasGas(h2o)%def
         write(uto, '(a, f6.2)') 'Mimimum_h2o_timelag_[s]:', toPasGas(h2o)%min
         write(uto, '(a, f6.2)') 'Maximum_h2o_timelag_[s]:', toPasGas(h2o)%max
@@ -81,6 +88,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
 
     if (E2Col(ch4)%present) then
         write(uto, '(a, i4)') 'Number_of_timelags_used_for_ch4:', actn(ch4)
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, ch4)
         write(uto, '(a, f6.2)') 'Median_ch4_timelag_[s]:', toPasGas(ch4)%def
         write(uto, '(a, f6.2)') 'Mimimum_ch4_timelag_[s]:', toPasGas(ch4)%min
         write(uto, '(a, f6.2)') 'Maximum_ch4_timelag_[s]:', toPasGas(ch4)%max
@@ -89,6 +97,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
 
     if (E2Col(gas4)%present) then
         write(uto, '(a, i4)') 'Number_of_timelags_used_for_4th_gas:', actn(gas4)
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, gas4)
         write(uto, '(a, f6.2)') 'Median_4th_gas_timelag_[s]:' , toPasGas(gas4)%def
         write(uto, '(a, f6.2)') 'Mimimum_4th_gas_timelag_[s]:', toPasGas(gas4)%min
         write(uto, '(a, f6.2)') 'Maximum_4th_gas_timelag_[s]:', toPasGas(gas4)%max
@@ -96,6 +105,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     end if
 
     if (E2Col(h2o)%present .and. ncls > 1) then
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, h2o)
         write(uto, '(a, i4)') 'H2O_timelag_determinations_as_a_function_of_relative_humidity'
         write(uto, '(a, i4)') 'Classes with numerosity < 30 are inferred (see software documentation)'
         write(uto,'(a)')             'class     RH-range       med_h2o       min_h2o       max_h2o     class_num'
@@ -111,5 +121,41 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     close(uto)
     write(*,'(a)') '  Results written on file: ' &
         // TimelagOpt_Path(1:len_trim(TimelagOpt_Path))
+contains
+
+subroutine WritePwbProvenance(unit, gas)
+    integer, intent(in) :: unit, gas
+    character(32) :: source
+    character(24) :: name
+
+    select case (gas)
+        case (co2)
+            name = 'co2'
+        case (h2o)
+            name = 'h2o'
+        case (ch4)
+            name = 'ch4'
+        case (gas4)
+            name = '4th_gas'
+    end select
+    if (PwbSummarySource(gas) == gas) then
+        source = 'native'
+    elseif (PwbSummarySource(gas) > 0) then
+        select case (PwbSummarySource(gas))
+            case (co2)
+                source = 'inferred_from_co2'
+            case (h2o)
+                source = 'inferred_from_h2o'
+            case (ch4)
+                source = 'inferred_from_ch4'
+            case default
+                source = 'inferred'
+        end select
+    else
+        source = 'unavailable'
+    end if
+    write(unit, '(a,a,a,i0,a)') 'PWB_summary_source_for_' // trim(name) // ': ', &
+        trim(source), ' (donor evidence=', PwbSummaryEvidence(gas), ')'
+end subroutine WritePwbProvenance
 end subroutine WriteOutTimelagOptimization
 

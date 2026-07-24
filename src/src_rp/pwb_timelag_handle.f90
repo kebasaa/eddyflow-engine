@@ -37,7 +37,8 @@ module m_pwb_timelag
     private
     public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic, GasLabel
     public :: InitPwbTimelagCache, ReadPwbTimelagCache, WritePwbTimelagCache
-    public :: LookupPwbTimelagCache, StorePwbTimelagCache
+    public :: LookupPwbTimelagCache, StorePwbTimelagCache, SetPwbPeriodTimestamp
+    public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
 
     logical :: pwb_diag_header_written = .false.
     integer :: pwb_attempts(E2NumVar) = 0
@@ -67,12 +68,105 @@ subroutine ResetPwbDiagnostics()
     pwb_block_warned = .false.
 end subroutine ResetPwbDiagnostics
 
+subroutine ResetPwbAggregateSummary()
+    PwbSummaryDonorCount = 0
+    PwbSummarySource = 0
+    PwbSummaryEvidence = 0
+end subroutine ResetPwbAggregateSummary
+
+subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
+    integer, intent(in) :: nrow, n
+    type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
+    integer :: gas, origin
+
+    TimelagOpt(n)%tlag = error
+    TimelagOpt(n)%RH = error
+    do gas = co2, gas4
+        if (.not. E2Col(gas)%present) cycle
+        if (trim(PWBResult(gas)%reliability_class) == 'S1_optimal' .or. &
+            trim(PWBResult(gas)%reliability_class) == 'S2_optimal') then
+            TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        else
+            origin = PWBResult(gas)%origin_gas
+            if (origin >= co2 .and. origin <= gas4 .and. origin /= gas) &
+                PwbSummaryDonorCount(gas, origin) = PwbSummaryDonorCount(gas, origin) + 1
+        end if
+    end do
+    if (E2Col(h2o)%present .and. TimelagOpt(n)%tlag(h2o) /= error &
+        .and. Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
+        TimelagOpt(n)%RH = Stats%RH
+    else
+        TimelagOpt(n)%tlag(h2o) = error
+    end if
+end subroutine AddPwbTimelagSummaryDataset
+
+subroutine ResolvePwbAggregateSummary(actn)
+    integer, intent(inout) :: actn(E2NumVar)
+    integer :: gas, donor, best_count, candidate
+
+    PwbSummarySource = 0
+    PwbSummaryEvidence = 0
+    do gas = co2, gas4
+        if (E2Col(gas)%present .and. actn(gas) > 0) PwbSummarySource(gas) = gas
+    end do
+    do gas = co2, gas4
+        if (.not. E2Col(gas)%present .or. PwbSummarySource(gas) /= 0) cycle
+        donor = 0
+        best_count = 0
+        do candidate = co2, gas4
+            if (candidate == gas .or. candidate == h2o) cycle
+            if (PwbSummarySource(candidate) == 0) cycle
+            if (PwbSummaryDonorCount(gas, candidate) > best_count) then
+                donor = candidate
+                best_count = PwbSummaryDonorCount(gas, candidate)
+            end if
+        end do
+        if (donor > 0) then
+            toPasGas(gas) = toPasGas(donor)
+            actn(gas) = actn(donor)
+            PwbSummarySource(gas) = donor
+            PwbSummaryEvidence(gas) = best_count
+        end if
+    end do
+end subroutine ResolvePwbAggregateSummary
+
 subroutine InitPwbTimelagCache()
     if (allocated(PwbTimelagCache)) deallocate(PwbTimelagCache)
     PwbTimelagCacheN = 0
     PwbCacheLoaded = .false.
     PwbCacheDirty = .false.
 end subroutine InitPwbTimelagCache
+
+subroutine SetPwbPeriodTimestamp(date, time)
+    character(*), intent(in) :: date, time
+
+    PwbPeriodDate = date
+    PwbPeriodTime = time
+end subroutine SetPwbPeriodTimestamp
+
+logical function ValidPwbPeriodTimestamp(date, time)
+    character(*), intent(in) :: date, time
+
+    ValidPwbPeriodTimestamp = len_trim(date) > 0 .and. len_trim(time) > 0 &
+        .and. index(date, achar(0)) == 0 .and. index(time, achar(0)) == 0
+end function ValidPwbPeriodTimestamp
+
+integer function GasIndexFromLabel(label)
+    character(*), intent(in) :: label
+
+    select case (trim(label))
+        case ('co2')
+            GasIndexFromLabel = co2
+        case ('h2o')
+            GasIndexFromLabel = h2o
+        case ('ch4')
+            GasIndexFromLabel = ch4
+        case ('gas4')
+            GasIndexFromLabel = gas4
+        case default
+            GasIndexFromLabel = 0
+    end select
+end function GasIndexFromLabel
 
 subroutine StorePwbTimelagCache(gas, stage, actual_lag, used_lag, row_lag, default_used, res)
     integer, intent(in) :: gas, row_lag
@@ -83,8 +177,12 @@ subroutine StorePwbTimelagCache(gas, stage, actual_lag, used_lag, row_lag, defau
     type(PWBTimelagCacheEntryType), allocatable :: tmp(:)
     integer :: i
 
+    if (.not. ValidPwbPeriodTimestamp(PwbPeriodDate, PwbPeriodTime)) then
+        write(*, '(a)') ' Fatal> PWB time-lag cache cannot use an empty or invalid period timestamp.'
+        error stop 'Invalid PWB period timestamp.'
+    end if
     do i = 1, PwbTimelagCacheN
-        if (PwbTimelagCache(i)%date == Stats%date .and. PwbTimelagCache(i)%time == Stats%time &
+        if (PwbTimelagCache(i)%date == PwbPeriodDate .and. PwbTimelagCache(i)%time == PwbPeriodTime &
             .and. PwbTimelagCache(i)%gas == gas .and. trim(PwbTimelagCache(i)%stage) == trim(stage)) then
             PwbTimelagCache(i)%actual_lag = actual_lag
             PwbTimelagCache(i)%used_lag = used_lag
@@ -98,8 +196,8 @@ subroutine StorePwbTimelagCache(gas, stage, actual_lag, used_lag, row_lag, defau
 
     allocate(tmp(PwbTimelagCacheN + 1))
     if (PwbTimelagCacheN > 0) tmp(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
-    tmp(PwbTimelagCacheN + 1)%date = Stats%date
-    tmp(PwbTimelagCacheN + 1)%time = Stats%time
+    tmp(PwbTimelagCacheN + 1)%date = PwbPeriodDate
+    tmp(PwbTimelagCacheN + 1)%time = PwbPeriodTime
     tmp(PwbTimelagCacheN + 1)%gas = gas
     tmp(PwbTimelagCacheN + 1)%stage = stage
     tmp(PwbTimelagCacheN + 1)%actual_lag = actual_lag
@@ -128,8 +226,12 @@ subroutine LookupPwbTimelagCache(gas, stage, found, actual_lag, used_lag, row_la
     default_used = .false.
     call InitPwbResult(res)
     if (.not. PwbCacheLoaded) return
+    if (.not. ValidPwbPeriodTimestamp(PwbPeriodDate, PwbPeriodTime)) then
+        write(*, '(a)') ' Fatal> PWB time-lag cache cannot use an empty or invalid period timestamp.'
+        error stop 'Invalid PWB period timestamp.'
+    end if
     do i = 1, PwbTimelagCacheN
-        if (PwbTimelagCache(i)%date == Stats%date .and. PwbTimelagCache(i)%time == Stats%time &
+        if (PwbTimelagCache(i)%date == PwbPeriodDate .and. PwbTimelagCache(i)%time == PwbPeriodTime &
             .and. PwbTimelagCache(i)%gas == gas .and. trim(PwbTimelagCache(i)%stage) == trim(stage)) then
             found = .true.
             actual_lag = PwbTimelagCache(i)%actual_lag
@@ -163,7 +265,7 @@ end function PwbCacheFingerprint
 subroutine ReadPwbTimelagCache(path, recognized, valid)
     character(*), intent(in) :: path
     logical, intent(out) :: recognized, valid
-    integer :: u, ios, gas, row_lag, period_seconds
+    integer :: u, ios, gas, row_lag, period_seconds, cache_version, origin_gas
     character(1024) :: line
     character(256) :: fingerprint
     character(10) :: date
@@ -185,13 +287,13 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
         close(u)
         return
     end if
-    if (index(line, 'PWB_TIMELAG_CACHE_VERSION=') == 1) then
+    if (trim(line) == 'PWB_TIMELAG_CACHE_VERSION=1') then
         recognized = .true.
-    elseif (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=1') then
-        close(u)
-        return
-    end if
-    if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=1') then
+        cache_version = 1
+    elseif (trim(line) == 'PWB_TIMELAG_CACHE_VERSION=2') then
+        recognized = .true.
+        cache_version = 2
+    else
         close(u)
         return
     end if
@@ -236,15 +338,23 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
         read(u, '(a)', iostat=ios) line
         if (ios /= 0) exit
         call InitPwbResult(res)
-        read(line, *, iostat=ios) date, time, gas, stage, actual_lag, used_lag, row_lag, default_used, &
-            reliability, fallback, donor, selected_lag, hdi_low, hdi_high, hdi_range
-        if (ios /= 0) then
+        if (cache_version == 2) then
+            read(line, *, iostat=ios) date, time, gas, stage, actual_lag, used_lag, row_lag, default_used, &
+                reliability, fallback, donor, origin_gas, selected_lag, hdi_low, hdi_high, hdi_range
+        else
+            read(line, *, iostat=ios) date, time, gas, stage, actual_lag, used_lag, row_lag, default_used, &
+                reliability, fallback, donor, selected_lag, hdi_low, hdi_high, hdi_range
+            origin_gas = GasIndexFromLabel(donor)
+            if (trim(reliability) == 'S1_optimal' .or. trim(reliability) == 'S2_optimal') origin_gas = gas
+        end if
+        if (ios /= 0 .or. .not. ValidPwbPeriodTimestamp(date, time)) then
             close(u)
             return
         end if
         res%reliability_class = reliability
         res%fallback_source = fallback
         res%donor_gas = donor
+        res%origin_gas = origin_gas
         res%selected_lag = selected_lag
         res%hdi_low = hdi_low
         res%hdi_high = hdi_high
@@ -292,21 +402,22 @@ subroutine WritePwbTimelagCache()
         // '_pwb_timelag_cache' // Timestamp_FilePadding // CsvExt
     open(newunit=u, file=path, status='replace', iostat=ios, encoding='utf-8')
     if (ios /= 0) return
-    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=1'
+    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=2'
     write(u, '(a)') 'fingerprint=' // trim(PwbCacheFingerprint())
     write(u, '(a)') 'project_id=' // trim(EddyFlowProj%id)
     write(u, '(a,i0)') 'period_seconds=', RPsetup%avrg_len
     write(u, '(a)') 'data'
     write(u, '(a)') 'date,time,gas,stage,actual_lag_s,used_lag_s,row_lag,default_used,reliability_class,' &
-        // 'fallback_source,donor_gas,selected_lag_s,hdi_low_s,hdi_high_s,hdi_range_s'
+        // 'fallback_source,donor_gas,origin_gas,selected_lag_s,hdi_low_s,hdi_high_s,hdi_range_s'
     do i = 1, PwbTimelagCacheN
         write(u, '(a,",",a,",",i0,",",a,",",f12.6,",",f12.6,",",i0,",",l1,",",a,",",a,' &
-            // '",",a,",",f12.6,",",f12.6,",",f12.6,",",f12.6)') &
+            // '",",a,",",i0,",",f12.6,",",f12.6,",",f12.6,",",f12.6)') &
             trim(PwbTimelagCache(i)%date), trim(PwbTimelagCache(i)%time), PwbTimelagCache(i)%gas, &
             trim(PwbTimelagCache(i)%stage), PwbTimelagCache(i)%actual_lag, PwbTimelagCache(i)%used_lag, &
             PwbTimelagCache(i)%row_lag, PwbTimelagCache(i)%default_used, &
             trim(PwbTimelagCache(i)%result%reliability_class), trim(PwbTimelagCache(i)%result%fallback_source), &
-            trim(PwbTimelagCache(i)%result%donor_gas), PwbTimelagCache(i)%result%selected_lag, &
+            trim(PwbTimelagCache(i)%result%donor_gas), PwbTimelagCache(i)%result%origin_gas, &
+            PwbTimelagCache(i)%result%selected_lag, &
             PwbTimelagCache(i)%result%hdi_low, PwbTimelagCache(i)%result%hdi_high, PwbTimelagCache(i)%result%hdi_range
     end do
     close(u)
@@ -436,6 +547,7 @@ subroutine InitPwbResult(res)
     res%best_combination = '--'
     res%fallback_source = 'none'
     res%donor_gas = ''
+    res%origin_gas = 0
     res%edge_pinned = .false.
     res%fallback_used = .false.
     res%block_length_clamped = .false.
@@ -942,6 +1054,10 @@ subroutine WritePwbDiagnostic(gas, res)
     character(PathLen) :: path
 
     call CountPwbDiagnostic(gas, res)
+    if (.not. ValidPwbPeriodTimestamp(PwbPeriodDate, PwbPeriodTime)) then
+        write(*, '(a)') ' Fatal> PWB diagnostics cannot use an empty or invalid period timestamp.'
+        error stop 'Invalid PWB period timestamp.'
+    end if
     if (Dir%main_out == 'none') return
     path = Dir%main_out(1:len_trim(Dir%main_out)) &
         // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
@@ -958,7 +1074,7 @@ subroutine WritePwbDiagnostic(gas, res)
     write(u, '(a,",",a,",",a,",",f10.4,",",i8,",",f10.4,",",i8,' &
         // '",",f10.4,",",f10.4,",",f10.4,",",a,",",a,",",l1,",",l1,",",a,",",a,' &
         // '",",f10.4,",",f10.4,",",f10.4,",",l1,",",f14.6)') &
-        trim(Stats%date), trim(Stats%time), trim(GasLabel(gas)), res%selected_lag, res%row_lag, &
+        trim(PwbPeriodDate), trim(PwbPeriodTime), trim(GasLabel(gas)), res%selected_lag, res%row_lag, &
         res%applied_lag, res%applied_row_lag, &
         res%hdi_low, res%hdi_high, res%hdi_range, trim(res%reliability_class), &
         trim(res%best_combination), res%edge_pinned, res%fallback_used, &
