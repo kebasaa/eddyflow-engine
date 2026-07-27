@@ -56,6 +56,13 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     integer :: STFlg(GHGNumVar)
     integer :: DTFlg(GHGNumVar)
     integer :: qc_tau, qc_H, qc_co2, qc_h2o, qc_ch4, qc_gas4
+    integer :: month
+    integer :: sort
+    real(kind = dbl) :: flux
+    logical :: usable_wt
+    logical :: vm_ok(GHGNumVar)
+    logical :: foken_ok(GHGNumVar)
+    logical :: wind_vm_bad
 
 
     !> Initialization
@@ -63,6 +70,13 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     skip_cospectra = .false.
     BinCospForStable = BinCosp
     BinCospForUnstable = BinCosp
+    usable_wt = any(BinSpec%of(w) /= error .and. BinSpec%of(ts) /= error)
+    vm_ok = .true.
+    foken_ok = .true.
+    if (usable_wt) SADiagUsableWT = SADiagUsableWT + 1
+
+    if (lEx%ustar < FCCsetup%SA%min_un_ustar .or. &
+        lEx%ustar > FCCsetup%SA%max_ustar) SADiagRejectedUstar = SADiagRejectedUstar + 1
 
 
     !> Razor blade on spectra and co-spectra for unstable case, \n
@@ -73,21 +87,25 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
 
         if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_un_LE &
             .or. dabs(lEx%Flux0%LE) > FCCsetup%SA%max_LE) then
+            SADiagRejectedFlux(h2o) = SADiagRejectedFlux(h2o) + 1
             BinSpec%of(h2o) = error
             BinCospForUnstable%of(h2o) = error
         end if
         if (dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 &
             .or. dabs(lEx%Flux0%co2) > FCCsetup%SA%max_co2)  then
+            SADiagRejectedFlux(co2) = SADiagRejectedFlux(co2) + 1
             BinSpec%of(co2) = error
             BinCospForUnstable%of(co2) = error
         end if
         if (dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 &
             .or. dabs(lEx%Flux0%ch4) > FCCsetup%SA%max_ch4)  then
+            SADiagRejectedFlux(ch4) = SADiagRejectedFlux(ch4) + 1
             BinSpec%of(ch4) = error
             BinCospForUnstable%of(ch4) = error
         end if
         if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4 &
             .or. dabs(lEx%Flux0%gas4) > FCCsetup%SA%max_gas4) then
+            SADiagRejectedFlux(gas4) = SADiagRejectedFlux(gas4) + 1
             BinSpec%of(gas4) = error
             BinCospForUnstable%of(gas4) = error
         end if
@@ -128,7 +146,7 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             .or. dabs(lEx%Flux0%ch4) > FCCsetup%SA%max_ch4)  &
             BinCospForStable%of(ch4) = error
 
-        if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4 &
+        if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_st_gas4 &
             .or. dabs(lEx%Flux0%gas4) > FCCsetup%SA%max_gas4) &
             BinCospForStable%of(gas4) = error
 
@@ -164,8 +182,9 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
         sf_ds(1:8) = lEx%vm_flags(8)(2:9)
 
         !> If vertical wind speed is flagged, all cospectra are eliminated
-        if (hf_sr(w:w) == '1' .or. hf_do(w:w) == '1' &
-            .or. hf_sk(w:w) == '1' .or. hf_ds(w:w) == '1') then
+        wind_vm_bad = hf_sr(w:w) == '1' .or. hf_do(w:w) == '1' &
+            .or. hf_sk(w:w) == '1' .or. hf_ds(w:w) == '1'
+        if (wind_vm_bad) then
             BinCospForUnstable = ErrSpec
         end if
 
@@ -174,9 +193,14 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
         do i = u, gas4
             if (hf_sr(i:i) == '1' .or. hf_do(i:i) == '1' &
                 .or. hf_sk(i:i) == '1' .or. hf_ds(i:i) == '1') then
+                if (i >= co2) SADiagRejectedVM(i) = SADiagRejectedVM(i) + 1
                 BinSpec%of(i) = error
                 BinCospForUnstable%of(i) = error
             end if
+        end do
+        do i = co2, gas4
+            vm_ok(i) = .not. wind_vm_bad .and. .not. (hf_sr(i:i) == '1' &
+                .or. hf_do(i:i) == '1' .or. hf_sk(i:i) == '1' .or. hf_ds(i:i) == '1')
         end do
     end if
 
@@ -210,18 +234,22 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
         if (qc_H < FCCsetup%SA%foken_lim &
             .and. qc_tau < FCCsetup%SA%foken_lim) then
             if (qc_h2o >= FCCsetup%SA%foken_lim) then
+                SADiagRejectedFoken(h2o) = SADiagRejectedFoken(h2o) + 1
                 BinSpec%of(h2o) = error
                 BinCospForUnstable%of(h2o) = error
             end if
             if (qc_co2 >= FCCsetup%SA%foken_lim)  then
+                SADiagRejectedFoken(co2) = SADiagRejectedFoken(co2) + 1
                 BinSpec%of(co2) = error
                 BinCospForUnstable%of(co2) = error
             end if
             if (qc_ch4 >= FCCsetup%SA%foken_lim)  then
+                SADiagRejectedFoken(ch4) = SADiagRejectedFoken(ch4) + 1
                 BinSpec%of(ch4) = error
                 BinCospForUnstable%of(ch4) = error
             end if
             if (qc_gas4 >= FCCsetup%SA%foken_lim) then
+                SADiagRejectedFoken(gas4) = SADiagRejectedFoken(gas4) + 1
                 BinSpec%of(gas4) = error
                 BinCospForUnstable%of(gas4) = error
             end if
@@ -238,7 +266,54 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             BinCospForUnstable = ErrSpec
             skip_spectra = .true.
         end if
+        foken_ok(h2o) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
+            .and. qc_h2o < FCCsetup%SA%foken_lim
+        foken_ok(co2) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
+            .and. qc_co2 < FCCsetup%SA%foken_lim
+        foken_ok(ch4) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
+            .and. qc_ch4 < FCCsetup%SA%foken_lim
+        foken_ok(gas4) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
+            .and. qc_gas4 < FCCsetup%SA%foken_lim
     end if
+
+    !> Keep flux candidates that passed every non-flux quality requirement.
+    !> These support informational, data-driven threshold suggestions only.
+    call char2int(lEx%end_date(6:7), month, 2)
+    do i = co2, gas4
+        if (.not. lEx%var_present(i) .or. .not. usable_wt) cycle
+        if (.not. vm_ok(i) .or. .not. foken_ok(i)) cycle
+        sort = 0
+        if (i == h2o) then
+            if (lEx%RH > 5d0 .and. lEx%RH < 95d0) sort = nint(lEx%RH / 10d0)
+            flux = dabs(lEx%Flux0%LE)
+        else
+            if (month >= JAN .and. month <= DEC) sort = FCCsetup%SA%class(i, month)
+            select case (i)
+                case (co2)
+                    flux = dabs(lEx%Flux0%co2)
+                case (ch4)
+                    flux = dabs(lEx%Flux0%ch4)
+                case default
+                    flux = dabs(lEx%Flux0%gas4)
+            end select
+        end if
+        if (flux == dabs(error)) cycle
+        if (sort == 0) cycle
+        if (dabs(lEx%Flux0%H) > FCCsetup%SA%min_un_H .and. &
+            dabs(lEx%Flux0%H) < FCCsetup%SA%max_H .and. &
+            lEx%ustar >= FCCsetup%SA%min_un_ustar .and. &
+            lEx%ustar <= FCCsetup%SA%max_ustar) &
+            call RecordSpectralAssessmentFluxCandidate(i, SADiagUnstable, flux, sort)
+        if (dabs(lEx%Flux0%H) > FCCsetup%SA%min_st_H .and. &
+            dabs(lEx%Flux0%H) < FCCsetup%SA%max_H .and. &
+            lEx%ustar >= FCCsetup%SA%min_st_ustar .and. &
+            lEx%ustar <= FCCsetup%SA%max_ustar) &
+            call RecordSpectralAssessmentFluxCandidate(i, SADiagStable, flux, sort)
+    end do
+
+    do i = co2, gas4
+        if (any(BinSpec%of(i) /= error)) SADiagAccepted(i) = SADiagAccepted(i) + 1
+    end do
 
     !> For time sorted cospectra use milder filtering
     BinCosp = BinCospForStable

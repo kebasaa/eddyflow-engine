@@ -1,3 +1,12 @@
+7.2.5 (2026-07-27)
+
+    Engine:
+	- Refine: PWB time-lag detection now runs before flux calculations
+	- New feature: Spectral assessment diagnostics
+	- Fix: Widen time-lag optimization provenance buffer to fit inferred-source labels
+	- Fix: Remove gfortran size() warnings on allocatable time-lag optimization buffers
+	- Refine: Verbose failure message on spectral file creation
+
 7.2.4 (2026-07-07)
 
     Engine:

@@ -80,6 +80,7 @@ module m_rp_global_var
     character(PathLen) :: Biomet_Path
     character(PathLen) :: PlanarFit_Path
     character(PathLen) :: TimelagOpt_Path
+    character(PathLen) :: PwbTimelagCache_Path
     character(PathLen) :: QCdetails_Path
     logical :: OutVarPresent(E2NumVar)
     logical :: TimeLagOptSelected
@@ -92,12 +93,26 @@ module m_rp_global_var
     type(PWBSetupType) :: PWBSetup
     type(PWBResultType) :: PWBResult(E2NumVar)
     real(kind = dbl) :: pwb_last_optimal_lag(E2NumVar)
+    integer :: pwb_last_optimal_origin(E2NumVar)
     logical :: pwb_has_previous(E2NumVar)
     logical :: pwb_raw_detection_done = .false.
     logical :: pwb_detect_only_mode = .false.
     real(kind = dbl) :: pwb_raw_ActTLag(E2NumVar)
     real(kind = dbl) :: pwb_raw_TLag(E2NumVar)
     logical :: pwb_raw_DefTlagUsed(E2NumVar)
+    type(PWBResultType) :: pwb_raw_Result(E2NumVar)
+    logical :: PwbCacheGenerate = .false.
+    logical :: PwbCacheLoaded = .false.
+    logical :: PwbCacheDirty = .false.
+    logical :: PwbCacheUpdateRequested = .false.
+    logical :: PwbAggregateSummary = .false.
+    integer :: PwbSummaryDonorCount(E2NumVar, E2NumVar) = 0
+    integer :: PwbSummarySource(E2NumVar) = 0
+    integer :: PwbSummaryEvidence(E2NumVar) = 0
+    character(10) :: PwbPeriodDate = ''
+    character(5) :: PwbPeriodTime = ''
+    type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
+    integer :: PwbTimelagCacheN = 0
     type(TimeLagType) :: toPasGas(E2NumVar)
     type(TimeLagType) :: toH2O(toMaxH2OClass)
     type(StatsType) :: Stats1
@@ -161,7 +176,7 @@ module m_rp_global_var
 
     !> Tags of the setup ".ini" file for rawscreening
     integer, parameter :: Nsn = 450
-    integer, parameter :: Nsc = 100
+    integer, parameter :: Nsc = 102
     logical :: SNTagFound(Nsn)
     logical :: SCTagFound(Nsc)
     type (Numerical) :: SNTags(Nsn)
@@ -664,5 +679,7 @@ module m_rp_global_var
          SCTags(96)%Label / 'pf_subtract_b0'   / &
          SCTags(97)%Label / 'pf_subset'        / &
          SCTags(98)%Label / 'to_subset'        / &
-         SCTags(99)%Label / 'wdf_apply'        /
+         SCTags(99)%Label / 'wdf_apply'        / &
+         SCTags(100)%Label / 'rot_pf_assessment_only' / &
+         SCTags(101)%Label / 'tlag_assessment_only'   /
 end module m_rp_global_var

@@ -410,6 +410,8 @@ subroutine WriteVariablesRP()
 
     !> Planar fit extra settings
     RPsetup%pf_onthefly = .false.
+    RPsetup%pf_assessment_only = SCTagFound(100) .and. &
+        SCTags(100)%value(1:1) == '1'
     if (index(Meth%rot, 'planar_fit') /= 0) then
         !> Whether to perfom planar fit on the fly or use previous results file
         if (SCTags(56)%value(1:1) == '1') then
@@ -420,6 +422,9 @@ subroutine WriteVariablesRP()
         !> Whether to subtract b0 from mean w
         RPsetup%pf_subtract_b0 = SCTags(96)%value(1:1) /= '1'
     end if
+    !> Assessment-only planar fit applies only to an on-the-fly planar fit.
+    RPsetup%pf_assessment_only = RPsetup%pf_assessment_only .and. &
+        RPsetup%pf_onthefly
 
     !> select time lag handling method
     select case (SCTags(16)%value(1:1))
@@ -486,15 +491,45 @@ subroutine WriteVariablesRP()
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.
+    PwbCacheGenerate = .false.
+    PwbCacheLoaded = .false.
+    PwbCacheDirty = .false.
+    PwbCacheUpdateRequested = .false.
+    RPsetup%tlag_assessment_only = SCTagFound(101) .and. &
+        SCTags(101)%value(1:1) == '1'
     TimeLagOptSelected = .false.
     if (Meth%tlag == 'tlag_opt') then
         TimeLagOptSelected = .true.
         if (SCTags(91)%value(1:1) == '1') then
             RPsetup%to_onthefly = .true.
         else
-            AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
+            AuxFile%to = ''
+            if (len_trim(SCTags(92)%value) > 0) &
+                AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
         end if
+    elseif (Meth%tlag == 'pwb') then
+        if (SCTags(91)%value(1:1) == '1') then
+            !> PWB on-the-fly means generate a per-period PWB cache before
+            !> production processing, not an aggregate time-lag optimization.
+            RPsetup%to_onthefly = .true.
+            PwbCacheGenerate = .true.
+        else
+            AuxFile%to = ''
+            if (len_trim(SCTags(92)%value) > 0) &
+                AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
+            !> An empty selected-file field is live PWB: detect during the
+            !> production pass and persist the resulting cache afterwards.
+            PwbCacheUpdateRequested = len_trim(AuxFile%to) > 0
+        end if
+        !> PWB aggregate summaries use the existing H2O RH-class layout even
+        !> when no aggregate optimizer prepass was requested.
+        TOSetup%h2o_nclass = max(1, nint(SNTags(207)%value))
+        TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)
+        TOSetup%pg_range = SNTags(198)%value
     end if
+    !> Assessment-only time-lag optimization applies only to an on-the-fly optimizer.
+    RPsetup%tlag_assessment_only = RPsetup%tlag_assessment_only .and. &
+        RPsetup%to_onthefly
 
     !>  tapering window
     select case (SCTags(17)%value(1:1))

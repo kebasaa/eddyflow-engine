@@ -128,6 +128,8 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords)
         end if
     end do un_loop
 
+    SADiagDegradedUnstable = m / Nt
+
     !> Compute regression parameters for hyperbole function (Ibrom et al. 2007, eq. 9)
     allocate(fvec(m), fjac(m, npar))
     call lmder1(fcn, m, npar, UnPar, fvec, fjac, tol, info, ipvt)
@@ -172,6 +174,8 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords)
             end do
         end if
     end do st_loop
+
+    SADiagDegradedStable = m / Nt
 
     !> Compute regression parameters for hyperbole function (Ibrom et al. 2007, eq. 9)
     allocate(fvec(m), fjac(m, npar))

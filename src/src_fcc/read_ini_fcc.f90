@@ -294,6 +294,11 @@ subroutine WriteVariablesFCC()
     if (SCTags(24)%value(1:1) == '1') FCCsetup%SA%foken_lim = 2
     if (SCTags(25)%value(1:1) == '1') FCCsetup%SA%foken_lim = 1
 
+    !> Optional automatic post-run configuration. Missing tags default to off
+    !> so legacy project files retain their current behaviour.
+    FCCsetup%SA%automatic_config = .false.
+    if (SCTagFound(27)) FCCsetup%SA%automatic_config = SCTags(27)%value(1:1) == '1'
+
     !> Minimum frequency for high-frequency noise detection and elimination
     FCCsetup%SA%hfn_fmin(co2)  = dble(SNTags(16)%value)
     FCCsetup%SA%hfn_fmin(h2o)  = dble(SNTags(17)%value)

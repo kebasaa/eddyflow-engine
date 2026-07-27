@@ -68,6 +68,30 @@ module m_fx_global_var
     logical :: MeanStabCospAvailable(MaxGasClasses, GHGNumVar)
     logical :: fcc_var_present(GHGNumVar)
 
+    !> Counters used to explain spectral-assessment eligibility and failures.
+    integer :: SADiagSelectedFiles
+    integer :: SADiagReadableFiles
+    integer :: SADiagMatchedRecords
+    integer :: SADiagUsableWT
+    integer :: SADiagRejectedUstar
+    integer :: SADiagRejectedVM(GHGNumVar)
+    integer :: SADiagRejectedFoken(GHGNumVar)
+    integer :: SADiagRejectedFlux(GHGNumVar)
+    integer :: SADiagAccepted(GHGNumVar)
+    integer :: SADiagDegradedUnstable
+    integer :: SADiagDegradedStable
+    integer, parameter :: SADiagUnstable = 1
+    integer, parameter :: SADiagStable = 2
+    integer :: SADiagFluxCandidateCount(2, GHGNumVar)
+    integer :: SADiagFluxCandidateCapacity
+    real(kind = dbl), allocatable :: SADiagFluxCandidate(:, :, :)
+    integer, allocatable :: SADiagFluxCandidateClass(:, :, :)
+    real(kind = dbl) :: SAAutoMin(2, GHGNumVar)
+    real(kind = dbl) :: SAAutoMax(GHGNumVar)
+    logical :: SAAutoApplyMin(2, GHGNumVar)
+    logical :: SAAutoApplyMax(GHGNumVar)
+    character(PathLen) :: SADiagFilePath
+
     type(FCCsetupType) :: FCCsetup
     type(FileListType), allocatable :: FullFileList(:)
     type(FileListType), allocatable :: BinnedFileList(:)
@@ -86,7 +110,7 @@ module m_fx_global_var
 
     !> tags of the setup ".ini" file for eccoce
     integer, parameter :: Nsn = 109
-    integer, parameter :: Nsc = 30
+    integer, parameter :: Nsc = 31
     logical            :: SNTagFound(Nsn)
     logical            :: SCTagFound(Nsc)
     type (Numerical)   :: SNTags(Nsn)
@@ -226,5 +250,6 @@ module m_fx_global_var
          SCTags(23)%Label / 'sa_use_vm_flags'   / &
          SCTags(24)%Label / 'sa_use_foken_low'  / &
          SCTags(25)%Label / 'sa_use_foken_mid'  / &
-         SCTags(26)%Label / 'keep_parent_fluxnet_file'  /
+         SCTags(26)%Label / 'keep_parent_fluxnet_file'  / &
+         SCTags(27)%Label / 'automatic_spectra_config'  /
 end module m_fx_global_var

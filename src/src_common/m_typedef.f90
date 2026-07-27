@@ -628,6 +628,7 @@ module m_typedef
         character(5) :: end_time
         logical :: filter_cosp_by_vm_flags
         logical :: add_sonic_lptf
+        logical :: automatic_config
         logical :: ibrom_model
         logical :: in_situ
         logical :: subperiod
@@ -950,6 +951,8 @@ module m_typedef
         logical :: despike
         logical :: pf_onthefly
         logical :: to_onthefly
+        logical :: pf_assessment_only
+        logical :: tlag_assessment_only
         logical :: pf_subtract_b0
         logical :: recurse
         logical :: despike_vickers97
@@ -1243,6 +1246,7 @@ module m_typedef
         character(2) :: best_combination
         character(24) :: fallback_source
         character(8) :: donor_gas
+        integer :: origin_gas
         logical :: edge_pinned
         logical :: fallback_used
         logical :: block_length_clamped
@@ -1252,6 +1256,19 @@ module m_typedef
         real(kind = dbl) :: raw_covariance
         real(kind = dbl) :: ccf_at_mode
     end type PWBResultType
+
+    !> One PWB result as persisted in a per-period time-lag cache.
+    type :: PWBTimelagCacheEntryType
+        character(10) :: date
+        character(5) :: time
+        integer :: gas
+        character(8) :: stage
+        real(kind = dbl) :: actual_lag
+        real(kind = dbl) :: used_lag
+        integer :: row_lag
+        logical :: default_used
+        type(PWBResultType) :: result
+    end type PWBTimelagCacheEntryType
 
     type :: TLType
         real(kind = dbl) :: def_co2
