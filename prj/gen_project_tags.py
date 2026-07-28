@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Regenerate the project-file tag tables (EPPrj*, RP S*Tags, FCC S*Tags).
+
+Companion to gen_metadata_tags.py, same contract: these tables are positional,
+so a tag's identity is its array index and the blocks must stay contiguous and
+consistent with the code that reads them by index.
+
+This step is deliberately a NO-OP on the tag set: it takes over ownership of the
+blocks and re-emits exactly what is already there, one assignment per line and
+chunked under the Fortran 255-continuation limit. Widening comes separately, so
+that "the generator reproduces reality" is proved before anything changes.
+
+Gaps are preserved: several slots are deliberately commented out (retired keys),
+and only assigned indices are emitted, so those stay unassigned.
+
+Usage:  python gen_project_tags.py [--check]
+
+--check exits non-zero if a file is not what the generator would produce.
+"""
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+# (path, table name, marker name, size parameter). Marker names are unique per
+# block because two different modules both declare tables called SNTags/SCTags;
+# the size parameter is rewritten in the same file, so Nsn/Nsc are unambiguous.
+BLOCKS = [
+    ("src/src_common/m_common_global_var.f90", "EPPrjNTags", "EPPrjNTags", "Npn"),
+    ("src/src_common/m_common_global_var.f90", "EPPrjCTags", "EPPrjCTags", "Npc"),
+    ("src/src_rp/m_rp_global_var.f90", "SNTags", "RP.SNTags", "Nsn"),
+    ("src/src_rp/m_rp_global_var.f90", "SCTags", "RP.SCTags", "Nsc"),
+    ("src/src_fcc/m_fx_global_var_mod.f90", "SNTags", "FCC.SNTags", "Nsn"),
+    ("src/src_fcc/m_fx_global_var_mod.f90", "SCTags", "FCC.SCTags", "Nsc"),
+]
+
+MAX_CONT = 200
+
+# --------------------------------------------------------------------------
+# Record schema. One indexed record per measurement, mirroring the way the
+# metadata file already stores instr_<K>_* and col_<N>_*, so the engine can
+# walk them with the same stride arithmetic.
+#
+# New slots are APPENDED after each table's current maximum index. Existing
+# indices must never move: consumers address these tables positionally
+# (SCTags(34)%value and friends), so an insertion silently re-wires settings
+# with no compile error.
+# --------------------------------------------------------------------------
+
+# [Project] scalars introduced alongside the records
+PROJECT_COUNTS = ["gas_num", "cell_num", "diag_num"]
+
+GAS_NUMERIC = ["col", "moist", "cell", "mw", "diff"]
+GAS_TEXT = ["var", "instr"]
+CELL_NUMERIC = ["col"]
+CELL_TEXT = ["var", "instr"]
+DIAG_NUMERIC = ["col"]
+DIAG_TEXT = ["var", "instr"]
+
+# Per-gas processing settings, replacing the single *_gas4 key of each family.
+RP_GAS_NUMERIC = [
+    "sr_lim", "al_min", "al_max", "ds_hf", "ds_sf", "tl_def",
+    "to_min_flux", "to_min_lag", "to_max_lag", "pwb_min_lag", "pwb_max_lag",
+]
+RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
+FCC_GAS_NUMERIC = [
+    "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",
+]
+
+
+def limits():
+    """Capacity constants, read from m_typedef.f90 so they cannot drift."""
+    src = (ROOT / "src" / "src_common" / "m_typedef.f90").read_text(
+        encoding="utf-8", errors="surrogateescape")
+
+    def const(name):
+        m = re.search(rf"integer, parameter :: {name} = (\d+)", src)
+        if not m:
+            raise SystemExit(f"could not read {name} from m_typedef.f90")
+        return int(m.group(1))
+
+    def derived(name, factor_of):
+        """MaxNumCellCols / MaxNumDiagCols are declared as multiples."""
+        m = re.search(rf"integer, parameter :: {name} = {factor_of} \* (\d+)", src)
+        if not m:
+            raise SystemExit(f"could not read {name} from m_typedef.f90")
+        return const(factor_of) * int(m.group(1))
+
+    return {
+        "gases": const("MaxNumGases"),
+        "cells": derived("MaxNumCellCols", "MaxNumInstruments"),
+        "diags": derived("MaxNumDiagCols", "MaxNumInstruments"),
+    }
+
+
+def appended(marker, lim):
+    """Labels to append for a block, in order."""
+    g, c, d = lim["gases"], lim["cells"], lim["diags"]
+    out = []
+    if marker == "EPPrjNTags":
+        out += PROJECT_COUNTS
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_NUMERIC]
+        out += [f"cell_{i}_{s}" for i in range(1, c + 1) for s in CELL_NUMERIC]
+        out += [f"diag_{i}_{s}" for i in range(1, d + 1) for s in DIAG_NUMERIC]
+    elif marker == "EPPrjCTags":
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_TEXT]
+        out += [f"cell_{i}_{s}" for i in range(1, c + 1) for s in CELL_TEXT]
+        out += [f"diag_{i}_{s}" for i in range(1, d + 1) for s in DIAG_TEXT]
+    elif marker == "RP.SNTags":
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in RP_GAS_NUMERIC]
+    elif marker == "RP.SCTags":
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in RP_GAS_TEXT]
+    elif marker == "FCC.SNTags":
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in FCC_GAS_NUMERIC]
+    return out
+
+
+def begin(name):
+    return f"    !> BEGIN GENERATED {name} - edit gen_project_tags.py, not this block"
+
+
+def end(name):
+    return f"    !> END GENERATED {name}"
+
+
+def region(text, name):
+    b, e = begin(name), end(name)
+    if b not in text or e not in text:
+        raise SystemExit(f"marker pair missing for {name}")
+    head, rest = text.split(b, 1)
+    body, tail = rest.split(e, 1)
+    return head, body, tail
+
+
+def parse_block(body, table):
+    """index -> label for one block, skipping commented-out slots."""
+    pat = re.compile(rf"{re.escape(table)}\((\d+)\)%Label\s*/\s*'([^']*)'\s*/")
+    out = {}
+    for line in body.splitlines():
+        if line.lstrip().startswith("!"):
+            continue
+        for m in pat.finditer(line):
+            out[int(m.group(1))] = m.group(2)
+    return out
+
+
+def emit(table, entries, width=26):
+    lines = []
+    items = sorted(entries.items())
+    for start in range(0, len(items), MAX_CONT):
+        chunk = items[start:start + MAX_CONT]
+        for i, (idx, label) in enumerate(chunk):
+            lead = (f"    data {table}({idx})%Label" if i == 0
+                    else f"         {table}({idx})%Label")
+            cont = " /" if i == len(chunk) - 1 else " / &"
+            lines.append(f"{lead:<{width}} / '{label}'{cont}")
+    return lines
+
+
+def process(path, table, marker, size_param, lim, check):
+    p = ROOT / path
+    text = p.read_text(encoding="utf-8", errors="surrogateescape")
+    head, body, tail = region(text, marker)
+    entries = parse_block(body, table)
+    if not entries:
+        raise SystemExit(f"no {table} entries parsed in {path} - marker misplaced?")
+
+    # Drop any previously appended record slots, then re-append. Without this
+    # the generator would not be idempotent: a second run would stack another
+    # full set of records on top of the first.
+    record = re.compile(r"^(gas|cell|diag)_\d+_|^(gas|cell|diag)_num$")
+    kept = {i: l for i, l in entries.items() if not record.match(l)}
+
+    base = max(kept) + 1
+    nxt = base
+    for label in appended(marker, lim):
+        kept[nxt] = label
+        nxt += 1
+
+    new_body = "\n" + "\n".join(emit(table, kept)) + "\n"
+    new = head + begin(marker) + new_body + end(marker) + tail
+
+    # Never shrink a table. Some tables carry unlabelled spare slots past the
+    # last assigned index; those are unread today, but reducing the declared
+    # size to the last label would break any code that reaches one.
+    cur = re.search(rf"integer, parameter :: {size_param} = (\d+)", new)
+    size = max(max(kept), int(cur.group(1))) if cur else max(kept)
+    new = re.sub(rf"integer, parameter :: {size_param} = \d+",
+                 f"integer, parameter :: {size_param} = {size}", new)
+
+    changed = new != text
+    if not check and changed:
+        p.write_text(new, encoding="utf-8", errors="surrogateescape")
+    return kept, len(appended(marker, lim)), changed, base
+
+
+ORIGIN_MARKER = "ProjectRecordOrigins"
+
+
+def origins_block(origins, lim):
+    """Fortran parameters naming where each record group starts.
+
+    The reader walks these groups by stride arithmetic, exactly as
+    read_metadata_file.f90 does for instr_<K>_* and col_<N>_*. Emitting the
+    origins here keeps the reader free of magic numbers that would silently
+    rot the next time a slot is appended.
+    """
+    L = [
+        "    !> Slot origins for the appended gas/cell/diag records. The value",
+        "    !> is the index of the FIRST field of record 1, so record i field f",
+        "    !> is <origin> + (i-1)*<leap> + f, with f zero-based.",
+    ]
+    for name, value in origins:
+        L.append(f"    integer, parameter :: {name} = {value}")
+    L.append(f"    integer, parameter :: gasRecLeapN   = {len(GAS_NUMERIC)}")
+    L.append(f"    integer, parameter :: gasRecLeapC   = {len(GAS_TEXT)}")
+    L.append(f"    integer, parameter :: cellRecLeapN  = {len(CELL_NUMERIC)}")
+    L.append(f"    integer, parameter :: cellRecLeapC  = {len(CELL_TEXT)}")
+    L.append(f"    integer, parameter :: diagRecLeapN  = {len(DIAG_NUMERIC)}")
+    L.append(f"    integer, parameter :: diagRecLeapC  = {len(DIAG_TEXT)}")
+    L.append(f"    integer, parameter :: rpGasLeapN    = {len(RP_GAS_NUMERIC)}")
+    L.append(f"    integer, parameter :: rpGasLeapC    = {len(RP_GAS_TEXT)}")
+    L.append(f"    integer, parameter :: fccGasLeapN   = {len(FCC_GAS_NUMERIC)}")
+    return L
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--check", action="store_true")
+    args = ap.parse_args()
+
+    lim = limits()
+    print(f"capacity: {lim['gases']} gases, {lim['cells']} cell columns, "
+          f"{lim['diags']} diagnostic columns\n")
+
+    stale = []
+    origins = []
+    for path, table, marker, size_param in BLOCKS:
+        entries, n_new, changed, base = process(
+            path, table, marker, size_param, lim, args.check)
+        gaps = sorted(set(range(1, max(entries) + 1)) - set(entries))
+        print(f"{marker:<12} {len(entries):>5} tags  {size_param}={max(entries):<5}"
+              f" (+{n_new} record slots)"
+              f"{'  gaps: ' + str(len(gaps)) if gaps else ''}")
+        if changed:
+            stale.append(marker)
+
+        g, c = lim["gases"], lim["cells"]
+        if marker == "EPPrjNTags":
+            origins += [("gasNumTag", base), ("cellNumTag", base + 1),
+                        ("diagNumTag", base + 2),
+                        ("gasRecOriginN", base + 3),
+                        ("cellRecOriginN", base + 3 + g * len(GAS_NUMERIC)),
+                        ("diagRecOriginN",
+                         base + 3 + g * len(GAS_NUMERIC) + c * len(CELL_NUMERIC))]
+        elif marker == "EPPrjCTags":
+            origins += [("gasRecOriginC", base),
+                        ("cellRecOriginC", base + g * len(GAS_TEXT)),
+                        ("diagRecOriginC",
+                         base + g * len(GAS_TEXT) + c * len(CELL_TEXT))]
+        elif marker == "RP.SNTags":
+            origins.append(("rpGasOriginN", base))
+        elif marker == "RP.SCTags":
+            origins.append(("rpGasOriginC", base))
+        elif marker == "FCC.SNTags":
+            origins.append(("fccGasOriginN", base))
+
+    # The origins live beside the [Project] tables, where every reader can see
+    # them via m_common_global_var.
+    p = ROOT / "src" / "src_common" / "m_common_global_var.f90"
+    text = p.read_text(encoding="utf-8", errors="surrogateescape")
+    head, _, tail = region(text, ORIGIN_MARKER)
+    new = (head + begin(ORIGIN_MARKER) + "\n"
+           + "\n".join(origins_block(origins, lim)) + "\n"
+           + end(ORIGIN_MARKER) + tail)
+    if new != text:
+        if args.check:
+            stale.append(ORIGIN_MARKER)
+        else:
+            p.write_text(new, encoding="utf-8", errors="surrogateescape")
+
+    if args.check:
+        if stale:
+            print(f"\nstale: {', '.join(stale)} - re-run gen_project_tags.py")
+            return 1
+        print("\nproject tag tables up to date")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -39,14 +39,11 @@ subroutine Int2Flags(len)
     !> in/out variables
     integer, intent(in) :: len
 
-    call int2char(IntHF%sr, CharHF%sr, len)
-    call int2char(IntHF%ar, CharHF%ar, len)
-    call int2char(IntHF%do, CharHF%do, len)
-    call int2char(IntHF%al, CharHF%al, len)
-    call int2char(IntHF%sk, CharHF%sk, len)
-    call int2char(IntSF%sk, CharSF%sk, len)
-    call int2char(IntHF%ds, CharHF%ds, len)
-    call int2char(IntSF%ds, CharSF%ds, len)
+    !> sr, ar, do, al, sk and ds carry one digit per variable. They are built
+    !> directly as strings by the tests themselves (see PackFlagString), because
+    !> the old base-10 integer packing overflows a 32-bit integer once the
+    !> variable count grows. Only the fixed-width flags below still go through
+    !> the integer route.
     call int2char(IntHF%tl, CharHF%tl, len)
     call int2char(IntSF%tl, CharSF%tl, len)
     call int2char(IntHF%aa, CharHF%aa, len)

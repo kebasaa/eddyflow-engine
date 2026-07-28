@@ -75,6 +75,27 @@ subroutine DefineUsedVariables(LocCol)
         LocCol(EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem))%useit = .true.
     endwhere
 
+    !> Columns named by gas/cell/diagnostic records must be marked here too.
+    !> This runs while LocCol is still indexed by .metadata column number, and
+    !> unused columns are dropped straight afterwards - a record column left
+    !> unmarked never reaches DefineE2Set, so the record silently selects
+    !> nothing.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (EddyFlowProj%gas(i)%col > 0 .and. &
+            EddyFlowProj%gas(i)%col <= MaxNumCol) &
+            LocCol(EddyFlowProj%gas(i)%col)%useit = .true.
+    end do
+    do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+        if (EddyFlowProj%cell(i)%col > 0 .and. &
+            EddyFlowProj%cell(i)%col <= MaxNumCol) &
+            LocCol(EddyFlowProj%cell(i)%col)%useit = .true.
+    end do
+    do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+        if (EddyFlowProj%diag(i)%col > 0 .and. &
+            EddyFlowProj%diag(i)%col <= MaxNumCol) &
+            LocCol(EddyFlowProj%diag(i)%col)%useit = .true.
+    end do
+
     !> If gas4 column was selected, change its name to 'n2o', to be treated
     !> as such. The column label still holds the actual variable name
     !> as selected/entered in the Metadat File Editor

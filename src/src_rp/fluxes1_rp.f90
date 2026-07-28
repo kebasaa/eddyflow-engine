@@ -37,6 +37,7 @@ subroutine Fluxes1_rp()
     use m_rp_global_var
     implicit none
     real(kind = dbl)  :: Cox
+    integer :: msl
 
     write(*,'(a)', advance = 'no') '  Calculating fluxes Level 1..'
 
@@ -67,81 +68,49 @@ subroutine Fluxes1_rp()
     Flux1%H = Flux0%H
 
     !> Internal sensible heat flux, Hint in [W m-2]
-    Flux1%Hi_co2 = Flux0%Hi_co2
-    Flux1%Hi_h2o = Flux0%Hi_h2o
-    Flux1%Hi_ch4 = Flux0%Hi_ch4
-    Flux1%Hi_gas4 = Flux0%Hi_gas4
+    Flux1%Hi_gas(co2) = Flux0%Hi_gas(co2)
+    Flux1%Hi_gas(h2o) = Flux0%Hi_gas(h2o)
+    Flux1%Hi_gas(ch4) = Flux0%Hi_gas(ch4)
+    Flux1%Hi_gas(gas4) = Flux0%Hi_gas(gas4)
 
-    !> Level 1 all gases
-    !> For all closed-path gases, Level 1 is same as Level 0
-    !> For all open-path gases, applied BPCF to LO get L1
-    !> co2
-    if (E2Col(co2)%Instr%path_type == 'closed') then
-        Flux1%co2 = Flux0%co2
-    else
-        if (BPCF%of(w_co2) /= error) then
-            Flux1%co2 = Flux0%co2 * BPCF%of(w_co2)
+    !> Level 1 all gases.
+    !>
+    !> Closed path: Level 1 is Level 0 unchanged. Open path: apply the
+    !> bandpass correction factor. One loop over the configured gases,
+    !> replacing four near-identical blocks. BPCF%of is indexed by the w_*
+    !> covariance labels, which carry the same numbering as the gas slots.
+    do msl = firstGas, lastGas
+        if (E2Col(msl)%Instr%path_type /= 'closed' .and. BPCF%of(msl) /= error) then
+            Flux1%gas(msl) = Flux0%gas(msl) * BPCF%of(msl)
         else
-            Flux1%co2 = Flux0%co2
+            Flux1%gas(msl) = Flux0%gas(msl)
         end if
-    end if
-    if (Flux0%co2 == error) Flux1%co2 = error
+        if (Flux0%gas(msl) == error) Flux1%gas(msl) = error
+    end do
 
-    !> h2o
-    if (E2Col(h2o)%Instr%path_type == 'closed') then
-        Flux1%h2o = Flux0%h2o
+    !> The water flux carries evapotranspiration and latent heat with it.
+    !> Those are scalars - one per project, from the primary H2O slot - so
+    !> they are corrected here rather than inside the loop.
+    if (E2Col(h2o)%Instr%path_type /= 'closed' .and. BPCF%of(w_h2o) /= error) then
+        Flux1%E   = Flux0%E   * BPCF%of(w_h2o)
+        Flux1%ET  = Flux0%ET  * BPCF%of(w_h2o)
+        Flux1%LE  = Flux0%LE  * BPCF%of(w_h2o)
+    else
         Flux1%E   = Flux0%E
         Flux1%ET  = Flux0%ET
         Flux1%LE  = Flux0%LE
-    else
-        if (BPCF%of(w_h2o) /= error) then
-            Flux1%h2o = Flux0%h2o * BPCF%of(w_h2o)
-            Flux1%E   = Flux0%E   * BPCF%of(w_h2o)
-            Flux1%ET  = Flux0%ET  * BPCF%of(w_h2o)
-            Flux1%LE  = Flux0%LE  * BPCF%of(w_h2o)
-        else
-            Flux1%h2o = Flux0%h2o
-            Flux1%E   = Flux0%E
-            Flux1%ET  = Flux0%ET
-            Flux1%LE  = Flux0%LE
-        end if
     end if
-    if (Flux0%h2o == error) then
-        Flux1%h2o = error
+    if (Flux0%gas(h2o) == error) then
         Flux1%E   = error
         Flux1%ET  = error
         Flux1%LE  = error
     end if
 
-    !> ch4
-    if (E2Col(ch4)%Instr%path_type == 'closed') then
-        Flux1%ch4 = Flux0%ch4
-    else
-        if (BPCF%of(w_ch4) /= error) then
-            Flux1%ch4 = Flux0%ch4 * BPCF%of(w_ch4)
-        else
-            Flux1%ch4 = Flux0%ch4
-        end if
-    end if
-    if (Flux0%ch4 == error) Flux1%ch4 = error
-
-    !> gas4
-    if (E2Col(gas4)%Instr%path_type == 'closed') then
-        Flux1%gas4 = Flux0%gas4
-    else
-        if (BPCF%of(w_gas4) /= error) then
-            Flux1%gas4 = Flux0%gas4 * BPCF%of(w_gas4)
-        else
-            Flux1%gas4 = Flux0%gas4
-        end if
-    end if
-    if (Flux0%gas4 == error) Flux1%gas4 = error
-
     !> Level 1 evapotranspiration fluxes with H2O covariances
     !> at time-lags of other scalars. Do nothing, no spectral correction needed
-    Flux1%E_co2 = Flux0%E_co2
-    Flux1%E_ch4 = Flux0%E_ch4
-    Flux1%E_gas4 = Flux0%E_gas4
+    Flux1%E_gas(co2) = Flux0%E_gas(co2)
+    Flux1%E_gas(ch4) = Flux0%E_gas(ch4)
+    Flux1%E_gas(gas4) = Flux0%E_gas(gas4)
 
     !> Momentum flux [kg m-1 s-2] and friction velocity [m s-1]
     if (BPCF%of(w_u) /= error) then

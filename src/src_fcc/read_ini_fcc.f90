@@ -264,27 +264,53 @@ subroutine WriteVariablesFCC()
         i = i + 2
     end do
 
+    !> Per-gas records override the legacy slots (offsets 0 and 1 from the
+    !> record origin: sa_fmin, sa_fmax, sa_hfn_fmin, ...).
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN)) &
+            FCCsetup%SA%fmin(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN)%value)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 1)) &
+            FCCsetup%SA%fmax(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 1)%value)
+    end do
+
     !> Flux thresholds, used to include/exclude corresponding (co)spectra in
     !> ensemble averages and model fits. Also used to discriminate between
     !> direct method and model in spectral correction after Fratini et al. (2012).
     FCCsetup%SA%min_un_ustar = dble(SNTags(92)%value)
-    FCCsetup%SA%min_un_co2   = dble(SNTags(93)%value)
-    FCCsetup%SA%min_un_ch4   = dble(SNTags(94)%value)
-    FCCsetup%SA%min_un_gas4  = dble(SNTags(95)%value)
+    FCCsetup%SA%min_un_gas(co2)   = dble(SNTags(93)%value)
+    FCCsetup%SA%min_un_gas(ch4)   = dble(SNTags(94)%value)
+    FCCsetup%SA%min_un_gas(gas4)  = dble(SNTags(95)%value)
     FCCsetup%SA%min_un_LE    = dble(SNTags(96)%value)
     FCCsetup%SA%min_un_H     = dble(SNTags(97)%value)
     FCCsetup%SA%min_st_ustar = dble(SNTags(98)%value)
-    FCCsetup%SA%min_st_co2   = dble(SNTags(99)%value)
-    FCCsetup%SA%min_st_ch4   = dble(SNTags(100)%value)
-    FCCsetup%SA%min_st_gas4  = dble(SNTags(101)%value)
+    FCCsetup%SA%min_st_gas(co2)   = dble(SNTags(99)%value)
+    FCCsetup%SA%min_st_gas(ch4)   = dble(SNTags(100)%value)
+    FCCsetup%SA%min_st_gas(gas4)  = dble(SNTags(101)%value)
     FCCsetup%SA%min_st_LE    = dble(SNTags(102)%value)
     FCCsetup%SA%min_st_H     = dble(SNTags(103)%value)
     FCCsetup%SA%max_ustar    = dble(SNTags(104)%value)
-    FCCsetup%SA%max_co2      = dble(SNTags(105)%value)
-    FCCsetup%SA%max_ch4      = dble(SNTags(106)%value)
-    FCCsetup%SA%max_gas4     = dble(SNTags(107)%value)
+    FCCsetup%SA%max_gas(co2)      = dble(SNTags(105)%value)
+    FCCsetup%SA%max_gas(ch4)      = dble(SNTags(106)%value)
+    FCCsetup%SA%max_gas(gas4)     = dble(SNTags(107)%value)
     FCCsetup%SA%max_LE       = dble(SNTags(108)%value)
     FCCsetup%SA%max_H        = dble(SNTags(109)%value)
+
+    !> Per-gas records override the legacy slots. FCC record fields, in order
+    !> from fccGasOriginN: sa_fmin, sa_fmax, sa_hfn_fmin, sa_min_st,
+    !> sa_min_un, sa_max. With no records the loop does nothing.
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 3)) &
+            FCCsetup%SA%min_st_gas(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 3)%value)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 4)) &
+            FCCsetup%SA%min_un_gas(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 4)%value)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 5)) &
+            FCCsetup%SA%max_gas(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 5)%value)
+    end do
 
     !> Whether to use results of Vickers and Mahrt tests to eliminate (co)spectra
     FCCsetup%SA%filter_cosp_by_vm_flags = SCTags(23)%value(1:1) == '1'
@@ -304,6 +330,13 @@ subroutine WriteVariablesFCC()
     FCCsetup%SA%hfn_fmin(h2o)  = dble(SNTags(17)%value)
     FCCsetup%SA%hfn_fmin(ch4)  = dble(SNTags(18)%value)
     FCCsetup%SA%hfn_fmin(gas4) = dble(SNTags(19)%value)
+
+    !> Per-gas records override the legacy slots (offset 2: sa_hfn_fmin).
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)) &
+            FCCsetup%SA%hfn_fmin(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)%value)
+    end do
 
     !> Assign each month the relevant CO2 class. Max number of groups is 12.
     skipped_classes = 0

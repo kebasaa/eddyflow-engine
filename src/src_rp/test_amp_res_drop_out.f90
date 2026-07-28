@@ -225,12 +225,8 @@ subroutine TestAmpResDropOut(Set, N)
         end if
     end do
 
-    !>  Create 8-digits numbers containing hflag/sflag values
-    IntHF%ar = 900000000
-    IntHF%do = 900000000
-    do j = 1, GHGNumVar
-        IntHF%ar = IntHF%ar + ar_hflags(j)*10**(GHGNumVar - j)
-        IntHF%do = IntHF%do + do_hflags(j)*10**(GHGNumVar - j)
-    end do
+    !>  Pack one digit per variable into the flag strings
+    call PackFlagString(ar_hflags, GHGNumVar, CharHF%ar)
+    call PackFlagString(do_hflags, GHGNumVar, CharHF%do)
     write(*,'(a)') ' Done.'
 end subroutine TestAmpResDropOut

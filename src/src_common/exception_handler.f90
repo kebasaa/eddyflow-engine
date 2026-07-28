@@ -354,5 +354,23 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(95)> The selected "w-boost" correction is not applicable'
             write(*,*) ' Warning(95)> to data collected with selected sonic anemometer.'
             write(*,*) ' Warning(95)> Continuing without applying "w-boost" correction.'
+        case(96)
+            write(*,*) '  Fatal error(96)> The project file (*.eddyflow) was written by a newer'
+            write(*,*) '  Fatal error(96)> version of the EddyFlow GUI than this engine can read.'
+            write(*,*) '  Fatal error(96)> Reading it would silently drop or misinterpret settings.'
+            write(*,*) '  Fatal error(96)> Update the EddyFlow engine, or re-create the project'
+            write(*,*) '  Fatal error(96)> with a matching version of the GUI.'
+            write(*,*) '  Fatal error(96)> Program execution aborted.'
+            stop 1
+        case(97)
+            write(*,*) ' Warning(97)> The metadata file describes more instruments than this engine'
+            write(*,*) ' Warning(97)> can hold. The surplus instruments have been ignored, and any'
+            write(*,*) ' Warning(97)> variables assigned to them will not be used.'
+            write(*,*) ' Warning(97)> Reduce the number of instruments in the "Metadata file editor".'
+        case(98)
+            write(*,*) ' Warning(98)> An INI-format file holds more entries in one section than'
+            write(*,*) ' Warning(98)> EddyFlow can store. The surplus entries were ignored, so some'
+            write(*,*) ' Warning(98)> settings may have fallen back to their defaults.'
+            write(*,*) ' Warning(98)> This points to an unusually large project or metadata file.'
     end select
 end subroutine ExceptionHandler

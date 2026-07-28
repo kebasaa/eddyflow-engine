@@ -67,15 +67,19 @@ subroutine TestTimeLag(Set, N)
         max_rl(j) = nint(E2Col(j)%max_tl * Metadata%ac_freq)
     end do
     !> Default values are taken from EddyFlow settings
-    def_rl(co2)  = nint(tl%def_co2 * Metadata%ac_freq)
-    def_rl(h2o)  = nint(tl%def_h2o * Metadata%ac_freq)
-    def_rl(ch4)  = nint(tl%def_ch4 * Metadata%ac_freq)
-    def_rl(gas4) = nint(tl%def_n2o * Metadata%ac_freq)
+    def_rl(co2)  = nint(tl%def_gas(co2) * Metadata%ac_freq)
+    def_rl(h2o)  = nint(tl%def_gas(h2o) * Metadata%ac_freq)
+    def_rl(ch4)  = nint(tl%def_gas(ch4) * Metadata%ac_freq)
+    def_rl(gas4) = nint(tl%def_gas(gas4) * Metadata%ac_freq)
 
     !> Actual time-lags (tlag), maximum of the cov. (Rmax) \n
     !>  and cov. for default timelag (R0)
     !> Flags if the difference is too high
-    do i = co2, GHGNumVar
+    !> Bounded by gas4, not GHGNumVar: hflags/sflags hold one entry per legacy
+    !> gas (see the 4-digit packing below), so a wider loop writes past the end
+    !> of them. Generalising this needs the flag arrays to grow with the gas
+    !> count first.
+    do i = co2, gas4
         if (E2Col(i)%present) then
             FirstCol(:)  = Set(:, w)
             SecondCol(:) = Set(:, i)

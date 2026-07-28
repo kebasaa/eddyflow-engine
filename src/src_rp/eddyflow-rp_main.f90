@@ -1970,7 +1970,7 @@ program EddyFlowRP
             Essentials%n_wcov(u) = &
                 CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), w, u)
             !> Gas data
-            do j = ts, gas4
+            do j = ts, lastGas
                 if (E2Col(j)%present) then
                     Essentials%n(j) = &
                         CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), j)
@@ -2315,8 +2315,12 @@ program EddyFlowRP
                     size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
 
                 !> Calculate spectra and cospectra and output them all
+                !> Pass the whole gas block, not just the four legacy slots:
+                !> SpectralAnalysis loops u..GHGNumVar internally, so a
+                !> narrower slice reads past the end of the array as soon as a
+                !> project describes more than four gases.
                 call SpectralAnalysis(Stats%date, Stats%time, bf, &
-                    SpecSet(:, u:gas4), size(SpecSet, 1), gas4)
+                    SpecSet(:, u:lastGas), size(SpecSet, 1), lastGas)
                 if (allocated(SpecSet)) deallocate(SpecSet)
 
                 !> Reset stats to Stats7, after the parenthesis
@@ -2373,7 +2377,7 @@ program EddyFlowRP
             if (.not. EddyFlowProj%fcc_follows) then
                 !> Low-pass and high-pass spectral correction factors
                 call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                    Metadata%d, E2Col(u:gas4)%present, Ambient%WS, Ambient%Ta, &
+                    Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
                     Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                     Metadata%logger_swver, Meth%det, &
                     RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
@@ -2394,15 +2398,15 @@ program EddyFlowRP
                     !> Gas4 cannot use in-situ spectral corrections (FCC-only): compute
                     !> with BPCF=1.0, then zero co2/h2o/ch4 so FCC corrects those later
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                        Metadata%d, E2Col(u:gas4)%present, Ambient%WS, Ambient%Ta, &
+                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
                     call Fluxes1_rp()
                     call Fluxes23_rp()
-                    Flux1%co2 = error;  Flux2%co2 = error;  Flux3%co2 = error
-                    Flux1%h2o = error;  Flux2%h2o = error;  Flux3%h2o = error
-                    Flux1%ch4 = error;  Flux2%ch4 = error;  Flux3%ch4 = error
+                    Flux1%gas(co2) = error;  Flux2%gas(co2) = error;  Flux3%gas(co2) = error
+                    Flux1%gas(h2o) = error;  Flux2%gas(h2o) = error;  Flux3%gas(h2o) = error
+                    Flux1%gas(ch4) = error;  Flux2%gas(ch4) = error;  Flux3%gas(ch4) = error
                 else
                     Flux1 = errFlux
                     Flux2 = errFlux
@@ -2416,7 +2420,7 @@ program EddyFlowRP
             !> RP applies the CEC descriptor only when it owns the final
             !> corrected totals. Otherwise FCC applies it to FCC Flux3.
             if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) &
-                call ApplyCecDescriptor(CECDescriptor, Flux3%h2o, Flux3%co2, &
+                call ApplyCecDescriptor(CECDescriptor, Flux3%gas(h2o), Flux3%gas(co2), &
                     EddyFlowProj%do_cec, CECFlux)
             if (allocated(E2Primes)) deallocate(E2Primes)
 

@@ -159,10 +159,22 @@ subroutine WriteVariablesRP()
     ar%bins = idint(SNTags(5)%value)
     ar%hf_lim = SNTags(6)%value
     sr%lim_w   = SNTags(54)%value
-    sr%lim_co2 = SNTags(55)%value
-    sr%lim_h2o = SNTags(56)%value
-    sr%lim_ch4 = SNTags(57)%value
-    sr%lim_gas4 = SNTags(58)%value
+    !> Legacy per-gas spike limits fill the four legacy slots; per-gas records
+    !> override them below when the project uses the record format.
+    sr%lim_gas       = SNTags(55)%value
+    sr%lim_gas(co2)  = SNTags(55)%value
+    sr%lim_gas(h2o)  = SNTags(56)%value
+    sr%lim_gas(ch4)  = SNTags(57)%value
+    sr%lim_gas(gas4) = SNTags(58)%value
+
+    !> Per-gas records override the legacy slots. Reading them here, rather
+    !> than in place of the above, keeps a legacy project working untouched:
+    !> with no records the loop does nothing.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN)) &
+            sr%lim_gas(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN)%value
+    end do
 
     !> Dropout test
     do%extlim_dw = SNTags(7)%value
@@ -174,14 +186,25 @@ subroutine WriteVariablesRP()
     al%w_max = SNTags(11)%value
     al%t_min = SNTags(12)%value
     al%t_max = SNTags(13)%value
-    al%co2_min = SNTags(14)%value
-    al%co2_max = SNTags(15)%value
-    al%h2o_min = SNTags(16)%value
-    al%h2o_max = SNTags(17)%value
-    al%ch4_min = SNTags(59)%value
-    al%ch4_max = SNTags(60)%value
-    al%gas4_min = SNTags(61)%value
-    al%gas4_max = SNTags(62)%value
+    al%gas_min(co2) = SNTags(14)%value
+    al%gas_max(co2) = SNTags(15)%value
+    al%gas_min(h2o) = SNTags(16)%value
+    al%gas_max(h2o) = SNTags(17)%value
+    al%gas_min(ch4) = SNTags(59)%value
+    al%gas_max(ch4) = SNTags(60)%value
+    al%gas_min(gas4) = SNTags(61)%value
+    al%gas_max(gas4) = SNTags(62)%value
+
+    !> Per-gas records override the legacy slots (offsets 1 and 2 from the
+    !> record origin: sr_lim, al_min, al_max, ...).
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 1)) &
+            al%gas_min(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 1)%value
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 2)) &
+            al%gas_max(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 2)%value
+    end do
 
     !> Skewness and Kurtosis
     sk%hf_skmin = SNTags(18)%value
@@ -197,27 +220,46 @@ subroutine WriteVariablesRP()
     ds%hf_uv = SNTags(26)%value
     ds%hf_w = SNTags(27)%value
     ds%hf_t = SNTags(28)%value
-    ds%hf_co2 = SNTags(29)%value
-    ds%hf_h2o = SNTags(30)%value
-    ds%hf_ch4 = SNTags(63)%value
-    ds%hf_gas4 = SNTags(64)%value
+    ds%hf_gas(co2) = SNTags(29)%value
+    ds%hf_gas(h2o) = SNTags(30)%value
+    ds%hf_gas(ch4) = SNTags(63)%value
+    ds%hf_gas(gas4) = SNTags(64)%value
     ds%hf_var = SNTags(31)%value
     ds%sf_uv = SNTags(32)%value
     ds%sf_w = SNTags(33)%value
     ds%sf_t = SNTags(34)%value
-    ds%sf_co2 = SNTags(35)%value
-    ds%sf_h2o = SNTags(36)%value
-    ds%sf_ch4 = SNTags(65)%value
-    ds%sf_gas4 = SNTags(66)%value
+    ds%sf_gas(co2) = SNTags(35)%value
+    ds%sf_gas(h2o) = SNTags(36)%value
+    ds%sf_gas(ch4) = SNTags(65)%value
+    ds%sf_gas(gas4) = SNTags(66)%value
+
+    !> Per-gas records override the legacy slots (offsets 3 and 4: sr_lim,
+    !> al_min, al_max, ds_hf, ds_sf, ...).
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 3)) &
+            ds%hf_gas(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 3)%value
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 4)) &
+            ds%sf_gas(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 4)%value
+    end do
     ds%sf_var = SNTags(37)%value
 
     !> Timelag
     tl%hf_lim = SNTags(38)%value
     tl%sf_lim = SNTags(39)%value
-    tl%def_co2 = SNTags(40)%value
-    tl%def_h2o = SNTags(41)%value
-    tl%def_ch4 = SNTags(67)%value
-    tl%def_n2o = SNTags(68)%value
+    tl%def_gas(co2) = SNTags(40)%value
+    tl%def_gas(h2o) = SNTags(41)%value
+    tl%def_gas(ch4) = SNTags(67)%value
+    tl%def_gas(gas4) = SNTags(68)%value
+
+    !> Per-gas records override the legacy slots (offset 5: sr_lim, al_min,
+    !> al_max, ds_hf, ds_sf, tl_def, ...).
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 5)) &
+            tl%def_gas(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 5)%value
+    end do
 
     !> Angle of attack
     aa%min = SNTags(42)%value
@@ -260,6 +302,13 @@ subroutine WriteVariablesRP()
         .and. .not. EddyFlowProj%binned_spec_avail) RPsetup%out_bin_sp = .true.
 
     !> select output file
+    !> Clear both arrays first: only the slots below are assigned explicitly,
+    !> and out_full_cosp(w_w) never is, yet callers such as InitOutFilesRP and
+    !> SpectralAnalysis scan the whole 1..GHGNumVar range. Without this the
+    !> unassigned slots are read undefined.
+    RPsetup%out_full_sp   = .false.
+    RPsetup%out_full_cosp = .false.
+
     RPsetup%out_full_sp(u)   = SCTags(27)%value(1:1) == '1'
     RPsetup%out_full_sp(v)   = SCTags(28)%value(1:1) == '1'
     RPsetup%out_full_sp(w)   = SCTags(29)%value(1:1) == '1'
@@ -474,6 +523,24 @@ subroutine WriteVariablesRP()
     if (SNTagFound(412)) PWBSetup%min_lag(gas4) = SNTags(412)%value
     if (SNTagFound(413)) PWBSetup%max_lag(gas4) = SNTags(413)%value
     if (SNTagFound(412) .or. SNTagFound(413)) PWBSetup%lag_bounds_provided(gas4) = .true.
+    !> Per-gas records override the legacy slots (offsets 9 and 10:
+    !> pwb_min_lag, pwb_max_lag). lag_bounds_provided is set the same way the
+    !> legacy pairs above set it, so a record-supplied window counts as
+    !> user-provided rather than falling back to the default range.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (firstGas + i - 1 > lastGas) exit
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 9)) then
+            PWBSetup%min_lag(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 9)%value
+            PWBSetup%lag_bounds_provided(firstGas + i - 1) = .true.
+        end if
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 10)) then
+            PWBSetup%max_lag(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 10)%value
+            PWBSetup%lag_bounds_provided(firstGas + i - 1) = .true.
+        end if
+    end do
+
     if (SNTagFound(414)) PWBSetup%n_bootstrap = max(1, nint(SNTags(414)%value))
     if (SNTagFound(415)) PWBSetup%block_length_s = SNTags(415)%value
     if (SNTagFound(416)) PWBSetup%min_valid_frac = SNTags(416)%value
@@ -620,10 +687,18 @@ subroutine WriteVariablesRP()
         TOSetup%end_date      = SCTags(94)%value(1:len_trim(SCTags(94)%value))
         TOSetup%start_time    = SCTags(24)%value(1:len_trim(SCTags(24)%value))
         TOSetup%end_time      = SCTags(25)%value(1:len_trim(SCTags(25)%value))
-        TOSetup%co2_min_flux  = SNTags(194)%value
-        TOSetup%ch4_min_flux  = SNTags(195)%value
-        TOSetup%gas4_min_flux = SNTags(196)%value
+        TOSetup%gas_min_flux(co2)  = SNTags(194)%value
+        TOSetup%gas_min_flux(ch4)  = SNTags(195)%value
+        TOSetup%gas_min_flux(gas4) = SNTags(196)%value
         TOSetup%le_min_flux   = SNTags(197)%value
+
+        !> Per-gas records override the legacy slots (offset 6: sr_lim,
+        !> al_min, al_max, ds_hf, ds_sf, tl_def, to_min_flux, ...).
+        do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+            if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 6)) &
+                TOSetup%gas_min_flux(firstGas + i - 1) = &
+                    SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 6)%value
+        end do
         TOSetup%pg_range      = SNTags(198)%value
         TOSetup%min_lag(co2)   = SNTags(199)%value
         TOSetup%max_lag(co2)   = SNTags(200)%value
@@ -637,6 +712,19 @@ subroutine WriteVariablesRP()
         if (TOSetup%h2o_nclass > 1) then
             TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)
         end if
+
+        !> Per-gas records override the legacy slots (offsets 7 and 8:
+        !> to_min_lag, to_max_lag). Guarded on the tag being present, so a
+        !> project without records keeps exactly the values read above.
+        do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+            if (firstGas + i - 1 > lastGas) exit
+            if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 7)) &
+                TOSetup%min_lag(firstGas + i - 1) = &
+                    SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 7)%value
+            if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 8)) &
+                TOSetup%max_lag(firstGas + i - 1) = &
+                    SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 8)%value
+        end do
     end if
 
     !> Timelag by covariance maximization options

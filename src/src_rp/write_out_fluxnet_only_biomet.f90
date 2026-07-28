@@ -82,14 +82,47 @@ subroutine WriteOutFluxnetOnlyBiomet()
         call AddDatum(csv_row, '1', separator)
     endif
 
-    !> Write error codes in place of fixed columns
-    do i = 1, 465
+    !> Write error codes in place of fixed columns.
+    !>
+    !> Padded to the width InitFluxnetFile_rp measured off the header it wrote,
+    !> less the seven columns already written above. This was a literal 465,
+    !> which had drifted four columns short of the header - every skipped
+    !> period emitted a row that did not line up with its own header from the
+    !> custom variables onward.
+    do i = 1, nFluxnetFixedCols - 7
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end do
-    
+
     !> Write error codes in place of custom variables
     do i = 1, NumUserVar + 1
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+    end do
+
+    !> Per-gas moisture and analyser blocks, same position and width as in
+    !> WriteOutFluxnet: the slot is real so the row stays parseable, the
+    !> values are error because this period was skipped.
+    call AddIntDatumToDataline(nFluxnetGasSlots, csv_row, EddyFlowProj%err_label)
+    do i = 1, nFluxnetGasSlots
+        call AddIntDatumToDataline(FluxnetGasSlots(i), csv_row, EddyFlowProj%err_label)
+        do indx = 1, 2
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end do
+    end do
+    call AddIntDatumToDataline(nFluxnetInstrSlots, csv_row, EddyFlowProj%err_label)
+    do i = 1, nFluxnetInstrSlots
+        call AddIntDatumToDataline(FluxnetInstrSlots(i), csv_row, EddyFlowProj%err_label)
+        do indx = 1, 13
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end do
+    end do
+
+    !> Per-gas families of the extra gases: real slot, error values.
+    call AddIntDatumToDataline(nFluxnetInstrSlots, csv_row, EddyFlowProj%err_label)
+    do i = 1, nFluxnetInstrSlots
+        call AddIntDatumToDataline(FluxnetInstrSlots(i), csv_row, EddyFlowProj%err_label)
+        do indx = 1, 28
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end do
     end do
 
     !> write all aggregated biomet values in FLUXNET units

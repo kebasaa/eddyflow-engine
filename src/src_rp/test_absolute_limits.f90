@@ -43,7 +43,6 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     logical :: printout
     !> local variables
     integer :: i = 0
-    integer :: j = 0
     integer :: cnt1 = 0
     integer :: cnt2 = 0
     integer :: hflags(gas4)
@@ -99,8 +98,8 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     if (E2Col(co2)%present) then
         if(E2Col(co2)%measure_type == 'molar_density') then
             Essentials%al_s(co2) = count(Set(:, co2) /= error .and. &
-                                         (Set(:, co2) * StdVair * 1d3 < al%co2_min .or. &
-                                          Set(:, co2) * StdVair * 1d3 > al%co2_max))
+                                         (Set(:, co2) * StdVair * 1d3 < al%gas_min(co2) .or. &
+                                          Set(:, co2) * StdVair * 1d3 > al%gas_max(co2)))
             !> Actual filtering of molar density gas data is deferred to a later time
             !> when mean T and P are computed. However, some rough filtering is necesasry
             !> to eliminate strong outliers which mess up things if present. It's a very 
@@ -112,14 +111,14 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             end where
         else
             Essentials%al_s(co2) = count(Set(:, co2) /= error .and. &
-                                         (Set(:, co2) < al%co2_min .or. &
-                                          Set(:, co2) > al%co2_max))
+                                         (Set(:, co2) < al%gas_min(co2) .or. &
+                                          Set(:, co2) > al%gas_max(co2)))
             !> If filtering is requested and data is mole fraction / mixing ratio
             !> eliminate OOR data
             if(RPsetup%filter_al) then
                 where (Set(:, co2) /= error .and. &
-                       (Set(:, co2) < al%co2_min .or. &
-                        Set(:, co2) > al%co2_max)) 
+                       (Set(:, co2) < al%gas_min(co2) .or. &
+                        Set(:, co2) > al%gas_max(co2))) 
                     Set(:, co2) = error
                 end where
             end if
@@ -134,8 +133,8 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     if (E2Col(h2o)%present) then
         if(E2Col(h2o)%measure_type == 'molar_density') then
             Essentials%al_s(h2o) = count(Set(:, h2o) /= error .and. &
-                                         (Set(:, h2o) * StdVair < al%h2o_min .or. &
-                                          Set(:, h2o) * StdVair > al%h2o_max))
+                                         (Set(:, h2o) * StdVair < al%gas_min(h2o) .or. &
+                                          Set(:, h2o) * StdVair > al%gas_max(h2o)))
             !> Actual filtering of molar density gas data is deferred to a later time
             !> when mean T and P are computed. However, some rough filtering is necesasry
             !> to eliminate strong outliers which mess up things if present. It's a very 
@@ -147,14 +146,14 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             end where
         else
             Essentials%al_s(h2o) = count(Set(:, h2o) /= error .and. &
-                                         (Set(:, h2o) < al%h2o_min .or. &
-                                          Set(:, h2o) > al%h2o_max))
+                                         (Set(:, h2o) < al%gas_min(h2o) .or. &
+                                          Set(:, h2o) > al%gas_max(h2o)))
             !> If filtering is requested and data is mole fraction / mixing ratio
             !> eliminate OOR data
             if(RPsetup%filter_al) then
                 where (Set(:, h2o) /= error .and. &
-                       (Set(:, h2o) < al%h2o_min .or. &
-                        Set(:, h2o) > al%h2o_max)) 
+                       (Set(:, h2o) < al%gas_min(h2o) .or. &
+                        Set(:, h2o) > al%gas_max(h2o))) 
                     Set(:, h2o) = error
                 end where
             end if
@@ -169,8 +168,8 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     if (E2Col(ch4)%present) then
         if(E2Col(ch4)%measure_type == 'molar_density') then
             Essentials%al_s(ch4) = count(Set(:, ch4) /= error .and. &
-                                         (Set(:, ch4) * StdVair * 1d3 < al%ch4_min .or. &
-                                          Set(:, ch4) * StdVair * 1d3 > al%ch4_max))
+                                         (Set(:, ch4) * StdVair * 1d3 < al%gas_min(ch4) .or. &
+                                          Set(:, ch4) * StdVair * 1d3 > al%gas_max(ch4)))
             !> Actual filtering of molar density gas data is deferred to a later time
             !> when mean T and P are computed. However, some rough filtering is necesasry
             !> to eliminate strong outliers which mess up things if present. It's a very 
@@ -182,14 +181,14 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             end where
         else
             Essentials%al_s(ch4) = count(Set(:, ch4) /= error .and. &
-                                         (Set(:, ch4) < al%ch4_min .or. &
-                                          Set(:, ch4) > al%ch4_max))
+                                         (Set(:, ch4) < al%gas_min(ch4) .or. &
+                                          Set(:, ch4) > al%gas_max(ch4)))
             !> If filtering is requested and data is mole fraction / mixing ratio
             !> eliminate OOR data
             if(RPsetup%filter_al) then
                 where (Set(:, ch4) /= error .and. &
-                       (Set(:, ch4) < al%ch4_min .or. &
-                        Set(:, ch4) > al%ch4_max)) 
+                       (Set(:, ch4) < al%gas_min(ch4) .or. &
+                        Set(:, ch4) > al%gas_max(ch4))) 
                     Set(:, ch4) = error
                 end where
             end if
@@ -204,8 +203,8 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     if (E2Col(gas4)%present) then
         if(E2Col(gas4)%measure_type == 'molar_density') then
             Essentials%al_s(gas4) = count(Set(:, gas4) /= error .and. &
-                                         (Set(:, gas4) * StdVair * 1d3 < al%gas4_min .or. &
-                                          Set(:, gas4) * StdVair * 1d3 > al%gas4_max))
+                                         (Set(:, gas4) * StdVair * 1d3 < al%gas_min(gas4) .or. &
+                                          Set(:, gas4) * StdVair * 1d3 > al%gas_max(gas4)))
             !> Actual filtering of molar density gas data is deferred to a later time
             !> when mean T and P are computed. However, some rough filtering is necesasry
             !> to eliminate strong outliers which mess up things if present. It's a very 
@@ -217,14 +216,14 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             end where
         else
             Essentials%al_s(gas4) = count(Set(:, gas4) /= error .and. &
-                                         (Set(:, gas4) < al%gas4_min .or. &
-                                          Set(:, gas4) > al%gas4_max))
+                                         (Set(:, gas4) < al%gas_min(gas4) .or. &
+                                          Set(:, gas4) > al%gas_max(gas4)))
             !> If filtering is requested and data is mole fraction / mixing ratio
             !> eliminate OOR data
             if(RPsetup%filter_al) then
                 where (Set(:, gas4) /= error .and. &
-                       (Set(:, gas4) < al%gas4_min .or. &
-                        Set(:, gas4) > al%gas4_max)) 
+                       (Set(:, gas4) < al%gas_min(gas4) .or. &
+                        Set(:, gas4) > al%gas_max(gas4))) 
                     Set(:, gas4) = error
                 end where
             end if
@@ -235,11 +234,8 @@ subroutine TestAbsoluteLimits(Set, N, printout)
         hflags(gas4) = 9
     end if
 
-    !> Create an 8-digits number containing the values of the hflags
-    IntHF%al = 900000000
-    do j = 1, gas4
-        IntHF%al = IntHF%al + hflags(j) * (10**(gas4 - j))
-    end do
+    !> Pack one digit per variable into the flag string
+    call PackFlagString(hflags, gas4, CharHF%al)
 
 
     if (RPsetup%filter_al) then

@@ -65,7 +65,7 @@ subroutine Storage(PrevStats, prevAmbient)
     if (tmp_date /= Stats%date .or. tmp_time /= Stats%time) then
         Stor%H  = error
         Stor%LE = error
-        Stor%of(co2:gas4)  = error
+        Stor%of(firstGas:lastGas)  = error
         return
     end if
 
@@ -134,7 +134,7 @@ subroutine Storage(PrevStats, prevAmbient)
 
 !    !> Gas from mixing ratio to molar density (should use Vd, not Va.
 !    !> But Vd not necessarily available at this stage)
-!    do gas = co2, gas4
+!    do gas = firstGas, lastGas
 !        select case(gas)
 !            case (co2, ch4, gas4)
 !                if (Stor%of(gas) /= 0d0 .and. Ambient%Va > 0) &
@@ -165,31 +165,43 @@ subroutine Storage(PrevStats, prevAmbient)
     end if
 
     !> for all gases
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (Stor%of(gas) == 0) then
-            select case(gas)
-                case (co2, ch4, gas4)
-                    if (Stats%chi(gas) /= error &
-                        .and. PrevStats%chi(gas) /= error) then
-                        Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
-                            / Ambient%Va * 1d-3 &
-                            * E2Col(gas)%Instr%height * 1d3 / seconds
-                    else
-                        Stor%of(gas) = error
-                    end if
-                case(h2o)
-                    if (Stats%chi(gas) /= error &
-                        .and. PrevStats%chi(gas) /= error) then
-                        Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
-                            / Ambient%Va * E2Col(gas)%Instr%height / seconds
+            !> Branched on the species, not the slot: which gas occupies a slot
+            !> past the first four is decided by the project at run time, so a
+            !> `select case (gas)` over fixed slot numbers would silently skip
+            !> every gas beyond them. The fixed h2o slot keeps its branch even
+            !> when absent, so that an absent H2O still clears LE and ET the
+            !> way it always did.
+            if (gas == h2o .or. trim(E2Col(gas)%var) == 'h2o') then
+                if (Stats%chi(gas) /= error &
+                    .and. PrevStats%chi(gas) /= error) then
+                    Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
+                        / Ambient%Va * E2Col(gas)%Instr%height / seconds
+                    !> Latent heat and evapotranspiration storage follow the
+                    !> project's primary H2O only. A second H2O measurement
+                    !> gets its own storage term but must not overwrite these.
+                    if (gas == h2o) then
                         Stor%LE = Stor%of(h2o) * MW(h2o) * Ambient%lambda * 1d-3
                         Stor%ET = Stor%of(h2o) * h2o_to_ET
-                    else
-                        Stor%of(gas) = error
-                        Stor%LE      = error
-                        Stor%ET      = error
                     end if
-            end select
+                else
+                    Stor%of(gas) = error
+                    if (gas == h2o) then
+                        Stor%LE = error
+                        Stor%ET = error
+                    end if
+                end if
+            else
+                if (Stats%chi(gas) /= error &
+                    .and. PrevStats%chi(gas) /= error) then
+                    Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
+                        / Ambient%Va * 1d-3 &
+                        * E2Col(gas)%Instr%height * 1d3 / seconds
+                else
+                    Stor%of(gas) = error
+                end if
+            end if
         end if
     end do
 

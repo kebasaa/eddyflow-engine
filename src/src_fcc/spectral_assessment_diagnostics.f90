@@ -438,33 +438,33 @@ subroutine SpectralFluxLimitSettings(gas, stability, minimum, maximum, min_label
             max_label = 'sa_max_le'
         case (co2)
             if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_co2
+                minimum = FCCsetup%SA%min_un_gas(co2)
                 min_label = 'sa_min_un_co2'
             else
-                minimum = FCCsetup%SA%min_st_co2
+                minimum = FCCsetup%SA%min_st_gas(co2)
                 min_label = 'sa_min_st_co2'
             end if
-            maximum = FCCsetup%SA%max_co2
+            maximum = FCCsetup%SA%max_gas(co2)
             max_label = 'sa_max_co2'
         case (ch4)
             if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_ch4
+                minimum = FCCsetup%SA%min_un_gas(ch4)
                 min_label = 'sa_min_un_ch4'
             else
-                minimum = FCCsetup%SA%min_st_ch4
+                minimum = FCCsetup%SA%min_st_gas(ch4)
                 min_label = 'sa_min_st_ch4'
             end if
-            maximum = FCCsetup%SA%max_ch4
+            maximum = FCCsetup%SA%max_gas(ch4)
             max_label = 'sa_max_ch4'
         case default
             if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_gas4
+                minimum = FCCsetup%SA%min_un_gas(gas4)
                 min_label = 'sa_min_un_gas4'
             else
-                minimum = FCCsetup%SA%min_st_gas4
+                minimum = FCCsetup%SA%min_st_gas(gas4)
                 min_label = 'sa_min_st_gas4'
             end if
-            maximum = FCCsetup%SA%max_gas4
+            maximum = FCCsetup%SA%max_gas(gas4)
             max_label = 'sa_max_gas4'
     end select
 end subroutine SpectralFluxLimitSettings

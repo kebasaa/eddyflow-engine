@@ -42,6 +42,7 @@ subroutine FluxParams(printout)
     ! real(kind = dbl) :: Ma
     real(kind = dbl) :: Cpd
     real(kind = dbl) :: Cpv
+    integer :: msl
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating auxiliary variables..'
@@ -125,6 +126,18 @@ subroutine FluxParams(printout)
         else
             RHO%w = error
         end if
+
+        !> Same quantity for every H2O measurement the project describes, so a
+        !> gas can be corrected with the humidity from its own analyser. With a
+        !> single H2O this reduces to RHO%w above, which is why the existing
+        !> configuration comes out unchanged.
+        RHO%w_at = error
+        do msl = firstGas, lastGas
+            if (.not. E2Col(msl)%present) cycle
+            if (trim(E2Col(msl)%var) /= 'h2o') cycle
+            if (Stats%chi(msl) > 0d0 .and. Ambient%Va > 0d0) &
+                RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW(h2o) * 1d-3
+        end do
 
         if (Stats%T > 0d0 .and. RHO%w >= 0d0) then
             !> Water vapour partial pressure [Pa]
@@ -338,6 +351,15 @@ subroutine FluxParams(printout)
         Ambient%sigma = RHO%w / RHO%d
     else
         Ambient%sigma = error
+    end if
+
+    !> Per-H2O counterpart, used by gases that name their own moisture source.
+    Ambient%sigma_at = error
+    if (RHO%d > 0d0) then
+        do msl = firstGas, lastGas
+            if (RHO%w_at(msl) > 0d0) &
+                Ambient%sigma_at(msl) = RHO%w_at(msl) / RHO%d
+        end do
     end if
 
     if (printout) write(*,'(a)') ' Done.'

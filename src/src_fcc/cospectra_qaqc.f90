@@ -91,28 +91,28 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             BinSpec%of(h2o) = error
             BinCospForUnstable%of(h2o) = error
         end if
-        if (dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 &
-            .or. dabs(lEx%Flux0%co2) > FCCsetup%SA%max_co2)  then
+        if (dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_un_gas(co2) &
+            .or. dabs(lEx%Flux0%gas(co2)) > FCCsetup%SA%max_gas(co2))  then
             SADiagRejectedFlux(co2) = SADiagRejectedFlux(co2) + 1
             BinSpec%of(co2) = error
             BinCospForUnstable%of(co2) = error
         end if
-        if (dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 &
-            .or. dabs(lEx%Flux0%ch4) > FCCsetup%SA%max_ch4)  then
+        if (dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_un_gas(ch4) &
+            .or. dabs(lEx%Flux0%gas(ch4)) > FCCsetup%SA%max_gas(ch4))  then
             SADiagRejectedFlux(ch4) = SADiagRejectedFlux(ch4) + 1
             BinSpec%of(ch4) = error
             BinCospForUnstable%of(ch4) = error
         end if
-        if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4 &
-            .or. dabs(lEx%Flux0%gas4) > FCCsetup%SA%max_gas4) then
+        if (dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_un_gas(gas4) &
+            .or. dabs(lEx%Flux0%gas(gas4)) > FCCsetup%SA%max_gas(gas4)) then
             SADiagRejectedFlux(gas4) = SADiagRejectedFlux(gas4) + 1
             BinSpec%of(gas4) = error
             BinCospForUnstable%of(gas4) = error
         end if
         if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_un_LE .and. &
-            dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 .and. &
-            dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 .and. &
-            dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4) then
+            dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_un_gas(co2) .and. &
+            dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_un_gas(ch4) .and. &
+            dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_un_gas(gas4)) then
             BinSpec = ErrSpec
             BinCospForUnstable = ErrSpec
             skip_spectra = .true.
@@ -138,22 +138,22 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             .or. dabs(lEx%Flux0%LE) > FCCsetup%SA%max_LE) &
             BinCospForStable%of(h2o) = error
 
-        if (dabs(lEx%Flux0%co2) < FCCsetup%SA%min_st_co2 &
-            .or. dabs(lEx%Flux0%co2) > FCCsetup%SA%max_co2)  &
+        if (dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_st_gas(co2) &
+            .or. dabs(lEx%Flux0%gas(co2)) > FCCsetup%SA%max_gas(co2))  &
             BinCospForStable%of(co2) = error
 
-        if (dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_st_ch4 &
-            .or. dabs(lEx%Flux0%ch4) > FCCsetup%SA%max_ch4)  &
+        if (dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_st_gas(ch4) &
+            .or. dabs(lEx%Flux0%gas(ch4)) > FCCsetup%SA%max_gas(ch4))  &
             BinCospForStable%of(ch4) = error
 
-        if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_st_gas4 &
-            .or. dabs(lEx%Flux0%gas4) > FCCsetup%SA%max_gas4) &
+        if (dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_st_gas(gas4) &
+            .or. dabs(lEx%Flux0%gas(gas4)) > FCCsetup%SA%max_gas(gas4)) &
             BinCospForStable%of(gas4) = error
 
         if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_st_LE .and. &
-            dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 .and. &
-            dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 .and. &
-            dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4) then
+            dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_un_gas(co2) .and. &
+            dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_un_gas(ch4) .and. &
+            dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_un_gas(gas4)) then
             BinCospForStable = ErrSpec
             skip_cospectra = .true.
         end if
@@ -290,11 +290,11 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             if (month >= JAN .and. month <= DEC) sort = FCCsetup%SA%class(i, month)
             select case (i)
                 case (co2)
-                    flux = dabs(lEx%Flux0%co2)
+                    flux = dabs(lEx%Flux0%gas(co2))
                 case (ch4)
-                    flux = dabs(lEx%Flux0%ch4)
+                    flux = dabs(lEx%Flux0%gas(ch4))
                 case default
-                    flux = dabs(lEx%Flux0%gas4)
+                    flux = dabs(lEx%Flux0%gas(gas4))
             end select
         end if
         if (flux == dabs(error)) cycle

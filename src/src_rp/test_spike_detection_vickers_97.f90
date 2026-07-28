@@ -100,10 +100,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     !> Specifically, w, co2, h2o, ch4 and gas4 have their own thresholds
     adv_lim(u:pe) = sr%lim_u
     adv_lim(w)    = sr%lim_w
-    adv_lim(co2)  = sr%lim_co2
-    adv_lim(h2o)  = sr%lim_h2o
-    adv_lim(ch4)  = sr%lim_ch4
-    adv_lim(gas4)  = sr%lim_gas4
+    adv_lim(firstGas:lastGas) = sr%lim_gas(firstGas:lastGas)
 
     IsSpike = .false.
     !> main cycle, looping over the moving window
@@ -289,11 +286,8 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
         end if
     end do
 
-    !> Create an 8-digits number containing the values of the hflags
-    IntHF%sr = 900000000
-    do j = u, gas4
-        IntHF%sr = IntHF%sr + hflags(j) * 10 ** (gas4 - j)
-    end do
+    !> Pack one digit per variable into the flag string
+    call PackFlagString(hflags(u:gas4), gas4, CharHF%sr)
 
     !> Write on output variable
     if (.not. RPsetup%filter_sr) tot_spikes_sng(u:pe) = 0

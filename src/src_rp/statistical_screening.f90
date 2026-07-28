@@ -77,6 +77,6 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
     !> Set flags to 9 for tests not performed
     call TestsNotPerformed()
 
-    call Int2Flags(9)
+    call Int2Flags(FlagStrLen)
     if (printout) write(*,'(a)') '  Done.'
 end subroutine StatisticalScreening

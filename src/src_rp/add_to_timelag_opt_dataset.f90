@@ -45,7 +45,7 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
 
     !> Passive gases
     if (E2Col(co2)%present &
-        .and. dabs(Flux0%co2) > TOSetup%co2_min_flux &
+        .and. dabs(Flux0%gas(co2)) > TOSetup%gas_min_flux(co2) &
         .and. Essentials%used_timelag(co2) /= E2Col(co2)%max_tl &
         .and. Essentials%used_timelag(co2) /= E2Col(co2)%min_tl) then
             TimelagOpt(n)%tlag(co2) = Essentials%used_timelag(co2)
@@ -54,7 +54,7 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     end if
 
     if (E2Col(ch4)%present &
-        .and. Flux0%ch4 > TOSetup%ch4_min_flux &
+        .and. Flux0%gas(ch4) > TOSetup%gas_min_flux(ch4) &
         .and. Essentials%used_timelag(ch4) /= E2Col(ch4)%max_tl &
         .and. Essentials%used_timelag(ch4) /= E2Col(ch4)%min_tl) then
         TimelagOpt(n)%tlag(ch4) = Essentials%used_timelag(ch4)
@@ -63,7 +63,7 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     end if
 
     if (E2Col(gas4)%present &
-        .and. Flux0%gas4 > TOSetup%gas4_min_flux &
+        .and. Flux0%gas(gas4) > TOSetup%gas_min_flux(gas4) &
         .and. Essentials%used_timelag(gas4) /= E2Col(gas4)%max_tl &
         .and. Essentials%used_timelag(gas4) /= E2Col(gas4)%min_tl) then
         TimelagOpt(n)%tlag(gas4) = Essentials%used_timelag(gas4)

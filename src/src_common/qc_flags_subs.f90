@@ -96,10 +96,10 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
         end select
         !> If fluxes are set to error, set to error also the quality flags
         if (lFlux2%H    == error) lQCFlag%H    = nint(error)
-        if (lFlux2%h2o  == error) lQCFlag%h2o  = nint(error)
-        if (lFlux2%co2  == error) lQCFlag%co2  = nint(error)
-        if (lFlux2%ch4  == error) lQCFlag%ch4  = nint(error)
-        if (lFlux2%gas4 == error) lQCFlag%gas4 = nint(error)
+        if (lFlux2%gas(h2o)  == error) lQCFlag%h2o  = nint(error)
+        if (lFlux2%gas(co2)  == error) lQCFlag%co2  = nint(error)
+        if (lFlux2%gas(ch4)  == error) lQCFlag%ch4  = nint(error)
+        if (lFlux2%gas(gas4) == error) lQCFlag%gas4 = nint(error)
     else
         lQCFlag%tau = nint(error)
         lQCFlag%H = nint(error)

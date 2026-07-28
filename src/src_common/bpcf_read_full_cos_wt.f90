@@ -54,8 +54,12 @@ subroutine ImportFullCospectra(CospFile, cospectra, nfreq, wanted, skip)
     character(32) :: var
     character(11) :: covlabs(GHGNumVar)
     real(kind = dbl) :: cov(GHGNumVar)
-    data covlabs / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
-                   'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
+    !> Only the four legacy gas slots have a compile-time column label; the
+    !> remaining gas slots take their species from the project file, so they
+    !> stay blank here and simply never match a column header.
+    data covlabs(1:8) / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
+                        'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
+    data covlabs(9:GHGNumVar) / 60*'' /
 
 
     skip = .false.
@@ -176,8 +180,12 @@ subroutine FullCospectraLength(Filepath, N)
     integer :: i
     character(ShortInstringLen) :: dataline
     character(11) :: covlabs(GHGNumVar)
-    data covlabs / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
-                   'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
+    !> Only the four legacy gas slots have a compile-time column label; the
+    !> remaining gas slots take their species from the project file, so they
+    !> stay blank here and simply never match a column header.
+    data covlabs(1:8) / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
+                        'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
+    data covlabs(9:GHGNumVar) / 60*'' /
 
 
     open(udf, file = Filepath, iostat = io_status)

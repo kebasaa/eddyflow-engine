@@ -39,6 +39,28 @@ subroutine WriteProcessingProjectVariables()
     implicit none
     !> local variables
     integer :: dot
+    type(SwVerType) :: file_ini_ver
+    include 'interfaces_1.inc'
+
+    !> Refuse a project file written in a newer format than this engine knows.
+    !> Without this the file is silently half-parsed: unknown keys are dropped
+    !> and missing numeric tags are left undefined rather than defaulted.
+    !> 'ini_version' is absent in very old files, which is fine - those predate
+    !> the current format and are read on a best-effort basis, as before.
+    if (EPPrjCTagFound(2)) then
+        file_ini_ver = SwVerFromString(trim(adjustl(EPPrjCTags(2)%value)))
+        if (.not. EqualSwVer(file_ini_ver, errSwVer)) then
+            if (CompareSwVer(file_ini_ver, SwVerFromString(MaxSupportedIniVer))) then
+                write(*, '(a)') '  Fatal error(96)> Project file format version ' &
+                    // trim(adjustl(EPPrjCTags(2)%value)) &
+                    // ' is newer than this engine supports (' &
+                    // MaxSupportedIniVer // ').'
+                call ExceptionHandler(96)
+            end if
+        end if
+    end if
+
+    call ReadMeasurementRecords()
 
     !> Initializations
     Auxfile%metadata   = 'none'
@@ -430,6 +452,90 @@ subroutine WriteProcessingProjectVariables()
     call AdjFilePath(AuxFile%biomet, slash)
     call AdjDir(Dir%biomet, slash)
 contains
+
+!***************************************************************************
+!> Read the indexed gas / cell / diagnostic records from the [Project] group.
+!>
+!> Slot positions come from the generated ProjectRecordOrigins parameters, so
+!> this walks the groups by stride arithmetic exactly as ReadMetadataFile does
+!> for instr_<K>_* and col_<N>_*, with no literal indices to rot when a slot is
+!> appended.
+!>
+!> Every field is *TagFound-guarded: a missing numeric tag is left undefined by
+!> SearchLocalTags rather than defaulted, so reading one blind yields garbage.
+!>
+!> NOTE: nothing consumes these records yet. The legacy col_co2/col_h2o/col_ch4/
+!> col_gas4 slots still drive processing; this only makes the new format
+!> readable so the switch-over can be a separate, single-purpose change.
+!***************************************************************************
+subroutine ReadMeasurementRecords()
+    integer :: i
+    integer :: b
+
+    EddyFlowProj%gas_num  = 0
+    EddyFlowProj%cell_num = 0
+    EddyFlowProj%diag_num = 0
+
+    if (EPPrjNTagFound(gasNumTag)) &
+        EddyFlowProj%gas_num = nint(EPPrjNTags(gasNumTag)%value)
+    if (EPPrjNTagFound(cellNumTag)) &
+        EddyFlowProj%cell_num = nint(EPPrjNTags(cellNumTag)%value)
+    if (EPPrjNTagFound(diagNumTag)) &
+        EddyFlowProj%diag_num = nint(EPPrjNTags(diagNumTag)%value)
+
+    !> Clamp to what we can hold. The GUI enforces the same limits, so this
+    !> only bites on a hand-edited file, but a silent overrun would be worse.
+    EddyFlowProj%gas_num  = min(max(EddyFlowProj%gas_num,  0), MaxNumGases)
+    EddyFlowProj%cell_num = min(max(EddyFlowProj%cell_num, 0), MaxNumCellCols)
+    EddyFlowProj%diag_num = min(max(EddyFlowProj%diag_num, 0), MaxNumDiagCols)
+
+    do i = 1, MaxNumGases
+        EddyFlowProj%gas(i) = GasRecordType('none', 'none', nint(error), 0, 0, &
+                                            error, error)
+        if (i > EddyFlowProj%gas_num) cycle
+
+        b = gasRecOriginC + (i - 1) * gasRecLeapC
+        if (EPPrjCTagFound(b))     EddyFlowProj%gas(i)%var = &
+            trim(adjustl(EPPrjCTags(b)%value))
+        if (EPPrjCTagFound(b + 1)) EddyFlowProj%gas(i)%instr = &
+            trim(adjustl(EPPrjCTags(b + 1)%value))
+
+        b = gasRecOriginN + (i - 1) * gasRecLeapN
+        if (EPPrjNTagFound(b))     EddyFlowProj%gas(i)%col   = nint(EPPrjNTags(b)%value)
+        if (EPPrjNTagFound(b + 1)) EddyFlowProj%gas(i)%moist = nint(EPPrjNTags(b + 1)%value)
+        if (EPPrjNTagFound(b + 2)) EddyFlowProj%gas(i)%cell  = nint(EPPrjNTags(b + 2)%value)
+        if (EPPrjNTagFound(b + 3)) EddyFlowProj%gas(i)%mw    = dble(EPPrjNTags(b + 3)%value)
+        if (EPPrjNTagFound(b + 4)) EddyFlowProj%gas(i)%diff  = dble(EPPrjNTags(b + 4)%value)
+    end do
+
+    do i = 1, MaxNumCellCols
+        EddyFlowProj%cell(i) = MeasRecordType('none', 'none', nint(error))
+        if (i > EddyFlowProj%cell_num) cycle
+
+        b = cellRecOriginC + (i - 1) * cellRecLeapC
+        if (EPPrjCTagFound(b))     EddyFlowProj%cell(i)%var = &
+            trim(adjustl(EPPrjCTags(b)%value))
+        if (EPPrjCTagFound(b + 1)) EddyFlowProj%cell(i)%instr = &
+            trim(adjustl(EPPrjCTags(b + 1)%value))
+
+        b = cellRecOriginN + (i - 1) * cellRecLeapN
+        if (EPPrjNTagFound(b)) EddyFlowProj%cell(i)%col = nint(EPPrjNTags(b)%value)
+    end do
+
+    do i = 1, MaxNumDiagCols
+        EddyFlowProj%diag(i) = MeasRecordType('none', 'none', nint(error))
+        if (i > EddyFlowProj%diag_num) cycle
+
+        b = diagRecOriginC + (i - 1) * diagRecLeapC
+        if (EPPrjCTagFound(b))     EddyFlowProj%diag(i)%var = &
+            trim(adjustl(EPPrjCTags(b)%value))
+        if (EPPrjCTagFound(b + 1)) EddyFlowProj%diag(i)%instr = &
+            trim(adjustl(EPPrjCTags(b + 1)%value))
+
+        b = diagRecOriginN + (i - 1) * diagRecLeapN
+        if (EPPrjNTagFound(b)) EddyFlowProj%diag(i)%col = nint(EPPrjNTags(b)%value)
+    end do
+end subroutine ReadMeasurementRecords
 
 real(kind = dbl) function NormalizeCecFraction(value, default_value)
     real(kind = dbl), intent(in) :: value

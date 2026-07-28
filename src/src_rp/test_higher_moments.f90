@@ -88,12 +88,8 @@ subroutine TestHigherMoments(Set, N)
         end if
     end do
 
-    !>  Create 8-digits numbers containing hflag/sflag values
-    IntHF%sk = 900000000
-    IntSF%sk = 900000000
-    do j = u, GHGNumVar
-        IntHF%sk = IntHF%sk + hflags(j) * 10 **(GHGNumVar - j)
-        IntSF%sk = IntSF%sk + sflags(j) * 10 **(GHGNumVar - j)
-    end do
+    !>  Pack one digit per variable into the flag strings
+    call PackFlagString(hflags(u:GHGNumVar), GHGNumVar, CharHF%sk)
+    call PackFlagString(sflags(u:GHGNumVar), GHGNumVar, CharSF%sk)
     write(*,'(a)') ' Done.'
 end subroutine TestHigherMoments

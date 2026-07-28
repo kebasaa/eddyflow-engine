@@ -43,7 +43,7 @@ subroutine MoleFractionsAndMixingRatios()
 
 
     !> Initialization
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         Stats%d(gas) = error
         Stats%chi(gas) = error
         Stats%r(gas) = error
@@ -96,7 +96,7 @@ subroutine MoleFractionsAndMixingRatios()
     end select
 
     !> Calculate average mole fractions and mixing ratios where applicable
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (gas /= h2o) then
             select case (E2Col(gas)%measure_type)
                 case('mixing_ratio')

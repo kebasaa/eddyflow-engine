@@ -82,10 +82,10 @@ subroutine WriteOutFluxnetFcc(lEx)
     call AddFloatDatumToDataline(Flux3%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux3%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux3%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux3%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(Flux3%gas(co2), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Flux3%gas(h2o), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Flux3%gas(ch4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(Flux3%gas(gas4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
 
     !> Random uncertainties
     call AddFloatDatumToDataline(lEx%rand_uncer(u), csv_row, EddyFlowProj%err_label)
@@ -203,6 +203,13 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddFloatDatumToDataline(lEx%max_tlag(gas), csv_row, EddyFlowProj%err_label)
     end do
 
+    !> PWB lag source, one per gas. RP writes these and its header declares
+    !> them; FCC used to omit them, which shifted every later column left of
+    !> the name above it in the published file.
+    do gas = co2, gas4
+        call AddFloatDatumToDataline(lEx%pwb_source(gas), csv_row, EddyFlowProj%err_label)
+    end do
+
     !> Stats
     do var = u, gas4
         if (var == ts) then
@@ -267,28 +274,28 @@ subroutine WriteOutFluxnetFcc(lEx)
     call AddFloatDatumToDataline(lEx%Flux0%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(lEx%Flux0%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(lEx%Flux0%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(lEx%Flux0%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(lEx%Flux0%gas(co2), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%gas(h2o), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%gas(ch4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(lEx%Flux0%gas(gas4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
     !> Fluxes Level 1 
     call AddFloatDatumToDataline(Flux1%Tau, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux1%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux1%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux1%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux1%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux1%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux1%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux1%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(Flux1%gas(co2), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Flux1%gas(h2o), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Flux1%gas(ch4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(Flux1%gas(gas4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
     !> Fluxes Level 2
     call AddFloatDatumToDataline(Flux2%Tau, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux2%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux2%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux2%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux2%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux2%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux2%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux2%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(Flux2%gas(co2), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Flux2%gas(h2o), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Flux2%gas(ch4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    call AddFloatDatumToDataline(Flux2%gas(gas4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
 
     !> Cell values
     call AddFloatDatumToDataline(lEx%Tcell, csv_row, EddyFlowProj%err_label)
@@ -296,13 +303,13 @@ subroutine WriteOutFluxnetFcc(lEx)
     do gas = co2, gas4
         call AddFloatDatumToDataline(lEx%Vcell(gas), csv_row, EddyFlowProj%err_label)
     end do
-    call AddFloatDatumToDataline(lEx%Flux0%E_co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%E_ch4, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%E_gas4, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%Hi_co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%Hi_h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%Hi_ch4, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Flux0%Hi_gas4, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%E_gas(co2), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%E_gas(ch4), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%E_gas(gas4), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%Hi_gas(co2), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%Hi_gas(h2o), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%Hi_gas(ch4), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(lEx%Flux0%Hi_gas(gas4), csv_row, EddyFlowProj%err_label)
 
     !> Burba terms
     if (lEx%Burba%h_bot + lEx%Burba%h_top + lEx%Burba%h_spar /= 0.0) then
@@ -487,6 +494,76 @@ subroutine WriteOutFluxnetFcc(lEx)
             call AddFloatDatumToDataline(lEx%user_var(i), csv_row, EddyFlowProj%err_label)
         end do
     end if
+
+    !> Per-gas water vapour terms, echoed back in the same position and order
+    !> as RP wrote them (see WriteOutFluxnet and InitFluxnetFile_rp). FCC
+    !> rewrites the whole row, so omitting these would leave the header
+    !> describing columns the data no longer has.
+    call AddIntDatumToDataline(lEx%n_gas_moist, csv_row, EddyFlowProj%err_label)
+    do i = 1, lEx%n_gas_moist
+        gas = lEx%gas_moist_slot(i)
+        call AddIntDatumToDataline(gas, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%rhow_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%sigma_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+
+    !> Analyser of each gas past the four historical slots, replayed exactly as
+    !> read (SI units, no conversion) and in the same order.
+    call AddIntDatumToDataline(lEx%n_gas_instr, csv_row, EddyFlowProj%err_label)
+    do i = 1, lEx%n_gas_instr
+        gas = lEx%gas_instr_slot(i)
+        call AddIntDatumToDataline(gas, csv_row, EddyFlowProj%err_label)
+        call AddCharDatumToDataline(lEx%gas_instr(gas)%firm, csv_row, EddyFlowProj%err_label)
+        call AddCharDatumToDataline(lEx%gas_instr(gas)%model, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%nsep, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%esep, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%vsep, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_l, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_d, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_f, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%hpath_length, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%vpath_length, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tau, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%kw, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%ko, csv_row, EddyFlowProj%err_label)
+    end do
+
+    !> Per-gas families for gases past the four historical slots. Values come
+    !> from the ex record, except the fluxes and spectral factor, which FCC has
+    !> just recomputed for every gas.
+    call AddIntDatumToDataline(lEx%n_gas_instr, csv_row, EddyFlowProj%err_label)
+    do i = 1, lEx%n_gas_instr
+        gas = lEx%gas_instr_slot(i)
+        call AddIntDatumToDataline(gas, csv_row, EddyFlowProj%err_label)
+        call AddIntDatumToDataline(lEx%nr(gas), csv_row, EddyFlowProj%err_label)
+        call AddIntDatumToDataline(lEx%nr_w(gas), csv_row, EddyFlowProj%err_label)
+        call AddIntDatumToDataline(lEx%measure_type_int(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%d(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%r(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%chi(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%Flux0%gas(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%gas(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux1%gas(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux2%gas(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(BPCF%of(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%rand_uncer(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%Stor%of(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%act_tlag(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%used_tlag(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%nom_tlag(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%min_tlag(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%max_tlag(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%pwb_source(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%median(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%Q1(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%Q3(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%Cov(gas, gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%Skw(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%Kur(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%stats%Cov(w, gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%Vcell(gas), csv_row, EddyFlowProj%err_label)
+        call AddIntDatumToDataline(lEx%spikes(gas), csv_row, EddyFlowProj%err_label)
+    end do
 
     !> Write sisxth string from Chunks
     !> Biomet data

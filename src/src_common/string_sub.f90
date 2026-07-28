@@ -322,25 +322,66 @@ subroutine int2char(num, string, pad)
     integer, intent(in) :: num
     character(*) :: string
     !> local variables
-    integer :: i
-    character(32) :: str
+    integer :: n
+    integer :: width
+    character(32) :: digits
 
 
-    !> Convert integer to string and adjust left
-    call clearstr(str)
-    write(str, '(i32)') num
-    str = adjustl(str)
+    !> Render the number, then right-align it in a zero-padded field `pad`
+    !> characters wide. The result is built directly in `string`: the padded
+    !> field can be wider than any fixed scratch buffer now that the flag
+    !> strings scale with the gas count, and building it in place also avoids
+    !> the overlapping character assignment the previous version relied on.
+    write(digits, '(i0)') num
+    digits = adjustl(digits)
+    n = min(len_trim(digits), len(string))
+    width = min(max(pad, n), len(string))
 
-    !> Pad with zeros on the left if
-    !> passed length is /= zero and > length of str
-    if (pad > len_trim(str)) then
-        i = pad - len_trim(str)
-        str(i + 1:) = str
-        str(1:i) = repeat('0', i)
+    string = ''
+    if (width > n) then
+        string(1:width - n) = repeat('0', width - n)
+        string(width - n + 1:width) = digits(1:n)
+    else
+        string(1:n) = digits(1:n)
     end if
-
-    string = trim(adjustl(str))
 end subroutine int2char
+
+!***************************************************************************
+!
+! \brief       Build a packed per-variable quality-flag string: a leading
+!              filler digit followed by one digit per variable, so that
+!              string(j + 1 : j + 1) is the flag for variable j.
+! \author      Jonathan Muller
+! \note        Replaces the previous encoding, which accumulated
+!              900000000 + sum(flag(j) * 10**(n - j)) into a default integer
+!              and then rendered it with int2char. That overflows a 32-bit
+!              integer once n exceeds about 9, so it could not survive the
+!              gas count being raised. Building the characters directly keeps
+!              the same digit-per-variable layout with no ceiling.
+!              Any digit outside 0-9 (e.g. the "variable absent" marker) is
+!              written as 9, matching the old behaviour.
+!***************************************************************************
+subroutine PackFlagString(digits, n, string)
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: n
+    integer, intent(in) :: digits(n)
+    character(*), intent(out) :: string
+    !> local variables
+    integer :: j
+    integer :: d
+
+
+    !> Positions not covered by a variable stay '9', which is also what the
+    !> leading filler digit was under the integer encoding.
+    string = repeat('9', len(string))
+    do j = 1, n
+        if (j + 1 > len(string)) exit
+        d = digits(j)
+        if (d < 0 .or. d > 9) d = 9
+        write(string(j + 1:j + 1), '(i1)') d
+    end do
+end subroutine PackFlagString
 
 !***************************************************************************
 !

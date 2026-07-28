@@ -199,6 +199,15 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     NumInstruments = 0
     Instr%firm = 'none'
     Instr%model = 'none'
+
+    !> The GUI writes as many instr_<K>_* blocks as the site has devices, with
+    !> no cap of its own, so a metadata file can describe more instruments than
+    !> we have slots for. The last ACTags entry is a sentinel for exactly one
+    !> instrument past the limit: if it was found, the surplus is being dropped
+    !> and the user needs to hear about it rather than wonder why variables
+    !> assigned to those instruments are ignored.
+    if (ACTagFound(Nac)) call ExceptionHandler(97)
+
     do i = 1, MaxNumInstruments
         if(ACTagFound(init_ac_instr + i*leap_ac_instr)) then
             NumInstruments = NumInstruments + 1
@@ -348,7 +357,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     Metadata%ac_freq = dble(ANTags(7)%value)
     Metadata%file_length = dble(ANTags(8)%value)
     FileInterpreter%header_rows = nint(ANTags(9)%value)
-    FileInterpreter%data_label = ACTags(65)%value(1:len_trim(ACTags(65)%value))
+    FileInterpreter%data_label = ACTags(89)%value(1:len_trim(ACTags(89)%value))
 
     select case (ACTags(23)%value(1:len_trim(ACTags(23)%value)))
         case('comma')
@@ -368,8 +377,8 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     FileInterpreter%file_with_text = .false.
     leap_ac_col = 7
     leap_an_col = 8
-    init_ac_col = 66 - leap_ac_col
-    init_an_col = 85 - leap_an_col
+    init_ac_col = 90 - leap_ac_col
+    init_an_col = 130 - leap_an_col
     LocCol%var = 'none'
     LocCol%label = 'none'
     LocCol%measure_type = 'none'
@@ -385,6 +394,11 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
         if(ACTagFound(init_ac_col + i*leap_ac_col)) then
             !> Retrieve variable name
             NumCol = NumCol + 1
+            !> Remember where this column sat in the metadata file. Unused
+            !> columns are dropped further on, so LocCol/Raw indices stop
+            !> matching these numbers, and the project file refers to columns
+            !> by exactly this number.
+            LocCol(i)%orig_col = i
             LocCol(i)%var = ACTags(init_ac_col + i*leap_ac_col)%value &
                 (1:len_trim(ACTags(init_ac_col + i*leap_ac_col)%value))
             LocCol(i)%label = LocCol(i)%var

@@ -198,7 +198,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         !> 1) Fluxes too low (either sensible heat or concerned gas)
         !> 2) Unrealistic correction factors calculated from direct method
         if ((loc_var_present(co2) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%co2) < LocSetup%SA%min_un_co2) &
+            .or. dabs(lEx%Flux0%gas(co2)) < LocSetup%SA%min_un_gas(co2)) &
             .or. BPCF%of(co2) <= min_bpcf_f12(co2) .or. BPCF%of(co2) >= max_bpcf_f12(co2)) &
             call CorrectionFactorsIbrom07(.true., .false., .false., .false., BPCF, lEx)
 
@@ -208,12 +208,12 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
             call CorrectionFactorsIbrom07(.false., .true., .false., .false., BPCF, lEx)
 
         if ((loc_var_present(ch4) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%ch4) < LocSetup%SA%min_un_ch4) &
+            .or. dabs(lEx%Flux0%gas(ch4)) < LocSetup%SA%min_un_gas(ch4)) &
             .or. BPCF%of(ch4) <= min_bpcf_f12(ch4) .or. BPCF%of(ch4) >= max_bpcf_f12(ch4)) &
             call CorrectionFactorsIbrom07(.false., .false., .true., .false., BPCF, lEx)
 
         if ((loc_var_present(gas4) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%gas4) < LocSetup%SA%min_un_gas4) &
+            .or. dabs(lEx%Flux0%gas(gas4)) < LocSetup%SA%min_un_gas(gas4)) &
             .or. BPCF%of(gas4) <= min_bpcf_f12(gas4) .or. BPCF%of(gas4) >= max_bpcf_f12(gas4)) &
             call CorrectionFactorsIbrom07(.false., .false., .false., .true., BPCF, lEx)
 

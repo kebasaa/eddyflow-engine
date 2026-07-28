@@ -129,20 +129,20 @@ subroutine TestDiscontinuities(Set, N)
         if (HaarAvr(ts) > ds%sf_t)      sflags(ts) = 1
         if (HaarVar(ts) > ds%hf_var)    hflags(ts) = 1
         if (HaarVar(ts) > ds%sf_var)    sflags(ts) = 1
-        if (HaarAvr(co2) > ds%hf_co2)   hflags(co2) = 1
-        if (HaarAvr(co2) > ds%sf_co2)   sflags(co2) = 1
+        if (HaarAvr(co2) > ds%hf_gas(co2))   hflags(co2) = 1
+        if (HaarAvr(co2) > ds%sf_gas(co2))   sflags(co2) = 1
         if (HaarVar(co2) > ds%hf_var)   hflags(co2) = 1
         if (HaarVar(co2) > ds%sf_var)   sflags(co2) = 1
-        if (HaarAvr(h2o) > ds%hf_h2o)   hflags(h2o) = 1
-        if (HaarAvr(h2o) > ds%sf_h2o)   sflags(h2o) = 1
+        if (HaarAvr(h2o) > ds%hf_gas(h2o))   hflags(h2o) = 1
+        if (HaarAvr(h2o) > ds%sf_gas(h2o))   sflags(h2o) = 1
         if (HaarVar(h2o) > ds%hf_var)   hflags(h2o) = 1
         if (HaarVar(h2o) > ds%sf_var)   sflags(h2o) = 1
-        if (HaarAvr(ch4) > ds%hf_ch4)   hflags(ch4) = 1
-        if (HaarAvr(ch4) > ds%sf_ch4)   sflags(ch4) = 1
+        if (HaarAvr(ch4) > ds%hf_gas(ch4))   hflags(ch4) = 1
+        if (HaarAvr(ch4) > ds%sf_gas(ch4))   sflags(ch4) = 1
         if (HaarVar(ch4) > ds%hf_var)   hflags(ch4) = 1
         if (HaarVar(ch4) > ds%sf_var)   sflags(ch4) = 1
-        if (HaarAvr(gas4) > ds%hf_gas4)   hflags(gas4) = 1
-        if (HaarAvr(gas4) > ds%sf_gas4)   sflags(gas4) = 1
+        if (HaarAvr(gas4) > ds%hf_gas(gas4))   hflags(gas4) = 1
+        if (HaarAvr(gas4) > ds%sf_gas(gas4))   sflags(gas4) = 1
         if (HaarVar(gas4) > ds%hf_var)   hflags(gas4) = 1
         if (HaarVar(gas4) > ds%sf_var)   sflags(gas4) = 1
 
@@ -152,18 +152,15 @@ subroutine TestDiscontinuities(Set, N)
     if(allocated(XX_dw)) deallocate(XX_dw)
     if(allocated(XX_up)) deallocate(XX_up)
 
-    ! creates a 8-digits number containing - in each digit -
-    ! the values of the h/s flags:
-    IntHF%ds = 900000000
-    IntSF%ds = 900000000
+    ! Pack one digit per variable into the flag strings; absent variables
+    ! are marked 9.
     do j = 1, GHGNumVar
-        if (E2Col(j)%present) then
-            IntHF%ds = IntHF%ds + hflags(j) * 10 **(GHGNumVar - j)
-            IntSF%ds = IntSF%ds + sflags(j) * 10 **(GHGNumVar - j)
-        else
-            IntHF%ds = IntHF%ds + 9 * 10 **(GHGNumVar - j)
-            IntSF%ds = IntSF%ds + 9 * 10 **(GHGNumVar - j)
+        if (.not. E2Col(j)%present) then
+            hflags(j) = 9
+            sflags(j) = 9
         end if
     end do
+    call PackFlagString(hflags, GHGNumVar, CharHF%ds)
+    call PackFlagString(sflags, GHGNumVar, CharSF%ds)
     write(*,'(a)') ' Done.'
 end subroutine TestDiscontinuities

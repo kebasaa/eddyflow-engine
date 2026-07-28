@@ -209,6 +209,15 @@ subroutine InitFluxnetFile_rp()
             !   &VM97_TIMELAG_HFLAG,VM97_TIMELAG_SFLAG,VM97_AOA_HFLAG,VM97_NSW_HFLAG,&
 
 
+    !> Width of the fixed part of the row, counted from what was just built.
+    !> Every datum above was appended with a trailing separator, so the field
+    !> count is the number of separators. WriteOutFluxnetOnlyBiomet pads to
+    !> this rather than to a literal of its own.
+    nFluxnetFixedCols = 0
+    do i = 1, len_trim(csv_row)
+        if (csv_row(i:i) == separator) nFluxnetFixedCols = nFluxnetFixedCols + 1
+    end do
+
     !> Add custom variables
     call AddDatum(csv_row, 'NUM_CUSTOM_VARS', separator)
     if (NumUserVar > 0) then
@@ -218,6 +227,106 @@ subroutine InitFluxnetFile_rp()
                 // '_MEAN', separator)
         end do
     end if
+
+    !> Per-gas water vapour terms.
+    !>
+    !> The fixed part of the row carries four gas slots. The H2O used to
+    !> correct each gas is now per-gas though - with two analysers, CO2 from
+    !> one is corrected with H2O from that same one - so the resolved terms are
+    !> written here, one pair per configured gas. FCC recomputes the fluxes
+    !> from this file and reads them back rather than repeating the resolution.
+    !>
+    !> The count is always emitted so the block is self-describing and the
+    !> reader needs no knowledge of the project configuration.
+    !> The gas set comes from the project, not from E2Col: this runs before
+    !> the first DefineE2Set of the run, so E2Col is not final yet, and a set
+    !> derived from it would not match what the row writers later emit.
+    !> Records take slot firstGas+i-1 whether or not they name a column, which
+    !> is how ApplyGasRecords assigns them; a record without a column occupies
+    !> its slot but is absent, so it gets no column here.
+    call SelectFluxnetGasSlots()
+
+    call AddDatum(csv_row, 'NUM_GAS_MOIST', separator)
+    do j = 1, nFluxnetGasSlots
+        i = FluxnetGasSlots(j)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SLOT', separator)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RHOW', separator)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SIGMA', separator)
+    end do
+
+    !> Analyser describing each gas beyond the four historical slots.
+    !>
+    !> The MANUFACTURER_GA_* blocks above cover CO2/H2O/CH4/GS4 only, and FCC
+    !> reaches them by instrument role - past the fourth gas that role index
+    !> addresses an unrelated instrument. These columns carry the same
+    !> metadata for the remaining gases so FCC can correct them too.
+    !>
+    !> Unlike the GA_* blocks, these are written in SI units and read back
+    !> unchanged: the legacy columns are in metadata units and are converted
+    !> on read, which is a double-conversion waiting to happen.
+    call AddDatum(csv_row, 'NUM_GAS_INSTR', separator)
+    do j = 1, nFluxnetInstrSlots
+        i = FluxnetInstrSlots(j)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_SLOT', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_MANUFACTURER', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_MODEL', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_NSEP', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_ESEP', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_VSEP', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_TUBE_LENGTH', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_TUBE_IN_DIAM', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_TUBE_FLOW_RATE', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_HPATH', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_VPATH', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_RESPONSE_TIME', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_KH2O', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_KO2', separator)
+    end do
+
+    !> Per-gas families for each gas past the four historical slots.
+    !>
+    !> Omits the NREX counts and the VM97 flag string: those reach FCC only
+    !> inside the raw chunks it echoes verbatim, not as per-slot values, so it
+    !> could not reproduce them here. They stay four-gas until those chunks are
+    !> parsed per slot.
+    !>
+    !> The fixed part of the row carries these families for CO2/H2O/CH4/GS4
+    !> only, interleaved and in fixed positions. Rather than renumber ~300
+    !> columns, the same families are emitted here for the remaining gases,
+    !> grouped per gas. Consumers read this file by column name, so grouping
+    !> rather than interleaving costs nothing.
+    call AddDatum(csv_row, 'NUM_GAS_EXTRA', separator)
+    do j = 1, nFluxnetInstrSlots
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_SLOT', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_NR', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_NR_W', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_TYPE', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MOLAR_DENSITY', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MIXING_RATIO', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX_LEVEL0', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX_STAGE1', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX_STAGE2', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_SCF', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_RANDUNC_HF', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_STORAGE', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_ACTUAL', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_USED', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_NOMINAL', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_MIN', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_MAX', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_PWB_SOURCE', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_MEDIAN', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_P25', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_P75', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_SIGMA', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_SKW', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_KUR', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_W_MEAS_COV', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MV_AIR_CELL', separator)
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_NUM_SPIKES', separator)
+    end do
 
     !> Add biomet variables
     call AddDatum(csv_row, 'NUM_BIOMET_VARS', separator)
@@ -318,6 +427,105 @@ function CustomModelToken(raw_model, var_token) result(model_token)
                 model_token = model_token(6:len_trim(model_token))
     end select
 end function CustomModelToken
+
+!> Column-name tag for a gas slot.
+!>
+!> Slots 5-8 keep the names the FLUXNET row has always used, so existing files
+!> and the consumers that read them are unaffected; GS4 in particular is the
+!> historical name of the fourth slot whatever gas occupies it. Gases beyond
+!> those four are named after the gas itself.
+!> Gas slots that get columns, and which of them carry an analyser block.
+!>
+!> Derived from the project configuration so it is knowable before any data is
+!> read. Mirrors the slot assignment ApplyGasRecords performs.
+subroutine SelectFluxnetGasSlots()
+    integer :: k
+    integer :: slot
+    integer :: dup
+    integer :: n
+    character(32) :: tag
+    character(8) :: ord
+
+    nFluxnetGasSlots = 0
+    nFluxnetInstrSlots = 0
+
+    if (EddyFlowProj%gas_num > 0) then
+        do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+            slot = firstGas + k - 1
+            if (slot > lastGas) exit
+            if (EddyFlowProj%gas(k)%col <= 0) cycle
+            nFluxnetGasSlots = nFluxnetGasSlots + 1
+            FluxnetGasSlots(nFluxnetGasSlots) = slot
+            if (slot <= gas4) then
+                !> The four historical slots keep the names the row has always
+                !> used; GS4 is substituted for the real label further down.
+                FluxnetGasTags(nFluxnetGasSlots) = HistoricGasTag(slot)
+            else
+                tag = EddyFlowProj%gas(k)%var
+                call uppercase(tag)
+                if (len_trim(tag) == 0) tag = 'GAS'
+                !> Disambiguate a repeated species: a second H2O would
+                !> otherwise emit a second column called H2O_MOIST_SLOT.
+                dup = 0
+                do n = 1, nFluxnetGasSlots - 1
+                    if (trim(FluxnetGasTags(n)) == trim(tag) .or. &
+                        index(trim(FluxnetGasTags(n)), trim(tag) // '_') == 1) &
+                        dup = dup + 1
+                end do
+                if (dup > 0) then
+                    write(ord, '(i0)') dup + 1
+                    tag = trim(tag) // '_' // trim(ord)
+                end if
+                FluxnetGasTags(nFluxnetGasSlots) = tag
+            end if
+            !> Only gases past the four historical slots need an analyser
+            !> block; CO2/H2O/CH4/GS4 already have their GA_* columns.
+            if (slot > gas4) then
+                nFluxnetInstrSlots = nFluxnetInstrSlots + 1
+                FluxnetInstrSlots(nFluxnetInstrSlots) = slot
+                FluxnetInstrTags(nFluxnetInstrSlots) = &
+                    FluxnetGasTags(nFluxnetGasSlots)
+            end if
+        end do
+    else
+        !> Legacy projects name their gases by fixed slot.
+        do slot = co2, gas4
+            if (EddyFlowProj%Col(slot) <= 0) cycle
+            nFluxnetGasSlots = nFluxnetGasSlots + 1
+            FluxnetGasSlots(nFluxnetGasSlots) = slot
+            FluxnetGasTags(nFluxnetGasSlots) = HistoricGasTag(slot)
+        end do
+    end if
+end subroutine SelectFluxnetGasSlots
+
+function HistoricGasTag(gas_slot) result(tag)
+    integer, intent(in) :: gas_slot
+    character(32) :: tag
+
+    call clearstr(tag)
+    select case (gas_slot)
+        case (co2);  tag = 'CO2'
+        case (h2o);  tag = 'H2O'
+        case (ch4);  tag = 'CH4'
+        case default; tag = 'GS4'
+    end select
+end function HistoricGasTag
+
+function FluxnetGasTag(gas_slot) result(tag)
+    integer, intent(in) :: gas_slot
+    character(32) :: tag
+
+    call clearstr(tag)
+    select case (gas_slot)
+        case (co2);  tag = 'CO2'
+        case (h2o);  tag = 'H2O'
+        case (ch4);  tag = 'CH4'
+        case (gas4); tag = 'GS4'
+        case default
+            tag = SanitizeFluxnetToken(E2Col(gas_slot)%var)
+            call uppercase(tag)
+    end select
+end function FluxnetGasTag
 
 function SanitizeFluxnetToken(raw_token) result(clean_token)
     character(*), intent(in) :: raw_token

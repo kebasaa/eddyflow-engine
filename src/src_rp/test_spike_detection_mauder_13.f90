@@ -206,11 +206,8 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
         end if
     end do
 
-    !> Create an 8-digits number containing the values of the hflags
-    IntHF%sr = 900000000
-    do j = u, gas4
-        IntHF%sr = IntHF%sr + hflags(j) * 10 ** (gas4 - j)
-    end do
+    !> Pack one digit per variable into the flag string
+    call PackFlagString(hflags(u:gas4), gas4, CharHF%sr)
 
     !> Write on output variable
     if (.not. RPsetup%filter_sr) tot_spikes_sng(u:pe) = 0

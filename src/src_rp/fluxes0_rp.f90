@@ -39,6 +39,8 @@ subroutine Fluxes0_rp(printout)
     logical, intent(in) :: printout
     !> local variables
     real(kind = dbl) :: Tp
+    real(kind = dbl) :: dens_gain
+    integer :: msl
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating fluxes Level 0..'
@@ -62,236 +64,104 @@ subroutine Fluxes0_rp(printout)
     !> Internal sensible heat flux, Hint in [W m-2], Cp in [J Kg-1K-1]
     if (Ambient%RhoCp > 0d0) then
         if (Stats%tc_cov_tl_co2 /= error) then
-            Flux0%Hi_co2 = Ambient%RhoCp * Stats%tc_cov_tl_co2
+            Flux0%Hi_gas(co2) = Ambient%RhoCp * Stats%tc_cov_tl_co2
         else
-            Flux0%Hi_co2 = error
+            Flux0%Hi_gas(co2) = error
         end if
 
         if (Stats%tc_cov_tl_h2o /= error) then
-            Flux0%Hi_h2o = Ambient%RhoCp * Stats%tc_cov_tl_h2o
+            Flux0%Hi_gas(h2o) = Ambient%RhoCp * Stats%tc_cov_tl_h2o
         else
-            Flux0%Hi_h2o = error
+            Flux0%Hi_gas(h2o) = error
         end if
 
         if (Stats%tc_cov_tl_ch4 /= error) then
-            Flux0%Hi_ch4 = Ambient%RhoCp * Stats%tc_cov_tl_ch4
+            Flux0%Hi_gas(ch4) = Ambient%RhoCp * Stats%tc_cov_tl_ch4
         else
-            Flux0%Hi_ch4 = error
+            Flux0%Hi_gas(ch4) = error
         end if
 
         if (Stats%tc_cov_tl_gas4 /= error) then
-            Flux0%Hi_gas4 = Ambient%RhoCp * Stats%tc_cov_tl_gas4
+            Flux0%Hi_gas(gas4) = Ambient%RhoCp * Stats%tc_cov_tl_gas4
         else
-            Flux0%Hi_gas4 = error
+            Flux0%Hi_gas(gas4) = error
         end if
     else
-        Flux0%Hi_co2 = error
-        Flux0%Hi_h2o = error
-        Flux0%Hi_ch4 = error
-        Flux0%Hi_gas4 = error
+        Flux0%Hi_gas(co2) = error
+        Flux0%Hi_gas(h2o) = error
+        Flux0%Hi_gas(ch4) = error
+        Flux0%Hi_gas(gas4) = error
     end if
 
-    !> Uncorrected co2 flux [umol m-2 s-1]
-    if (E2Col(co2)%present) then
-        if(E2Col(co2)%measure_type == 'molar_density') then
-            if (Stats%Cov(w, co2) /= error) then
-                Flux0%co2 = Stats%Cov(w, co2) * 1d3
-            else
-                Flux0%co2 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(co2) /= error) &
-                    Essentials%rand_uncer(co2) = &
-                        Essentials%rand_uncer(co2) * 1d3
-            end if
-        else if(E2Col(co2)%measure_type == 'mixing_ratio') then
-            if (Ambient%Vd > 0d0 .and. Stats%Cov(w, co2) /= error) then
-                Flux0%co2 = Stats%Cov(w, co2) / Ambient%Vd
-            else
-                Flux0%co2 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(co2) /= error &
-                    .and. Ambient%Vd > 0d0) then
-                    Essentials%rand_uncer(co2) = &
-                        Essentials%rand_uncer(co2) / Ambient%Vd
-                else
-                    Essentials%rand_uncer(co2) = error
-                end if
-            end if
-        else if(E2Col(co2)%measure_type == 'mole_fraction') then
-            if (Ambient%Va > 0d0 .and. Stats%Cov(w, co2) /= error) then
-                Flux0%co2 = Stats%Cov(w, co2) / Ambient%Va
-            else
-                Flux0%co2 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(co2) /= error &
-                    .and. Ambient%Va > 0d0) then
-                    Essentials%rand_uncer(co2) = &
-                        Essentials%rand_uncer(co2) / Ambient%Va
-                else
-                    Essentials%rand_uncer(co2) = error
-                end if
-            end if
+    !> Uncorrected flux of each gas.
+    !>
+    !> One loop over the configured gases, replacing four near-identical
+    !> blocks. They differed only in the molar-density scale factor: H2O is
+    !> reported in mmol m-2 s-1 and the other gases in umol m-2 s-1. That is a
+    !> property of the species, not of the slot, so it is decided from the
+    !> species - a slot past the fourth holds whichever gas the project put
+    !> there.
+    do msl = firstGas, lastGas
+        if (.not. E2Col(msl)%present) then
+            Flux0%gas(msl) = error
+            cycle
         end if
-    else
-        Flux0%co2 = error
-    end if
+        if (msl == h2o .or. trim(E2Col(msl)%var) == 'h2o') then
+            dens_gain = 1d0
+        else
+            dens_gain = 1d3
+        end if
 
-    !> Uncorrected h2o flux [mmol m-2 s-1]
-    if (E2Col(h2o)%present) then
-        if(E2Col(h2o)%measure_type == 'molar_density') then
-            if (Stats%Cov(w, h2o) /= error) then
-                Flux0%h2o = Stats%Cov(w, h2o)
-            else
-                Flux0%h2o = error
-            end if
-        else if(E2Col(h2o)%measure_type == 'mole_fraction') then
-            if (Ambient%Va > 0d0 .and. Stats%Cov(w, h2o) /= error) then
-                Flux0%h2o = Stats%Cov(w, h2o) / Ambient%Va
-            else
-                Flux0%h2o = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(h2o) /= error &
-                    .and. Ambient%Va > 0d0) then
-                    Essentials%rand_uncer(h2o) = &
-                        Essentials%rand_uncer(h2o) / Ambient%Va
+        select case (E2Col(msl)%measure_type)
+            case ('molar_density')
+                if (Stats%Cov(w, msl) /= error) then
+                    Flux0%gas(msl) = Stats%Cov(w, msl) * dens_gain
                 else
-                    Essentials%rand_uncer(h2o) = error
+                    Flux0%gas(msl) = error
                 end if
-            end if
-        else if(E2Col(h2o)%measure_type == 'mixing_ratio') then
-            if (Ambient%Vd > 0d0 .and. Stats%Cov(w, h2o) /= error) then
-                Flux0%h2o = Stats%Cov(w, h2o) / Ambient%Vd
-            else
-                Flux0%h2o = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(h2o) /= error &
-                    .and. Ambient%Vd > 0d0) then
-                    Essentials%rand_uncer(h2o) = &
-                        Essentials%rand_uncer(h2o) / Ambient%Vd
-                else
-                    Essentials%rand_uncer(h2o) = error
+                if (RUsetup%meth /= 'none') then
+                    if (Essentials%rand_uncer(msl) /= error) &
+                        Essentials%rand_uncer(msl) = &
+                            Essentials%rand_uncer(msl) * dens_gain
                 end if
-            end if
-        end if
-    else
-        Flux0%h2o = error
-    end if
 
-    !> Uncorrected ch4 flux [umol m-2 s-1]
-    if (E2Col(ch4)%present) then
-        if(E2Col(ch4)%measure_type == 'molar_density') then
-            if (Stats%Cov(w, ch4) /= error) then
-                Flux0%ch4 = Stats%Cov(w, ch4) * 1d3
-            else
-                Flux0%ch4 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(ch4) /= error) &
-                    Essentials%rand_uncer(ch4) = &
-                        Essentials%rand_uncer(ch4) * 1d3
-            end if
-        else if(E2Col(ch4)%measure_type == 'mixing_ratio') then
-            if (Ambient%Vd > 0d0 .and. Stats%Cov(w, ch4) /= error) then
-                Flux0%ch4 = Stats%Cov(w, ch4) / Ambient%Vd
-            else
-                Flux0%ch4 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(ch4) /= error &
-                    .and. Ambient%Vd > 0d0) then
-                    Essentials%rand_uncer(ch4) = &
-                        Essentials%rand_uncer(ch4) / Ambient%Vd
+            case ('mixing_ratio')
+                if (Ambient%Vd > 0d0 .and. Stats%Cov(w, msl) /= error) then
+                    Flux0%gas(msl) = Stats%Cov(w, msl) / Ambient%Vd
                 else
-                    Essentials%rand_uncer(ch4) = error
+                    Flux0%gas(msl) = error
                 end if
-            end if
-        else if(E2Col(ch4)%measure_type == 'mole_fraction') then
-            if (Ambient%Va > 0d0 .and. Stats%Cov(w, ch4) /= error) then
-                Flux0%ch4 = Stats%Cov(w, ch4) / Ambient%Va
-            else
-                Flux0%ch4 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(ch4) /= error &
-                    .and. Ambient%Va > 0d0) then
-                    Essentials%rand_uncer(ch4) = &
-                        Essentials%rand_uncer(ch4) / Ambient%Va
-                else
-                    Essentials%rand_uncer(ch4) = error
+                if (RUsetup%meth /= 'none') then
+                    if (Essentials%rand_uncer(msl) /= error &
+                        .and. Ambient%Vd > 0d0) then
+                        Essentials%rand_uncer(msl) = &
+                            Essentials%rand_uncer(msl) / Ambient%Vd
+                    else
+                        Essentials%rand_uncer(msl) = error
+                    end if
                 end if
-            end if
-        end if
-    else
-        Flux0%ch4 = error
-    end if
 
-    !> Uncorrected gas4 flux [umol m-2 s-1]
-    if (E2Col(gas4)%present) then
-        if(E2Col(gas4)%measure_type == 'molar_density') then
-            if (Stats%Cov(w, gas4) /= error) then
-                Flux0%gas4 = Stats%Cov(w, gas4) * 1d3
-            else
-                Flux0%gas4 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(gas4) /= error) &
-                    Essentials%rand_uncer(gas4) = &
-                        Essentials%rand_uncer(gas4) * 1d3
-            end if
-        else if(E2Col(gas4)%measure_type == 'mixing_ratio') then
-            if (Ambient%Vd > 0d0 .and. Stats%Cov(w, gas4) /= error) then
-                Flux0%gas4 = Stats%Cov(w, gas4) / Ambient%Vd
-            else
-                Flux0%gas4 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(gas4) /= error &
-                    .and. Ambient%Vd > 0d0) then
-                    Essentials%rand_uncer(gas4) = &
-                        Essentials%rand_uncer(gas4) / Ambient%Vd
+            case ('mole_fraction')
+                if (Ambient%Va > 0d0 .and. Stats%Cov(w, msl) /= error) then
+                    Flux0%gas(msl) = Stats%Cov(w, msl) / Ambient%Va
                 else
-                    Essentials%rand_uncer(gas4) = error
+                    Flux0%gas(msl) = error
                 end if
-            end if
-        else if(E2Col(gas4)%measure_type == 'mole_fraction') then
-            if (Ambient%Va > 0d0 .and. Stats%Cov(w, gas4) /= error) then
-                Flux0%gas4 = Stats%Cov(w, gas4) / Ambient%Va
-            else
-                Flux0%gas4 = error
-            end if
-            !> Random uncertainty
-            if (RUsetup%meth /= 'none') then
-                if (Essentials%rand_uncer(gas4) /= error &
-                    .and. Ambient%Va > 0d0) then
-                    Essentials%rand_uncer(gas4) = &
-                        Essentials%rand_uncer(gas4) / Ambient%Va
-                else
-                    Essentials%rand_uncer(gas4) = error
+                if (RUsetup%meth /= 'none') then
+                    if (Essentials%rand_uncer(msl) /= error &
+                        .and. Ambient%Va > 0d0) then
+                        Essentials%rand_uncer(msl) = &
+                            Essentials%rand_uncer(msl) / Ambient%Va
+                    else
+                        Essentials%rand_uncer(msl) = error
+                    end if
                 end if
-            end if
-        end if
-    else
-        Flux0%gas4 = error
-    end if
+        end select
+    end do
 
     !> Latent heat flux [W m-2], lambda in [J+1kg-1]
-    if (Flux0%h2o /= error .and. Ambient%lambda > 0d0) then
-        Flux0%LE = Flux0%h2o * Ambient%lambda * MW(h2o) * 1d-3
+    if (Flux0%gas(h2o) /= error .and. Ambient%lambda > 0d0) then
+        Flux0%LE = Flux0%gas(h2o) * Ambient%lambda * MW(h2o) * 1d-3
     else
         Flux0%LE = error
     end if
@@ -310,9 +180,9 @@ subroutine Fluxes0_rp(printout)
     end if
 
     !> Level 0 evapotranspiration flux [kg m-2 -1]
-    if (Flux0%h2o /= error .and. Ambient%lambda > 0d0) then
-        Flux0%E = Flux0%h2o * MW(h2o) * 1d-3
-        Flux0%ET = Flux0%h2o * h2o_to_ET
+    if (Flux0%gas(h2o) /= error .and. Ambient%lambda > 0d0) then
+        Flux0%E = Flux0%gas(h2o) * MW(h2o) * 1d-3
+        Flux0%ET = Flux0%gas(h2o) * h2o_to_ET
     else
         Flux0%E = error
         Flux0%ET = error
@@ -323,59 +193,59 @@ subroutine Fluxes0_rp(printout)
     if (E2Col(h2o)%Instr%path_type == 'closed') then
         if(E2Col(h2o)%measure_type == 'molar_density') then
             if(Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_co2 = Stats%h2ocov_tl_co2 * MW(h2o) * 1d-3
+                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2 * MW(h2o) * 1d-3
             else
-                Flux0%E_co2 = error
+                Flux0%E_gas(co2) = error
             end if
             if(Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_ch4 = Stats%h2ocov_tl_ch4 * MW(h2o) * 1d-3
+                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4 * MW(h2o) * 1d-3
             else
-                Flux0%E_ch4 = error
+                Flux0%E_gas(ch4) = error
             end if
             if(Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas4 = Stats%h2ocov_tl_gas4 * MW(h2o) * 1d-3
+                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4 * MW(h2o) * 1d-3
             else
-                Flux0%E_gas4 = error
+                Flux0%E_gas(gas4) = error
             end if
 
         else if(E2Col(h2o)%measure_type == 'mole_fraction') then
             if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_co2 = Stats%h2ocov_tl_co2  * MW(h2o) * 1d-3 / Ambient%Va
+                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW(h2o) * 1d-3 / Ambient%Va
             else
-                Flux0%E_co2 = error
+                Flux0%E_gas(co2) = error
             end if
             if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_ch4 = Stats%h2ocov_tl_ch4  * MW(h2o) * 1d-3 / Ambient%Va
+                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW(h2o) * 1d-3 / Ambient%Va
             else
-                Flux0%E_ch4 = error
+                Flux0%E_gas(ch4) = error
             end if
             if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas4 = Stats%h2ocov_tl_gas4  * MW(h2o) * 1d-3 / Ambient%Va
+                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW(h2o) * 1d-3 / Ambient%Va
             else
-                Flux0%E_gas4 = error
+                Flux0%E_gas(gas4) = error
             end if
 
         else if (E2Col(h2o)%measure_type == 'mixing_ratio') then
             if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_co2 = Stats%h2ocov_tl_co2  * MW(h2o) * 1d-3 / Ambient%Vd
+                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW(h2o) * 1d-3 / Ambient%Vd
             else
-                Flux0%E_co2 = error
+                Flux0%E_gas(co2) = error
             end if
             if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_ch4 = Stats%h2ocov_tl_ch4  * MW(h2o) * 1d-3 / Ambient%Vd
+                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW(h2o) * 1d-3 / Ambient%Vd
             else
-                Flux0%E_ch4 = error
+                Flux0%E_gas(ch4) = error
             end if
             if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas4 = Stats%h2ocov_tl_gas4  * MW(h2o) * 1d-3 / Ambient%Vd
+                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW(h2o) * 1d-3 / Ambient%Vd
             else
-                Flux0%E_gas4 = error
+                Flux0%E_gas(gas4) = error
             end if
         end if
     else
-        Flux0%E_co2 = error
-        Flux0%E_ch4 = error
-        Flux0%E_gas4 = error
+        Flux0%E_gas(co2) = error
+        Flux0%E_gas(ch4) = error
+        Flux0%E_gas(gas4) = error
     end if
 
     !> Friction velocity [m s-1]

@@ -35,13 +35,13 @@ subroutine FilterDatasetForPhysicalThresholds(Set, N, M, FilterWhat)
     if (E2Col(co2)%present .and. FilterWhat(co2)) then
         if (E2Col(co2)%measure_type == 'molar_density') then
             where (Set(:,co2) /= error .and. &
-                   (Set(:,co2)*Ambient%Va*1d3 < al%co2_min .or. &
-                    Set(:,co2)*Ambient%Va*1d3 > al%co2_max))
+                   (Set(:,co2)*Ambient%Va*1d3 < al%gas_min(co2) .or. &
+                    Set(:,co2)*Ambient%Va*1d3 > al%gas_max(co2)))
                 Set(:,co2) = error
             end where
         else
             where (Set(:,co2) /= error .and. &
-                   (Set(:,co2) < al%co2_min .or. Set(:,co2) > al%co2_max))
+                   (Set(:,co2) < al%gas_min(co2) .or. Set(:,co2) > al%gas_max(co2)))
                 Set(:,co2) = error
             end where
         end if
@@ -50,13 +50,13 @@ subroutine FilterDatasetForPhysicalThresholds(Set, N, M, FilterWhat)
     if (E2Col(h2o)%present .and. FilterWhat(h2o)) then
         if (E2Col(h2o)%measure_type == 'molar_density') then
             where (Set(:,h2o) /= error .and. &
-                   (Set(:,h2o)*Ambient%Va < al%h2o_min .or. &
-                    Set(:,h2o)*Ambient%Va > al%h2o_max))
+                   (Set(:,h2o)*Ambient%Va < al%gas_min(h2o) .or. &
+                    Set(:,h2o)*Ambient%Va > al%gas_max(h2o)))
                 Set(:,h2o) = error
             end where
         else
             where (Set(:,h2o) /= error .and. &
-                   (Set(:,h2o) < al%h2o_min .or. Set(:,h2o) > al%h2o_max))
+                   (Set(:,h2o) < al%gas_min(h2o) .or. Set(:,h2o) > al%gas_max(h2o)))
                 Set(:,h2o) = error
             end where
         end if
@@ -65,13 +65,13 @@ subroutine FilterDatasetForPhysicalThresholds(Set, N, M, FilterWhat)
     if (E2Col(ch4)%present .and. FilterWhat(ch4)) then
         if (E2Col(ch4)%measure_type == 'molar_density') then
             where (Set(:,ch4) /= error .and. &
-                   (Set(:,ch4)*Ambient%Va*1d3 < al%ch4_min .or. &
-                    Set(:,ch4)*Ambient%Va*1d3 > al%ch4_max))
+                   (Set(:,ch4)*Ambient%Va*1d3 < al%gas_min(ch4) .or. &
+                    Set(:,ch4)*Ambient%Va*1d3 > al%gas_max(ch4)))
                 Set(:,ch4) = error
             end where
         else
             where (Set(:,ch4) /= error .and. &
-                   (Set(:,ch4) < al%ch4_min .or. Set(:,ch4) > al%ch4_max))
+                   (Set(:,ch4) < al%gas_min(ch4) .or. Set(:,ch4) > al%gas_max(ch4)))
                 Set(:,ch4) = error
             end where
         end if
@@ -80,13 +80,13 @@ subroutine FilterDatasetForPhysicalThresholds(Set, N, M, FilterWhat)
     if (E2Col(gas4)%present .and. FilterWhat(gas4)) then
         if (E2Col(gas4)%measure_type == 'molar_density') then
             where (Set(:,gas4) /= error .and. &
-                   (Set(:,gas4)*Ambient%Va*1d3 < al%gas4_min .or. &
-                    Set(:,gas4)*Ambient%Va*1d3 > al%gas4_max))
+                   (Set(:,gas4)*Ambient%Va*1d3 < al%gas_min(gas4) .or. &
+                    Set(:,gas4)*Ambient%Va*1d3 > al%gas_max(gas4)))
                 Set(:,gas4) = error
             end where
         else
             where (Set(:,gas4) /= error .and. &
-                   (Set(:,gas4) < al%gas4_min .or. Set(:,gas4) > al%gas4_max))
+                   (Set(:,gas4) < al%gas_min(gas4) .or. Set(:,gas4) > al%gas_max(gas4)))
                 Set(:,gas4) = error
             end where
         end if
