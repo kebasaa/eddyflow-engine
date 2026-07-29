@@ -48,6 +48,7 @@ subroutine InitOutFiles_rp()
     integer :: i
     integer :: j
     character(PathLen) :: Test_Path
+    character(32) :: g4label
     character(64) :: e2sg(E2NumVar)
     character(64) :: usg(NumUserVar)
     character(64) :: user_header(NumUserVar)
@@ -73,7 +74,8 @@ subroutine InitOutFiles_rp()
     e2sg(co2) = 'co2_'
     e2sg(h2o) = 'h2o_'
     e2sg(ch4) = 'ch4_'
-    e2sg(gas4) = E2Col(gas4)%label(1:len_trim(E2Col(gas4)%label)) // '_'
+    g4label = FourthGasLabel()
+    e2sg(gas4) = g4label(1:len_trim(g4label)) // '_'
     e2sg(tc)  = 'cell_t_'
     e2sg(ti1) = 'inlet_t_'
     e2sg(ti2) = 'outlet_t_'
@@ -83,7 +85,7 @@ subroutine InitOutFiles_rp()
 
     call lowercase(e2sg(gas4))
 
-    call Gas4FullOutputUnits(E2Col(gas4)%unit_in, gas4_flux_sc, gas4_dens_sc, &
+    call Gas4FullOutputUnits(FourthGasUnitIn(), gas4_flux_sc, gas4_dens_sc, &
         gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
 
     do j = 1, NumUserVar

@@ -61,6 +61,17 @@ module m_rp_global_var
     !> of the same name.
     character(32) :: FluxnetGasTags(GHGNumVar) = ''
     character(32) :: FluxnetInstrTags(GHGNumVar) = ''
+    !> Every gas the project *configures*, present or not, in slot order.
+    !>
+    !> Distinct from FluxnetGasSlots, which holds only the gases that actually
+    !> have a column. The fixed part of the row carries a set of columns for
+    !> each configured gas and writes the error value for one with no data -
+    !> a project naming four gases of which one has no column still emits four
+    !> sets. Sizing that part from the present-gas list instead would silently
+    !> drop a column set and shift every field after it.
+    integer :: FluxnetLayoutSlots(GHGNumVar) = 0
+    integer :: nFluxnetLayoutSlots = 0
+    character(32) :: FluxnetLayoutTags(GHGNumVar) = ''
 
     integer :: NumAllRow = 0
     integer :: NumSlowVar = 0

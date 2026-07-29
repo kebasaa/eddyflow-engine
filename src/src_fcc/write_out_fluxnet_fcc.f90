@@ -42,7 +42,6 @@ subroutine WriteOutFluxnetFcc(lEx)
     integer :: var
     integer :: i
     integer :: gas
-    integer :: igas
     integer :: vi
     character(9) :: vm97flags(GHGNumVar)
     include '../src_common/interfaces_1.inc'
@@ -467,23 +466,29 @@ subroutine WriteOutFluxnetFcc(lEx)
     call AddFloatDatumToDataline(lEx%instr(sonic)%vpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
     call AddFloatDatumToDataline(lEx%instr(sonic)%tau, csv_row, EddyFlowProj%err_label)
 
-    !>> irgas
-    do igas = ico2, igas4
-        call AddDatum(csv_row, trim(lEx%instr(igas)%firm), separator)
-        call AddDatum(csv_row, trim(lEx%instr(igas)%model), separator)
-        call AddFloatDatumToDataline(lEx%instr(igas)%nsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%esep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%vsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%tube_l, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%tube_d, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%tube_f, csv_row, EddyFlowProj%err_label, gain=6d4, offset=0d0)
-        if (igas == ih2o) then
-            call AddFloatDatumToDataline(lEx%instr(igas)%kw, csv_row, EddyFlowProj%err_label)
-            call AddFloatDatumToDataline(lEx%instr(igas)%ko, csv_row, EddyFlowProj%err_label)
+    !>> Gas analysers, one block per configured gas.
+    !>
+    !> Re-emitted from the slot-indexed array rather than by instrument role,
+    !> which only ever addressed four. ReadExRecord fills that array for every
+    !> gas - the historical four by mirroring the role-indexed one - so this
+    !> reproduces the block RP wrote, at whatever width the project has.
+    do gas = firstGas, firstGas + min(EddyFlowProj%gas_num, MaxNumGases) - 1
+        if (gas > lastGas) exit
+        call AddDatum(csv_row, trim(lEx%gas_instr(gas)%firm), separator)
+        call AddDatum(csv_row, trim(lEx%gas_instr(gas)%model), separator)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%nsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%esep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%vsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_l, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_d, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_f, csv_row, EddyFlowProj%err_label, gain=6d4, offset=0d0)
+        if (gas == h2o) then
+            call AddFloatDatumToDataline(lEx%gas_instr(gas)%kw, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(lEx%gas_instr(gas)%ko, csv_row, EddyFlowProj%err_label)
         end if
-        call AddFloatDatumToDataline(lEx%instr(igas)%hpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%vpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
-        call AddFloatDatumToDataline(lEx%instr(igas)%tau, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%hpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%vpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%tau, csv_row, EddyFlowProj%err_label)
     end do
 
     !> Custom variables

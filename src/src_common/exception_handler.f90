@@ -372,5 +372,14 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(98)> EddyFlow can store. The surplus entries were ignored, so some'
             write(*,*) ' Warning(98)> settings may have fallen back to their defaults.'
             write(*,*) ' Warning(98)> This points to an unusually large project or metadata file.'
+        case(99)
+            write(*,*) '  Fatal error(99)> The project file (*.eddyflow) names no gas records.'
+            write(*,*) '  Fatal error(99)> Gases, cell measurements and diagnostics are described'
+            write(*,*) '  Fatal error(99)> by indexed records from format version 5.0.0 onward; a'
+            write(*,*) '  Fatal error(99)> file without them would process no gas fluxes at all.'
+            write(*,*) '  Fatal error(99)> Open the project in the EddyFlow GUI and save it - an'
+            write(*,*) '  Fatal error(99)> older file is upgraded automatically on opening.'
+            write(*,*) '  Fatal error(99)> Program execution aborted.'
+            stop 1
     end select
 end subroutine ExceptionHandler

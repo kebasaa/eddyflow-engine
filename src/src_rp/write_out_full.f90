@@ -49,7 +49,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     include '../src_common/interfaces.inc'
 
     !> Scale gas4 outputs back to the configured full-output unit basis.
-    call Gas4FullOutputUnits(E2Col(gas4)%unit_in, gas4_flux_sc, gas4_dens_sc, &
+    call Gas4FullOutputUnits(FourthGasUnitIn(), gas4_flux_sc, gas4_dens_sc, &
         gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
 
     !> Preliminary file and timestamp information

@@ -46,6 +46,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> Local variables
     integer :: flag
     integer :: gas
+    integer :: igas
     integer :: open_status
     integer :: read_status
     integer :: i
@@ -127,7 +128,9 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 1 + 9                     &  !< degraded T covariance and its 9 lags
         + nExVar                       !< spike counts
 
-    integer, parameter :: nNrexFields  = 3 + 4 + 4 + 3 * nExGas   !< NREX chunk
+    !> NREX chunk. Three per-gas runs, so its width is a runtime
+    !> quantity; the chunk itself is copied verbatim and never parsed.
+    integer :: nNrexFields
     integer, parameter :: nVmFields    = nExVar + 4               !< VM97 flags
     integer, parameter :: nLgdFields   = 3 * nExVar + (4 + nExGas) + (2 + nExGas)
     integer, parameter :: nSsItcFields = (2 + nExGas) + 3         !< SS + ITC
@@ -137,7 +140,13 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer, parameter :: nWboostFields = 3                       !< WBOOST .. AXES_ROT
     integer, parameter :: nRotFields   = 5                        !< angles + detrending
     integer, parameter :: nTlagMethFields = 4                     !< TLAG .. SPEC_CORR
-    integer, parameter :: nMetaFields  = 13 + 9 + nExGas * 11 + 2 + 1
+    !> Metadata block. The analyser part is per configured gas and therefore
+    !> runtime-sized, so only the fixed prefix and the per-gas width are
+    !> constants; the old single nMetaFields covered all three at once and
+    !> could only ever describe a four-gas layout.
+    integer, parameter :: nMetaFixedFields = 13 + 9  !< ident, geometry, sonic
+    integer, parameter :: nMetaGasFields = 11        !< +2 for the water slot
+    integer :: n_meta_gas
     integer, parameter :: nCecFields   = 11                       !< CEC descriptor
     !> Per-gas moisture block: a count, then this many fields per gas
     !> (slot, rhow, sigma).
@@ -250,6 +259,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
 
 
     !> Copy NREX chunk
+    nNrexFields = 3 + 4 + 4 + 3 * min(EddyFlowProj%gas_num, MaxNumGases)
     ix = strCharIndex(dataline, ',', nNrexFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -387,7 +397,13 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     fluxnetChunks%s(5) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
-    !> Read out metadata
+    !> Read out metadata, in three parts.
+    !>
+    !> The analyser blocks used to sit in this one list, four of them named
+    !> after fixed instrument roles, so a fifth gas had nowhere to be read
+    !> from. They are now a loop over the configured gases, matching the
+    !> header, which means the field count is a runtime quantity and the
+    !> single read had to be split around it.
     read(dataline, *, iostat = read_status) aux(1), &
         lEx%logger_swver%major,lEx%logger_swver%minor,lEx%logger_swver%revision, &
         lEx%lat, lEx%lon, lEx%alt, &
@@ -395,29 +411,112 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%file_length, lEx%ac_freq, lEx%avrg_length, &
         lEx%instr(sonic)%firm, lEx%instr(sonic)%model, lEx%instr(sonic)%height, &
         lEx%instr(sonic)%wformat, lEx%instr(sonic)%wref, lEx%instr(sonic)%north_offset, &
-        lEx%instr(sonic)%hpath_length, lEx%instr(sonic)%vpath_length, lEx%instr(sonic)%tau, &
-        lEx%instr(ico2)%firm, lEx%instr(ico2)%model, lEx%instr(ico2)%nsep, lEx%instr(ico2)%esep, &
-        lEx%instr(ico2)%vsep, lEx%instr(ico2)%tube_l, lEx%instr(ico2)%tube_d, &
-        lEx%instr(ico2)%tube_f, &
-        lEx%instr(ico2)%hpath_length, lEx%instr(ico2)%vpath_length, lEx%instr(ico2)%tau, &
-        lEx%instr(ih2o)%firm, lEx%instr(ih2o)%model, lEx%instr(ih2o)%nsep, lEx%instr(ih2o)%esep, &
-        lEx%instr(ih2o)%vsep, lEx%instr(ih2o)%tube_l, lEx%instr(ih2o)%tube_d, &
-        lEx%instr(ih2o)%tube_f, lEx%instr(ih2o)%kw, lEx%instr(ih2o)%ko, &
-        lEx%instr(ih2o)%hpath_length, lEx%instr(ih2o)%vpath_length, lEx%instr(ih2o)%tau, &
-        lEx%instr(ich4)%firm, lEx%instr(ich4)%model, lEx%instr(ich4)%nsep, lEx%instr(ich4)%esep, &
-        lEx%instr(ich4)%vsep, lEx%instr(ich4)%tube_l, lEx%instr(ich4)%tube_d, &
-        lEx%instr(ich4)%tube_f, &
-        lEx%instr(ich4)%hpath_length, lEx%instr(ich4)%vpath_length, lEx%instr(ich4)%tau, &
-        lEx%instr(igas4)%firm, lEx%instr(igas4)%model, lEx%instr(igas4)%nsep, lEx%instr(igas4)%esep, &
-        lEx%instr(igas4)%vsep, lEx%instr(igas4)%tube_l, lEx%instr(igas4)%tube_d, &
-        lEx%instr(igas4)%tube_f, &
-        lEx%instr(igas4)%hpath_length, lEx%instr(igas4)%vpath_length, lEx%instr(igas4)%tau, &
-        lEx%ncustom
+        lEx%instr(sonic)%hpath_length, lEx%instr(sonic)%vpath_length, lEx%instr(sonic)%tau
     if (read_status /= 0) then
         call InvalidateRecord()
         return
     end if
-    ix = strCharIndex(dataline, ',', nMetaFields)
+    ix = strCharIndex(dataline, ',', nMetaFixedFields)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
+    dataline = dataline(ix+1: len_trim(dataline))
+
+    !> One analyser block per configured gas, in slot order, exactly as
+    !> InitFluxnetFile_rp writes them. The first four are also stored under
+    !> their instrument-role index, because the flux code still reaches the
+    !> historical analysers that way and a later pass mirrors them across.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        gas = firstGas + i - 1
+        if (gas > lastGas) exit
+        if (gas == h2o) then
+            read(dataline, *, iostat = read_status) &
+                instr_firm, instr_model, instr_nsep, instr_esep, instr_vsep, &
+                instr_tube_l, instr_tube_d, instr_tube_f, instr_kw, instr_ko, &
+                instr_hpath, instr_vpath, instr_tau
+            n_meta_gas = nMetaGasFields + 2
+        else
+            read(dataline, *, iostat = read_status) &
+                instr_firm, instr_model, instr_nsep, instr_esep, instr_vsep, &
+                instr_tube_l, instr_tube_d, instr_tube_f, &
+                instr_hpath, instr_vpath, instr_tau
+            n_meta_gas = nMetaGasFields
+        end if
+        if (read_status /= 0) then
+            call InvalidateRecord()
+            return
+        end if
+        if (gas <= gas4) then
+            igas = ico2 + (gas - co2)
+            lEx%instr(igas)%firm = instr_firm
+            lEx%instr(igas)%model = instr_model
+            lEx%instr(igas)%nsep = instr_nsep
+            lEx%instr(igas)%esep = instr_esep
+            lEx%instr(igas)%vsep = instr_vsep
+            lEx%instr(igas)%tube_l = instr_tube_l
+            lEx%instr(igas)%tube_d = instr_tube_d
+            lEx%instr(igas)%tube_f = instr_tube_f
+            if (gas == h2o) then
+                lEx%instr(igas)%kw = instr_kw
+                lEx%instr(igas)%ko = instr_ko
+            end if
+            lEx%instr(igas)%hpath_length = instr_hpath
+            lEx%instr(igas)%vpath_length = instr_vpath
+            lEx%instr(igas)%tau = instr_tau
+        else
+            !> Past the historical four there is no instrument role, so the
+            !> slot-indexed array is the only home. Units are converted here
+            !> to match what the mirror of the first four ends up holding.
+            lEx%gas_instr(gas)%firm = instr_firm
+            lEx%gas_instr(gas)%model = instr_model
+            lEx%gas_instr(gas)%category = 'irga'
+            if (instr_nsep /= error) lEx%gas_instr(gas)%nsep = instr_nsep * 1d-2
+            if (instr_esep /= error) lEx%gas_instr(gas)%esep = instr_esep * 1d-2
+            if (instr_vsep /= error) lEx%gas_instr(gas)%vsep = instr_vsep * 1d-2
+            if (instr_hpath /= error) &
+                lEx%gas_instr(gas)%hpath_length = instr_hpath * 1d-2
+            if (instr_vpath /= error) &
+                lEx%gas_instr(gas)%vpath_length = instr_vpath * 1d-2
+            lEx%gas_instr(gas)%tau = instr_tau
+            select case (IrgaPathTypeFromModel(lEx%gas_instr(gas)%model))
+                case ('open')
+                    lEx%gas_instr(gas)%path_type = 'open'
+                    lEx%gas_instr(gas)%tube_l = instr_tube_l
+                    lEx%gas_instr(gas)%tube_d = instr_tube_d
+                    lEx%gas_instr(gas)%tube_f = instr_tube_f
+                case default
+                    lEx%gas_instr(gas)%path_type = 'closed'
+                    if (instr_tube_l /= error) &
+                        lEx%gas_instr(gas)%tube_l = instr_tube_l * 1d-2
+                    if (instr_tube_d /= error) &
+                        lEx%gas_instr(gas)%tube_d = instr_tube_d * 1d-3
+                    if (instr_tube_f /= error) &
+                        lEx%gas_instr(gas)%tube_f = instr_tube_f / 6d4
+            end select
+            if (instr_nsep /= error .and. instr_esep /= error) then
+                lEx%gas_instr(gas)%hsep = &
+                    dsqrt(lEx%gas_instr(gas)%nsep**2 + lEx%gas_instr(gas)%esep**2)
+            elseif (instr_nsep /= error) then
+                lEx%gas_instr(gas)%hsep = lEx%gas_instr(gas)%nsep
+            elseif (instr_esep /= error) then
+                lEx%gas_instr(gas)%hsep = lEx%gas_instr(gas)%esep
+            end if
+        end if
+        ix = strCharIndex(dataline, ',', n_meta_gas)
+        if (ix <= 0) then
+            call InvalidateRecord()
+            return
+        end if
+        dataline = dataline(ix+1: len_trim(dataline))
+    end do
+
+    read(dataline, *, iostat = read_status) lEx%ncustom
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
+    ix = strCharIndex(dataline, ',', 1)
     if (ix <= 0) then
         call InvalidateRecord()
         return

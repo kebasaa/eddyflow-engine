@@ -43,6 +43,7 @@ subroutine InitFluxnetFile_rp()
     integer :: i
     integer :: j
     character(PathLen) :: Test_Path
+    character(32) :: g4label
     character(64) :: e2sg(E2NumVar)
     character(64) :: usg(NumUserVar)
     character(LongOutstringLen) :: csv_row
@@ -57,7 +58,8 @@ subroutine InitFluxnetFile_rp()
     e2sg(co2) = 'co2_'
     e2sg(h2o) = 'h2o_'
     e2sg(ch4) = 'ch4_'
-    e2sg(gas4) = E2Col(gas4)%label(1:len_trim(E2Col(gas4)%label)) // '_'
+    g4label = FourthGasLabel()
+    e2sg(gas4) = g4label(1:len_trim(g4label)) // '_'
     e2sg(tc)  = 'cell_t_'
     e2sg(ti1) = 'inlet_t_'
     e2sg(ti2) = 'outlet_t_'
@@ -78,6 +80,14 @@ subroutine InitFluxnetFile_rp()
     dot = index(Test_Path, CsvExt, .true.) - 1
     FLUXNET_Path = Test_Path(1:dot) // CsvTmpExt
     open(uflxnt, file = FLUXNET_Path, iostat = open_status, encoding = 'utf-8')
+
+    !> The gas set comes from the project, not from E2Col: this runs before
+    !> the first DefineE2Set of the run, so E2Col is not final yet, and a set
+    !> derived from it would not match what the row writers later emit.
+    !> Records take slot firstGas+i-1 whether or not they name a column, which
+    !> is how ApplyGasRecords assigns them; a record without a column occupies
+    !> its slot but is absent, so it gets no column here.
+    call SelectFluxnetGasSlots()
 
     call clearstr(csv_row)
     csv_row = 'TIMESTAMP_START,TIMESTAMP_END,DOY_START,DOY_END,FILENAME_HF,SW_IN_POT,NIGHT,EXPECT_NR,&
@@ -126,13 +136,35 @@ subroutine InitFluxnetFile_rp()
                 &W_T_SONIC_COV_IBROM_N0016,W_T_SONIC_COV_IBROM_N0008,W_T_SONIC_COV_IBROM_N0004,&
                 &U_NUM_SPIKES,V_NUM_SPIKES,W_NUM_SPIKES,T_SONIC_NUM_SPIKES,&
                 &CO2_NUM_SPIKES,H2O_NUM_SPIKES,CH4_NUM_SPIKES,GS4_NUM_SPIKES,&
-                &CUSTOM_FILTER_NREX,WD_FILTER_NREX,SONIC_DIAG_NREX,&
-                &CO2_DIAG_NREX,H2O_DIAG_NREX,CH4_DIAG_NREX,GS4_DIAG_NREX,&
-                &U_SPIKE_NREX,V_SPIKE_NREX,W_SPIKE_NREX,T_SONIC_SPIKE_NREX,&
-                &CO2_SPIKE_NREX,H2O_SPIKE_NREX,CH4_SPIKE_NREX,GS4_SPIKE_NREX,&
-                &U_ABSLIM_NREX,V_ABSLIM_NREX,W_ABSLIM_NREX,T_SONIC_ABSLIM_NREX,&
-                &CO2_ABSLIM_NREX,H2O_ABSLIM_NREX,CH4_ABSLIM_NREX,GS4_ABSLIM_NREX,&
-                &U_VM97_TEST,V_VM97_TEST,W_VM97_TEST,T_SONIC_VM97_TEST,&
+                &'
+    !> Records excluded by each screening test.
+    !>
+    !> Three per-gas runs - diagnostics, the spike test and the absolute
+    !> limits test - each of which used to be a fixed CO2/H2O/CH4/GS4
+    !> quadruple. FCC copies this whole chunk verbatim and echoes it back
+    !> without parsing it, so only its width has to follow the gas count.
+    call AddDatum(csv_row, 'CUSTOM_FILTER_NREX', separator)
+    call AddDatum(csv_row, 'WD_FILTER_NREX', separator)
+    call AddDatum(csv_row, 'SONIC_DIAG_NREX', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_DIAG_NREX', separator)
+    end do
+    call AddDatum(csv_row, 'U_SPIKE_NREX', separator)
+    call AddDatum(csv_row, 'V_SPIKE_NREX', separator)
+    call AddDatum(csv_row, 'W_SPIKE_NREX', separator)
+    call AddDatum(csv_row, 'T_SONIC_SPIKE_NREX', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_SPIKE_NREX', separator)
+    end do
+    call AddDatum(csv_row, 'U_ABSLIM_NREX', separator)
+    call AddDatum(csv_row, 'V_ABSLIM_NREX', separator)
+    call AddDatum(csv_row, 'W_ABSLIM_NREX', separator)
+    call AddDatum(csv_row, 'T_SONIC_ABSLIM_NREX', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_ABSLIM_NREX', separator)
+    end do
+
+    csv_row = trim(csv_row) // 'U_VM97_TEST,V_VM97_TEST,W_VM97_TEST,T_SONIC_VM97_TEST,&
                 &CO2_VM97_TEST,H2O_VM97_TEST,CH4_VM97_TEST,GS4_VM97_TEST,&
                 &VM97_TLAG_HF,VM97_TLAG_SF,VM97_AOA_HF,VM97_NSHW_HF,&
                 &U_LGD,V_LGD,W_LGD,T_SONIC_LGD,CO2_LGD,H2O_LGD,CH4_LGD,GS4_LGD,&
@@ -168,23 +200,33 @@ subroutine InitFluxnetFile_rp()
                 &MANUFACTURER_SA,BADM_INST_MODEL_SA,BADM_INST_HEIGHT_SA,&
                 &BADM_INST_SA_WIND_FORMAT,BADM_INST_SA_GILL_ALIGN,BADM_SA_OFFSET_NORTH,&
                 &HPATH_SA,VPATH_SA,RESPONSE_TIME_SA,&
-                &MANUFACTURER_GA_CO2,BADM_INST_MODEL_GA_CO2,&
-                &BADM_INSTPAIR_NORTHWARD_SEP_GA_CO2,BADM_INSTPAIR_EASTWARD_SEP_GA_CO2,BADM_INSTPAIR_HEIGHT_SEP_GA_CO2,&
-                &BADM_INST_GA_CP_TUBE_LENGTH_GA_CO2,BADM_INST_GA_CP_TUBE_IN_DIAM_GA_CO2,BADM_INST_GA_CP_TUBE_FLOW_RATE_GA_CO2,&
-                &HPATH_GA_CO2,VPATH_GA_CO2,RESPONSE_TIME_GA_CO2,&
-                &MANUFACTURER_GA_H2O,BADM_INST_MODEL_GA_H2O,&
-                &BADM_INSTPAIR_NORTHWARD_SEP_GA_H2O,BADM_INSTPAIR_EASTWARD_SEP_GA_H2O,BADM_INSTPAIR_HEIGHT_SEP_GA_H2O,&
-                &BADM_INST_GA_CP_TUBE_LENGTH_GA_H2O,BADM_INST_GA_CP_TUBE_IN_DIAM_GA_H2O,BADM_INST_GA_CP_TUBE_FLOW_RATE_GA_H2O,&
-                &KRYPTON_HYDRO_KH2O_GA_H2O,KRYPTON_HYDRO_KO2_GA_H2O,&
-                &HPATH_GA_H2O,VPATH_GA_H2O,RESPONSE_TIME_GA_H2O,&
-                &MANUFACTURER_GA_CH4,BADM_INST_MODEL_GA_CH4,&
-                &BADM_INSTPAIR_NORTHWARD_SEP_GA_CH4,BADM_INSTPAIR_EASTWARD_SEP_GA_CH4,BADM_INSTPAIR_HEIGHT_SEP_GA_CH4,&
-                &BADM_INST_GA_CP_TUBE_LENGTH_GA_CH4,BADM_INST_GA_CP_TUBE_IN_DIAM_GA_CH4,BADM_INST_GA_CP_TUBE_FLOW_RATE_GA_CH4,&
-                &HPATH_GA_CH4,VPATH_GA_CH4,RESPONSE_TIME_GA_CH4,&
-                &MANUFACTURER_GA_GS4,BADM_INST_MODEL_GA_GS4,&
-                &BADM_INSTPAIR_NORTHWARD_SEP_GA_GS4,BADM_INSTPAIR_EASTWARD_SEP_GA_GS4,BADM_INSTPAIR_HEIGHT_SEP_GA_GS4,&
-                &BADM_INST_GA_CP_TUBE_LENGTH_GA_GS4,BADM_INST_GA_CP_TUBE_IN_DIAM_GA_GS4,BADM_INST_GA_CP_TUBE_FLOW_RATE_GA_GS4,&
-                &HPATH_GA_GS4,VPATH_GA_GS4,RESPONSE_TIME_GA_GS4,'
+                &'
+    !> Analyser of every configured gas, one block each, in slot order.
+    !>
+    !> These used to be four hard-coded blocks named CO2/H2O/CH4/GS4, so a
+    !> fifth gas had no analyser columns here at all and had to carry them in
+    !> a separate self-describing block further down. Generated per gas, the
+    !> two are the same thing and the separate block is redundant.
+    do j = 1, nFluxnetLayoutSlots
+        g4label = FluxnetLayoutTags(j)
+        call AddDatum(csv_row, 'MANUFACTURER_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INST_MODEL_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INSTPAIR_NORTHWARD_SEP_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INSTPAIR_EASTWARD_SEP_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INSTPAIR_HEIGHT_SEP_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INST_GA_CP_TUBE_LENGTH_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INST_GA_CP_TUBE_IN_DIAM_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'BADM_INST_GA_CP_TUBE_FLOW_RATE_GA_' // trim(g4label), separator)
+        !> The krypton coefficients belong to a hygrometer, so only the water
+        !> slot carries them - as it always has.
+        if (FluxnetLayoutSlots(j) == h2o) then
+            call AddDatum(csv_row, 'KRYPTON_HYDRO_KH2O_GA_' // trim(g4label), separator)
+            call AddDatum(csv_row, 'KRYPTON_HYDRO_KO2_GA_' // trim(g4label), separator)
+        end if
+        call AddDatum(csv_row, 'HPATH_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'VPATH_GA_' // trim(g4label), separator)
+        call AddDatum(csv_row, 'RESPONSE_TIME_GA_' // trim(g4label), separator)
+    end do
 
             !> If need to reitroduce details of VM, paste this after line:
             !>  "&CO2_ABSLIM_NREX,H2O_ABSLIM_NREX,CH4_ABSLIM_NREX,GS4_ABSLIM_NREX,&"
@@ -238,14 +280,6 @@ subroutine InitFluxnetFile_rp()
     !>
     !> The count is always emitted so the block is self-describing and the
     !> reader needs no knowledge of the project configuration.
-    !> The gas set comes from the project, not from E2Col: this runs before
-    !> the first DefineE2Set of the run, so E2Col is not final yet, and a set
-    !> derived from it would not match what the row writers later emit.
-    !> Records take slot firstGas+i-1 whether or not they name a column, which
-    !> is how ApplyGasRecords assigns them; a record without a column occupies
-    !> its slot but is absent, so it gets no column here.
-    call SelectFluxnetGasSlots()
-
     call AddDatum(csv_row, 'NUM_GAS_MOIST', separator)
     do j = 1, nFluxnetGasSlots
         i = FluxnetGasSlots(j)
@@ -448,6 +482,35 @@ subroutine SelectFluxnetGasSlots()
 
     nFluxnetGasSlots = 0
     nFluxnetInstrSlots = 0
+    nFluxnetLayoutSlots = 0
+
+    !> The layout list first: every configured gas, whether or not it has a
+    !> column. The fixed part of the row is sized from this, so a gas selected
+    !> without data still gets its column set and the fields after it stay put.
+    !> Names are assigned here, once, and the present-gas list borrows them -
+    !> deriving them twice is how two lists of the same gases end up disagreeing.
+    if (EddyFlowProj%gas_num > 0) then
+        do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+            slot = firstGas + k - 1
+            if (slot > lastGas) exit
+            tag = EddyFlowProj%gas(k)%var
+            call uppercase(tag)
+            if (len_trim(tag) == 0) tag = 'GAS'
+            dup = 0
+            do n = 1, nFluxnetLayoutSlots
+                if (trim(FluxnetLayoutTags(n)) == trim(tag) .or. &
+                    index(trim(FluxnetLayoutTags(n)), trim(tag) // '_') == 1) &
+                    dup = dup + 1
+            end do
+            if (dup > 0) then
+                write(ord, '(i0)') dup + 1
+                tag = trim(tag) // '_' // trim(ord)
+            end if
+            nFluxnetLayoutSlots = nFluxnetLayoutSlots + 1
+            FluxnetLayoutSlots(nFluxnetLayoutSlots) = slot
+            FluxnetLayoutTags(nFluxnetLayoutSlots) = tag
+        end do
+    end if
 
     if (EddyFlowProj%gas_num > 0) then
         do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
@@ -456,28 +519,30 @@ subroutine SelectFluxnetGasSlots()
             if (EddyFlowProj%gas(k)%col <= 0) cycle
             nFluxnetGasSlots = nFluxnetGasSlots + 1
             FluxnetGasSlots(nFluxnetGasSlots) = slot
-            if (slot <= gas4) then
-                !> The four historical slots keep the names the row has always
-                !> used; GS4 is substituted for the real label further down.
-                FluxnetGasTags(nFluxnetGasSlots) = HistoricGasTag(slot)
-            else
-                tag = EddyFlowProj%gas(k)%var
-                call uppercase(tag)
-                if (len_trim(tag) == 0) tag = 'GAS'
-                !> Disambiguate a repeated species: a second H2O would
-                !> otherwise emit a second column called H2O_MOIST_SLOT.
-                dup = 0
-                do n = 1, nFluxnetGasSlots - 1
-                    if (trim(FluxnetGasTags(n)) == trim(tag) .or. &
-                        index(trim(FluxnetGasTags(n)), trim(tag) // '_') == 1) &
-                        dup = dup + 1
-                end do
-                if (dup > 0) then
-                    write(ord, '(i0)') dup + 1
-                    tag = trim(tag) // '_' // trim(ord)
-                end if
-                FluxnetGasTags(nFluxnetGasSlots) = tag
-            end if
+            !> Every slot is named for its species, the fourth included.
+            !>
+            !> The fourth used to be tagged 'GS4' here and have its real label
+            !> substituted into the finished header much later. That left this
+            !> loop blind to the name the slot would actually carry, so the
+            !> duplicate check below compared later gases against the literal
+            !> 'GS4' instead of against a species. A project measuring the same
+            !> gas in slot four and slot five therefore emitted two identical
+            !> sets of columns - 20 duplicate names in one row - with no _2
+            !> suffix to tell them apart.
+            !>
+            !> Slots one to three are unaffected: their records say co2, h2o
+            !> and ch4, which is what HistoricGasTag returned for them.
+            !> Borrow the name the layout pass already assigned to this slot,
+            !> including any _2 suffix it needed. Re-deriving it here would
+            !> disambiguate against a different set of gases.
+            call clearstr(tag)
+            do n = 1, nFluxnetLayoutSlots
+                if (FluxnetLayoutSlots(n) /= slot) cycle
+                tag = FluxnetLayoutTags(n)
+                exit
+            end do
+            if (len_trim(tag) == 0) tag = 'GAS'
+            FluxnetGasTags(nFluxnetGasSlots) = tag
             !> Only gases past the four historical slots need an analyser
             !> block; CO2/H2O/CH4/GS4 already have their GA_* columns.
             if (slot > gas4) then

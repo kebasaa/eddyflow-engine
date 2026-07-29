@@ -331,7 +331,10 @@ module m_common_global_var
     !> stamps the format version into every project file it writes; a file
     !> newer than this is refused rather than half-parsed. Bump this in step
     !> with Defs::PROJECT_FILE_VERSION_STR on the GUI side.
-    character(5), parameter :: MaxSupportedIniVer = '4.5.0'
+    !> 5.0.0 is the record format: gases, cell measurements and diagnostics are
+    !> described by indexed records rather than one column per fixed role. The
+    !> GUI migrates a 4.x file on open and saves it in this format.
+    character(5), parameter :: MaxSupportedIniVer = '5.0.0'
     type(DateType), parameter :: &
         tsNull= DateType(0, 0, 0, 0, 0)
     type(InstrumentType), parameter :: &
@@ -455,23 +458,23 @@ module m_common_global_var
     data EPPrjNTags(1)%Label / 'binary_nbytes' / &
          EPPrjNTags(2)%Label / 'binary_hnlines' / &
          EPPrjNTags(3)%Label / 'col_ts' / &
-         EPPrjNTags(4)%Label / 'col_co2' / &
-         EPPrjNTags(5)%Label / 'col_h2o' / &
-         EPPrjNTags(6)%Label / 'col_ch4' / &
-         EPPrjNTags(7)%Label / 'col_gas4' / &
-         EPPrjNTags(8)%Label / 'col_cell_t' / &
-         EPPrjNTags(9)%Label / 'col_int_t_1' / &
-         EPPrjNTags(10)%Label / 'col_int_t_2' / &
-         EPPrjNTags(11)%Label / 'col_int_p' / &
+         EPPrjNTags(4)%Label / '' / &
+         EPPrjNTags(5)%Label / '' / &
+         EPPrjNTags(6)%Label / '' / &
+         EPPrjNTags(7)%Label / '' / &
+         EPPrjNTags(8)%Label / '' / &
+         EPPrjNTags(9)%Label / '' / &
+         EPPrjNTags(10)%Label / '' / &
+         EPPrjNTags(11)%Label / '' / &
          EPPrjNTags(12)%Label / 'col_air_t' / &
          EPPrjNTags(13)%Label / 'col_air_p' / &
-         EPPrjNTags(14)%Label / 'col_diag_72' / &
-         EPPrjNTags(15)%Label / 'col_diag_75' / &
-         EPPrjNTags(16)%Label / 'col_diag_77' / &
-         EPPrjNTags(17)%Label / 'gas_diff' / &
-         EPPrjNTags(18)%Label / 'gas_mw' / &
+         EPPrjNTags(14)%Label / '' / &
+         EPPrjNTags(15)%Label / '' / &
+         EPPrjNTags(16)%Label / '' / &
+         EPPrjNTags(17)%Label / '' / &
+         EPPrjNTags(18)%Label / '' / &
          EPPrjNTags(19)%Label / 'sonic_output_rate' / &
-         EPPrjNTags(20)%Label / 'col_diag_anem' / &
+         EPPrjNTags(20)%Label / '' / &
          EPPrjNTags(21)%Label / 'col_diag_staa' / &
          EPPrjNTags(22)%Label / 'col_diag_stad' / &
          EPPrjNTags(23)%Label / 'ru_its_meth' / &

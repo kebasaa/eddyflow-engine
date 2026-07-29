@@ -1,6 +1,18 @@
 include '../src_common/interfaces_1.inc'
 
 interface
+    !> Character-valued, so it needs an explicit interface wherever the
+    !> output headers are built.
+    function FourthGasLabel() result(label)
+        character(32) :: label
+    end function FourthGasLabel
+
+    function FourthGasUnitIn() result(unit_in)
+        character(32) :: unit_in
+    end function FourthGasUnitIn
+end interface
+
+interface
     subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
         loc_var_present, wind_speed, t_air, zL, ac_frequency, avrg_length, logger_sw_ver,&
         detrending_method, detrending_time_constant, printout, LocInstr, &

@@ -485,16 +485,26 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !>> Number or records whose anemometric data was eliminated based on Anemometer diagnostics
     call AddIntDatumToDataline(Essentials%m_diag_anem, csv_row, EddyFlowProj%err_label)
     !>> Number or records whose IRGA data was eliminated based on IRGA diagnostics
-    do gas = co2, gas4
-        call AddIntDatumToDataline(Essentials%m_diag_irga(gas), csv_row, EddyFlowProj%err_label)
-        end do
-    !>> Number of values eliminated by the Spike test
-    do var = u, gas4
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%m_diag_irga(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
+    !>> Number of values eliminated by the Spike test. The wind components and
+    !>> sonic temperature first, then one per configured gas.
+    do var = u, ts
         call AddIntDatumToDataline(Essentials%m_despiking(var), csv_row, EddyFlowProj%err_label)
     end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%m_despiking(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
     !>> Number of values eliminated by the Absolute Limits test
-    do j = u, gas4
-        call AddIntDatumToDataline(Essentials%al_s(j), csv_row, EddyFlowProj%err_label)
+    do var = u, ts
+        call AddIntDatumToDataline(Essentials%al_s(var), csv_row, EddyFlowProj%err_label)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%al_s(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
     end do
 
     !> Uncomment to reintroduce VM details
@@ -816,8 +826,14 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(E2Col(u)%Instr%hpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
     call AddFloatDatumToDataline(E2Col(u)%Instr%vpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
     call AddFloatDatumToDataline(E2Col(u)%Instr%tau, csv_row, EddyFlowProj%err_label)
-    !> gas analysers details
-    do gas = co2, gas4
+    !> Gas analyser details, one block per configured gas.
+    !>
+    !> Iterates the layout list rather than co2:gas4, so a fifth gas gets its
+    !> analyser columns here like any other. That list carries every gas the
+    !> project names - including one selected without a column - which is what
+    !> keeps this block exactly as wide as the header describing it.
+    do j = 1, nFluxnetLayoutSlots
+        gas = FluxnetLayoutSlots(j)
         call AddCharDatumToDataline(E2Col(gas)%Instr%firm, csv_row, EddyFlowProj%err_label)
         call AddCharDatumToDataline(E2Col(gas)%Instr%model, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%nsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)

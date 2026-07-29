@@ -401,6 +401,7 @@ subroutine InitializeGas4FullOutputUnitsFcc()
     implicit none
     !> local variables
     integer :: gas4_col
+    integer, parameter :: rec4 = gas4 - firstGas + 1
     logical :: metadata_exists
     logical :: IniFileNotFound
     character(32) :: gas4_unit
@@ -413,7 +414,16 @@ subroutine InitializeGas4FullOutputUnitsFcc()
         inquire(file = AuxFile%metadata, exist = metadata_exists)
         if (metadata_exists) then
             call ReadMetadataFile(MetadataCol, AuxFile%metadata, IniFileNotFound, .false.)
-            gas4_col = EddyFlowProj%col(gas4)
+            !> The fourth gas's column comes from the record; the col_gas4 tag
+            !> it used to come from is retired. Getting this wrong does not
+            !> corrupt the numbers - the unit label and the scale factor move
+            !> together - but the full output would silently switch from the
+            !> nmol basis an upgraded project used to report in to umol.
+            if (EddyFlowProj%gas_num >= rec4) then
+                gas4_col = EddyFlowProj%gas(rec4)%col
+            else
+                gas4_col = EddyFlowProj%col(gas4)
+            end if
             if (.not. IniFileNotFound .and. gas4_col > 0 .and. gas4_col <= MaxNumCol) then
                 if (trim(adjustl(MetadataCol(gas4_col)%conversion_type)) /= 'none' &
                     .and. len_trim(MetadataCol(gas4_col)%unit_out) > 0 &

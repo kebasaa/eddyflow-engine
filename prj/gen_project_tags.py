@@ -135,6 +135,21 @@ def region(text, name):
     return head, body, tail
 
 
+#: Tags retired with the 5.0.0 record format. Gases, cell measurements and
+#: diagnostics are described by records now, which name the analyser as well
+#: as the column and can carry the same species more than once.
+#:
+#: Blanked rather than removed - see process(). col_ts, col_air_t and
+#: col_air_p are absent deliberately: they are one per project, not one per
+#: instrument, and are still live.
+RETIRED_LABELS = {
+    "col_co2", "col_h2o", "col_ch4", "col_gas4",
+    "col_cell_t", "col_int_t_1", "col_int_t_2", "col_int_p",
+    "col_diag_72", "col_diag_75", "col_diag_77", "col_diag_anem",
+    "gas_mw", "gas_diff",
+}
+
+
 def parse_block(body, table):
     """index -> label for one block, skipping commented-out slots."""
     pat = re.compile(rf"{re.escape(table)}\((\d+)\)%Label\s*/\s*'([^']*)'\s*/")
@@ -173,6 +188,17 @@ def process(path, table, marker, size_param, lim, check):
     # full set of records on top of the first.
     record = re.compile(r"^(gas|cell|diag)_\d+_|^(gas|cell|diag)_num$")
     kept = {i: l for i, l in entries.items() if not record.match(l)}
+
+    # Retired tags keep their slot and lose their label.
+    #
+    # These tables are positional: the reader addresses them by index, so
+    # DELETING an entry would renumber every tag after it and silently
+    # rebind hundreds of settings. Blanking leaves the slot in place and
+    # unmatchable, which is the convention the tables already use for the
+    # other retired slots.
+    for i, label in list(kept.items()):
+        if label in RETIRED_LABELS:
+            kept[i] = ""
 
     base = max(kept) + 1
     nxt = base

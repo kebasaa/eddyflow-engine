@@ -90,6 +90,7 @@ subroutine WriteVariablesRP()
     integer :: leap_an_wsect
     integer :: init_prof_z
     integer :: hlen
+    integer :: gasslot
     logical :: proceed
 
     !> Initializations
@@ -353,13 +354,42 @@ subroutine WriteVariablesRP()
     RPsetup%out_raw_var(te)  = SCTags(83)%value(1:1) == '1'
     RPsetup%out_raw_var(pe)  = SCTags(84)%value(1:1) == '1'
 
+    !> Per-gas output selections. They override the four legacy flags above
+    !> for the gases those can reach, and are the only way to reach a fifth.
+    !> SCTagFound-guarded, so a project without records is untouched.
+    !>
+    !> All three arrays are indexed by variable slot: w_u..w_gas4 are aliases
+    !> of u..gas4 rather than a separate numbering, and SpectralAnalysis pairs
+    !> out_full_cosp(var) with Stats%cov(w, var). So gas record i, which
+    !> ApplyGasRecords places in slot firstGas + i - 1, uses that index in all
+    !> three. Note out_raw_var and not out_raw: the latter is seven processing
+    !> stages, not a per-variable selection.
+    do i = 1, MaxNumGases
+        gasslot = firstGas + i - 1
+        if (gasslot > lastGas) exit
+
+        if (SCTagFound(rpGasOriginC + (i - 1) * rpGasLeapC)) &
+            RPsetup%out_full_sp(gasslot) = &
+                SCTags(rpGasOriginC + (i - 1) * rpGasLeapC)%value(1:1) == '1'
+
+        if (SCTagFound(rpGasOriginC + (i - 1) * rpGasLeapC + 1)) &
+            RPsetup%out_full_cosp(gasslot) = &
+                SCTags(rpGasOriginC + (i - 1) * rpGasLeapC + 1)%value(1:1) == '1'
+
+        if (SCTagFound(rpGasOriginC + (i - 1) * rpGasLeapC + 2)) &
+            RPsetup%out_raw_var(gasslot) = &
+                SCTags(rpGasOriginC + (i - 1) * rpGasLeapC + 2)%value(1:1) == '1'
+    end do
+
     !> If no spectral output is selected, identify this situation for skipping
-    !> completely the spectral analysis
+    !> completely the spectral analysis.
+    !> Bounded by lastGas rather than gas4: a project whose fifth gas asked
+    !> for spectra would otherwise have the whole analysis skipped.
     RPsetup%do_spectral_analysis = .false.
     if (RPsetup%out_bin_sp .or. RPsetup%out_bin_og &
-        .or. any(RPsetup%out_full_sp(u:gas4)) &
+        .or. any(RPsetup%out_full_sp(u:lastGas)) &
         .or. any(RPsetup%out_full_cosp(w_u:w_v)) &
-        .or. any(RPsetup%out_full_cosp(w_ts:w_gas4))) &
+        .or. any(RPsetup%out_full_cosp(w_ts:lastGas))) &
         RPsetup%do_spectral_analysis = .true.
 
     !> If no variable was selected for output, force out_raw to false
@@ -394,22 +424,35 @@ subroutine WriteVariablesRP()
         raw_out_header = raw_out_header(1:hlen) // 'ts'
         hlen = hlen + 25
     end if
-    if (RPsetup%out_raw_var(co2)) then
-        raw_out_header = raw_out_header(1:hlen) // 'co2'
+    !> One header name per selected gas slot, over the same range OutRawData
+    !> writes columns for (it loops out_raw_var over every column). Enumerating
+    !> only the historical four here would give a fifth gas a data column with
+    !> no name, leaving header and rows a field apart.
+    !>
+    !> Names come from the project configuration rather than from E2Col, whose
+    !> %var is still empty at this point: DefineE2Set has not run yet. A
+    !> project with no gas records keeps the historical names exactly.
+    do i = 1, MaxNumGases
+        gasslot = firstGas + i - 1
+        if (gasslot > lastGas) exit
+        if (.not. RPsetup%out_raw_var(gasslot)) cycle
+
+        if (EddyFlowProj%gas_num > 0 .and. i <= EddyFlowProj%gas_num &
+            .and. len_trim(EddyFlowProj%gas(i)%var) > 0) then
+            raw_out_header = raw_out_header(1:hlen) &
+                // trim(EddyFlowProj%gas(i)%var)
+        else
+            select case (gasslot)
+                case (co2);  raw_out_header = raw_out_header(1:hlen) // 'co2'
+                case (h2o);  raw_out_header = raw_out_header(1:hlen) // 'h2o'
+                case (ch4);  raw_out_header = raw_out_header(1:hlen) // 'ch4'
+                case (gas4); raw_out_header = raw_out_header(1:hlen) // '4th gas'
+                case default
+                    raw_out_header = raw_out_header(1:hlen) // 'gas'
+            end select
+        end if
         hlen = hlen + 25
-    end if
-    if (RPsetup%out_raw_var(h2o)) then
-        raw_out_header = raw_out_header(1:hlen) // 'h2o'
-        hlen = hlen + 25
-    end if
-    if (RPsetup%out_raw_var(ch4)) then
-        raw_out_header = raw_out_header(1:hlen) // 'ch4'
-        hlen = hlen + 25
-    end if
-    if (RPsetup%out_raw_var(gas4)) then
-        raw_out_header = raw_out_header(1:hlen) // '4th gas'
-        hlen = hlen + 25
-    end if
+    end do
     if (RPsetup%out_raw_var(te))  then
         raw_out_header = raw_out_header(1:hlen) // 'air_t'
         hlen = hlen + 25

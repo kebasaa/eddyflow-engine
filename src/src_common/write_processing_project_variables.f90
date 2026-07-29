@@ -182,20 +182,30 @@ subroutine WriteProcessingProjectVariables()
     !> Variables to be used other than sonic ones
     EddyFlowProj%col(ts:pe) = nint(error)
     EddyFlowProj%col(ts)  = nint(EPPrjNTags(3)%value)
-    EddyFlowProj%col(co2) = nint(EPPrjNTags(4)%value)
-    EddyFlowProj%col(h2o) = nint(EPPrjNTags(5)%value)
-    EddyFlowProj%col(ch4) = nint(EPPrjNTags(6)%value)
-    EddyFlowProj%col(gas4) = nint(EPPrjNTags(7)%value)
-    EddyFlowProj%col(tc)  = nint(EPPrjNTags(8)%value)
-    EddyFlowProj%col(ti1) = nint(EPPrjNTags(9)%value)
-    EddyFlowProj%col(ti2) = nint(EPPrjNTags(10)%value)
-    EddyFlowProj%col(pi)  = nint(EPPrjNTags(11)%value)
+    !> The gas, cell and diagnostic columns are **not read from tags any
+    !> more**. col_co2 .. col_diag_77 are retired: the records describe those
+    !> measurements, and can say which analyser each came from and name the
+    !> same species more than once, which one column per role never could.
+    !>
+    !> Their slots stay at nint(error), which is what DefineUsedVariables'
+    !> "> 0" guard tests, so the legacy marking simply finds nothing and the
+    !> record loops beside it do the work.
+    !>
+    !> Reading a retired tag would be worse than useless: the labels are
+    !> blanked in the table, so SearchLocalTags never matches them and leaves
+    !> %value untouched - the engine does not default missing tags.
     EddyFlowProj%col(te)  = nint(EPPrjNTags(12)%value)
     EddyFlowProj%col(pe)  = nint(EPPrjNTags(13)%value)
-    EddyFlowProj%col(E2NumVar + diag72) = nint(EPPrjNTags(14)%value)
-    EddyFlowProj%col(E2NumVar + diag75) = nint(EPPrjNTags(15)%value)
-    EddyFlowProj%col(E2NumVar + diag77) = nint(EPPrjNTags(16)%value)
-    EddyFlowProj%col(E2NumVar + diagAnem) = nint(EPPrjNTags(20)%value)
+    !> Cleared explicitly: the "ts:pe" initialisation above does not reach the
+    !> diagnostic slots, so dropping their assignments without this would
+    !> leave them holding whatever was there - and DefineUsedVariables tests
+    !> them with "> 0".
+    EddyFlowProj%col(E2NumVar + diag72) = nint(error)
+    EddyFlowProj%col(E2NumVar + diag75) = nint(error)
+    EddyFlowProj%col(E2NumVar + diag77) = nint(error)
+    EddyFlowProj%col(E2NumVar + diagAnem) = nint(error)
+    !> Now that the slots are cleared, fill the ones the records name.
+    call ApplyDiagnosticRecordColumns()
     EddyFlowProj%col(E2NumVar + diagStaA) = nint(EPPrjNTags(21)%value)
     EddyFlowProj%col(E2NumVar + diagStaD) = nint(EPPrjNTags(22)%value)
 
@@ -471,6 +481,7 @@ contains
 subroutine ReadMeasurementRecords()
     integer :: i
     integer :: b
+    integer :: slot
 
     EddyFlowProj%gas_num  = 0
     EddyFlowProj%cell_num = 0
@@ -508,6 +519,37 @@ subroutine ReadMeasurementRecords()
         if (EPPrjNTagFound(b + 4)) EddyFlowProj%gas(i)%diff  = dble(EPPrjNTags(b + 4)%value)
     end do
 
+    !> Carry each record's molecular weight and diffusivity onto its gas slot.
+    !>
+    !> MW and Dc are sized to E2NumVar but their `data` statements only fill
+    !> co2:gas4, so every slot past the fourth gas holds whatever was in memory
+    !> until something writes it. Nothing did: the records were read into
+    !> EddyFlowProj%gas() and never applied, and the fourth slot got its values
+    !> from the retired flat gas_mw/gas_diff tags alone. A gas with a garbage
+    !> molecular weight produces a plausible-looking flux that is silently
+    !> wrong, so this runs for every slot a record names.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        slot = firstGas + i - 1
+        if (slot > lastGas) exit
+        if (EddyFlowProj%gas(i)%col <= 0) cycle
+        !> g mol-1 -> kg mol-1, cm+2 s-1 -> m+2 s-1, matching the units the
+        !> interface writes and the defaults below.
+        !> A record that carries neither still needs usable numbers. The four
+        !> historical slots keep their built-in values; anything past them has
+        !> none, so it falls back to N2O's - the same default the fourth slot
+        !> has always used.
+        if (EddyFlowProj%gas(i)%mw > 0d0) then
+            MW(slot) = sngl(EddyFlowProj%gas(i)%mw) * 1e-3
+        else if (slot > gas4) then
+            MW(slot) = 44.01e-3
+        end if
+        if (EddyFlowProj%gas(i)%diff > 0d0) then
+            Dc(slot) = EddyFlowProj%gas(i)%diff * 1d-4
+        else if (slot > gas4) then
+            Dc(slot) = 0.00001436d0   !< Massman (1998, Atm Env, Table 2)
+        end if
+    end do
+
     do i = 1, MaxNumCellCols
         EddyFlowProj%cell(i) = MeasRecordType('none', 'none', nint(error))
         if (i > EddyFlowProj%cell_num) cycle
@@ -535,7 +577,44 @@ subroutine ReadMeasurementRecords()
         b = diagRecOriginN + (i - 1) * diagRecLeapN
         if (EPPrjNTagFound(b)) EddyFlowProj%diag(i)%col = nint(EPPrjNTags(b)%value)
     end do
+
 end subroutine ReadMeasurementRecords
+
+!***************************************************************************
+!
+! \brief       Bridge the diagnostic records onto the internal column slots.
+! \author      Jonathan Muller
+! \note        Unlike the gas and cell records, which are applied directly to
+!              E2Col, the diagnostics are consumed all over the engine through
+!              EddyFlowProj%col(E2NumVar + diag*) - it is what sets
+!              Diag7200%present, NumDiag and the per-analyser flag columns.
+!              Marking the column "used" is not enough: without this the flags
+!              are read but every INST_* output stays at its error value.
+!              Populating the slot keeps all those consumers working
+!              unchanged. Only the file *tags* are retired; this array is the
+!              engine's own representation.
+! \note        Must run after the diag slots are cleared to nint(error),
+!              which happens well below the call that reads the records.
+!***************************************************************************
+subroutine ApplyDiagnosticRecordColumns()
+    use m_common_global_var
+    implicit none
+    integer :: i
+
+    do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+        if (EddyFlowProj%diag(i)%col <= 0) cycle
+        select case (trim(adjustl(EddyFlowProj%diag(i)%var)))
+            case ('diag_72')
+                EddyFlowProj%col(E2NumVar + diag72)   = EddyFlowProj%diag(i)%col
+            case ('diag_75')
+                EddyFlowProj%col(E2NumVar + diag75)   = EddyFlowProj%diag(i)%col
+            case ('diag_77')
+                EddyFlowProj%col(E2NumVar + diag77)   = EddyFlowProj%diag(i)%col
+            case ('diag_anem')
+                EddyFlowProj%col(E2NumVar + diagAnem) = EddyFlowProj%diag(i)%col
+        end select
+    end do
+end subroutine ApplyDiagnosticRecordColumns
 
 real(kind = dbl) function NormalizeCecFraction(value, default_value)
     real(kind = dbl), intent(in) :: value
