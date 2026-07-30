@@ -52,6 +52,11 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: i
     integer :: var
     integer :: ix
+    !> Gases the fixed part of the row carries a column set for: every gas the
+    !> project configures, present or not, which is what InitFluxnetFile_rp
+    !> sizes its loops from. Clamped, because a project naming more gases than
+    !> the build supports would otherwise index past the layout arrays.
+    integer :: n_layout_gas
     integer :: cec_h2o_valid
     integer :: cec_co2_valid
     integer :: cec_start
@@ -73,7 +78,11 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     character(9) :: vm97flags(GHGNumVar)
     character(16000) :: dataline
     character(16000) :: cec_line
-    real(kind = dbl) :: aux(32)
+    !> Scratch for fields that are read only to be discarded. Must hold the
+    !> largest such group, which is now the final Foken flags: four fluxes plus
+    !> one per configured gas. At 32 a project with more than 28 gases would
+    !> have written past the end of it.
+    real(kind = dbl) :: aux(4 + MaxNumGases)
     !> Field counts of the ex-file layout.
     !>
     !> This file is navigated positionally: after each list-directed read the
@@ -131,11 +140,26 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> NREX chunk. Three per-gas runs, so its width is a runtime
     !> quantity; the chunk itself is copied verbatim and never parsed.
     integer :: nNrexFields
-    integer, parameter :: nVmFields    = nExVar + 4               !< VM97 flags
-    integer, parameter :: nLgdFields   = 3 * nExVar + (4 + nExGas) + (2 + nExGas)
-    integer, parameter :: nSsItcFields = (2 + nExGas) + 3         !< SS + ITC
-    integer, parameter :: nSsTestFields = (2 + nExGas) + 3        !< SS/ITC tests
-    integer, parameter :: nLicorFields = (4 + nExGas) + 29        !< SSITC + IRGA flags
+    !> VM97 flags: u,v,w,ts, one field per configured gas, then the four
+    !> per-test scalars. Runtime for the same reason as the NREX chunk - but
+    !> unlike it, these fields are parsed rather than copied, so FCC's re-emit
+    !> had to widen with them.
+    integer :: nVmFields
+    !> LGD/KID/ZCD, then the correlation differences and the Mahrt 98
+    !> nonstationarity ratios. Three variable-shaped families and two
+    !> flux-shaped ones. Copied verbatim into fluxnetChunks%s(2), so only its
+    !> width follows the gas count.
+    integer :: nLgdFields
+    !> Foken statistics: SS per flux, ITC on u/w/ts. Parsed into lEx%F_SS and
+    !> re-emitted by FCC, so this one is not a chunk copy.
+    integer :: nSsItcFields
+    !> Partial Foken flags: SS per flux, ITC on u/w/ts. Copied into
+    !> fluxnetChunks%s(3), so only its width follows the gas count.
+    integer :: nSsTestFields
+    !> The final Foken flags, which are discarded here, followed by the 29
+    !> LI-COR IRGA flags. Only the leading term is per gas: the IRGA flags are
+    !> keyed to three instrument models, not to gas slots.
+    integer :: nLicorFields
     integer, parameter :: nAgcFields   = 3                        !< AGC/RSSI
     integer, parameter :: nWboostFields = 3                       !< WBOOST .. AXES_ROT
     integer, parameter :: nRotFields   = 5                        !< angles + detrending
@@ -269,17 +293,19 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> Read out VM flags and Foken QC details.
-    !> Bound by gas4, not GHGNumVar: WriteOutFluxnet emits one field per
-    !> variable over "do var = u, gas4". The two were numerically equal while
-    !> GHGNumVar was 8, but they are not once the gas capacity grows, and a
-    !> list-directed read of too many items silently swallows the fields that
-    !> follow.
-    read(dataline, *, iostat = read_status) vm97flags(u:gas4), &
+    !> Bound by what WriteOutFluxnet emits: u,v,w,ts then one field per
+    !> configured gas. Reading a fixed u:gas4 would consume four gas fields
+    !> whatever the project holds - too few for five gases, and for three it
+    !> would silently swallow the field that follows.
+    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
+    read(dataline, *, iostat = read_status) vm97flags(u:ts), &
+        vm97flags(firstGas : firstGas + n_layout_gas - 1), &
         lEx%vm_tlag_hf, lEx%vm_tlag_sf, lEx%vm_aoa_hf, lEx%vm_nshw_hf
     if (read_status /= 0) then
         call InvalidateRecord()
         return
     end if
+    nVmFields = 4 + n_layout_gas + 4
     ix = strCharIndex(dataline, ',', nVmFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -287,17 +313,24 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     end if
     dataline = dataline(ix+1: len_trim(dataline))
 
-    !> Rearrage VM flags per test, instead of per variable
+    !> Rearrage VM flags per test, instead of per variable.
+    !>
+    !> Transposed: the array index becomes the test and the string position the
+    !> variable. Positions are filled to FlagStrLen with '9' - "not performed"
+    !> - so a slot the project does not configure reads as absent rather than
+    !> as whatever the previous record left there.
     if (vm97flags(u) == '-9999') then
         lEx%vm_flags = '-9999'
     else
         do flag = 1, 8
+            lEx%vm_flags(flag) = repeat('9', FlagStrLen)
             lEx%vm_flags(flag)(1:1) = '8'
             lEx%vm_flags(flag)(2:2) = vm97flags(u)(flag + 1: flag + 1)
             lEx%vm_flags(flag)(3:3) = vm97flags(v)(flag + 1: flag + 1)
             lEx%vm_flags(flag)(4:4) = vm97flags(w)(flag + 1: flag + 1)
             lEx%vm_flags(flag)(5:5) = vm97flags(ts)(flag + 1: flag + 1)
-            do gas = co2, gas4
+            do gas = firstGas, firstGas + n_layout_gas - 1
+                if (gas > lastGas) exit
                 if (vm97flags(gas)(1:1) == '8') then
                     lEx%vm_flags(flag)(gas + 1 : gas + 1) = vm97flags(gas)(flag + 1: flag + 1)
                 else
@@ -308,6 +341,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     end if
 
     !> Copy LGD/KID/ZCD/CORRDIFF/NSR chunk
+    nLgdFields = 3 * (4 + n_layout_gas) + (4 + n_layout_gas) + (2 + n_layout_gas)
     ix = strCharIndex(dataline, ',', nLgdFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -317,12 +351,14 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     dataline = dataline(ix+1: len_trim(dataline))
 
     read(dataline, *, iostat = read_status) &
-        lEx%TAU_SS, lEx%H_SS, lEx%FC_SS, lEx%FH2O_SS, &
-        lEx%FCH4_SS, lEx%FGS4_SS, lEx%U_ITC, lEx%W_ITC, lEx%TS_ITC
+        lEx%TAU_SS, lEx%H_SS, &
+        lEx%F_SS(firstGas : firstGas + n_layout_gas - 1), &
+        lEx%U_ITC, lEx%W_ITC, lEx%TS_ITC
     if (read_status /= 0) then
         call InvalidateRecord()
         return
     end if
+    nSsItcFields = (2 + n_layout_gas) + 3
     ix = strCharIndex(dataline, ',', nSsItcFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -330,7 +366,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     end if
     dataline = dataline(ix+1: len_trim(dataline))
 
-    !> Copy another piece
+    !> Copy the partial Foken flags
+    nSsTestFields = (2 + n_layout_gas) + 3
     ix = strCharIndex(dataline, ',', nSsTestFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -339,12 +376,16 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     fluxnetChunks%s(3) = dataline(1: ix-1)
     dataline = dataline(ix+1: len_trim(dataline))
 
-    !> Read licor IRGA flags
-    read(dataline, *, iostat = read_status) aux(1:8), lEx%licor_flags(1:29)
+    !> Read licor IRGA flags. The final Foken flags come first and are thrown
+    !> away - FCC recomputes them - but they still have to be consumed, and
+    !> there are now four of them plus one per configured gas.
+    read(dataline, *, iostat = read_status) aux(1 : 4 + n_layout_gas), &
+        lEx%licor_flags(1:29)
     if (read_status /= 0) then
         call InvalidateRecord()
         return
     end if
+    nLicorFields = (4 + n_layout_gas) + 29
     ix = strCharIndex(dataline, ',', nLicorFields)
     if (ix <= 0) then
         call InvalidateRecord()

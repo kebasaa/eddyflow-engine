@@ -45,6 +45,7 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     integer :: l = 0
     integer :: j = 0
     integer :: subn
+    integer :: gas
     integer :: IntDiff(GHGNumVar, GHGNumVar)
     integer :: IntDiffUstar
     type(QCType) :: StDiff
@@ -118,17 +119,17 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     StDiff%u = IntDiff(u, u)
     StDiff%w = IntDiff(w, w)
     StDiff%ts = IntDiff(ts, ts)
-    StDiff%co2 = IntDiff(co2, co2)
-    StDiff%h2o = IntDiff(h2o, h2o)
-    StDiff%ch4 = IntDiff(ch4, ch4)
-    StDiff%gas4 = IntDiff(gas4, gas4)
 
     StDiff%w_u = IntDiffUstar
     StDiff%w_ts = IntDiff(w, ts)
-    StDiff%w_co2 = IntDiff(w, co2)
-    StDiff%w_h2o = IntDiff(w, h2o)
-    StDiff%w_ch4 = IntDiff(w, ch4)
-    StDiff%w_gas4 = IntDiff(w, gas4)
+
+    !> Every gas slot, not the four historical ones. IntDiff returns the error
+    !> code for a variable with no data, so an unconfigured slot lands there on
+    !> its own and a four-gas project gets exactly the statistics it did before.
+    do gas = firstGas, lastGas
+        StDiff%gas(gas) = IntDiff(gas, gas)
+        StDiff%w_gas(gas) = IntDiff(w, gas)
+    end do
 
     deallocate(SubSet)
     write(*,'(a)') ' Done.'

@@ -43,15 +43,17 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
     type(QCType), intent(out)   :: lQCFlag
     integer, intent(out) :: STFlg(GHGNumVar)
     integer, intent(out) :: DTFlg(GHGNumVar)
+    !> local variables
+    integer :: gas
 
 
     if (printout) write(*,'(a)', advance = 'no') '  Calculating quality flags..'
 
-    !> Stationarity flags
-    call PartialFlagLF(StDiff%w_co2, STFlg(w_co2))
-    call PartialFlagLF(StDiff%w_h2o, STFlg(w_h2o))
-    call PartialFlagLF(StDiff%w_ch4, STFlg(w_ch4))
-    call PartialFlagLF(StDiff%w_gas4, STFlg(w_gas4))
+    !> Stationarity flags. Every gas slot: the w_* covariance enumeration is
+    !> numerically the variable enumeration, so a slot indexes both directly.
+    do gas = firstGas, lastGas
+        call PartialFlagLF(StDiff%w_gas(gas), STFlg(gas))
+    end do
     call PartialFlagLF(StDiff%w_ts,  STFlg(w_ts))
     call PartialFlagLF(StDiff%w_u,   STFlg(w_u))
     !> Developed turbulence flags
@@ -65,48 +67,38 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
             case ('none')
                 lQCFlag%tau = nint(error)
                 lQCFlag%H = nint(error)
-                lQCFlag%co2 = nint(error)
-                lQCFlag%h2o = nint(error)
-                lQCFlag%ch4 = nint(error)
-                lQCFlag%gas4 = nint(error)
+                lQCFlag%gas = nint(error)
             case ('mauder_foken_04')
                 !> Combined flags according to Mauder and Foken (2004)
                 call GTK2Flag(STFlg(w_u),   DTFlg(u), lQCFlag%tau)
                 call GTK2Flag(STFlg(w_ts),  DTFlg(w), lQCFlag%H)
-                call GTK2Flag(STFlg(w_co2), DTFlg(w), lQCFlag%co2)
-                call GTK2Flag(STFlg(w_h2o), DTFlg(w), lQCFlag%h2o)
-                call GTK2Flag(STFlg(w_ch4), DTFlg(w), lQCFlag%ch4)
-                call GTK2Flag(STFlg(w_gas4), DTFlg(w), lQCFlag%gas4)
+                do gas = firstGas, lastGas
+                    call GTK2Flag(STFlg(gas), DTFlg(w), lQCFlag%gas(gas))
+                end do
             case ('foken_03')
                 !> Combined flags according to Foken (2003), retrieved from Foken et al. (2004, HoM)
                 call FokenFlag(STFlg(w_u),   DTFlg(u), lQCFlag%tau)
                 call FokenFlag(STFlg(w_ts),  DTFlg(w), lQCFlag%H)
-                call FokenFlag(STFlg(w_co2), DTFlg(w), lQCFlag%co2)
-                call FokenFlag(STFlg(w_h2o), DTFlg(w), lQCFlag%h2o)
-                call FokenFlag(STFlg(w_ch4), DTFlg(w), lQCFlag%ch4)
-                call FokenFlag(STFlg(w_gas4), DTFlg(w), lQCFlag%gas4)
+                do gas = firstGas, lastGas
+                    call FokenFlag(STFlg(gas), DTFlg(w), lQCFlag%gas(gas))
+                end do
             case ('goeckede_06')
                 !> Combined flags according to Goeckede et al. (2006)
                 call GoeckedeFlag(STFlg(w_u),   DTFlg(u), lQCFlag%tau)
                 call GoeckedeFlag(STFlg(w_ts),  DTFlg(w), lQCFlag%H)
-                call GoeckedeFlag(STFlg(w_co2), DTFlg(w), lQCFlag%co2)
-                call GoeckedeFlag(STFlg(w_h2o), DTFlg(w), lQCFlag%h2o)
-                call GoeckedeFlag(STFlg(w_ch4), DTFlg(w), lQCFlag%ch4)
-                call GoeckedeFlag(STFlg(w_gas4), DTFlg(w), lQCFlag%gas4)
+                do gas = firstGas, lastGas
+                    call GoeckedeFlag(STFlg(gas), DTFlg(w), lQCFlag%gas(gas))
+                end do
         end select
         !> If fluxes are set to error, set to error also the quality flags
         if (lFlux2%H    == error) lQCFlag%H    = nint(error)
-        if (lFlux2%gas(h2o)  == error) lQCFlag%h2o  = nint(error)
-        if (lFlux2%gas(co2)  == error) lQCFlag%co2  = nint(error)
-        if (lFlux2%gas(ch4)  == error) lQCFlag%ch4  = nint(error)
-        if (lFlux2%gas(gas4) == error) lQCFlag%gas4 = nint(error)
+        do gas = firstGas, lastGas
+            if (lFlux2%gas(gas) == error) lQCFlag%gas(gas) = nint(error)
+        end do
     else
         lQCFlag%tau = nint(error)
         lQCFlag%H = nint(error)
-        lQCFlag%co2 = nint(error)
-        lQCFlag%h2o = nint(error)
-        lQCFlag%ch4 = nint(error)
-        lQCFlag%gas4 = nint(error)
+        lQCFlag%gas = nint(error)
     end if
 
     if (printout) write(*, '(a)') ' Done.'

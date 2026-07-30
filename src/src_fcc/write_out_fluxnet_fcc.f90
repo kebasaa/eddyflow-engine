@@ -41,8 +41,15 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> local variables
     integer :: var
     integer :: i
+    integer :: j
     integer :: gas
     integer :: vi
+    !> Gases the fixed part of the row carries columns for. Mirrors what
+    !> InitFluxnetFile_rp sized its header loops from.
+    integer :: n_layout_gas
+    !> One field per variable: a filler digit plus the 8 test outcomes. Nine
+    !> characters counts tests, not gases, so this width is unaffected by the
+    !> gas capacity - unlike lEx%vm_flags, which is the transpose.
     character(9) :: vm97flags(GHGNumVar)
     include '../src_common/interfaces_1.inc'
 
@@ -348,13 +355,21 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> M_CUSTOM_FLAGS thru VM97_NSW_RNS
     call AddDatum(csv_row, trim(fluxnetChunks%s(1)), separator)
 
-    !> VM97 flags, here organized per variable instead of per test
+    !> VM97 flags, here organized per variable instead of per test.
+    !>
+    !> Re-derived from the transposed form, so this loop has to reproduce
+    !> exactly the fields RP wrote: u,v,w,ts then one per configured gas. FCC
+    !> has no access to RP's layout lists, but it reads the same project, and
+    !> SelectFluxnetGasSlots assigns slot firstGas+k-1 over this same range.
+    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
     if (lEx%vm_flags(1) == '-9999') then
-        do var = u, gas4
+        do j = 1, 4 + n_layout_gas
             call AddCharDatumToDataline(EddyFlowProj%err_label, csv_row, EddyFlowProj%err_label)
         end do
     else
-        do var = u, gas4
+        !> u,v,w,ts then the configured gases - one contiguous range, because
+        !> firstGas is ts + 1 and the gas slots run from there.
+        do var = u, ts + n_layout_gas
             vi = var + 1
             vm97flags(var)(1 : 1) = '8'
             vm97flags(var)(2 : 2) = lEx%vm_flags(1)(vi:vi)
@@ -381,10 +396,9 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> Foken's QC details
     call AddFloatDatumToDataline(lEx%TAU_SS, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(lEx%H_SS, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%FC_SS, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%FH2O_SS, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%FCH4_SS, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%FGS4_SS, csv_row, EddyFlowProj%err_label)
+    do gas = firstGas, ts + n_layout_gas
+        call AddFloatDatumToDataline(lEx%F_SS(gas), csv_row, EddyFlowProj%err_label)
+    end do
     call AddFloatDatumToDataline(lEx%U_ITC, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(lEx%W_ITC, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(lEx%TS_ITC, csv_row, EddyFlowProj%err_label)
@@ -392,15 +406,16 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> Write second string from Chunks
     call AddDatum(csv_row, fluxnetChunks%s(3), separator)
 
-    !> Foken's final flags
+    !> Foken's final flags. Re-derived here rather than read back, so this loop
+    !> has to reproduce exactly what RP emitted: momentum, sensible heat and
+    !> the two water fluxes, then one per configured gas.
     call AddIntDatumToDataline(QCFlag%tau, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(QCFlag%H, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%co2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%ch4, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%gas4, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(QCFlag%gas(h2o), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(QCFlag%gas(h2o), csv_row, EddyFlowProj%err_label)
+    do gas = firstGas, ts + n_layout_gas
+        call AddIntDatumToDataline(QCFlag%gas(gas), csv_row, EddyFlowProj%err_label)
+    end do
 
     !> LI-COR's IRGAs diagnostics breakdown
     do i = 1, 29

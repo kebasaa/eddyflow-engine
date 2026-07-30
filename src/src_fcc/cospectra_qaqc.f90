@@ -49,10 +49,14 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     logical, intent(out) :: skip_cospectra
     !> Local variables
     integer :: i
-    character(9) :: hf_sr
-    character(9) :: hf_do
-    character(9) :: hf_sk, sf_sk
-    character(9) :: hf_ds, sf_ds
+    !> One digit per variable, taken from the transposed VM97 strings. These
+    !> were character(9), which covered u,v,w,ts and exactly four gases, so a
+    !> fifth gas could never be flagged here and its cospectra were kept
+    !> regardless of what the tests said.
+    character(FlagStrLen) :: hf_sr
+    character(FlagStrLen) :: hf_do
+    character(FlagStrLen) :: hf_sk, sf_sk
+    character(FlagStrLen) :: hf_ds, sf_ds
     integer :: STFlg(GHGNumVar)
     integer :: DTFlg(GHGNumVar)
     integer :: qc_tau, qc_H, qc_co2, qc_h2o, qc_ch4, qc_gas4
@@ -172,14 +176,16 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     !> Filter based on results of Vickers and Mahrt (1997) quality tests
     !> if requested
     if (FCCsetup%SA%filter_cosp_by_vm_flags) then
-        hf_sr(1:8) = lEx%vm_flags(1)(2:9)
-        hf_do(1:8) = lEx%vm_flags(3)(2:9)
+        !> Position 1 of each transposed string is the filler digit, so the
+        !> variable digits start at 2 and run to the end.
+        hf_sr(1:GHGNumVar) = lEx%vm_flags(1)(2:FlagStrLen)
+        hf_do(1:GHGNumVar) = lEx%vm_flags(3)(2:FlagStrLen)
 
-        hf_sk(1:8) = lEx%vm_flags(5)(2:9)
-        sf_sk(1:8) = lEx%vm_flags(6)(2:9)
+        hf_sk(1:GHGNumVar) = lEx%vm_flags(5)(2:FlagStrLen)
+        sf_sk(1:GHGNumVar) = lEx%vm_flags(6)(2:FlagStrLen)
 
-        hf_ds(1:8) = lEx%vm_flags(7)(2:9)
-        sf_ds(1:8) = lEx%vm_flags(8)(2:9)
+        hf_ds(1:GHGNumVar) = lEx%vm_flags(7)(2:FlagStrLen)
+        sf_ds(1:GHGNumVar) = lEx%vm_flags(8)(2:FlagStrLen)
 
         !> If vertical wind speed is flagged, all cospectra are eliminated
         wind_vm_bad = hf_sr(w:w) == '1' .or. hf_do(w:w) == '1' &
@@ -190,15 +196,15 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
 
         !> Elimination of individual (co)spectra based on the flags on
         !> the relevant variable
-        do i = u, gas4
+        do i = u, lastGas
             if (hf_sr(i:i) == '1' .or. hf_do(i:i) == '1' &
                 .or. hf_sk(i:i) == '1' .or. hf_ds(i:i) == '1') then
-                if (i >= co2) SADiagRejectedVM(i) = SADiagRejectedVM(i) + 1
+                if (i >= firstGas) SADiagRejectedVM(i) = SADiagRejectedVM(i) + 1
                 BinSpec%of(i) = error
                 BinCospForUnstable%of(i) = error
             end if
         end do
-        do i = co2, gas4
+        do i = firstGas, lastGas
             vm_ok(i) = .not. wind_vm_bad .and. .not. (hf_sr(i:i) == '1' &
                 .or. hf_do(i:i) == '1' .or. hf_sk(i:i) == '1' .or. hf_ds(i:i) == '1')
         end do
@@ -210,10 +216,10 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (FCCsetup%SA%foken_lim >= 0) then
         !> Partial flags
         !> Stationarity flags
-        call PartialFlagLF(nint(lEx%FC_SS), STFlg(w_co2))
-        call PartialFlagLF(nint(lEx%FH2O_SS), STFlg(w_h2o))
-        call PartialFlagLF(nint(lEx%FCH4_SS), STFlg(w_ch4))
-        call PartialFlagLF(nint(lEx%FGS4_SS), STFlg(w_gas4))
+        call PartialFlagLF(nint(lEx%F_SS(co2)), STFlg(w_co2))
+        call PartialFlagLF(nint(lEx%F_SS(h2o)), STFlg(w_h2o))
+        call PartialFlagLF(nint(lEx%F_SS(ch4)), STFlg(w_ch4))
+        call PartialFlagLF(nint(lEx%F_SS(gas4)), STFlg(w_gas4))
         call PartialFlagLF(nint(lEx%H_SS),  STFlg(w_ts))
         call PartialFlagLF(nint(lEx%TAU_SS),   STFlg(w_u))
         !> Developed turbulence flags

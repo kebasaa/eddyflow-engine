@@ -94,7 +94,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if(OutVarPresent(h2o)) then
         call WriteDatumFloat(Flux3%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%h2o, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(h2o), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(Essentials%rand_uncer_LE, field_val, EddyFlowProj%err_label)
@@ -112,7 +112,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if(OutVarPresent(co2)) then
         call WriteDatumFloat(Flux3%gas(co2), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%co2, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(co2), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(Essentials%rand_uncer(co2), field_val, EddyFlowProj%err_label)
@@ -129,7 +129,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if(OutVarPresent(h2o)) then
         call WriteDatumFloat(Flux3%gas(h2o), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%h2o, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(h2o), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(Essentials%rand_uncer(h2o), field_val, EddyFlowProj%err_label)
@@ -146,7 +146,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if(OutVarPresent(ch4)) then
         call WriteDatumFloat(Flux3%gas(ch4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%ch4, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(ch4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(Essentials%rand_uncer(ch4), field_val, EddyFlowProj%err_label)
@@ -164,7 +164,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call WriteDatumFloat(merge(Flux3%gas(gas4) * gas4_flux_sc, error, Flux3%gas(gas4) /= error), &
             field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas4, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(gas4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(merge(Essentials%rand_uncer(gas4) * gas4_flux_sc, error, &

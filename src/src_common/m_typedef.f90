@@ -1081,18 +1081,15 @@ module m_typedef
     type :: QCType
         integer :: w_u
         integer :: w_ts
-        integer :: w_co2
-        integer :: w_h2o
-        integer :: w_ch4
-        integer :: w_gas4
+        !> Per-gas quality quantities, indexed by gas slot (firstGas..lastGas).
+        !> Were four named members apiece, which is why the Foken flags and the
+        !> steady-state statistics stopped at the fourth gas.
+        integer :: w_gas(GHGNumVar)
         integer :: u
         integer :: w
         integer :: ts
         integer :: tau
-        integer :: co2
-        integer :: h2o
-        integer :: ch4
-        integer :: gas4
+        integer :: gas(GHGNumVar)
         integer :: H
         character(32) :: Filename
         character(10) :: date
@@ -1406,7 +1403,15 @@ module m_typedef
         character(10) :: end_date
         character(5) :: start_time
         character(5) :: end_time
-        character(9) :: vm_flags(8)
+        !> VM97 outcomes, transposed: one string per test, one digit per
+        !> variable. The two packings of these flags are easy to confuse and
+        !> only this one is gas-bounded. In the file a field is per *variable*
+        !> and 9 characters wide (a filler plus the 8 tests), which no gas count
+        !> changes. Here the array index is the test and the string position is
+        !> the variable, so the width must cover u,v,w,ts plus every gas slot -
+        !> which is exactly FlagStrLen. At character(9) a fifth gas had nowhere
+        !> to go and its outcome was written over the end of the string.
+        character(FlagStrLen) :: vm_flags(8)
         character(9) :: vm_tlag_hf
         character(9) :: vm_tlag_sf
         character(9) :: vm_aoa_hf
@@ -1513,10 +1518,10 @@ module m_typedef
         real(kind = dbl) :: roll
         real(kind = dbl) :: TAU_SS
         real(kind = dbl) :: H_SS
-        real(kind = dbl) :: FC_SS
-        real(kind = dbl) :: FH2O_SS
-        real(kind = dbl) :: FCH4_SS
-        real(kind = dbl) :: FGS4_SS
+        !> Steady-state statistic per gas flux, indexed by gas slot. Was
+        !> FC_SS/FH2O_SS/FCH4_SS/FGS4_SS - four named scalars, so the ex file
+        !> could carry the statistic for only the first four gases.
+        real(kind = dbl) :: F_SS(GHGNumVar)
         real(kind = dbl) :: U_ITC
         real(kind = dbl) :: W_ITC
         real(kind = dbl) :: TS_ITC

@@ -2267,13 +2267,13 @@ program EddyFlowRP
                     end if
                 end do
                 if (cec_co2_signal_col > 0 .and. cec_h2o_signal_col > 0) then
-                    call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
-                        StDiff%w_h2o, CECDescriptor, EddyFlowProj%cec, &
+                    call ExtractCecDescriptor(E2Primes, StDiff%w_gas(co2), &
+                        StDiff%w_gas(h2o), CECDescriptor, EddyFlowProj%cec, &
                         UserSet(:, cec_co2_signal_col), &
                         UserSet(:, cec_h2o_signal_col))
                 else
-                    call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
-                        StDiff%w_h2o, CECDescriptor, EddyFlowProj%cec)
+                    call ExtractCecDescriptor(E2Primes, StDiff%w_gas(co2), &
+                        StDiff%w_gas(h2o), CECDescriptor, EddyFlowProj%cec)
                 end if
                 CECFlux%r_ET_cec = CECDescriptor%r_ET
                 CECFlux%r_Fc_cec = CECDescriptor%r_Fc

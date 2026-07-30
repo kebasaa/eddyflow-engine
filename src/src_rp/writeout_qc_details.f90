@@ -58,19 +58,19 @@ subroutine WriteOutQCDetails(string, StDiff, DtDiff, STFlg, DTFlg)
     call WriteDatumInt(STDiff%ts, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     if (OutVarPresent(co2)) then
-        call WriteDatumInt(STDiff%co2, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%gas(co2), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
     if (OutVarPresent(h2o)) then
-        call WriteDatumInt(STDiff%h2o, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%gas(h2o), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
     if (OutVarPresent(ch4)) then
-        call WriteDatumInt(STDiff%ch4, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%gas(ch4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
     if (OutVarPresent(gas4)) then
-        call WriteDatumInt(STDiff%gas4, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%gas(gas4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
 
@@ -80,19 +80,19 @@ subroutine WriteOutQCDetails(string, StDiff, DtDiff, STFlg, DTFlg)
     call AddDatum(dataline, datum, separator)
 
     if (OutVarPresent(co2)) then
-        call WriteDatumInt(STDiff%w_co2, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%w_gas(co2), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
     if (OutVarPresent(h2o)) then
-        call WriteDatumInt(STDiff%w_h2o, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%w_gas(h2o), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
     if (OutVarPresent(ch4)) then
-        call WriteDatumInt(STDiff%w_ch4, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%w_gas(ch4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
     if (OutVarPresent(gas4)) then
-        call WriteDatumInt(STDiff%w_gas4, datum, EddyFlowProj%err_label)
+        call WriteDatumInt(STDiff%w_gas(gas4), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
     end if
 

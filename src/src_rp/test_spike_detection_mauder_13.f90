@@ -51,7 +51,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     integer :: nspikes_sng(E2NumVar)
     integer :: tot_spikes(E2NumVar)
     integer :: tot_spikes_sng(E2NumVar)
-    integer :: hflags(u:gas4)
+    integer :: hflags(u:lastGas)
     real(kind = dbl) :: MAD
     real(kind = dbl) :: medx
     real(kind = dbl) :: zlim
@@ -193,10 +193,13 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
         goto 100
     end if
 
-    !> hflags the variable if nspikes is larger than a prescribed threshold
-    !> For flagging, limits attention to variables u to gas4
+    !> hflags the variable if nspikes is larger than a prescribed threshold.
+    !>
+    !> Every gas slot, for the same reason as the Vickers 97 variant: an absent
+    !> slot keeps its 9, so four gases pack the string they always did, while a
+    !> fifth now gets a real outcome instead of "test not performed".
     hflags = 9
-    do j = u, gas4
+    do j = u, lastGas
         if (E2Col(j)%present) then
             if(100.d0 * (dble(tot_spikes(j)) / dble(N)) >= sr%hf_lim) then
                 hflags(j) = 1
@@ -207,7 +210,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     end do
 
     !> Pack one digit per variable into the flag string
-    call PackFlagString(hflags(u:gas4), gas4, CharHF%sr)
+    call PackFlagString(hflags(u:lastGas), GHGNumVar, CharHF%sr)
 
     !> Write on output variable
     if (.not. RPsetup%filter_sr) tot_spikes_sng(u:pe) = 0

@@ -164,22 +164,85 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_ABSLIM_NREX', separator)
     end do
 
-    csv_row = trim(csv_row) // 'U_VM97_TEST,V_VM97_TEST,W_VM97_TEST,T_SONIC_VM97_TEST,&
-                &CO2_VM97_TEST,H2O_VM97_TEST,CH4_VM97_TEST,GS4_VM97_TEST,&
-                &VM97_TLAG_HF,VM97_TLAG_SF,VM97_AOA_HF,VM97_NSHW_HF,&
-                &U_LGD,V_LGD,W_LGD,T_SONIC_LGD,CO2_LGD,H2O_LGD,CH4_LGD,GS4_LGD,&
-                &U_KID,V_KID,W_KID,T_SONIC_KID,CO2_KID,H2O_KID,CH4_KID,GS4_KID,&
-                &U_ZCD,V_ZCD,W_ZCD,T_SONIC_ZCD,CO2_ZCD,H2O_ZCD,CH4_ZCD,GS4_ZCD,&
-                &TAU_CORRDIFF,H_CORRDIFF,LE_CORRDIFF,ET_CORRDIFF,FC_CORRDIFF,&
-                &FH2O_CORRDIFF,FCH4_CORRDIFF,FGS4_CORRDIFF,&
-                &TAU_NSR,H_NSR,FC_NSR,FH2O_NSR,FCH4_NSR,FGS4_NSR,&
-                &TAU_SS,H_SS,FC_SS,FH2O_SS,FCH4_SS,FGS4_SS,&
-                &U_ITC,W_ITC,T_SONIC_ITC,TAU_SS_TEST,H_SS_TEST,FC_SS_TEST,&
-                &FH2O_SS_TEST,FCH4_SS_TEST,FGS4_SS_TEST,&
-                &U_ITC_TEST,W_ITC_TEST,T_SONIC_ITC_TEST,&
-                &TAU_SSITC_TEST,H_SSITC_TEST,LE_SSITC_TEST,ET_SSITC_TEST,FC_SSITC_TEST,&
-                &FH2O_SSITC_TEST,FCH4_SSITC_TEST,FGS4_SSITC_TEST,&
-                &INST_LI7200_HEAD_DETECT,INST_LI7200_T_OUT,INST_LI7200_T_IN,INST_LI7200_AUX_IN,&
+    !> Vickers and Mahrt (1997) test outcomes, one field per variable: the
+    !> wind components and sonic temperature, then one per configured gas.
+    !>
+    !> Unlike the NREX chunk above, FCC does not echo this one - it parses the
+    !> fields into lEx%vm_flags and writes them out again - so the reader and
+    !> FCC's re-emit had to move with this loop, not just its width.
+    call AddDatum(csv_row, 'U_VM97_TEST', separator)
+    call AddDatum(csv_row, 'V_VM97_TEST', separator)
+    call AddDatum(csv_row, 'W_VM97_TEST', separator)
+    call AddDatum(csv_row, 'T_SONIC_VM97_TEST', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_VM97_TEST', separator)
+    end do
+
+    csv_row = trim(csv_row) // 'VM97_TLAG_HF,VM97_TLAG_SF,VM97_AOA_HF,VM97_NSHW_HF,'
+
+    !> Longest gap duration, kurtosis index on differenced variables, and zero
+    !> crossing distance. Variable-shaped, like the NREX counts: the wind
+    !> components and sonic temperature, then one field per configured gas.
+    !>
+    !> FCC copies this whole chunk verbatim - it is fluxnetChunks%s(2) - so only
+    !> the header, RP's writer and the chunk's width had to follow the gas count.
+    call AddVariableFamily('_LGD')
+    call AddVariableFamily('_KID')
+    call AddVariableFamily('_ZCD')
+
+    !> Correlation differences with and without repeated values. Flux-shaped
+    !> rather than variable-shaped: the momentum and heat fluxes first, then one
+    !> per configured gas.
+    call AddDatum(csv_row, 'TAU_CORRDIFF', separator)
+    call AddDatum(csv_row, 'H_CORRDIFF', separator)
+    call AddDatum(csv_row, 'LE_CORRDIFF', separator)
+    call AddDatum(csv_row, 'ET_CORRDIFF', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_CORRDIFF', separator)
+    end do
+
+    !> Mahrt 1998 nonstationarity ratios. Flux-shaped, without the two water
+    !> fluxes: momentum and sensible heat, then one per configured gas.
+    call AddDatum(csv_row, 'TAU_NSR', separator)
+    call AddDatum(csv_row, 'H_NSR', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_NSR', separator)
+    end do
+
+    !> Foken statistics: the steady-state measure per flux, then the integral
+    !> turbulence characteristics on the three anemometric variables.
+    call AddDatum(csv_row, 'TAU_SS', separator)
+    call AddDatum(csv_row, 'H_SS', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_SS', separator)
+    end do
+    call AddDatum(csv_row, 'U_ITC', separator)
+    call AddDatum(csv_row, 'W_ITC', separator)
+    call AddDatum(csv_row, 'T_SONIC_ITC', separator)
+
+    !> Partial Foken flags: the steady-state test per flux, then the integral
+    !> turbulence characteristics test on the three anemometric variables.
+    !> Copied verbatim by FCC as fluxnetChunks%s(3).
+    call AddDatum(csv_row, 'TAU_SS_TEST', separator)
+    call AddDatum(csv_row, 'H_SS_TEST', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_SS_TEST', separator)
+    end do
+    call AddDatum(csv_row, 'U_ITC_TEST', separator)
+    call AddDatum(csv_row, 'W_ITC_TEST', separator)
+    call AddDatum(csv_row, 'T_SONIC_ITC_TEST', separator)
+
+    !> Final Foken flags, flux-shaped: momentum, sensible heat and the two
+    !> water fluxes, then one per configured gas.
+    call AddDatum(csv_row, 'TAU_SSITC_TEST', separator)
+    call AddDatum(csv_row, 'H_SSITC_TEST', separator)
+    call AddDatum(csv_row, 'LE_SSITC_TEST', separator)
+    call AddDatum(csv_row, 'ET_SSITC_TEST', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_SSITC_TEST', separator)
+    end do
+
+    csv_row = trim(csv_row) // 'INST_LI7200_HEAD_DETECT,INST_LI7200_T_OUT,INST_LI7200_T_IN,INST_LI7200_AUX_IN,&
                 &INST_LI7200_DELTA_P,INST_LI7200_CHOPPER,INST_LI7200_DETECTOR,INST_LI7200_PLL,INST_LI7200_SYNC,&
                 &INST_LI7500_CHOPPER,INST_LI7500_DETECTOR,INST_LI7500_PLL,INST_LI7500_SYNC,&
                 &INST_LI7700_NOT_READY,INST_LI7700_NO_SIGNAL,INST_LI7700_RE_UNLOCKED,&
@@ -562,6 +625,42 @@ subroutine SelectFluxnetGasSlots()
         end do
     end if
 end subroutine SelectFluxnetGasSlots
+
+!> Emit one column per variable for a family: the wind components and sonic
+!> temperature, then one per configured gas.
+!>
+!> Three families in this row share that shape exactly, and writing the loop
+!> out three times is how the four-gas quadruples came to be duplicated in the
+!> first place.
+subroutine AddVariableFamily(suffix)
+    character(*), intent(in) :: suffix
+    integer :: n
+
+    call AddDatum(csv_row, 'U' // suffix, separator)
+    call AddDatum(csv_row, 'V' // suffix, separator)
+    call AddDatum(csv_row, 'W' // suffix, separator)
+    call AddDatum(csv_row, 'T_SONIC' // suffix, separator)
+    do n = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(n)) // suffix, separator)
+    end do
+end subroutine AddVariableFamily
+
+!> Flux-family prefix of a layout slot: FC, FH2O, FCH4, FCOS, ...
+!>
+!> These columns are named for the flux rather than for the species, and carbon
+!> dioxide's flux is FC, not FCO2 - so the tag alone does not answer this. Every
+!> other gas takes F followed by its tag, which is what the third and fourth
+!> slots already spelled out as FCH4 and FGS4.
+function FluxnetFluxTag(layout_index) result(tag)
+    integer, intent(in) :: layout_index
+    character(32) :: tag
+
+    if (FluxnetLayoutSlots(layout_index) == co2) then
+        tag = 'FC'
+    else
+        tag = 'F' // trim(FluxnetLayoutTags(layout_index))
+    end if
+end function FluxnetFluxTag
 
 function HistoricGasTag(gas_slot) result(tag)
     integer, intent(in) :: gas_slot

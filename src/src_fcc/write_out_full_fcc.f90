@@ -89,7 +89,7 @@ subroutine WriteOutFullFcc(lEx)
     if(fcc_var_present(h2o)) then
         call WriteDatumFloat(Flux3%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%h2o, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(h2o), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none' .or. EddyFlowProj%fix_out_format) then
             call WriteDatumFloat(lEx%rand_uncer_LE, field_val, EddyFlowProj%err_label)
@@ -105,7 +105,7 @@ subroutine WriteOutFullFcc(lEx)
     if(fcc_var_present(co2)) then
         call WriteDatumFloat(Flux3%gas(co2), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%co2, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(co2), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none' .or. EddyFlowProj%fix_out_format) then
             call WriteDatumFloat(lEx%rand_uncer(co2), field_val, EddyFlowProj%err_label)
@@ -120,7 +120,7 @@ subroutine WriteOutFullFcc(lEx)
     if(fcc_var_present(h2o)) then
         call WriteDatumFloat(Flux3%gas(h2o), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%h2o, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(h2o), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none' .or. EddyFlowProj%fix_out_format) then
             call WriteDatumFloat(lEx%rand_uncer(h2o), field_val, EddyFlowProj%err_label)
@@ -135,7 +135,7 @@ subroutine WriteOutFullFcc(lEx)
     if(fcc_var_present(ch4)) then
         call WriteDatumFloat(Flux3%gas(ch4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%ch4, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(ch4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none' .or. EddyFlowProj%fix_out_format) then
             call WriteDatumFloat(lEx%rand_uncer(ch4), field_val, EddyFlowProj%err_label)
@@ -151,7 +151,7 @@ subroutine WriteOutFullFcc(lEx)
         call WriteDatumFloat(merge(Flux3%gas(gas4) * gas4_full_flux_sc, error, &
             Flux3%gas(gas4) /= error), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas4, field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(gas4), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none' .or. EddyFlowProj%fix_out_format) then
             call WriteDatumFloat(merge(lEx%rand_uncer(gas4) * gas4_full_flux_sc, error, &
@@ -436,10 +436,16 @@ subroutine WriteOutFullFcc(lEx)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
-    !> Vickers and Mahrt 97 flags
+    !> Vickers and Mahrt 97 flags.
+    !>
+    !> Written straight out rather than through field_val, which is DatumLen
+    !> (64) and cannot hold a string one character per variable wide. RP's full
+    !> output has emitted the full FlagStrLen width since the flags stopped
+    !> being base-10 integers; FCC was still truncating to the first nine
+    !> characters, so in an fcc_follows run - where FCC writes the file - the
+    !> full output silently reported flags for only four gases.
     do i = 1, 8
-        write(field_val, *) lEx%vm_flags(i)
-        call AddDatum(csv_row, field_val, separator)
+        call AddDatum(csv_row, lEx%vm_flags(i), separator)
     end do
     call AddDatum(csv_row, lEx%vm_tlag_hf, separator)
     call AddDatum(csv_row, lEx%vm_tlag_sf, separator)

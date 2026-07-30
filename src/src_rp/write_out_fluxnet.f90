@@ -537,9 +537,21 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     ! call AddFloatDatumToDataline(Essentials%ns_s_rns, csv_row, EddyFlowProj%err_label)
 
 
-    !> VM97 flags, here organized per variable instead of per test
-    do var = u, gas4
-        vm97flags(var)(1 : 1) = '8' 
+    !> VM97 flags, here organized per variable instead of per test.
+    !>
+    !> The wind components and sonic temperature first, then one field per
+    !> configured gas, matching the header. Each field stays 9 characters - a
+    !> filler digit plus the 8 test outcomes - because that width counts tests,
+    !> not gases. The CharHF/CharSF strings are indexed by variable and are
+    !> already FlagStrLen wide, so a gas slot past the fourth reads out of them
+    !> the same way as any other.
+    !> One contiguous range: firstGas is ts + 1, and SelectFluxnetGasSlots
+    !> assigns the layout its slots as firstGas + j - 1, so "u,v,w,ts then the
+    !> configured gases" is exactly u .. ts + nFluxnetLayoutSlots. This is the
+    !> same span the retired nExVar named as gas4 - u + 1, now following the
+    !> project instead of the fixed four.
+    do var = u, ts + nFluxnetLayoutSlots
+        vm97flags(var)(1 : 1) = '8'
         vm97flags(var)(2 : 2) = CharHF%sr(var + 1 : var + 1)
         vm97flags(var)(3 : 3) = CharHF%ar(var + 1 : var + 1)
         vm97flags(var)(4 : 4) = CharHF%do(var + 1 : var + 1)
@@ -557,79 +569,76 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddDatum(csv_row, '8'//CharHF%aa(FlagStrLen:FlagStrLen), separator)
     call AddDatum(csv_row, '8'//CharHF%ns(FlagStrLen:FlagStrLen), separator)
 
-    !> Quality test results
+    !> Quality test results. Three variable-shaped families - the wind
+    !> components and sonic temperature, then one field per configured gas,
+    !> matching AddVariableFamily in the header.
     !> Longest Gap Duration (LGDs)
-    call AddFloatDatumToDataline(Essentials%LGD(u), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(v), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(w), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(gas4), csv_row, EddyFlowProj%err_label)
+    do var = u, ts + nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%LGD(var), csv_row, EddyFlowProj%err_label)
+    end do
     !> Kurtosis Index on Differenced variables (KIDs)
-    call AddFloatDatumToDataline(Essentials%KID(u), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(v), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(w), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(gas4), csv_row, EddyFlowProj%err_label)
+    do var = u, ts + nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%KID(var), csv_row, EddyFlowProj%err_label)
+    end do
     !> Zero-Counts on Differences variables
-    call AddIntDatumToDataline(Essentials%ZCD(u), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(v), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(w), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(ts), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(co2), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(h2o), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(ch4), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(gas4), csv_row, EddyFlowProj%err_label)
-    !> Correlation differences with and without repeated values 
+    do var = u, ts + nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%ZCD(var), csv_row, EddyFlowProj%err_label)
+    end do
+    !> Correlation differences with and without repeated values.
+    !>
+    !> Flux-shaped, so the first four are the momentum, heat and the two water
+    !> fluxes - and LE, ET and FH2O are all the same correlation, because all
+    !> three are water fluxes. Only the tail from FC onwards is per gas.
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, w), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, ts), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, h2o), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, gas4), csv_row, EddyFlowProj%err_label)
-    !> Mahrt 1998 Nonstationarity Ratios
+    do j = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%CorrDiff(u, FluxnetLayoutSlots(j)), &
+                                     csv_row, EddyFlowProj%err_label)
+    end do
+    !> Mahrt 1998 Nonstationarity Ratios. Flux-shaped without the water
+    !> fluxes: momentum and sensible heat, then one per configured gas.
+    !> Indexed by the w_* covariance enumeration, which is numerically the
+    !> variable enumeration - w_co2 and co2 are both 5 - so a gas slot indexes
+    !> this array directly.
     call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_u), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_gas4), csv_row, EddyFlowProj%err_label)
-    !> Foken stats used to calculate flags
+    do j = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%mahrt98_NR(FluxnetLayoutSlots(j)), &
+                                     csv_row, EddyFlowProj%err_label)
+    end do
+    !> Foken stats used to calculate flags: the steady-state statistic per
+    !> flux, then the integral turbulence characteristics on u/w/ts.
     call AddIntDatumToDataline(STDiff%w_u, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(STDiff%w_ts, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_co2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_h2o, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_ch4, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_gas4, csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(StDiff%w_gas(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
     call AddIntDatumToDataline(DtDiff%u, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DtDiff%w, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DtDiff%ts, csv_row, EddyFlowProj%err_label)
-    !> Partial Foken flags
+    !> Partial Foken flags. STFlg is indexed by the w_* covariance enumeration
+    !> and is already GHGNumVar wide, so a gas slot indexes it directly.
     call AddIntDatumToDataline(STFlg(w_u), csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(STFlg(w_ts), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_co2), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_h2o), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_ch4), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_gas4), csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(STFlg(FluxnetLayoutSlots(j)), csv_row, EddyFlowProj%err_label)
+    end do
     call AddIntDatumToDataline(DTFlg(u), csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DTFlg(w), csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DTFlg(ts), csv_row, EddyFlowProj%err_label)
-    !> Final Foken flags
+    !> Final Foken flags. Flux-shaped: momentum, sensible heat and the two
+    !> water fluxes carry the water flag, then one per configured gas.
     call AddIntDatumToDataline(QCFlag%tau, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(QCFlag%H, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)     !< This is for LE
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)     !< This is for ET
-    call AddIntDatumToDataline(QCFlag%co2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)     !< This is for h2o
-    call AddIntDatumToDataline(QCFlag%ch4, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%gas4, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(QCFlag%gas(h2o), csv_row, EddyFlowProj%err_label)     !< This is for LE
+    call AddIntDatumToDataline(QCFlag%gas(h2o), csv_row, EddyFlowProj%err_label)     !< This is for ET
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(QCFlag%gas(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
 
     !> LI-7x00 diagnostics breakdown
     if (Diag7200%present) then

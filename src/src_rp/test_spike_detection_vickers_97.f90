@@ -61,7 +61,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     integer :: nspikes_sng(E2NumVar)
     integer :: tot_spikes(E2NumVar)
     integer :: tot_spikes_sng(E2NumVar)
-    integer :: hflags(u:gas4)
+    integer :: hflags(u:lastGas)
     real(kind = dbl) :: Mean(E2NumVar) = 0.d0
     real(kind = dbl) :: StDev(E2NumVar) = 0.d0
     real(kind = dbl) :: LocMean(N, E2NumVar)
@@ -273,10 +273,15 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     end if
     deallocate(XX)
 
-    !> hflags the variable if nspikes is larger than a prescribed threshold
-    !> For flagging, limits attention to variables u to gas4
+    !> hflags the variable if nspikes is larger than a prescribed threshold.
+    !>
+    !> Every gas slot, not just the historical four. A slot that is absent
+    !> keeps the 9 this is initialised to, so a project with four gases packs
+    !> exactly the string it did before; but bounding the loop at gas4 meant a
+    !> fifth gas's spike outcome was never computed, and the FLUXNET and full
+    !> outputs reported it as "test not performed" however it had gone.
     hflags = 9
-    do j = u, gas4
+    do j = u, lastGas
         if (E2Col(j)%present) then
             if(100.d0 * (dble(tot_spikes(j)) / dble(N)) >= sr%hf_lim) then
                 hflags(j) = 1
@@ -287,7 +292,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     end do
 
     !> Pack one digit per variable into the flag string
-    call PackFlagString(hflags(u:gas4), gas4, CharHF%sr)
+    call PackFlagString(hflags(u:lastGas), GHGNumVar, CharHF%sr)
 
     !> Write on output variable
     if (.not. RPsetup%filter_sr) tot_spikes_sng(u:pe) = 0
