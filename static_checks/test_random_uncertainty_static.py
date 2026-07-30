@@ -77,17 +77,18 @@ class RandomUncertaintyCoversEveryGas(unittest.TestCase):
 
 
 class RandomUncertaintySettingsReachTheEngine(unittest.TestCase):
-    """The ru_* keys are Project tags, and the interface does not write them there.
+    """The ru_* keys are Project tags and the interface must write them there.
 
     ParseIniFile is called with the section prefix 'Project', so EPPrjNTags are
-    only ever matched inside sections whose name starts with Project. The
-    interface writes ru_meth / ru_its_meth / ru_tlag_max into
-    [RawProcess_RandomUncertainty_Settings], where nothing looks for them, so
-    RUsetup%meth falls to its `case default` of 'none' for every project the
-    interface has ever saved.
+    only matched inside sections whose name starts with Project. They have to
+    be Project tags: RP and FCC both need ru_meth, and FCC sweeps only
+    FluxCorrection*. The interface used to write all three into
+    [RawProcess_RandomUncertainty_Settings], where nothing looked for them, so
+    RUsetup%meth fell to its `case default` of 'none' and random uncertainty
+    never ran for any project it had saved.
 
-    This check does not assert the bug away - it pins the two halves that
-    disagree, so that whichever side is moved, the other is noticed.
+    This pins both halves of the agreement, so that moving either side is
+    noticed.
     """
 
     def test_the_ru_keys_are_project_tags(self):
@@ -107,9 +108,29 @@ class RandomUncertaintySettingsReachTheEngine(unittest.TestCase):
             self.assertIn(
                 "call ParseIniFile(PrjPath, 'Project', EPPrjNTags, EPPrjCTags",
                 read(path),
-                f"{path} changed which sections the project tags are swept "
-                f"from; the ru_* keys' section mismatch depends on it",
+                f"{path} changed which sections the project tags are swept from",
             )
+
+    def test_the_rp_table_no_longer_duplicates_them(self):
+        """Duplicates nothing read, and they are what made the keys look
+        like RawProcess settings in the first place. Blanked, not deleted -
+        the tables are positional."""
+        source = read("src/src_rp/m_rp_global_var.f90")
+        for tag in ("'ru_meth'", "'ru_its_meth'", "'ru_tlag_max'", "'ru_its_sec_factor'"):
+            self.assertNotIn(f"%Label / {tag} /", source,
+                             f"{tag} is back in the RP tag table; it is a "
+                             f"Project tag and a duplicate there invites the "
+                             f"interface to write it into a RawProcess group")
+
+    def test_the_interface_writes_them_into_project(self):
+        gui = ROOT.parent / "eddyflow-gui" / "src" / "ecinidefs.h"
+        if not gui.is_file():
+            self.skipTest("GUI checkout not present")
+        source = gui.read_text(encoding="utf-8", errors="replace")
+        self.assertIn("const auto INIGROUP_RAND_ERROR = INIGROUP_PROJECT;", source)
+        self.assertIn("INIGROUP_RAND_ERROR_LEGACY", source,
+                      "the legacy group name must survive so old files can "
+                      "still be read and their stale copies cleared")
 
 
 if __name__ == "__main__":

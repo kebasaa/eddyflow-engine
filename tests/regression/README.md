@@ -32,16 +32,21 @@ that before trusting a difference.
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |
 | `base_n_gas_ru.eddyflow` | `base_n_gas` with random uncertainty on. The only fixture that exercises `random_error_handle.f90` and `integral_turbulence_scale.f90` at all - every other one leaves `RUsetup%meth` at `none`, so those files run their `case('none')` arm and nothing else. Expect a real `RANDUNC_HF` for every gas that has a column, and `-9999` for one that does not. |
 
-> **The `ru_*` keys are in the wrong section, and this fixture works around it.**
+> **The `ru_*` keys reach the engine now; they never used to.**
 > `ru_meth`, `ru_its_meth` and `ru_tlag_max` are declared in `EPPrjNTags`, and
 > `ParseIniFile` is called with the section prefix `'Project'`, so those tags
-> are only ever matched inside `[Project*]`. The interface writes all three
-> into `[RawProcess_RandomUncertainty_Settings]`, where nothing looks for them
-> - so `RUsetup%meth` falls to its `case default` of `'none'` for every project
-> the interface has saved, and random uncertainty has never actually run.
-> `base_n_gas_ru` repeats the keys under `[Project]` to get past it. Fixing the
-> mismatch properly is a separate change: it turns the feature on for every
-> project that asked for it, which moves output that has been `-9999` until now.
+> are only ever matched inside `[Project*]`. They have to be Project tags - RP
+> and FCC both need `ru_meth`, and FCC sweeps only `FluxCorrection*`. The
+> interface wrote all three into `[RawProcess_RandomUncertainty_Settings]`,
+> where nothing looked for them, so `RUsetup%meth` fell to its `case default`
+> of `'none'` and **random uncertainty had never actually run for any project
+> the interface had saved**.
+>
+> The interface now writes them under `[Project]`, reads the legacy group as a
+> fallback so an older file opens with its settings intact, and removes the
+> stale copies on save. The engine is unchanged. The four duplicate `ru_*`
+> slots in the RP tag table - which nothing read, and which are what made the
+> keys look like RawProcess settings - are blanked.
 
 ## Re-baselinings, and what each one accounted for
 

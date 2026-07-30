@@ -1,11 +1,5 @@
 ;EDDYFLOW_PROCESSING
 [Project]
-; The three ru_* keys are declared in EPPrjNTags, which ParseIniFile
-; only ever matches inside sections whose name starts with Project.
-; The interface writes them into [RawProcess_RandomUncertainty_Settings],
-; where nothing looks for them - so random uncertainty is off for every
-; project it has saved. They are repeated here so this fixture actually
-; exercises the per-gas uncertainty path; see the README.
 ru_meth=1
 ru_its_meth=1
 ru_tlag_max=10.0
@@ -505,9 +499,6 @@ pwb_max_ar_order=0
 pwb_detect_on_raw=1
 
 [RawProcess_RandomUncertainty_Settings]
-ru_meth=0
-ru_its_meth=1
-ru_tlag_max=10.0
 
 [RawProcess_BiometMeasurements]
 biom_use_native_header=1

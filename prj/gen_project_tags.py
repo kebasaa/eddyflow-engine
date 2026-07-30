@@ -149,6 +149,16 @@ RETIRED_LABELS = {
     "gas_mw", "gas_diff",
 }
 
+#: Retired in one table only. The ru_* keys are genuine EPPrjNTags entries that
+#: the engine reads; the copies in the RP table were duplicates nothing ever
+#: read, and their presence there made the keys look like RawProcess settings -
+#: which is where the interface wrote them, and so where the engine never
+#: looked. Scoped per table, because blanking them everywhere would delete the
+#: live ones.
+RETIRED_LABELS_BY_TABLE = {
+    "RP.SNTags": {"ru_meth", "ru_its_meth", "ru_its_sec_factor", "ru_tlag_max"},
+}
+
 
 def parse_block(body, table):
     """index -> label for one block, skipping commented-out slots."""
@@ -196,8 +206,9 @@ def process(path, table, marker, size_param, lim, check):
     # rebind hundreds of settings. Blanking leaves the slot in place and
     # unmatchable, which is the convention the tables already use for the
     # other retired slots.
+    retired = RETIRED_LABELS | RETIRED_LABELS_BY_TABLE.get(marker, set())
     for i, label in list(kept.items()):
-        if label in RETIRED_LABELS:
+        if label in retired:
             kept[i] = ""
 
     base = max(kept) + 1
