@@ -48,13 +48,14 @@ subroutine InitOutFiles_rp()
     integer :: i
     integer :: j
     character(PathLen) :: Test_Path
-    character(32) :: g4label
     character(64) :: e2sg(E2NumVar)
+    character(64) :: gas_tag(GHGNumVar)
     character(64) :: usg(NumUserVar)
     character(64) :: user_header(NumUserVar)
     character(32) :: user_unit(NumUserVar)
-    character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
-    real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
+    character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
+    character(32) :: gas_mixr_label(GHGNumVar), gas_dens_label(GHGNumVar)
+    real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(2) :: utf8_mu
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
@@ -71,11 +72,14 @@ subroutine InitOutFiles_rp()
     e2sg(v)   = 'v_'
     e2sg(w)   = 'w_'
     e2sg(ts)  = 'ts_'
-    e2sg(co2) = 'co2_'
-    e2sg(h2o) = 'h2o_'
-    e2sg(ch4) = 'ch4_'
-    g4label = FourthGasLabel()
-    e2sg(gas4) = g4label(1:len_trim(g4label)) // '_'
+    !> Every configured gas gets a name, not just the historical four. The
+    !> stems reproduce 'co2_'/'h2o_'/'ch4_' exactly, because those slots'
+    !> records name those species and the label resolves to the metadata
+    !> column's variable, which is what the hard-coded strings spelled.
+    call FullOutputGasTags(gas_tag)
+    do gas = firstGas, lastGas
+        e2sg(gas) = gas_tag(gas)
+    end do
     e2sg(tc)  = 'cell_t_'
     e2sg(ti1) = 'inlet_t_'
     e2sg(ti2) = 'outlet_t_'
@@ -83,10 +87,12 @@ subroutine InitOutFiles_rp()
     e2sg(te)  = 'air_t_'
     e2sg(pe)  = 'air_p_'
 
-    call lowercase(e2sg(gas4))
-
-    call Gas4FullOutputUnits(FourthGasUnitIn(), gas4_flux_sc, gas4_dens_sc, &
-        gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
+    !> Unit basis per gas, from the unit the project declares for it. Water
+    !> keeps its own mmol labels; every other species asks GasFullOutputUnits,
+    !> whose default arm is the umol basis the non-water slots used to have
+    !> hard-coded, so a four-gas project is unchanged.
+    call GasFullOutputUnitsAll(gas_flux_sc, gas_dens_sc, &
+        gas_flux_label, gas_conc_label, gas_mixr_label, gas_dens_label)
 
     do j = 1, NumUserVar
         user_header(j) = FullOutputCustomLabel(j)
@@ -239,54 +245,23 @@ subroutine InitOutFiles_rp()
                 end if
             end if
 
-            !> Corrected co2 fluxes
-            if(OutVarPresent(co2)) then
+            !> Corrected gas fluxes, one block per configured gas. The four
+            !> historical blocks were unrolled and only the fourth took its
+            !> units from the project, which is why a fifth gas had no columns
+            !> here at all rather than merely mislabelled ones.
+            do gas = firstGas, lastGas
+                if(.not. OutVarPresent(gas)) cycle
                 call AddDatum(header1, ',', separator)
-                call AddDatum(header2, 'co2_flux,qc_co2_flux', separator)
-                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
+                call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) &
+                    // 'flux,qc_' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'flux', separator)
+                call AddDatum(header3, gas_flux_label(gas)(1:len_trim(gas_flux_label(gas))) &
+                    // ',[#]', separator)
                 if (RUsetup%meth /= 'none') then
                     call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_co2_flux', separator)
-                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
+                    call AddDatum(header2, 'rand_err_' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'flux', separator)
+                    call AddDatum(header3, gas_flux_label(gas), separator)
                 end if
-            end if
-
-            !> Corrected h2o fluxes
-            if(OutVarPresent(h2o)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2,'h2o_flux,qc_h2o_flux', separator)
-                call AddDatum(header3,'[mmol+1s-1m-2],[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_h2o_flux', separator)
-                    call AddDatum(header3, '[mmol+1s-1m-2]', separator)
-                end if
-            end if
-
-            !> Corrected ch4 fluxes
-            if(OutVarPresent(ch4)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2,'ch4_flux,qc_ch4_flux', separator)
-                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_ch4_flux', separator)
-                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                end if
-            end if
-
-            !> Corrected 4th gas fluxes
-            if(OutVarPresent(gas4)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2, e2sg(gas4)(1:len_trim(e2sg(gas4))) &
-                    // 'flux,qc_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
-                call AddDatum(header3, gas4_flux_label(1:len_trim(gas4_flux_label)) // ',[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
-                    call AddDatum(header3, gas4_flux_label, separator)
-                end if
-            end if
+            end do
 
             !> Storage
             call AddDatum(header1, 'storage_fluxes', separator)
@@ -295,59 +270,38 @@ subroutine InitOutFiles_rp()
             if(OutVarPresent(h2o)) call AddDatum(header1, '', separator)
             if(OutVarPresent(h2o)) call AddDatum(header2,'LE_strg', separator)
             if(OutVarPresent(h2o)) call AddDatum(header3,'[W+1m-2]', separator)
-            do gas = co2, gas4
-                if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
-                    if(gas == gas4) then
-                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
-                    else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                    end if
-                else
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1s-1m-2]', separator)
-                end if
+            do gas = firstGas, lastGas
+                if(.not. OutVarPresent(gas)) cycle
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
+                call AddDatum(header3, gas_flux_label(gas), separator)
             end do
 
             !> Advection fluxes
             header1 = header1(1:len_trim(header1)) // 'vertical_advection_fluxes'
-            do gas = co2, gas4
-                if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
-                    if(gas == gas4) then
-                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
-                    else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                    end if
-                else
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1s-1m-2]', separator)
-                end if
+            do gas = firstGas, lastGas
+                if(.not. OutVarPresent(gas)) cycle
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
+                call AddDatum(header3, gas_flux_label(gas), separator)
             end do
 
             !> Average gas concentrations
             call AddDatum(header1,'gas_densities_concentrations_and_timelags', separator)
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if(OutVarPresent(gas)) call AddDatum(header1, ',,,,', separator)
                 if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'molar_density,' &
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mole_fraction,' &
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mixing_ratio,' &
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'time_lag,' &
                     // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag', separator)
-                if (gas == gas4) then
-                    if(OutVarPresent(gas)) call AddDatum(header3, gas4_dens_label // ',' &
-                        // gas4_conc_label // ',' // gas4_mixr_label // ',[s],[1=default]', separator)
-                else if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1m-3],[' // utf8_mu// &
-                        'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default]', separator)
-                else
-                    if(OutVarPresent(gas)) &
-                        call AddDatum(header3, '[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default]', separator)
-                end if
+                !> Trimmed, unlike the fourth slot's arm this replaces: those
+                !> labels are character(32) and were concatenated unpadded,
+                !> so the units row carried trailing blanks inside three of
+                !> its fields. Every gas now spells them the same way.
+                if(OutVarPresent(gas)) call AddDatum(header3, &
+                    trim(gas_dens_label(gas)) // ',' // trim(gas_conc_label(gas)) &
+                    // ',' // trim(gas_mixr_label(gas)) // ',[s],[1=default]', separator)
             end do
             !> In Header 1 there is one comma too much, take it away
             header1 = header1(1:len_trim(header1) - 1)
@@ -385,22 +339,12 @@ subroutine InitOutFiles_rp()
             if(OutVarPresent(h2o)) call AddDatum(header2,'un_LE,LE_scf', separator)
             if(OutVarPresent(h2o)) call AddDatum(header3,'[W+1m-2],[#]', separator)
             !> Uncorrected gas fluxes (Level 0) and spectral correction factors
-            do gas = co2, gas4
-                if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
-                        // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
-                    if (gas == gas4) then
-                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label // ',[#]', separator)
-                    else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
-                    end if
-                else
-                    if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
-                        // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1s-1m-2],[#]', separator)
-                end if
+            do gas = firstGas, lastGas
+                if(.not. OutVarPresent(gas)) cycle
+                call AddDatum(header1, ',', separator)
+                call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
+                    // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
+                call AddDatum(header3, trim(gas_flux_label(gas)) // ',[#]', separator)
             end do
 
             !> Vickers and Mahrt 97 hard and soft flags
@@ -424,7 +368,7 @@ subroutine InitOutFiles_rp()
             call AddDatum(header1,'spikes,,,', separator)
             call AddDatum(header2,'u_spikes,v_spikes,w_spikes,ts_spikes', separator)
             call AddDatum(header3,'[#],[#],[#],[#]', separator)
-            do var = co2, gas4
+            do var = firstGas, lastGas
                 if(OutVarPresent(var)) then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, e2sg(var)(1:len_trim(e2sg(var))) // 'spikes' , separator)
@@ -485,7 +429,7 @@ subroutine InitOutFiles_rp()
             call AddDatum(header1, 'variances,,,', separator)
             call AddDatum(header2, 'u_var,v_var,w_var,ts_var', separator)
             call AddDatum(header3, '[m+2s-2],[m+2s-2],[m+2s-2],[K+2]', separator)
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
                 if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'var', separator)
                 if(OutVarPresent(gas)) call AddDatum(header3, '--', separator)
@@ -495,7 +439,7 @@ subroutine InitOutFiles_rp()
             call AddDatum(header2,'w/ts_cov', separator)
             call AddDatum(header3,'[m+1K+1s-1]', separator)
             !> w-gases covariances
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
                 if(OutVarPresent(gas)) call AddDatum(header2, 'w/' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'cov', separator)
                 if(OutVarPresent(gas)) call AddDatum(header3, '--', separator)

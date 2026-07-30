@@ -3,13 +3,15 @@ include '../src_common/interfaces_1.inc'
 interface
     !> Character-valued, so it needs an explicit interface wherever the
     !> output headers are built.
-    function FourthGasLabel() result(label)
+    function GasOutputLabel(gas_slot) result(label)
+        integer, intent(in) :: gas_slot
         character(32) :: label
-    end function FourthGasLabel
+    end function GasOutputLabel
 
-    function FourthGasUnitIn() result(unit_in)
+    function GasUnitIn(gas_slot) result(unit_in)
+        integer, intent(in) :: gas_slot
         character(32) :: unit_in
-    end function FourthGasUnitIn
+    end function GasUnitIn
 end interface
 
 interface

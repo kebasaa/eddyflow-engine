@@ -42,15 +42,17 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     integer :: var
     integer :: gas
 !    integer :: prof
-    real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
-    character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
+    real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
+    character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
+    character(32) :: gas_mixr_label(GHGNumVar), gas_dens_label(GHGNumVar)
     character(LongOutstringLen) :: csv_row
     character(DatumLen) :: field_val
     include '../src_common/interfaces.inc'
 
-    !> Scale gas4 outputs back to the configured full-output unit basis.
-    call Gas4FullOutputUnits(FourthGasUnitIn(), gas4_flux_sc, gas4_dens_sc, &
-        gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
+    !> Scale every gas back to the unit basis its column is labelled with.
+    !> The same call fills the header, so the two cannot disagree.
+    call GasFullOutputUnitsAll(gas_flux_sc, gas_dens_sc, &
+        gas_flux_label, gas_conc_label, gas_mixr_label, gas_dens_label)
 
     !> Preliminary file and timestamp information
     call clearstr(csv_row)
@@ -108,76 +110,29 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
-    !> Gases
-    if(OutVarPresent(co2)) then
-        call WriteDatumFloat(Flux3%gas(co2), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas(co2), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        if (RUsetup%meth /= 'none') then
-            call WriteDatumFloat(Essentials%rand_uncer(co2), field_val, EddyFlowProj%err_label)
+    !> Gases. One block per configured gas rather than four unrolled ones;
+    !> the scale is per gas, so it is applied unconditionally instead of only
+    !> on the fourth slot's arm.
+    do gas = firstGas, lastGas
+        if(OutVarPresent(gas)) then
+            call WriteDatumFloat(merge(Flux3%gas(gas) * gas_flux_sc(gas), error, &
+                Flux3%gas(gas) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
+            call WriteDatumInt(QCFlag%gas(gas), field_val, EddyFlowProj%err_label)
+            call AddDatum(csv_row, field_val, separator)
+            if (RUsetup%meth /= 'none') then
+                call WriteDatumFloat(merge(Essentials%rand_uncer(gas) * gas_flux_sc(gas), error, &
+                    Essentials%rand_uncer(gas) /= error), field_val, EddyFlowProj%err_label)
+                call AddDatum(csv_row, field_val, separator)
             elseif(EddyFlowProj%fix_out_format) then
+                call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+            end if
+        elseif(EddyFlowProj%fix_out_format) then
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-
-    if(OutVarPresent(h2o)) then
-        call WriteDatumFloat(Flux3%gas(h2o), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas(h2o), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        if (RUsetup%meth /= 'none') then
-            call WriteDatumFloat(Essentials%rand_uncer(h2o), field_val, EddyFlowProj%err_label)
-            call AddDatum(csv_row, field_val, separator)
-            elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        end if
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-
-    if(OutVarPresent(ch4)) then
-        call WriteDatumFloat(Flux3%gas(ch4), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas(ch4), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        if (RUsetup%meth /= 'none') then
-            call WriteDatumFloat(Essentials%rand_uncer(ch4), field_val, EddyFlowProj%err_label)
-            call AddDatum(csv_row, field_val, separator)
-            elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        end if
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-
-    if(OutVarPresent(gas4)) then
-        call WriteDatumFloat(merge(Flux3%gas(gas4) * gas4_flux_sc, error, Flux3%gas(gas4) /= error), &
-            field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas(gas4), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        if (RUsetup%meth /= 'none') then
-            call WriteDatumFloat(merge(Essentials%rand_uncer(gas4) * gas4_flux_sc, error, &
-                Essentials%rand_uncer(gas4) /= error), field_val, EddyFlowProj%err_label)
-            call AddDatum(csv_row, field_val, separator)
-            elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        end if
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
+    end do
 
     !> storage fluxes
     call WriteDatumFloat(Stor%H, field_val, EddyFlowProj%err_label)
@@ -188,14 +143,10 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     elseif(EddyFlowProj%fix_out_format) then
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if(OutVarPresent(gas)) then
-            if (gas == gas4) then
-                call WriteDatumFloat(merge(Stor%of(gas) * gas4_flux_sc, error, Stor%of(gas) /= error), &
-                    field_val, EddyFlowProj%err_label)
-            else
-                call WriteDatumFloat(Stor%of(gas), field_val, EddyFlowProj%err_label)
-            end if
+            call WriteDatumFloat(merge(Stor%of(gas) * gas_flux_sc(gas), error, &
+                Stor%of(gas) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         elseif(EddyFlowProj%fix_out_format) then
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -203,20 +154,21 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end do
 
     !> vertical advection fluxes
-    do gas = co2, gas4
+    !>
+    !> The 1d3 takes the molar density from mmol m-3 to the mole basis, and it
+    !> is water that is the exception, not the fourth slot: water's column is
+    !> already on the mmol basis. Keyed on the species, so a second water
+    !> record past the h2o slot is exempted too.
+    do gas = firstGas, lastGas
         if(OutVarPresent(gas)) then
             if (Stats5%Mean(w) /= error .and. Stats%d(gas) >= 0d0) then
-                if (gas == gas4) then
-                    call WriteDatumFloat(Stats5%Mean(w) * Stats%d(gas) * 1d3 * gas4_flux_sc, &
-                        field_val, EddyFlowProj%err_label)
-                    call AddDatum(csv_row, field_val, separator)
-                else if (gas /= h2o) then
-                    call WriteDatumFloat(Stats5%Mean(w) * Stats%d(gas) * 1d3, field_val, EddyFlowProj%err_label)
-                    call AddDatum(csv_row, field_val, separator)
-                else
+                if (GasSlotIsWater(gas)) then
                     call WriteDatumFloat(Stats5%Mean(w) * Stats%d(gas), field_val, EddyFlowProj%err_label)
-                    call AddDatum(csv_row, field_val, separator)
+                else
+                    call WriteDatumFloat(Stats5%Mean(w) * Stats%d(gas) * 1d3 * gas_flux_sc(gas), &
+                        field_val, EddyFlowProj%err_label)
                 end if
+                call AddDatum(csv_row, field_val, separator)
             else
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             end if
@@ -226,28 +178,16 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end do
 
     !> Gas concentrations, densities and timelags
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (OutVarPresent(gas)) then
-            if (gas == gas4) then
-                call WriteDatumFloat(merge(Stats%d(gas) * gas4_dens_sc, error, Stats%d(gas) /= error), &
-                    field_val, EddyFlowProj%err_label)
-            else
-                call WriteDatumFloat(Stats%d(gas), field_val, EddyFlowProj%err_label)
-            end if
+            call WriteDatumFloat(merge(Stats%d(gas) * gas_dens_sc(gas), error, &
+                Stats%d(gas) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-            if (gas == gas4) then
-                call WriteDatumFloat(merge(Stats%chi(gas) * gas4_flux_sc, error, Stats%chi(gas) /= error), &
-                    field_val, EddyFlowProj%err_label)
-            else
-                call WriteDatumFloat(Stats%chi(gas), field_val, EddyFlowProj%err_label)
-            end if
+            call WriteDatumFloat(merge(Stats%chi(gas) * gas_flux_sc(gas), error, &
+                Stats%chi(gas) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-            if (gas == gas4) then
-                call WriteDatumFloat(merge(Stats%r(gas) * gas4_flux_sc, error, Stats%r(gas) /= error), &
-                    field_val, EddyFlowProj%err_label)
-            else
-                call WriteDatumFloat(Stats%r(gas), field_val, EddyFlowProj%err_label)
-            end if
+            call WriteDatumFloat(merge(Stats%r(gas) * gas_flux_sc(gas), error, &
+                Stats%r(gas) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
             call WriteDatumFloat(Essentials%used_timelag(gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -400,44 +340,21 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    !> Gases
-    if(OutVarPresent(co2)) then
-        call WriteDatumFloat(Flux0%gas(co2), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(BPCF%of(w_co2), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-    if(OutVarPresent(h2o)) then
-        call WriteDatumFloat(Flux0%gas(h2o), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(BPCF%of(w_h2o), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-    if(OutVarPresent(ch4)) then
-        call WriteDatumFloat(Flux0%gas(ch4), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(BPCF%of(w_ch4), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-    if(OutVarPresent(gas4)) then
-        call WriteDatumFloat(merge(Flux0%gas(gas4) * gas4_flux_sc, error, Flux0%gas(gas4) /= error), &
-            field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(BPCF%of(w_gas4), field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
+    !> Gases: uncorrected flux and its spectral correction factor. BPCF%of is
+    !> indexed by the w_* covariance labels, which carry the same numbering as
+    !> the gas slots, so the slot indexes it directly.
+    do gas = firstGas, lastGas
+        if(OutVarPresent(gas)) then
+            call WriteDatumFloat(merge(Flux0%gas(gas) * gas_flux_sc(gas), error, &
+                Flux0%gas(gas) /= error), field_val, EddyFlowProj%err_label)
+            call AddDatum(csv_row, field_val, separator)
+            call WriteDatumFloat(BPCF%of(gas), field_val, EddyFlowProj%err_label)
+            call AddDatum(csv_row, field_val, separator)
+        elseif(EddyFlowProj%fix_out_format) then
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end if
+    end do
 
     !> Vickers and Mahrt 97 hard flags
     call AddDatum(csv_row, '8'//CharHF%sr(2:FlagStrLen), separator)
@@ -462,7 +379,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call AddDatum(csv_row, field_val, separator)
     call WriteDatumInt(Essentials%e2spikes(ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    do var = co2, gas4
+    do var = firstGas, lastGas
         if(OutVarPresent(var)) then
             call WriteDatumInt(Essentials%e2spikes(var), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -588,7 +505,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call WriteDatumFloat(Stats%Cov(var, var), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end do
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(Stats%Cov(gas, gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -599,7 +516,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> w-covariances
     call WriteDatumFloat(Stats%Cov(w, ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(Stats%Cov(w, gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)

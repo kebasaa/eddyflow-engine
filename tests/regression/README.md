@@ -31,6 +31,16 @@ that before trusting a difference.
 | `base_8gas.eddyflow` | eight gases across **two** analysers: the MIRO's four plus the LI-7200's CO2 and H2O, and a duplicate N2O. Exercises the capacity target (64 gases, 8 per instrument) and, because the two analysers measure the same species independently, catches slot cross-wiring: `CO2` and `CO2_2` must hold *different* real values, not the same one twice. |
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |
 
+## Re-baselinings, and what each one accounted for
+
+`out_ref` is regenerated only when a change is meant to move the output, and
+only after every moved cell has been named. So far:
+
+| change | delta against the previous reference |
+|---|---|
+| main record converted (`3511493`) | FLUXNET: exactly one column removed, `NUM_GAS_EXTRA`; every surviving cell byte-identical. `full_output`: 48 VM97 flag cells widened from 9 to 69 characters, each a pure extension of its old value with `'9'` (test not performed) padding |
+| full output per gas | `full_output` **units row only**: 4 whitespace-only cells. Three unit labels and one flux label are `character(32)` and used to be concatenated unpadded, so those fields carried trailing blanks. Every gas now trims. No data cell moved, no column added or removed at four gases |
+
 ## The arithmetic cross-check
 
 `nMainFields` in `read_ex_record.f90` should equal the header's main-record

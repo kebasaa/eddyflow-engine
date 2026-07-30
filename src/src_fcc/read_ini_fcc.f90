@@ -400,43 +400,62 @@ subroutine InitializeGas4FullOutputUnitsFcc()
     use m_fx_global_var
     implicit none
     !> local variables
-    integer :: gas4_col
-    integer, parameter :: rec4 = gas4 - firstGas + 1
+    integer :: gas_col
+    integer :: gas, rec
     logical :: metadata_exists
+    logical :: metadata_read
     logical :: IniFileNotFound
-    character(32) :: gas4_unit
+    character(32) :: gas_unit
     type(ColType) :: MetadataCol(MaxNumCol)
     include '../src_common/interfaces_1.inc'
 
-    gas4_unit = 'ppm'
-
+    metadata_read = .false.
     if (AuxFile%metadata /= 'none') then
         inquire(file = AuxFile%metadata, exist = metadata_exists)
         if (metadata_exists) then
             call ReadMetadataFile(MetadataCol, AuxFile%metadata, IniFileNotFound, .false.)
-            !> The fourth gas's column comes from the record; the col_gas4 tag
-            !> it used to come from is retired. Getting this wrong does not
-            !> corrupt the numbers - the unit label and the scale factor move
-            !> together - but the full output would silently switch from the
-            !> nmol basis an upgraded project used to report in to umol.
-            if (EddyFlowProj%gas_num >= rec4) then
-                gas4_col = EddyFlowProj%gas(rec4)%col
-            else
-                gas4_col = EddyFlowProj%col(gas4)
-            end if
-            if (.not. IniFileNotFound .and. gas4_col > 0 .and. gas4_col <= MaxNumCol) then
-                if (trim(adjustl(MetadataCol(gas4_col)%conversion_type)) /= 'none' &
-                    .and. len_trim(MetadataCol(gas4_col)%unit_out) > 0 &
-                    .and. trim(adjustl(MetadataCol(gas4_col)%unit_out)) /= 'none') then
-                    gas4_unit = MetadataCol(gas4_col)%unit_out
-                else
-                    gas4_unit = MetadataCol(gas4_col)%unit_in
-                end if
-            end if
+            metadata_read = .not. IniFileNotFound
         end if
     end if
 
-    call Gas4FullOutputUnits(gas4_unit, gas4_full_flux_sc, gas4_full_dens_sc, &
-        gas4_full_flux_label, gas4_full_conc_label, gas4_full_mixr_label, &
-        gas4_full_dens_label)
+    gas_full_flux_sc = 1d0
+    gas_full_dens_sc = 1d0
+    gas_full_flux_label = ''
+    gas_full_conc_label = ''
+    gas_full_mixr_label = ''
+    gas_full_dens_label = ''
+
+    !> Once per configured gas, not once for the fourth slot. Getting a unit
+    !> wrong does not corrupt the numbers - the label and the scale factor move
+    !> together - but the full output would silently switch basis.
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+
+        !> Water is on the mmol basis internally, so it keeps its own labels
+        !> rather than the umol default the unit lookup would hand back.
+        if (GasSlotIsWater(gas)) then
+            gas_full_flux_label(gas) = '[mmol+1s-1m-2]'
+            gas_full_conc_label(gas) = '[mmol+1mol_a-1]'
+            gas_full_mixr_label(gas) = '[mmol+1mol_d-1]'
+            gas_full_dens_label(gas) = '[mmol+1m-3]'
+            cycle
+        end if
+
+        gas_unit = 'ppm'
+        gas_col = EddyFlowProj%gas(rec)%col
+        if (metadata_read .and. gas_col > 0 .and. gas_col <= MaxNumCol) then
+            if (trim(adjustl(MetadataCol(gas_col)%conversion_type)) /= 'none' &
+                .and. len_trim(MetadataCol(gas_col)%unit_out) > 0 &
+                .and. trim(adjustl(MetadataCol(gas_col)%unit_out)) /= 'none') then
+                gas_unit = MetadataCol(gas_col)%unit_out
+            else
+                gas_unit = MetadataCol(gas_col)%unit_in
+            end if
+        end if
+
+        call GasFullOutputUnits(gas_unit, gas_full_flux_sc(gas), gas_full_dens_sc(gas), &
+            gas_full_flux_label(gas), gas_full_conc_label(gas), &
+            gas_full_mixr_label(gas), gas_full_dens_label(gas))
+    end do
 end subroutine InitializeGas4FullOutputUnitsFcc

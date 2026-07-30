@@ -161,11 +161,17 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
         !> Initializations
         if (ValidRecord .and. .not. InitializationPerformed) then
 
-            !> Look for variable presence (u thru GS4)
+            !> Look for variable presence, over every gas slot the project
+            !> configures rather than the first four. This gate is what every
+            !> FCC output loop tests, so leaving it four-bounded made gases 5+
+            !> absent from the full output no matter how wide the loops were.
             if (lEx%WS /= error) fcc_var_present(u:w) = .true.
             if (lEx%Ts /= error) fcc_var_present(ts)  = .true.
-            do gas = co2, gas4
-                fcc_var_present(gas) = lEx%measure_type_int(gas) /= ierror .or. fcc_var_present(gas)  
+            !> Only as far as the project configures. An unconfigured slot's
+            !> measure type is not the error code either, so running to lastGas
+            !> marks all 64 present and emits a column family per empty slot.
+            do gas = firstGas, firstGas + min(EddyFlowProj%gas_num, MaxNumGases) - 1
+                fcc_var_present(gas) = lEx%measure_type_int(gas) /= ierror .or. fcc_var_present(gas)
             end do
                 
             !> Determine whether LI-COR's flags are available

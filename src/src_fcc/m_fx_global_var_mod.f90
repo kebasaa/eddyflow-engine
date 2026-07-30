@@ -48,16 +48,19 @@ module m_fx_global_var
 
     real(kind = dbl) :: float_doy
     real(kind = dbl) :: dkf(ndkf + 1)
-    real(kind = dbl) :: gas4_full_flux_sc
-    real(kind = dbl) :: gas4_full_dens_sc
+    !> Full-output unit basis per gas slot. These were single scalars for the
+    !> fourth slot, which is why the FCC full output carried no columns at all
+    !> for gases past it: there was nothing to label them with.
+    real(kind = dbl) :: gas_full_flux_sc(GHGNumVar)
+    real(kind = dbl) :: gas_full_dens_sc(GHGNumVar)
     real(kind = dbl), allocatable :: custVars(:)
 
     character(12), parameter :: fcc_app = 'EddyFlow-FCC'
     character(32) :: g4lab
-    character(32) :: gas4_full_flux_label
-    character(32) :: gas4_full_conc_label
-    character(32) :: gas4_full_mixr_label
-    character(32) :: gas4_full_dens_label
+    character(32) :: gas_full_flux_label(GHGNumVar)
+    character(32) :: gas_full_conc_label(GHGNumVar)
+    character(32) :: gas_full_mixr_label(GHGNumVar)
+    character(32) :: gas_full_dens_label(GHGNumVar)
     character(64) :: UserVarHeader(MaxUserVar)
     character(26), parameter :: SubDirSpecAn = 'eddyflow_spectral_analysis'
     character(16000) :: fluxnet_header

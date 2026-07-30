@@ -59,7 +59,7 @@ subroutine InitFluxnetFile_rp()
     e2sg(co2) = 'co2_'
     e2sg(h2o) = 'h2o_'
     e2sg(ch4) = 'ch4_'
-    g4label = FourthGasLabel()
+    g4label = GasOutputLabel(gas4)
     e2sg(gas4) = g4label(1:len_trim(g4label)) // '_'
     e2sg(tc)  = 'cell_t_'
     e2sg(ti1) = 'inlet_t_'

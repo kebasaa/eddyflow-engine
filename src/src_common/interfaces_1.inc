@@ -23,7 +23,7 @@ interface
 end interface
 
 interface
-    subroutine Gas4FullOutputUnits(unit_in, flux_scale, dens_scale, &
+    subroutine GasFullOutputUnits(unit_in, flux_scale, dens_scale, &
         flux_label, conc_label, mixr_label, dens_label)
         use m_common_global_var
         implicit none
@@ -35,7 +35,33 @@ interface
         character(*), intent(out) :: conc_label
         character(*), intent(out) :: mixr_label
         character(*), intent(out) :: dens_label
-    end subroutine Gas4FullOutputUnits
+    end subroutine GasFullOutputUnits
+
+    !> Water is carved out of the per-gas unit handling; answered from the
+    !> record, so a second water record past the h2o slot is recognised too.
+    logical function GasSlotIsWater(gas_slot)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+    end function GasSlotIsWater
+
+    !> Full-output column-name stems per gas slot, repeats disambiguated.
+    subroutine FullOutputGasTags(tags)
+        use m_common_global_var
+        implicit none
+        character(*), intent(out) :: tags(GHGNumVar)
+    end subroutine FullOutputGasTags
+
+    !> Per-slot full-output scales and labels. Header and row writer share
+    !> one call so a label can never describe a scale that was not applied.
+    subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &
+        flux_label, conc_label, mixr_label, dens_label)
+        use m_common_global_var
+        implicit none
+        real(kind = dbl), intent(out) :: flux_sc(GHGNumVar), dens_sc(GHGNumVar)
+        character(*), intent(out) :: flux_label(GHGNumVar), conc_label(GHGNumVar)
+        character(*), intent(out) :: mixr_label(GHGNumVar), dens_label(GHGNumVar)
+    end subroutine GasFullOutputUnitsAll
 
     !> FLUXNET column scales, per species rather than per slot.
     real(kind = dbl) function FluxnetGasScale(gas_slot)

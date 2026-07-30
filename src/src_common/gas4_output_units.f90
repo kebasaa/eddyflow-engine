@@ -22,9 +22,11 @@
 !
 !***************************************************************************
 !
-! \brief       Defines gas4 full-output scales and labels from metadata units.
+! \brief       Per-gas output scales, labels and column-name stems.
 ! \author      Jonathan Muller
-! \note
+! \note        The file name is historical: none of this is specific to the
+!              fourth slot any more. Every routine here answers for whichever
+!              gas slot it is asked about, from the gas record.
 ! \sa
 ! \bug
 ! \deprecated
@@ -104,7 +106,138 @@ real(kind = dbl) function FluxnetGasAdvScale(gas_slot)
     FluxnetGasAdvScale = FluxnetGasScale(gas_slot) * 1d3
 end function FluxnetGasAdvScale
 
-subroutine Gas4FullOutputUnits(unit_in, flux_scale, dens_scale, &
+!***************************************************************************
+!
+! \brief       Whether a gas slot holds water.
+! \author      Jonathan Muller
+! \note        Water is carved out of the per-gas unit handling: it is the one
+!              species held internally on the mmol basis, so the umol default
+!              of GasFullOutputUnits would mislabel it. Answered from the gas
+!              record and not from the slot number, because a second water
+!              record sits well past the historical h2o slot.
+!***************************************************************************
+logical function GasSlotIsWater(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    character(32) :: species
+    integer :: rec
+
+    GasSlotIsWater = .false.
+    rec = gas_slot - firstGas + 1
+    if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) return
+
+    species = EddyFlowProj%gas(rec)%var
+    call uppercase(species)
+    GasSlotIsWater = trim(adjustl(species)) == 'H2O'
+end function GasSlotIsWater
+
+!***************************************************************************
+!
+! \brief       Full-output column-name stems, one per configured gas slot.
+! \author      Jonathan Muller
+! \note        Returns 'co2_', 'h2o_', … indexed by gas slot, lowercased and
+!              suffixed for repeats, so a project measuring CO2 on two
+!              analysers gets 'co2_' and 'co2_2_' rather than two identical
+!              column families. The FLUXNET row solves the same problem the
+!              same way in SelectFluxnetGasSlots; without it here, widening
+!              the full output would trade missing columns for duplicate ones.
+!
+!              Empty for a slot with no configured gas, which is what the
+!              OutVarPresent guards at every use site already test for.
+!***************************************************************************
+subroutine FullOutputGasTags(tags)
+    use m_common_global_var
+    implicit none
+    character(*), intent(out) :: tags(GHGNumVar)
+    character(32) :: label
+    character(32) :: seen(MaxNumGases)
+    integer :: nseen
+    integer :: gas, k, repeat
+    character(32), external :: GasOutputLabel
+
+    tags = ''
+    nseen = 0
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        label = GasOutputLabel(gas)
+        call lowercase(label)
+        if (len_trim(label) == 0) cycle
+
+        repeat = 1
+        do k = 1, nseen
+            if (trim(seen(k)) == trim(label)) repeat = repeat + 1
+        end do
+        nseen = nseen + 1
+        seen(nseen) = label
+
+        if (repeat == 1) then
+            tags(gas) = trim(label) // '_'
+        else
+            write(tags(gas), '(a,i0,a)') trim(label) // '_', repeat, '_'
+        end if
+    end do
+end subroutine FullOutputGasTags
+
+!***************************************************************************
+!
+! \brief       Full-output scales and labels for every configured gas slot.
+! \author      Jonathan Muller
+! \note        One call fills the header and the row writer alike, so the
+!              units a column is labelled with and the factor its value is
+!              scaled by cannot drift apart - the failure this replaces was
+!              exactly that, with a per-slot label and no per-slot scale.
+!
+!              Water takes fixed mmol labels and unit scales rather than the
+!              unit lookup, matching the hard-coded water arms this replaces.
+!***************************************************************************
+subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &
+    flux_label, conc_label, mixr_label, dens_label)
+    use m_common_global_var
+    implicit none
+    real(kind = dbl), intent(out) :: flux_sc(GHGNumVar), dens_sc(GHGNumVar)
+    character(*), intent(out) :: flux_label(GHGNumVar), conc_label(GHGNumVar)
+    character(*), intent(out) :: mixr_label(GHGNumVar), dens_label(GHGNumVar)
+    integer :: gas
+    logical, external :: GasSlotIsWater
+    character(32), external :: GasUnitIn
+
+    flux_sc = 1d0
+    dens_sc = 1d0
+    flux_label = ''
+    conc_label = ''
+    mixr_label = ''
+    dens_label = ''
+
+    do gas = firstGas, lastGas
+        if (GasSlotIsWater(gas)) then
+            flux_label(gas) = '[mmol+1s-1m-2]'
+            conc_label(gas) = '[mmol+1mol_a-1]'
+            mixr_label(gas) = '[mmol+1mol_d-1]'
+            dens_label(gas) = '[mmol+1m-3]'
+        else
+            call GasFullOutputUnits(GasUnitIn(gas), flux_sc(gas), dens_sc(gas), &
+                flux_label(gas), conc_label(gas), mixr_label(gas), dens_label(gas))
+        end if
+    end do
+end subroutine GasFullOutputUnitsAll
+
+!***************************************************************************
+!
+! \brief       Full-output scales and labels for one gas, from its input unit.
+! \author      Jonathan Muller
+! \note        The full output carries a units row, so unlike the FLUXNET row
+!              it reports each gas in the basis the project configured. The
+!              body was always generic; only its name and its single caller
+!              tied it to the fourth slot, which is why gases 5+ were absent
+!              from that file rather than merely mislabelled in it.
+!
+!              Water is not passed through here. Its internal basis is mmol
+!              rather than umol, so the default arm's umol labels would be
+!              wrong for it; the callers keep water's own fixed labels, the
+!              same carve-out water has everywhere else in this work.
+!***************************************************************************
+subroutine GasFullOutputUnits(unit_in, flux_scale, dens_scale, &
     flux_label, conc_label, mixr_label, dens_label)
     use m_common_global_var
     implicit none
@@ -140,4 +273,4 @@ subroutine Gas4FullOutputUnits(unit_in, flux_scale, dens_scale, &
             mixr_label = '[' // char(194) // char(181) // 'mol+1mol_d-1]'
             dens_label = '[mmol+1m-3]'
     end select
-end subroutine Gas4FullOutputUnits
+end subroutine GasFullOutputUnits

@@ -526,7 +526,7 @@ end subroutine ConvertTraceGasUnits
 
 !***************************************************************************
 !
-! \brief       Label to use for the fourth gas slot in output headers.
+! \brief       Label to use for a gas slot in output headers.
 ! \author      Jonathan Muller
 ! \note        Headers are written before the first data file is read, so
 !              E2Col is still empty in a record project - ApplyGasRecords
@@ -534,13 +534,21 @@ end subroutine ConvertTraceGasUnits
 !              because the retired col_gas4 tag pointed straight at the
 !              metadata column. The record names the same column, so this
 !              resolves it the same way and yields the same label.
+!
+!              Takes the slot rather than assuming the fourth: the full
+!              output carries a column set per configured gas, so every slot
+!              needs a name, and deriving one only for slot four is what left
+!              gases 5+ out of that file entirely.
 !***************************************************************************
-function FourthGasLabel() result(label)
+function GasOutputLabel(gas_slot) result(label)
     use m_common_global_var
     implicit none
+    integer, intent(in) :: gas_slot
     character(32) :: label
-    integer, parameter :: rec4 = gas4 - firstGas + 1
+    integer :: rec4
     integer :: i
+
+    rec4 = gas_slot - firstGas + 1
 
     call clearstr(label)
     !> The record is the authority, exactly as it is for the input unit. It
@@ -568,34 +576,41 @@ function FourthGasLabel() result(label)
         end if
     end if
 
-    !> No record for the fourth slot: fall back to whatever the per-file path
-    !> resolved, then to the slot name.
-    if (len_trim(E2Col(gas4)%label) > 0 .and. &
-        trim(E2Col(gas4)%label) /= 'none') then
-        label = trim(E2Col(gas4)%label)
+    !> No record for this slot: fall back to whatever the per-file path
+    !> resolved, then to the slot name. 'gas4' is kept for the fourth slot so
+    !> a project that resolves nothing still produces the historical name.
+    if (len_trim(E2Col(gas_slot)%label) > 0 .and. &
+        trim(E2Col(gas_slot)%label) /= 'none') then
+        label = trim(E2Col(gas_slot)%label)
         return
     end if
-    label = 'gas4'
-end function FourthGasLabel
+    if (gas_slot == gas4) then
+        label = 'gas4'
+    else
+        write(label, '(a,i0)') 'gas', gas_slot - firstGas + 1
+    end if
+end function GasOutputLabel
 
 !***************************************************************************
 !
-! \brief       Input unit of the fourth gas, for the output-units decision.
+! \brief       Input unit of a gas slot, for the output-units decision.
 ! \author      Jonathan Muller
-! \note        Same problem, and same resolution, as FourthGasLabel: the unit
+! \note        Same problem, and same resolution, as GasOutputLabel: the unit
 !              decides whether the full output is written in nmol or umol,
 !              and it is consulted where E2Col has not been filled from the
 !              records yet. Getting it wrong does not corrupt the numbers -
 !              the label and the scaling move together - but it silently
 !              changes the units an upgraded project reports in.
 !***************************************************************************
-function FourthGasUnitIn() result(unit_in)
+function GasUnitIn(gas_slot) result(unit_in)
     use m_common_global_var
     implicit none
+    integer, intent(in) :: gas_slot
     character(32) :: unit_in
-    integer, parameter :: rec4 = gas4 - firstGas + 1
+    integer :: rec4
     integer :: i
 
+    rec4 = gas_slot - firstGas + 1
     call clearstr(unit_in)
     !> The metadata column is the authority here: unit_in describes what the
     !> data file contains, which no amount of processing changes. E2Col's copy
@@ -608,6 +623,6 @@ function FourthGasUnitIn() result(unit_in)
         end do
     end if
 
-    if (len_trim(E2Col(gas4)%unit_in) > 0 .and. &
-        trim(E2Col(gas4)%unit_in) /= 'none') unit_in = trim(E2Col(gas4)%unit_in)
-end function FourthGasUnitIn
+    if (len_trim(E2Col(gas_slot)%unit_in) > 0 .and. &
+        trim(E2Col(gas_slot)%unit_in) /= 'none') unit_in = trim(E2Col(gas_slot)%unit_in)
+end function GasUnitIn
