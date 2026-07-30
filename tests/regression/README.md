@@ -84,3 +84,41 @@ formula, untested for want of a dataset.
   consulted for the `g_m3`/`mg_m3`/`ug_m3` arms. Use `ug_m3` to exercise it.
 - The engine links `libgfortran-5.dll` dynamically; `PATH` needs the MinGW
   bin directory.
+
+## A blocker found with `base_8gas_cell`: per-instrument cell T/P never arrives
+
+`base_8gas_cell` is `base_8gas` with cell records on **both** analysers - the
+MIRO's cell_t/int_p on columns 11/12 and the LI-7200's on 23/24. The two sets
+carry genuinely different data (`T_CELL` 27.23 against 14.68, `PA_CELL` 0.0700
+against 93.14 when each is configured alone), so a working per-instrument
+resolution has to show up in the output.
+
+It does not. Against `base_8gas`, adding the LI-7200's cell records moves
+**one** column - `NUM_CUSTOM_VARS`, because columns 23/24 stop being custom
+variables - and removes the two `CUSTOM_*` columns that carried them. No flux,
+no `MV_AIR_CELL`, no cell value changes at all.
+
+Localised with three temporary probes, all reverted:
+
+| point | slot 10 (the LI-7200's CO2) |
+|---|---|
+| `ApplyCellDiagRecords` | record 3 → src 14 → **slot 73**, record 4 → src 15 → **slot 76**. Applied correctly |
+| end of `DefineE2Set` | `cell_ref = 73`, i.e. block 2. Resolved correctly |
+| `AirAndCellParameters` | `Stats%Mean(73)` and `Stats%Mean(76)` are **-9999** |
+
+So the records reach the right slots and the gas points at the right block, but
+the block carries no statistics by the time the physics reads it - and the
+fallback in `AirAndCellParameters` ("no reading in this block") quietly hands
+back instrument 1's scalars. Every gas then gets the MIRO's cell conditions.
+Block 1 (slots 69-72) works, and those are exactly the slots that also have
+legacy names (`tc`/`ti1`/`ti2`/`pi`).
+
+**The window still to bisect** is `DefineE2Set` (eddyflow-rp_main.f90:651) to
+`BasicStats` (:728, then :823 before `AirAndCellParameters` at :828), with
+`FilterDatasetForDiagnostics`, `AdjustSonicCoordinates` and
+`FilterDatasetForWindDirection` in between. Probe `E2Set(1, 73)` immediately
+after `DefineE2Set` returns and again after `BasicStats`.
+
+This has to be fixed before carrying per-instrument cell T/P across into FCC:
+FCC reads scalar `lEx%Tcell`/`lEx%Pcell`, so widening the ex file would only
+carry a value that is already wrong on the RP side.
