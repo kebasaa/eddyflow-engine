@@ -48,14 +48,21 @@ module m_typedef
     integer, parameter :: MaxNumInstruments = 8
     integer, parameter :: MaxNumRawFlags = 10
     integer, parameter :: NumDegH = 9
-    integer, parameter :: MaxNumCol = 100
+    !> Columns a .metadata file may describe. Sized from what a full-capacity
+    !> project needs: 64 gases, 8 instruments x (4 cell + 2 diagnostic), the
+    !> sonic and its diagnostic, air_t/air_p and MaxUserVar customs = 149.
+    !> Must equal NUM_COLS in prj/gen_metadata_tags.py, which emits the
+    !> per-column tag tables; the generator has a --check mode that says so.
+    integer, parameter :: MaxNumCol = 200
 
     !> Gas capacity. A gas slot's species is decided at runtime from the
-    !> project file, so this is a ceiling rather than a fixed list. 64 is
-    !> MaxNumInstruments * MaxGasesPerInstrument, so every instrument can carry
-    !> its full complement of gases.
+    !> project file, so this is a ceiling rather than a fixed list, and it is
+    !> the *only* gas ceiling: nothing here limits how many of them one
+    !> instrument may carry. A MaxGasesPerInstrument sat beside this and was
+    !> never read - no array sized by it, no loop bounded by it - so it only
+    !> ever described the interface's own input rule. Removed rather than left
+    !> to be mistaken for a constraint the engine enforces.
     integer, parameter :: MaxNumGases = 64
-    integer, parameter :: MaxGasesPerInstrument = 8
 
     !> Cell temperature in/out, cell pressure and average cell temperature, one
     !> set per instrument; diagnostics, two per instrument. Read by
@@ -70,11 +77,21 @@ module m_typedef
     integer, parameter :: NumCellPerInstr = 4
     integer, parameter :: MaxNumCellSlots = MaxNumInstruments * NumCellPerInstr
 
+    !> The anemometric block: u, v, w, ts. Named because three other constants
+    !> and the whole variable enumeration below are offsets from it, and each
+    !> used to spell it as a bare 4 or 5 that had to be kept in step by hand.
+    integer, parameter :: NumAnemVar = 4
+
     !> u, v, w, ts + the gas slots + the per-instrument cell slots + air_t, air_p
-    integer, parameter :: E2NumVar = 4 + MaxNumGases + MaxNumCellSlots + 2
+    integer, parameter :: E2NumVar = NumAnemVar + MaxNumGases + MaxNumCellSlots + 2
     integer, parameter :: MaxNumDiag = 6
-    !> u, v, w, ts + the gas slots. Mirrors the cospectra enumeration below.
-    integer, parameter :: GHGNumVar = 4 + MaxNumGases
+    !> Highest variable index, and therefore the width of every array indexed by
+    !> variable: the anemometric block followed by the gas slots.
+    !>
+    !> NOT the gas count. Arrays declared (GHGNumVar) are addressed u..lastGas,
+    !> so dropping the anemometric term would leave the four highest gas slots
+    !> writing past the end of every one of them.
+    integer, parameter :: GHGNumVar = NumAnemVar + MaxNumGases
 
     !> Width of the packed per-variable quality-flag strings: a leading filler
     !> digit followed by one digit per variable. These used to be built as
@@ -116,8 +133,12 @@ module m_typedef
     integer, parameter :: ts  = 4
     !> Bounds of the dynamic gas block. Species identity per slot comes from
     !> the project file at run time; use these to iterate over "all gases".
-    integer, parameter :: firstGas = 5
-    integer, parameter :: lastGas  = firstGas + MaxNumGases - 1
+    !>
+    !> Expressed from NumAnemVar so the gas block always starts immediately
+    !> after ts, and lastGas is GHGNumVar by construction rather than by
+    !> coincidence - the two were separately maintained literals before.
+    integer, parameter :: firstGas = NumAnemVar + 1
+    integer, parameter :: lastGas  = GHGNumVar
     !> Legacy fixed gas slots. These name only the first four gas slots and are
     !> retained while the code migrates to runtime species identity. New code
     !> should iterate firstGas..lastGas and resolve the species, not assume a

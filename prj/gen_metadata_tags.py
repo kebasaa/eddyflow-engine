@@ -30,7 +30,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "src_common" / "m_common_global_var.f90"
 
-NUM_COLS = 100
+NUM_COLS = 200
 TAG_RE = re.compile(r"(A[NC]Tags)\((\d+)\)%Label\s*/\s*'([^']*)'\s*/")
 
 # Markers delimiting the two generated regions. The generator rewrites strictly
