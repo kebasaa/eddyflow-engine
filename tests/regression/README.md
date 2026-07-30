@@ -85,40 +85,56 @@ formula, untested for want of a dataset.
 - The engine links `libgfortran-5.dll` dynamically; `PATH` needs the MinGW
   bin directory.
 
-## A blocker found with `base_8gas_cell`: per-instrument cell T/P never arrives
+## Per-instrument cell T/P: found, fixed, and what it exposed
 
 `base_8gas_cell` is `base_8gas` with cell records on **both** analysers - the
-MIRO's cell_t/int_p on columns 11/12 and the LI-7200's on 23/24. The two sets
-carry genuinely different data (`T_CELL` 27.23 against 14.68, `PA_CELL` 0.0700
-against 93.14 when each is configured alone), so a working per-instrument
-resolution has to show up in the output.
+MIRO's cell_t/int_p on columns 11/12 and the LI-7200's on 23/24.
 
-It does not. Against `base_8gas`, adding the LI-7200's cell records moves
-**one** column - `NUM_CUSTOM_VARS`, because columns 23/24 stop being custom
-variables - and removes the two `CUSTOM_*` columns that carried them. No flux,
-no `MV_AIR_CELL`, no cell value changes at all.
+**The bug.** `FilterDatasetForDiagnostics` selected the columns an analyser's
+diagnostic may invalidate with `case (co2:gas4, pi:pe)`. Both halves stopped
+meaning what they said once the slots widened. `pi:pe` was instrument 1's cell
+pressure through to air pressure - three slots - but with one cell block per
+instrument it spans instruments 2..8 entirely, so their cell *temperatures*
+began being filtered on a rule instrument 1's `tc` has never been subject to.
+The second analyser's cell temperature was wiped outright, `Stats%Mean` for its
+block read `-9999`, and `AirAndCellParameters` quietly fell back to instrument
+1's scalars for every gas. `co2:gas4` was the mirror image: a gas past the
+fourth kept every record its analyser's diagnostic rejected.
 
-Localised with three temporary probes, all reverted:
+Localised with probes at `ApplyCellDiagRecords` (records land in slots 73/76
+correctly), the end of `DefineE2Set` (`cell_ref` resolves to 73 correctly), and
+either side of the diagnostic filter (17474 values in, 0 out).
 
-| point | slot 10 (the LI-7200's CO2) |
-|---|---|
-| `ApplyCellDiagRecords` | record 3 → src 14 → **slot 73**, record 4 → src 15 → **slot 76**. Applied correctly |
-| end of `DefineE2Set` | `cell_ref = 73`, i.e. block 2. Resolved correctly |
-| `AirAndCellParameters` | `Stats%Mean(73)` and `Stats%Mean(76)` are **-9999** |
+**The fix** names quantities rather than a slot span: every gas slot, one cell
+pressure per instrument, and ambient T/P. With it, `base_8gas_cell` gives
 
-So the records reach the right slots and the gas points at the right block, but
-the block carries no statistics by the time the physics reads it - and the
-fallback in `AirAndCellParameters` ("no reading in this block") quietly hands
-back instrument 1's scalars. Every gas then gets the MIRO's cell conditions.
-Block 1 (slots 69-72) works, and those are exactly the slots that also have
-legacy names (`tc`/`ti1`/`ti2`/`pi`).
+    MV_AIR_CELL   MIRO gases 35.6776    LI-7200 gases 0.0253263
 
-**The window still to bisect** is `DefineE2Set` (eddyflow-rp_main.f90:651) to
-`BasicStats` (:728, then :823 before `AirAndCellParameters` at :828), with
-`FilterDatasetForDiagnostics`, `AdjustSonicCoordinates` and
-`FilterDatasetForWindDirection` in between. Probe `E2Set(1, 73)` immediately
-after `DefineE2Set` returns and again after `BasicStats`.
+where both read 35.6776 before - the LI-7200's gases now use the LI-7200's own
+cell conditions.
 
-This has to be fixed before carrying per-instrument cell T/P across into FCC:
-FCC reads scalar `lEx%Tcell`/`lEx%Pcell`, so widening the ex file would only
-carry a value that is already wrong on the RP side.
+> ### The metadata calls an AGC percentage a diagnostic word
+>
+> Column 28 of this dataset is `LI72_AGC`, a gain percentage reading 93.33, and
+> the `.metadata` declares it `col_28_variable=diag_72`. Read as a LI-7200
+> diagnostic word that gives `ibits(93,5,4) = 2`, well under the 15 the test
+> demands, so **every record is rejected**.
+>
+> It was inert only because the LI-7200's gases sat in slots 9+, which the old
+> `co2:gas4` bound never reached. Closing that gap made it bite: the analyser's
+> CO2 and H2O were rejected wholesale. That is the engine behaving correctly on
+> bad metadata - a LI-7200 gas in one of the first four slots has always been
+> rejected the same way - but it means **any project whose metadata mislabels a
+> diagnostic column will now lose its gases past the fourth, where before they
+> were silently kept.** Worth a release note.
+>
+> `base_8gas`, `base_8gas_ru` and `base_8gas_cell` therefore declare no
+> diagnostic record; with one, their gas checks go inert. `base_rec` keeps its
+> record untouched - all four of its gases are on the MIRO, so nothing matches
+> and it stays the byte-identity anchor.
+
+**Still open: FCC.** `src_fcc/fluxes23.f90` reads scalar `lEx%Tcell`/`lEx%Pcell`
+and `lEx%cov_w(pi)` for every gas, so under `fcc_follows` the corrected fluxes
+are still computed with instrument 1's cell conditions. `lEx%Vcell` already
+crosses per gas; what is missing is Tcell/Pcell and the cell-pressure
+covariance, which is a four-file lockstep change on the ex file.

@@ -45,6 +45,7 @@ subroutine FilterDatasetForDiagnostics(Set, nrow, ncol, DiagSet, dnrow, dncol, &
     type(DiagAnemType), intent(in) :: lDiagAnemometer
     !> lcoal variables
     integer :: var
+    integer :: i
     logical :: mask(nrow)
 
 
@@ -92,10 +93,27 @@ subroutine FilterDatasetForDiagnostics(Set, nrow, ncol, DiagSet, dnrow, dncol, &
     end if
 
     !> IRGA diagnostics
+    !>
+    !> Which columns an analyser's diagnostic may invalidate. The list used to
+    !> be spelled `co2:gas4, pi:pe`, and both halves stopped meaning what they
+    !> say once the slots widened:
+    !>
+    !>  - `co2:gas4` is the first four gas slots, so a fifth gas on a flagged
+    !>    analyser kept every record the diagnostic rejected.
+    !>  - `pi:pe` was instrument 1's cell pressure through to air pressure - a
+    !>    three-slot tail. With one cell block per instrument it spans
+    !>    instruments 2..8 entirely, so their cell *temperatures* started being
+    !>    filtered on a rule instrument 1's `tc` has never been subject to. On a
+    !>    two-analyser site that wiped the second analyser's cell temperature
+    !>    outright, and the physics then fell back to instrument 1's conditions
+    !>    for every gas.
+    !>
+    !> Named by quantity instead: every gas slot, every instrument's cell
+    !> pressure, and ambient T/P. That is what the original list described when
+    !> there was only one instrument's worth of cell slots.
     if (filter_for_diag_irga) then
-        do var = co2, pe
-            select case(var)
-                case (co2:gas4, pi:pe)
+        do var = firstGas, pe
+            if (.not. DiagFilterable(var)) cycle
                     !> For LI-7200 flag is OK if = 1, so checks that all bits are
                     !> set to 1, which means 7 integer for 3 bits words and 15 for four bits words
                     if (index(E2Col(var)%instr%model, 'li7200') /= 0) then
@@ -130,11 +148,10 @@ subroutine FilterDatasetForDiagnostics(Set, nrow, ncol, DiagSet, dnrow, dncol, &
                             end if
                         end do
                     end if
-            end select
         end do
     end if
-    where (.not. E2Col(co2:gas4)%present)
-        Essentials%m_diag_irga(co2:gas4) = ierror
+    where (.not. E2Col(firstGas:lastGas)%present)
+        Essentials%m_diag_irga(firstGas:lastGas) = ierror
     endwhere
 
 !!    > Special case of Tin/Tout for LI-7200
@@ -161,4 +178,32 @@ subroutine FilterDatasetForDiagnostics(Set, nrow, ncol, DiagSet, dnrow, dncol, &
 !            Set(:, ti2) = error
 !        end where
 !    end if
+
+contains
+
+    !***********************************************************************
+    !> Whether an analyser's diagnostic word may invalidate this column.
+    !>
+    !> Gas slots, one cell pressure per instrument, and ambient T/P. Cell and
+    !> inlet/outlet *temperatures* are deliberately excluded: instrument 1's
+    !> tc/ti1/ti2 sit below `pi` and so were never in the historical list, and
+    !> filtering a second analyser's cell temperature while leaving the first
+    !> analyser's alone is exactly the asymmetry that wiped it.
+    !***********************************************************************
+    logical function DiagFilterable(slot) result(filterable)
+        implicit none
+        integer, intent(in) :: slot
+
+        filterable = .false.
+        if (slot >= firstGas .and. slot <= lastGas) then
+            filterable = .true.
+        elseif (slot >= firstCell .and. slot <= lastCell) then
+            !> Offset 3 within an instrument's block is its cell pressure,
+            !> which is where the historical `pi` sat.
+            filterable = mod(slot - firstCell, NumCellPerInstr) == 3
+        elseif (slot == te .or. slot == pe) then
+            filterable = .true.
+        end if
+    end function DiagFilterable
+
 end subroutine FilterDatasetForDiagnostics
