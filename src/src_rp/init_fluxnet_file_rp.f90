@@ -188,6 +188,19 @@ subroutine InitFluxnetFile_rp()
     do j = 1, nFluxnetLayoutSlots
         call AddDatum(csv_row, 'MV_AIR_CELL_' // trim(FluxnetLayoutTags(j)), separator)
     end do
+    !> Cell conditions of the analyser that measured each gas, and the
+    !> covariance of w with that analyser's own cell pressure. T_CELL and
+    !> PA_CELL above are instrument 1's and are reported in degC and kPa;
+    !> these are SI, so FCC can use them in the WPL terms directly.
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'T_CELL_' // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'PA_CELL_' // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'W_PA_CELL_' // trim(FluxnetLayoutTags(j)) // '_COV', separator)
+    end do
     do j = 1, nFluxnetLayoutSlots
         if (FluxnetLayoutSlots(j) == h2o) cycle
         call AddDatum(csv_row, 'FH2O_CELL_' // trim(FluxnetLayoutTags(j)), separator)

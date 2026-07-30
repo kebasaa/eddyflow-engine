@@ -85,5 +85,71 @@ class DiagnosticFilterScope(unittest.TestCase):
         self.assertIn("var", names)
 
 
+
+class CellConditionsCrossIntoFcc(unittest.TestCase):
+    """FCC computes the published fluxes; the cell terms must reach it per gas.
+
+    `lEx%Tcell`/`lEx%Pcell` are instrument 1's *and* carry the writer's degC and
+    kPa gains, which the reader never inverts - so the two closed-path WPL cell
+    terms were dividing by about 27 instead of 300, and by 0.07 instead of 70.
+    The per-gas columns are SI and read back unchanged, which is the rule the
+    NUM_GAS_INSTR block already follows for the same reason.
+    """
+
+    HEADER = "src/src_rp/init_fluxnet_file_rp.f90"
+    WRITER = "src/src_rp/write_out_fluxnet.f90"
+    READER = "src/src_common/read_ex_record.f90"
+    FCC_EMIT = "src/src_fcc/write_out_fluxnet_fcc.f90"
+    FCC_PHYS = "src/src_fcc/fluxes23.f90"
+
+    def test_the_header_declares_the_three_groups(self):
+        source = read(self.HEADER)
+        for tag in ("'T_CELL_'", "'PA_CELL_'", "'W_PA_CELL_'"):
+            self.assertIn(tag, source)
+
+    def test_the_writer_emits_si(self):
+        """No gain/offset: a converted value would be double-converted on read."""
+        source = read(self.WRITER)
+        for expr in (
+            "AddFloatDatumToDataline(Ambient%Tcell_at(gas), csv_row, EddyFlowProj%err_label)",
+            "AddFloatDatumToDataline(Ambient%Pcell_at(gas), csv_row, EddyFlowProj%err_label)",
+        ):
+            self.assertIn(expr, source)
+        self.assertIn("Stats%cov(w, cellPressureSlot(gas))", source)
+
+    def test_the_reader_accounts_for_them(self):
+        source = read(self.READER)
+        self.assertIn("+ 3 * nExGas", source)
+        self.assertIn("lEx%Tcell_at(firstGas:lastCfg)", source)
+        self.assertIn("lEx%Pcell_at(firstGas:lastCfg)", source)
+        self.assertIn("lEx%cov_w_pcell(firstGas:lastCfg)", source)
+
+    def test_fcc_echoes_them(self):
+        source = read(self.FCC_EMIT)
+        for member in ("lEx%Tcell_at(gas)", "lEx%Pcell_at(gas)", "lEx%cov_w_pcell(gas)"):
+            self.assertIn(member, source)
+
+    def test_fcc_physics_uses_the_per_gas_values(self):
+        source = read(self.FCC_PHYS)
+        self.assertIn("lEx%RhoCp * lEx%Tcell_at(gas)", source)
+        self.assertIn("lEx%cov_w_pcell(gas)", source)
+        self.assertIn("lEx%Pcell_at(gas)", source)
+        # The scalars are instrument 1's and in the wrong units for physics.
+        self.assertNotIn("lEx%RhoCp * lEx%Tcell)", source)
+        self.assertNotIn("lEx%cov_w(pi)", source)
+
+    def test_the_slot_helper_is_shared(self):
+        """One definition, because the writer and the physics must agree.
+
+        The writer puts this covariance in the file and the flux code consumes
+        it; a second copy of the slot arithmetic is a silent mismatch.
+        """
+        self.assertIn(
+            "integer function cellPressureSlot(gas) result(slot)",
+            read("src/src_common/define_e2_set.f90"))
+        for path in ("src/src_rp/fluxes23_rp.f90", "src/src_rp/write_out_fluxnet.f90"):
+            self.assertIn("integer, external :: cellPressureSlot", read(path))
+
+
 if __name__ == "__main__":
     unittest.main()

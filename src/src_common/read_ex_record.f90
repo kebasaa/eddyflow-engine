@@ -232,6 +232,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + nExGas                    &  !< Flux0 per gas
         + 2 * (4 + nExGas)          &  !< skipped: fluxes level 1 and 2
         + 2 + nExGas                &  !< Tcell, Pcell, Vcell per gas
+        + 3 * nExGas                &  !< per-gas cell T, cell P, w/cell-P cov
         + (nExGas - 1)              &  !< cell E per gas except h2o
         + nExGas                    &  !< cell Hi per gas
         + 3                         &  !< Burba terms
@@ -272,6 +273,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%Flux0%gas(firstGas:lastCfg), &
         aux(1 : 2 * (4 + n_layout_gas)), & !< Skip fluxes level 1 and 2
         lEx%Tcell, lEx%Pcell, lEx%Vcell(firstGas:lastCfg), &
+        lEx%Tcell_at(firstGas:lastCfg), lEx%Pcell_at(firstGas:lastCfg), &
+        lEx%cov_w_pcell(firstGas:lastCfg), &
         e_gas_buf(1 : max(n_layout_gas - 1, 0)), &
         lEx%Flux0%Hi_gas(firstGas:lastCfg), &
         lEx%Burba%h_bot, lEx%Burba%h_top, lEx%Burba%h_spar, &

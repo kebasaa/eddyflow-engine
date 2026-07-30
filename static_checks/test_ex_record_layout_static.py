@@ -26,8 +26,14 @@ READER = SRC / "src_common" / "read_ex_record.f90"
 #: the layout must still describe the shipped file when the project configures
 #: four gases, which is what makes the byte-identical regression a proof that a
 #: conversion was faithful rather than merely plausible.
+#: `nMainFields` moved from 263 to 275 when three per-gas cell groups were
+#: added - T_CELL_<tag>, PA_CELL_<tag> and W_PA_CELL_<tag>_COV, 3 x 4 fields at
+#: four gases. That is a deliberate widening of the shipped file, not a drift:
+#: the change was purely additive, with 12 new columns and no pre-existing
+#: value moving. The anchor moves with it so the guard keeps meaning "still
+#: describes the file we ship".
 HISTORICAL = {
-    "nMainFields": 263,
+    "nMainFields": 275,
     "nNrexFields": 23,
     "nVmFields": 12,
     "nLgdFields": 38,

@@ -36,6 +36,7 @@
 subroutine Fluxes23_rp()
     use m_rp_global_var
     implicit none
+    integer, external :: cellPressureSlot
     !> local variables
     real(kind = dbl) :: Tp
     real(kind = dbl) :: E_nowpl
@@ -439,17 +440,6 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
     if (.not. E2Col(gas)%present) Flux2%gas(gas) = error
 end subroutine Level2GasFlux
 
-!***************************************************************************
-!> Cell-pressure slot of the analyser that measured `gas`.
-integer function cellPressureSlot(gas) result(slot)
-    implicit none
-    integer, intent(in) :: gas
-
-    slot = pi
-    if (gas < firstGas .or. gas > lastGas) return
-    if (E2Col(gas)%cell_ref < firstCell .or. E2Col(gas)%cell_ref > lastCell) return
-    slot = E2Col(gas)%cell_ref + 3
-end function cellPressureSlot
 
 !***************************************************************************
 !> Humidity terms used to WPL-correct one gas.

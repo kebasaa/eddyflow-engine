@@ -299,6 +299,16 @@ subroutine WriteOutFluxnetFcc(lEx)
     do gas = co2, ts + n_layout_gas
         call AddFloatDatumToDataline(lEx%Vcell(gas), csv_row, EddyFlowProj%err_label)
     end do
+    !> Echoed unchanged: these are already SI, unlike the two scalars above.
+    do gas = co2, ts + n_layout_gas
+        call AddFloatDatumToDataline(lEx%Tcell_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = co2, ts + n_layout_gas
+        call AddFloatDatumToDataline(lEx%Pcell_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = co2, ts + n_layout_gas
+        call AddFloatDatumToDataline(lEx%cov_w_pcell(gas), csv_row, EddyFlowProj%err_label)
+    end do
     do gas = co2, ts + n_layout_gas
         if (gas == h2o) cycle
         call AddFloatDatumToDataline(lEx%Flux0%E_gas(gas), csv_row, EddyFlowProj%err_label)

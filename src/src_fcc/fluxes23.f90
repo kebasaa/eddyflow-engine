@@ -88,30 +88,30 @@ subroutine Fluxes23(lEx)
                         .and. lEx%Vcell(h2o) > 0d0 .and. lEx%Va > 0d0) then
 
                         if (Flux1%Hi_gas(h2o) /= error &
-                            .and. lEx%cov_w(pi) /= error) then
+                            .and. lEx%cov_w_pcell(h2o) /= error) then
                             !> Complete formulation, should actually never be
                             !> used cause conversion to mixing ratio should have
                             !> already happened if everything is available
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
                                 * lEx%Vcell(h2o) / lEx%Va &
                                 + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(h2o) &
-                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell) &
-                                - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) &
-                                * lEx%RHO%w / (lEx%Pcell)
+                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(h2o)) &
+                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(h2o) &
+                                * lEx%RHO%w / (lEx%Pcell_at(h2o))
 
                         elseif (Flux1%Hi_gas(h2o) /= error) then
                             !> Correct only for effect of T
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
                                 * lEx%Vcell(h2o) / lEx%Va &
                                 + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(h2o) &
-                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell)
+                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(h2o))
 
-                        elseif (lEx%cov_w(pi)  /= error) then
+                        elseif (lEx%cov_w_pcell(h2o)  /= error) then
                             !> Correct only for effect of P
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
                                 * lEx%Vcell(h2o) / lEx%Va &
-                                - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) &
-                                * lEx%RHO%w / (lEx%Pcell)
+                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(h2o) &
+                                * lEx%RHO%w / (lEx%Pcell_at(h2o))
                         else
                             !> Can't correct for T and P
                             Flux2%E = Flux1%E * lEx%Vcell(h2o) / lEx%Va
@@ -376,15 +376,21 @@ contains
                 if (Flux3%E_gas(gas) /= error .and. rhow_gas > 0d0) &
                     wpl = wpl + Flux3%E_gas(gas) * mu * sigma_gas / rhow_gas &
                         * lEx%chi(gas) / lEx%Va
-                !> Effect of cell temperature
+                !> Effect of cell temperature.
+                !>
+                !> From this gas's own analyser, and in SI. lEx%Tcell is
+                !> instrument 1's *and* passes through the writer's degC gain
+                !> without the reader inverting it, so this term used to divide
+                !> by a temperature of about 27 instead of about 300.
                 if (Flux3%Hi_gas(gas) /= error .and. lEx%RhoCp > 0d0 &
-                    .and. lEx%Tcell > 0d0) &
+                    .and. lEx%Tcell_at(gas) > 0d0) &
                     wpl = wpl + (1d0 + mu * sigma_gas) * Flux3%Hi_gas(gas) &
-                        / (lEx%RhoCp * lEx%Tcell) * lEx%chi(gas) / lEx%Va
-                !> Effect of cell pressure
-                if (lEx%cov_w(pi) /= error .and. lEx%Pcell > 0d0) &
-                    wpl = wpl - (1d0 + mu * sigma_gas) * lEx%cov_w(pi) &
-                        / (lEx%Pcell) * lEx%chi(gas) / lEx%Va
+                        / (lEx%RhoCp * lEx%Tcell_at(gas)) * lEx%chi(gas) / lEx%Va
+                !> Effect of cell pressure, from this gas's own analyser. Same
+                !> unit trap: lEx%Pcell carries the writer's kPa gain.
+                if (lEx%cov_w_pcell(gas) /= error .and. lEx%Pcell_at(gas) > 0d0) &
+                    wpl = wpl - (1d0 + mu * sigma_gas) * lEx%cov_w_pcell(gas) &
+                        / (lEx%Pcell_at(gas)) * lEx%chi(gas) / lEx%Va
             end if
             Flux2%gas(gas) = wpl
         else

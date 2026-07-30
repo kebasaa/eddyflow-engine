@@ -52,6 +52,7 @@ only after every moved cell has been named. So far:
 |---|---|
 | main record converted (`3511493`) | FLUXNET: exactly one column removed, `NUM_GAS_EXTRA`; every surviving cell byte-identical. `full_output`: 48 VM97 flag cells widened from 9 to 69 characters, each a pure extension of its old value with `'9'` (test not performed) padding |
 | full output per gas | `full_output` **units row only**: 4 whitespace-only cells. Three unit labels and one flux label are `character(32)` and used to be concatenated unpadded, so those fields carried trailing blanks. Every gas now trims. No data cell moved, no column added or removed at four gases |
+| per-gas cell conditions into FCC | FLUXNET row: **12 new columns**, `T_CELL_<tag>`, `PA_CELL_<tag>` and `W_PA_CELL_<tag>_COV` at four gases. Purely additive - every pre-existing column kept its value. `nMainFields` 263 -> 275 |
 
 ## The arithmetic cross-check
 
@@ -133,8 +134,18 @@ cell conditions.
 > record untouched - all four of its gases are on the MIRO, so nothing matches
 > and it stays the byte-identity anchor.
 
-**Still open: FCC.** `src_fcc/fluxes23.f90` reads scalar `lEx%Tcell`/`lEx%Pcell`
-and `lEx%cov_w(pi)` for every gas, so under `fcc_follows` the corrected fluxes
-are still computed with instrument 1's cell conditions. `lEx%Vcell` already
-crosses per gas; what is missing is Tcell/Pcell and the cell-pressure
-covariance, which is a four-file lockstep change on the ex file.
+**FCC: done, and it fixed a unit bug on the way.** Three per-gas groups were
+added to the main record - `T_CELL_<tag>`, `PA_CELL_<tag>`, `W_PA_CELL_<tag>_COV`
+- carried in **SI and read back unchanged**, the rule the `NUM_GAS_INSTR` block
+already follows. On `base_8gas_cell` they read
+
+    MIRO gases     300.382 K   69.9983 Pa   cov 4.577e-4
+    LI-7200 gases  287.827 K   94486.4 Pa   cov 0.576
+
+> The scalars `lEx%Tcell`/`lEx%Pcell` are not only instrument 1's - they pass
+> through the writer's `gain=1d0, offset=-273.15` and `gain=1d-3`, and the
+> reader never inverts them. So FCC's two closed-path cell WPL terms, and the
+> same three terms in the evapotranspiration block, were dividing by a
+> temperature of about 27 instead of 300 and a pressure of 0.07 instead of 70.
+> Latent on any project reporting mixing ratios, which is why it never showed.
+> The per-gas columns replace them at every one of those sites.

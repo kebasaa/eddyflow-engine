@@ -34,6 +34,7 @@
 subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     use m_rp_global_var
     implicit none
+    integer, external :: cellPressureSlot
     !> in/out variables
     type(QCType), intent(in) :: StDiff
     type(QCType), intent(in) :: DtDiff
@@ -395,6 +396,20 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     do gas = co2, ts + nFluxnetLayoutSlots
         call AddFloatDatumToDataline(E2Col(gas)%Va, csv_row, EddyFlowProj%err_label)
         end do
+    !> Cell conditions of the analyser that measured each gas, in SI so the
+    !> reader can take them unchanged. The two scalars above carry the degC
+    !> and kPa gains the reported columns want, which is why they cannot be
+    !> reused here.
+    do gas = co2, ts + nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Ambient%Tcell_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = co2, ts + nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Ambient%Pcell_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = co2, ts + nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Stats%cov(w, cellPressureSlot(gas)), &
+            csv_row, EddyFlowProj%err_label)
+    end do
     !> Evapotranspiration and sensible heat fluxes in the cell of 
     !> closed-paths (for WPL), with timelags of other gases
     !> Water flux inside the cell, for every gas but the water slot itself.

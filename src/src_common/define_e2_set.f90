@@ -467,3 +467,27 @@ integer function ResolveGasRef(gasIdx, ref, wantedVar)
 end function ResolveGasRef
 
 end subroutine DefineE2Set
+
+!***************************************************************************
+!
+! \brief       Cell-pressure slot of the analyser that measured `gas`.
+! \author      Jonathan Muller
+! \note        Offset 3 of that instrument's cell block, matching the layout
+!              ApplyCellDiagRecords writes and AirAndCellParameters reads.
+!              External rather than contained, because the flux code and the
+!              FLUXNET writer must agree on it: the writer puts this
+!              covariance in the file and the flux code consumes it, so a
+!              second copy of the arithmetic is a silent mismatch waiting to
+!              happen. Falls back to instrument 1's `pi`, which is where a
+!              single-analyser project's pressure has always been.
+!***************************************************************************
+integer function cellPressureSlot(gas) result(slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas
+
+    slot = pi
+    if (gas < firstGas .or. gas > lastGas) return
+    if (E2Col(gas)%cell_ref < firstCell .or. E2Col(gas)%cell_ref > lastCell) return
+    slot = E2Col(gas)%cell_ref + 3
+end function cellPressureSlot

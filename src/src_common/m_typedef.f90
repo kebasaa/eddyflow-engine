@@ -1523,9 +1523,20 @@ module m_typedef
         type(InstrumentType) :: gas_instr(GHGNumVar)
         integer :: n_gas_instr
         integer :: gas_instr_slot(GHGNumVar)
+        !> Instrument 1's cell conditions, in the units the FLUXNET row
+        !> declares them in - degC and kPa. Kept for the columns that report
+        !> them; not usable in the physics, which needs K and Pa.
         real(kind = dbl) :: Tcell
         real(kind = dbl) :: Pcell
         real(kind = dbl) :: Vcell(GHGNumVar)
+        !> Cell conditions of the analyser that measured each gas, in SI and
+        !> read back unchanged. The scalars above pass through the writer's
+        !> degC/kPa gains and the reader does not invert them, so FCC's WPL
+        !> was dividing by a cell temperature in degC and a pressure in kPa.
+        real(kind = dbl) :: Tcell_at(GHGNumVar)
+        real(kind = dbl) :: Pcell_at(GHGNumVar)
+        !> Covariance of w with that analyser's own cell pressure.
+        real(kind = dbl) :: cov_w_pcell(GHGNumVar)
         real(kind = dbl) :: Var(E2NumVar)
         real(kind = dbl) :: Cov_w(E2NumVar)
         real(kind = dbl) :: tlag(GHGNumVar)
