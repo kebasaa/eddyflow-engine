@@ -55,7 +55,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
     integer :: gas
 
     !> Initialization
-    ADDCF%of(co2:gas4) = 1d0
+    ADDCF%of(firstGas:lastGas) = 1d0
 
     if (lEx%Flux0%zL /= error) then
         !> normalized wavenumber corresponding to cospectrum peak
@@ -119,7 +119,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
         end do
 
         !> Distances in stream, cross and vertical directions
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (lEx%var_present(gas)) then
                 igas = gas - 3
                 call direction(lEx%instr(igas)%nsep, - lEx%instr(igas)%esep, direc)
@@ -137,7 +137,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
 
         !> correction factors
         if(LocSetup%SA%horst_lens09 == 'full') then
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if (k_mx /= error .and. r_x(gas) /= error) then
                     Ax = dexp(-k_mx * r_x(gas))
                 else
@@ -163,7 +163,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
                     ADDCF%of(gas) = ADDCF%of(gas) * dexp(k_mz(gas) * r_z(gas))
             end do
         elseif(LocSetup%SA%horst_lens09 == 'cross_and_vertical') then
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if (k_my /= error .and. r_y(gas) /= error .and. &
                     k_mz(gas) /= error .and. r_z(gas) /= error) then
                     ADDCF%of(gas) = dexp((k_my * r_y(gas))**crosswind_exp) * dexp(k_mz(gas) * r_z(gas))

@@ -79,7 +79,7 @@ subroutine BPCF_OnlyLowFrequencyCorrection(measuring_height, displ_height, loc_v
     call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, avrg_length, &
         detrending_method, detrending_time_constant, BPTF)
 
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (loc_var_present(gas)) call AnalyticHighPassTransferFunction(nf, size(nf), gas, ac_frequency, avrg_length, &
             detrending_method, detrending_time_constant, BPTF)
     end do

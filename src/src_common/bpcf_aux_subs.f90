@@ -171,6 +171,7 @@ end subroutine SpectralCorrectionFactors
 subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
     use m_common_global_var
     implicit none
+    integer :: gas
     !> Optional input arguments
     type(ExType), optional, intent(in) :: lEx
     character(*), optional, intent(in) :: tf_shape
@@ -183,8 +184,8 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
     real(kind = dbl)  :: C
     real(kind = dbl)  :: lRH
 
-    f_c(co2:gas4) = error
-    f_2(co2:gas4) = error
+    f_c(firstGas:lastGas) = error
+    f_2(firstGas:lastGas) = error
 
     select case (tf_shape)
         case('iir')
@@ -200,9 +201,17 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             !> select relevant tranfer function parameters
             !> according to the month, for CO2, CH4, GAS4
             call char2int(lEx%end_date(6:7), month, 2)
-            if(lEx%var_present(co2))  f_c(co2)  = RegPar(co2,  LocSetup%SA%class(co2,  month))%fc
-            if(lEx%var_present(ch4))  f_c(ch4)  = RegPar(ch4,  LocSetup%SA%class(ch4,  month))%fc
-            if(lEx%var_present(gas4)) f_c(gas4) = RegPar(gas4, LocSetup%SA%class(gas4, month))%fc
+            !> Every configured gas but the water slot, whose cutoff comes
+            !> from the RH class above. Guarded on the class index: a gas the
+            !> spectral assessment never classified has none, and RegPar would
+            !> be indexed out of range rather than merely give a wrong number.
+            do gas = firstGas, lastGas
+                if (gas == h2o) cycle
+                if (.not. lEx%var_present(gas)) cycle
+                if (LocSetup%SA%class(gas, month) < 1 .or. &
+                    LocSetup%SA%class(gas, month) > MaxGasClasses) cycle
+                f_c(gas) = RegPar(gas, LocSetup%SA%class(gas, month))%fc
+            end do
 
         case('sigma')
             !> select relevant tranfer function parameters
@@ -217,9 +226,17 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                 end do
             end if
             call char2int(lEx%end_date(6:7), month, 2)
-            if(lEx%var_present(co2))  f_2(co2)  = RegPar(co2,  LocSetup%SA%class(co2,  month))%f2
-            if(lEx%var_present(ch4))  f_2(ch4)  = RegPar(ch4,  LocSetup%SA%class(ch4,  month))%f2
-            if(lEx%var_present(gas4)) f_2(gas4) = RegPar(gas4, LocSetup%SA%class(gas4,  month))%f2
+            !> Every configured gas but the water slot, whose cutoff comes
+            !> from the RH class above. Guarded on the class index: a gas the
+            !> spectral assessment never classified has none, and RegPar would
+            !> be indexed out of range rather than merely give a wrong number.
+            do gas = firstGas, lastGas
+                if (gas == h2o) cycle
+                if (.not. lEx%var_present(gas)) cycle
+                if (LocSetup%SA%class(gas, month) < 1 .or. &
+                    LocSetup%SA%class(gas, month) > MaxGasClasses) cycle
+                f_2(gas) = RegPar(gas, LocSetup%SA%class(gas, month))%f2
+            end do
     end select
 end subroutine RetrieveLPTFpars
 
@@ -239,6 +256,7 @@ end subroutine RetrieveLPTFpars
 subroutine CorrectionFactorsHorst97(lBPCF, lEx)
     use m_common_global_var
     implicit none
+    integer :: gas
     !> in/out variables
     type(SpectralType), intent(inout) :: lBPCF
     !> Optional input arguments
@@ -263,26 +281,16 @@ subroutine CorrectionFactorsHorst97(lBPCF, lEx)
     end if
     zeta = lEx%instr(sonic)%height - lEx%disp_height
 
-    !> Correction factor for co2
-    if (lEx%var_present(co2)) then
-        t_c = 1d0 / (2d0 * p * f_c(co2))
-        lBPCF%of(w_co2) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
-    end if
-    !> Correction factor for h2o
-    if (lEx%var_present(h2o)) then
-        t_c = 1d0 / (2d0 * p * f_c(h2o))
-        lBPCF%of(w_h2o) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
-    end if
-    !> Correction factor for ch4
-    if (lEx%var_present(ch4)) then
-        t_c = 1d0 / (2d0 * p * f_c(ch4))
-        lBPCF%of(w_ch4) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
-    end if
-    !> Correction factor for gas4
-    if (lEx%var_present(gas4)) then
-        t_c = 1d0 / (2d0 * p * f_c(gas4))
-        lBPCF%of(w_gas4) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
-    end if
+    !> Correction factor per configured gas. f_c must be a real cutoff: an
+    !> unclassified gas leaves it at the error sentinel, and dividing by that
+    !> would produce a plausible-looking factor from a value that means
+    !> "not available".
+    do gas = firstGas, lastGas
+        if (.not. lEx%var_present(gas)) cycle
+        if (f_c(gas) == error .or. f_c(gas) <= 0d0) cycle
+        t_c = 1d0 / (2d0 * p * f_c(gas))
+        lBPCF%of(gas) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
+    end do
 end subroutine CorrectionFactorsHorst97
 
 !***************************************************************************
@@ -300,37 +308,28 @@ end subroutine CorrectionFactorsHorst97
 ! \test
 ! \todo
 !***************************************************************************
-subroutine CorrectionFactorsIbrom07(do_co2, do_h2o, do_ch4, do_gas4, lBPCF, lEx)
+subroutine CorrectionFactorsIbrom07(gas, lBPCF, lEx)
     use m_common_global_var
     implicit none
     !> in/out variables
+    !> One gas slot per call. The four do_co2/do_h2o/do_ch4/do_gas4 logicals
+    !> this replaces could only ever name the historical four, and every caller
+    !> but one already set exactly one of them.
+    integer, intent(in) :: gas
     type(SpectralType), intent(inout) :: lBPCF
     !> Optional input arguments
     type(ExType), optional, intent(in) :: lEx
-    logical, intent(in) :: do_co2
-    logical, intent(in) :: do_h2o
-    logical, intent(in) :: do_ch4
-    logical, intent(in) :: do_gas4
 
+    if (gas < firstGas .or. gas > lastGas) return
+    if (.not. lEx%var_present(gas)) return
+    !> An unclassified gas leaves f_c at the error sentinel; adding that to the
+    !> denominator gives a plausible-looking factor from a missing value.
+    if (f_c(gas) == error) return
 
     if (lEx%Flux0%zL >= 0d0) then
-        if (lEx%var_present(co2) .and. do_co2) &
-            lBPCF%of(w_co2) = StPar(1) * lEx%WS  / (StPar(2) + f_c(co2))  + 1d0
-        if (lEx%var_present(h2o) .and. do_h2o) &
-            lBPCF%of(w_h2o) = StPar(1) * lEx%WS  / (StPar(2) + f_c(h2o))  + 1d0
-        if (lEx%var_present(ch4) .and. do_ch4) &
-            lBPCF%of(w_ch4) = StPar(1) * lEx%WS  / (StPar(2) + f_c(ch4))  + 1d0
-        if (lEx%var_present(gas4) .and. do_gas4) &
-            lBPCF%of(w_gas4) = StPar(1) * lEx%WS / (StPar(2) + f_c(gas4)) + 1d0
+        lBPCF%of(gas) = StPar(1) * lEx%WS / (StPar(2) + f_c(gas)) + 1d0
     else
-        if (lEx%var_present(co2) .and. do_co2) &
-            lBPCF%of(w_co2) = UnPar(1) * lEx%WS  / (UnPar(2) + f_c(co2))  + 1d0
-        if (lEx%var_present(h2o) .and. do_h2o) &
-            lBPCF%of(w_h2o) = UnPar(1) * lEx%WS  / (UnPar(2) + f_c(h2o))  + 1d0
-        if (lEx%var_present(ch4) .and. do_ch4) &
-            lBPCF%of(w_ch4) = UnPar(1) * lEx%WS  / (UnPar(2) + f_c(ch4))  + 1d0
-        if (lEx%var_present(gas4) .and. do_gas4) &
-            lBPCF%of(w_gas4) = UnPar(1) * lEx%WS / (UnPar(2) + f_c(gas4)) + 1d0
+        lBPCF%of(gas) = UnPar(1) * lEx%WS / (UnPar(2) + f_c(gas)) + 1d0
     end if
 end subroutine CorrectionFactorsIbrom07
 

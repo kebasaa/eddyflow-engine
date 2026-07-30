@@ -30,6 +30,7 @@ Program EddyFlowFCC
 
     integer, external :: CreateDir
     integer :: i
+    integer :: gas
     integer :: month
     integer :: nbins
     integer :: open_status
@@ -509,7 +510,14 @@ Program EddyFlowFCC
         !> Create aux variables to pass to BandPassSpectralCorrections
         AuxInstrument = NullInstrument
         AuxInstrument(sonic) = lEx%instr(sonic)
-        AuxInstrument(co2:gas4) = lEx%instr(ico2:igas4)
+        !> Indexed by gas *slot*, not by instrument role. lEx%instr is indexed
+        !> by role (ico2..igas4) and so only ever reaches four gases; past that
+        !> the role index addresses an unrelated instrument. lEx%gas_instr is
+        !> the per-slot view, mirrored from those four after their unit
+        !> conversions, so the historical slots are unchanged.
+        do gas = firstGas, lastGas
+            AuxInstrument(gas) = lEx%gas_instr(gas)
+        end do
         if (.not. allocated(FullFileList)) allocate(FullFileList(1))
 
         !> Bad pass spectral correction factors

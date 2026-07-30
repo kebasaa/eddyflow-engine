@@ -37,6 +37,8 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         detrending_time_constant, detrending_method, nfull, nfreq, LocFileList, lEx, LocSetup)
     use m_common_global_var
     implicit none
+    logical :: low_flux
+    integer :: gas
     !> in/out variables
     logical, intent(in) :: loc_var_present(GHGNumVar)
     type(InstrumentType), intent(in) :: LocInstr(GHGNumVar)
@@ -87,8 +89,8 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     !> Set cospectra to be retrieved
     wanted(w_u:w_w) = .false.
     wanted(w_ts) = .true.
-!    wanted(w_co2: w_gas4) = loc_var_present(co2:w_gas4)
-    wanted(w_co2: w_gas4) = .false.
+!    wanted(firstGas:lastGas) = loc_var_present(co2:w_gas4)
+    wanted(firstGas:lastGas) = .false.
 
     !> Read full co-spectrum of H from file
     if (indx /= nint(error)) &
@@ -197,25 +199,22 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         !> approach of Ibrom et al. 2007 (or Fratini et al. 2012, Eq. 4) in the following cases:
         !> 1) Fluxes too low (either sensible heat or concerned gas)
         !> 2) Unrealistic correction factors calculated from direct method
-        if ((loc_var_present(co2) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%gas(co2)) < LocSetup%SA%min_un_gas(co2)) &
-            .or. BPCF%of(co2) <= min_bpcf_f12(co2) .or. BPCF%of(co2) >= max_bpcf_f12(co2)) &
-            call CorrectionFactorsIbrom07(.true., .false., .false., .false., BPCF, lEx)
-
-        if ((loc_var_present(h2o) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE)  &
-            .or. BPCF%of(h2o) <= min_bpcf_f12(h2o) .or. BPCF%of(h2o) >= max_bpcf_f12(h2o)) &
-            call CorrectionFactorsIbrom07(.false., .true., .false., .false., BPCF, lEx)
-
-        if ((loc_var_present(ch4) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%gas(ch4)) < LocSetup%SA%min_un_gas(ch4)) &
-            .or. BPCF%of(ch4) <= min_bpcf_f12(ch4) .or. BPCF%of(ch4) >= max_bpcf_f12(ch4)) &
-            call CorrectionFactorsIbrom07(.false., .false., .true., .false., BPCF, lEx)
-
-        if ((loc_var_present(gas4) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%gas(gas4)) < LocSetup%SA%min_un_gas(gas4)) &
-            .or. BPCF%of(gas4) <= min_bpcf_f12(gas4) .or. BPCF%of(gas4) >= max_bpcf_f12(gas4)) &
-            call CorrectionFactorsIbrom07(.false., .false., .false., .true., BPCF, lEx)
+        !> One test per configured gas. Water keeps its own thresholds - the
+        !> latent-heat flux and its minimum, not a gas flux - which is the same
+        !> carve-out water has everywhere else in this work.
+        do gas = firstGas, lastGas
+            if (.not. loc_var_present(gas)) cycle
+            if (gas == h2o) then
+                low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                    .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE
+            else
+                low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                    .or. dabs(lEx%Flux0%gas(gas)) < LocSetup%SA%min_un_gas(gas)
+            end if
+            if (low_flux .or. BPCF%of(gas) <= min_bpcf_f12(gas) &
+                .or. BPCF%of(gas) >= max_bpcf_f12(gas)) &
+                call CorrectionFactorsIbrom07(gas, BPCF, lEx)
+        end do
 
         if(allocated(nf)) deallocate(nf)
         if(allocated(BPTF)) deallocate(BPTF)

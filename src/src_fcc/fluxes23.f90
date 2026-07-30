@@ -277,7 +277,16 @@ subroutine Fluxes23(lEx)
         if (msl == h2o) cycle
         if (lEx%gas_instr(msl)%path_type == 'closed' &
             .and. Flux2%gas(msl) /= error) then
-            Flux3%gas(msl) = Flux2%gas(msl) * BPCF%of(msl)
+            !> No correction factor means the corrected flux is
+            !> unavailable, not that it equals the uncorrected one - and
+            !> certainly not Flux2 times the error sentinel, which is what the
+            !> unguarded multiply produced for any gas the spectral chain
+            !> could not reach.
+            if (BPCF%of(msl) /= error) then
+                Flux3%gas(msl) = Flux2%gas(msl) * BPCF%of(msl)
+            else
+                Flux3%gas(msl) = error
+            end if
         else
             Flux3%gas(msl) = Flux2%gas(msl)
         end if

@@ -80,7 +80,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
         detrending_time_constant, detrending_method, printout)
 
     !> Spectral correction factors for all gases
-    BPCF%of(w_co2: w_gas4)  = 1d0
+    BPCF%of(firstGas:lastGas)  = 1d0
 
     !> Relevant only to FCC - Before entering correction method,
     !> check if the selected method can be implemented in the current situation
@@ -100,7 +100,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                     call ExceptionHandler(69)
                 end if
                 if (actual_hf_method /= 'moncrieff_97') then
-                    do gas = co2, gas4
+                    do gas = firstGas, lastGas
                         if(gas /= h2o .and. lEx%var_present(gas)) then
                             if(RegPar(gas,  LocSetup%SA%class(gas, month))%fc == error) then
                                 actual_hf_method = 'moncrieff_97'
@@ -142,8 +142,8 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
 
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
-                    where (ADDCF%of(co2:gas4) < dabs(error))
-                        BPCF%of(co2:gas4) = BPCF%of(co2:gas4) * ADDCF%of(co2:gas4)
+                    where (ADDCF%of(firstGas:lastGas) < dabs(error))
+                        BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * ADDCF%of(firstGas:lastGas)
                     end where
                 end if
             end if
@@ -156,8 +156,8 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                     detrending_time_constant, detrending_method, lEx, LocSetup)
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
-                    where (ADDCF%of(co2:gas4) < dabs(error))
-                        BPCF%of(co2:gas4) = BPCF%of(co2:gas4) * ADDCF%of(co2:gas4)
+                    where (ADDCF%of(firstGas:lastGas) < dabs(error))
+                        BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * ADDCF%of(firstGas:lastGas)
                     end where
                 end if
             end if
@@ -171,8 +171,8 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
 
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
-                    where (ADDCF%of(co2:gas4) < dabs(error))
-                        BPCF%of(co2:gas4) = BPCF%of(co2:gas4) * ADDCF%of(co2:gas4)
+                    where (ADDCF%of(firstGas:lastGas) < dabs(error))
+                        BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * ADDCF%of(firstGas:lastGas)
                     end where
                 end if
             end if
@@ -196,7 +196,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
             EddyFlowProj%sonic_output_rate =&
                 DefaultSonicOutputRate(LocInstr(u)%model(1:len_trim(LocInstr(u)%model)-2))
         tmpBPCF = BPCF
-        BPCF%of(w_u: w_gas4) = 1d0
+        BPCF%of(u:lastGas) = 1d0
 
         call BPCF_LI7550AnalogFilters(measuring_height, displ_height, &
             loc_var_present, wind_speed, zL, ac_frequency, &
@@ -207,10 +207,12 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
 
     if (.not. loc_var_present(w_u)) BPCF%of(w_u) = error
     if (.not. loc_var_present(w_ts)) BPCF%of(w_ts) = error
-    if (.not. loc_var_present(w_co2)) BPCF%of(w_co2) = error
-    if (.not. loc_var_present(w_h2o)) BPCF%of(w_h2o) = error
-    if (.not. loc_var_present(w_ch4)) BPCF%of(w_ch4) = error
-    if (.not. loc_var_present(w_gas4)) BPCF%of(w_gas4) = error
+    !> One test per gas slot, not four. An absent gas reports "no correction
+    !> factor" rather than the 1d0 the array was initialised to, which would
+    !> read as "corrected, by nothing".
+    do gas = firstGas, lastGas
+        if (.not. loc_var_present(gas)) BPCF%of(gas) = error
+    end do
 end subroutine BandPassSpectralCorrections
 
 function DefaultSonicOutputRate(model)
