@@ -85,19 +85,15 @@ subroutine BPCF_OnlyLowFrequencyCorrection(measuring_height, displ_height, loc_v
     end do
 
     !> combined TF (only high-pass analytic here)
-    if (loc_var_present(co2))  call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-    if (loc_var_present(h2o))  call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-    if (loc_var_present(ch4))  call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-    if (loc_var_present(gas4)) call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+    end do
 
     !> calculate correction factors
-    if(loc_var_present(co2)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_co2),  co2,  nf, nfreq, BPTF)
-    if(loc_var_present(h2o)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_h2o),  h2o,  nf, nfreq, BPTF)
-    if(loc_var_present(ch4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_ch4),  ch4,  nf, nfreq, BPTF)
-    if(loc_var_present(gas4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_gas4), gas4, nf, nfreq, BPTF)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call SpectralCorrectionFactors(Cospectrum%of(gas), gas, nf, nfreq, BPTF)
+    end do
     deallocate(nf, kf, BPTF, Cospectrum)
 end subroutine BPCF_OnlyLowFrequencyCorrection

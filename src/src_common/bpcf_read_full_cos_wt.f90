@@ -52,15 +52,23 @@ subroutine ImportFullCospectra(CospFile, cospectra, nfreq, wanted, skip)
     real(kind = dbl), allocatable :: aux(:)
     character(ShortInstringLen) :: dataline
     character(32) :: var
-    character(11) :: covlabs(GHGNumVar)
+    !> Wide enough for a record-derived species tag. The compile-time table
+    !> this replaces named only the first eight slots and left the rest blank,
+    !> so no column ever matched for a gas past the fourth - it was imported
+    !> with no cospectrum, and every in-situ correction then declined to
+    !> correct it. Built from the same helper the writer uses.
+    character(72) :: covlabs(GHGNumVar)
+    character(64) :: vartags(GHGNumVar)
     real(kind = dbl) :: cov(GHGNumVar)
-    !> Only the four legacy gas slots have a compile-time column label; the
-    !> remaining gas slots take their species from the project file, so they
-    !> stay blank here and simply never match a column header.
-    data covlabs(1:8) / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
-                        'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
-    data covlabs(9:GHGNumVar) / 60*'' /
+    include '../src_common/interfaces_1.inc'
 
+
+    call SpectralVarTags(vartags)
+    covlabs = ''
+    do j = 1, GHGNumVar
+        if (len_trim(vartags(j)) > 0) &
+            covlabs(j) = 'cov(w_' // trim(vartags(j)) // ')'
+    end do
 
     skip = .false.
 
@@ -179,13 +187,6 @@ subroutine FullCospectraLength(Filepath, N)
     integer :: io_status
     integer :: i
     character(ShortInstringLen) :: dataline
-    character(11) :: covlabs(GHGNumVar)
-    !> Only the four legacy gas slots have a compile-time column label; the
-    !> remaining gas slots take their species from the project file, so they
-    !> stay blank here and simply never match a column header.
-    data covlabs(1:8) / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
-                        'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
-    data covlabs(9:GHGNumVar) / 60*'' /
 
 
     open(udf, file = Filepath, iostat = io_status)

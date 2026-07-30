@@ -45,6 +45,7 @@ subroutine CospectraMoncrieff97(nf, kf, Cospectrum, zL, N)
     type(SpectralType), intent(out)  :: Cospectrum(N)
     ! local variables
     integer :: i = 0
+    integer :: gas
     real(kind = dbl) :: Ac
     real(kind = dbl) :: Au
     real(kind = dbl) :: Bc
@@ -80,9 +81,16 @@ subroutine CospectraMoncrieff97(nf, kf, Cospectrum, zL, N)
             end if
         end do
     end if
-    !> Set cospectral model for temperature, h2o, ch4 and gas4 equal to co2
-    Cospectrum(:)%of(w_ts)  = Cospectrum(:)%of(w_co2)
-    Cospectrum(:)%of(w_h2o) = Cospectrum(:)%of(w_co2)
-    Cospectrum(:)%of(w_ch4) = Cospectrum(:)%of(w_co2)
-    Cospectrum(:)%of(w_gas4) = Cospectrum(:)%of(w_co2)
+    !> Set the cospectral model for temperature and every gas equal to co2.
+    !>
+    !> This used to name h2o, ch4 and gas4 one by one, so a gas past the fourth
+    !> kept the error value the array is initialised to. That made its
+    !> cospectrum "all error", which is how SpectralCorrectionFactors decides a
+    !> correction factor is unavailable - so every analytic method silently
+    !> declined to correct those gases, without the cospectra file being
+    !> involved at all.
+    Cospectrum(:)%of(w_ts) = Cospectrum(:)%of(w_co2)
+    do gas = firstGas, lastGas
+        Cospectrum(:)%of(gas) = Cospectrum(:)%of(w_co2)
+    end do
 end subroutine CospectraMoncrieff97

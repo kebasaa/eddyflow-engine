@@ -52,6 +52,14 @@ interface
         character(*), intent(out) :: tags(GHGNumVar)
     end subroutine FullOutputGasTags
 
+    !> (Co)spectra column names per slot. Shared by the writer and by the
+    !> reader that imports the file back, which must agree exactly.
+    subroutine SpectralVarTags(tags)
+        use m_common_global_var
+        implicit none
+        character(*), intent(out) :: tags(GHGNumVar)
+    end subroutine SpectralVarTags
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &

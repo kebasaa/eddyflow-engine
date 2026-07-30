@@ -181,6 +181,51 @@ end subroutine FullOutputGasTags
 
 !***************************************************************************
 !
+! \brief       Variable names used in the (co)spectra files, per slot.
+! \author      Jonathan Muller
+! \note        The spectra and full-cospectra files name their columns
+!              `var(<tag>)` and `cov(w_<tag>)`, and the writer and the reader
+!              that imports them back for the in-situ corrections must agree
+!              exactly - a name that does not match is simply not imported, and
+!              the gas silently gets no correction factor. One helper, so they
+!              cannot drift.
+!
+!              **The historical eight keep their literal names**, `gas4`
+!              included, even though slot 8 usually holds a named species.
+!              Those strings are the shipped file format: renaming slot 8 to
+!              its species would change every existing full-cospectra file and
+!              break any reader keyed to the old name. Slots past the fourth
+!              gas had no name at all - the writer emitted `cov(w_)` and the
+!              reader looked for a blank - so those take the record's tag.
+!***************************************************************************
+subroutine SpectralVarTags(tags)
+    use m_common_global_var
+    implicit none
+    character(*), intent(out) :: tags(GHGNumVar)
+    character(64) :: gas_tags(GHGNumVar)
+    integer :: gas
+
+    tags = ''
+    tags(u)    = 'u'
+    tags(v)    = 'v'
+    tags(w)    = 'w'
+    tags(ts)   = 'ts'
+    tags(co2)  = 'co2'
+    tags(h2o)  = 'h2o'
+    tags(ch4)  = 'ch4'
+    tags(gas4) = 'gas4'
+
+    call FullOutputGasTags(gas_tags)
+    do gas = gas4 + 1, lastGas
+        !> FullOutputGasTags returns a stem with a trailing underscore, since
+        !> the full output concatenates it directly onto a quantity name.
+        if (len_trim(gas_tags(gas)) > 1) &
+            tags(gas) = gas_tags(gas)(1:len_trim(gas_tags(gas)) - 1)
+    end do
+end subroutine SpectralVarTags
+
+!***************************************************************************
+!
 ! \brief       Full-output scales and labels for every configured gas slot.
 ! \author      Jonathan Muller
 ! \note        One call fills the header and the row writer alike, so the

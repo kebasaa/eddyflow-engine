@@ -150,43 +150,43 @@ already follows. On `base_8gas_cell` they read
 > Latent on any project reporting mixing ratios, which is why it never showed.
 > The per-gas columns replace them at every one of those sites.
 
-## Spectral corrections: the bpcf family converted, the cospectra chain not
+## Spectral corrections reach every gas
 
-The whole `bpcf_*` family now runs `firstGas..lastGas`: the range expressions,
-the loop bounds, and the unrolled co2/h2o/ch4/gas4 quartets in Horst 97,
-Ibrom 07 and Moncrieff 97. `CorrectionFactorsIbrom07` takes a gas slot instead
-of four `do_*` logicals - every caller but one already set exactly one of them.
-`base_rec` is byte-identical throughout, so the conversion is faithful.
+Every gas now gets its own correction factor, computed from its own analyser:
 
-**Two real defects fixed on the way:**
+    MIRO      CO2 / H2O / COS  1.04798     N2O  1.04877
+    LI-7200   CO2_2 / H2O_2    1.04320
 
-- **Level 3 multiplied by the error sentinel.** `Flux3%gas = Flux2%gas *
-  BPCF%of(msl)` had no guard, so a gas the spectral chain could not reach got
-  `Flux2 x -9999` - an 8-gas run reported `FN2O = 2922.57` from a flux of
-  -0.29. Now an unavailable factor yields `error`, in both RP and FCC.
-- **FCC passed instruments by role, not by slot.** `AuxInstrument(co2:gas4) =
-  lEx%instr(ico2:igas4)` indexes by instrument *role*, which reaches four gases
-  and past that addresses an unrelated instrument. It now uses `lEx%gas_instr`,
-  the per-slot view.
+Four independent gates had to come out, and **each one alone was enough** to
+leave `BPCF%of` at the error sentinel - so the symptom, `SCF = -9999`, looked
+identical however many were fixed. That is why converting the `bpcf_*` maths
+first changed nothing visible.
 
-**What this does not yet do.** Gases past the fourth still report
-`SCF = -9999`, and with the guard above their corrected flux is `-9999` rather
-than the silently-uncorrected value they used to carry. That is an improvement
-in honesty, not yet in coverage, and it is a visible change for anyone running
-more than four gases.
+| gate | effect |
+|---|---|
+| `SetTransferFunctionsToValue` ran `u, gas4` | `BPTF` is `intent(out)`, so a skipped slot was left **undefined**; `SpectralCorrectionFactors` then found no usable band-pass value. This one made it fail under *every* method, analytic ones included - nothing to do with the cospectra file |
+| `AnalyticLowPassTransferFunction`'s `case (co2, h2o, ch4, gas4)` | a gas past the fourth matched no arm and got no low-pass function |
+| `CospectraMoncrieff97` copied the model to three named slots | slots 9+ kept the error value, so their cospectrum was "all error" |
+| `RetrieveSensorParams` ran `co2, gas4` | path lengths and response time stayed at the sentinel. A response time of -9999 collapses the dynamic-response term: the LI-7200's gases came out at **5497** instead of 1.043 - plausible-looking only if nobody looks |
 
-The remaining gate is the **cospectra file**, not the correction maths.
-`bpcf_read_full_cos_wt.f90` matches columns against a compile-time label table:
+Plus the file itself: the reader matched columns against a compile-time table
+whose slots 9+ were blank, and the writer's own name table was `character(4)`
+and filled for eight slots. Both now come from `SpectralVarTags`, one helper,
+so a name the two spell differently cannot arise. **The historical eight keep
+their literal names, `gas4` included** - those strings are the shipped file
+format, and renaming slot 8 to its species would change every existing
+full-cospectra file.
 
-    data covlabs(1:8) / 'cov(w_u)', ... 'cov(w_ch4)', 'cov(w_gas4)' /
-    data covlabs(9:GHGNumVar) / 60*'' /
+> A gas only gets an in-situ correction if the project asks for its cospectrum.
+> `base_8gas` therefore sets `gas_N_out_full_cosp_w=1` for all eight; without
+> it the column is not written and there is nothing to import.
 
-Slots 9+ are blank and so never match a header, so no cospectrum is imported
-for them and the in-situ methods have nothing to fit. The fix is the same rule
-the FLUXNET header already follows - derive the labels from the gas record -
-and it has to be done in lockstep with the writer in `spectral_analysis.f90`,
-whose binning is still `u:gas4` (`BinnedSpectrum(i)%of(u:gas4)`,
-`BinnedOgive(i)%of(u:gas4)`), and with the FCC assessment chain that consumes
-them (`normalize_mean_spectra_cospectra.f90`, `fit_tf_models.f90`,
-`fit_cospectral_models.f90`, `read_spectral_assessment_file.f90` and the
-spectral-assessment file's own writer/reader pair).
+**Still four-gas bounded, and not needed for the above:** the FCC spectral
+*assessment* chain - `normalize_mean_spectra_cospectra.f90`,
+`fit_tf_models.f90`, `fit_cospectral_models.f90`,
+`read_spectral_assessment_file.f90` and the assessment file's own writer/reader
+pair. That chain fits `RegPar` and `SA%class`, which the fully in-situ methods
+consult; with them absent, `CorrectionFactorsIbrom07` and the Fratini fallback
+skip a gas rather than invent a cutoff frequency, and the analytic path
+supplies the factor instead. Widening it would let gases 5+ use a *fitted*
+transfer function rather than an analytic one.

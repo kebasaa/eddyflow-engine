@@ -153,3 +153,69 @@ class CellConditionsCrossIntoFcc(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SpectralCorrectionsReachEveryGas(unittest.TestCase):
+    """Four independent gates kept gases 5+ from getting a correction factor.
+
+    Each one alone was enough to leave `BPCF%of` at the error sentinel, so the
+    symptom - `SCF = -9999` - looked the same however many were fixed. They are
+    pinned together because that is how they have to be removed.
+    """
+
+    def test_transfer_functions_are_initialised_for_every_variable(self):
+        """The one that made it fail under *every* method.
+
+        BPTF is intent(out); a slot SetTransferFunctionsToValue skips is left
+        undefined, and SpectralCorrectionFactors then finds no usable band-pass
+        value. Nothing to do with the cospectra file.
+        """
+        source = read("src/src_common/bpcf_aux_subs.f90")
+        self.assertIn("do var = u, lastGas", source)
+        self.assertNotIn("do var = u, gas4", source)
+
+    def test_the_analytic_transfer_function_covers_every_gas(self):
+        source = read("src/src_common/bpcf_analytic_transfer_functions.f90")
+        self.assertIn("case (firstGas:lastGas)", source)
+        self.assertNotIn("case (co2, h2o, ch4, gas4)", source)
+
+    def test_the_cospectral_model_covers_every_gas(self):
+        """The analytic cospectrum was copied to three named slots."""
+        source = read("src/src_common/bpcf_cospectral_models.f90")
+        self.assertIn("do gas = firstGas, lastGas", source)
+        self.assertNotIn("Cospectrum(:)%of(w_gas4) = Cospectrum(:)%of(w_co2)", source)
+
+    def test_sensor_parameters_are_retrieved_for_every_gas(self):
+        """Path lengths and response time drive the transfer functions.
+
+        A slot left at the error sentinel gives a response time of -9999, the
+        dynamic-response term collapses, and the factor comes out around 5500
+        instead of about 1.05 - plausible-looking only if nobody looks.
+        """
+        source = read("src/src_rp/retrieve_sensor_params.f90")
+        self.assertIn("do gas = firstGas, lastGas", source)
+        self.assertNotIn("do gas = co2, gas4", source)
+
+    def test_the_cospectra_file_names_every_gas(self):
+        """Writer and reader must spell the column the same way.
+
+        A name they disagree on is simply not imported, and the gas silently
+        gets no correction factor.
+        """
+        helper = read("src/src_common/gas4_output_units.f90")
+        self.assertIn("subroutine SpectralVarTags(tags)", helper)
+        # The historical eight are the shipped file format and must not move.
+        for name in ("'u'", "'v'", "'w'", "'ts'", "'co2'", "'h2o'", "'ch4'", "'gas4'"):
+            self.assertIn("= " + name, helper)
+        for path in ("src/src_rp/spectral_analysis.f90",
+                     "src/src_common/bpcf_read_full_cos_wt.f90"):
+            self.assertIn("call SpectralVarTags(", read(path))
+        # The reader's compile-time table is gone.
+        reader = read("src/src_common/bpcf_read_full_cos_wt.f90")
+        self.assertNotIn("data covlabs(1:8)", reader)
+        self.assertIn("covlabs(j) = 'cov(w_' // trim(vartags(j)) // ')'", reader)
+
+    def test_level3_does_not_multiply_by_the_sentinel(self):
+        for path in ("src/src_rp/fluxes23_rp.f90", "src/src_fcc/fluxes23.f90"):
+            source = read(path)
+            self.assertIn("if (BPCF%of(msl) /= error) then", source)

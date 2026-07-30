@@ -99,7 +99,13 @@ subroutine RetrieveSensorParams()
     end select
 
     !> gas analyzer parameters
-    do gas = co2, gas4
+    !>
+    !> Every configured gas, not the first four. These are the path lengths and
+    !> response time the analytic transfer functions are built from; a slot the
+    !> loop skipped kept the error sentinel, and a response time of -9999 makes
+    !> the dynamic-response term collapse - an 8-gas run reported a correction
+    !> factor of 5497 for a LI-7200 gas that should read about 1.05.
+    do gas = firstGas, lastGas
         if(E2Col(gas)%present) then
             select case (E2Col(gas)%Instr%model(1:len_trim(E2Col(gas)%Instr%model) - 2))
                 case('li7500')

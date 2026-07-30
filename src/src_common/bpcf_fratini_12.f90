@@ -113,10 +113,10 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         call ExperimentalLPTF('iir', nf, nfreq, BPTF)
 
         !> Combined TF (actually only low-pass insitu)
-        if (loc_var_present(co2))  call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-        if (loc_var_present(h2o))  call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-        if (loc_var_present(ch4))  call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-        if (loc_var_present(gas4)) call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) &
+                call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+        end do
 
         !> Calculate TF to apply to cospectrum of H before using it as a model:
         !> it's applied as H_theor(k) = H_meas(k) / hBPTF%BP(k)
@@ -176,14 +176,10 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         end where
 
         !> Calculate correction factors after Fratini et al. (2012, AFM)
-        if(loc_var_present(co2)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts),  co2,  nf, nfreq, BPTF)
-        if(loc_var_present(h2o)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts),  h2o,  nf, nfreq, BPTF)
-        if(loc_var_present(ch4)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts),  ch4,  nf, nfreq, BPTF)
-        if(loc_var_present(gas4)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts), gas4,  nf, nfreq, BPTF)
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) &
+                call SpectralCorrectionFactors(fullCospectra%of(gas), gas, nf, nfreq, BPTF)
+        end do
 
         !> Calculate correction factors after revision of Laubach and Fratini, unpublished
 !        if(loc_var_present(co2)) &

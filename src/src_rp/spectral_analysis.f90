@@ -702,20 +702,19 @@ subroutine WriteOutFullCoSpectra(String, nf, Spectrum, Cospectrum, &
     character(LongOutstringLen) :: dataline2
     character(LongOutstringLen) :: dataline3
     character(DatumLen) :: datum = ''
-    character(4) :: e2sg(GHGNumVar)
+    !> Wide enough for a record-derived species tag; the historical eight are
+    !> three or four characters, but a disambiguated one such as `cos_2` is not.
+    character(64) :: e2sg(GHGNumVar)
     include '../src_common/interfaces.inc'
 
     write(*, '(a)', advance = 'no') '   Writing requested full (co)spectra on output file..'
 
-    !> Convenient strings
-    e2sg(u)   = 'u'
-    e2sg(v)   = 'v'
-    e2sg(w)   = 'w'
-    e2sg(ts)  = 'ts'
-    e2sg(co2) = 'co2'
-    e2sg(h2o) = 'h2o'
-    e2sg(ch4) = 'ch4'
-    e2sg(gas4) = 'gas4'
+    !> Column names per slot. Shared with the reader that imports this file
+    !> back for the in-situ corrections: a name the two spell differently is
+    !> simply not imported, and that gas silently gets no correction factor.
+    !> Slots 1-8 keep their literal names, `gas4` included - those strings are
+    !> the shipped file format.
+    call SpectralVarTags(e2sg)
 
     !> Open output file for binned co-spectra
     CospectraPath = CospectraDir(1:len_trim(CospectraDir)) // String &

@@ -39,6 +39,7 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
     wind_speed, zL, ac_frequency, printout)
     use m_common_global_var
     implicit none
+    integer :: gas
     !> in/out variables
     real(kind = dbl), intent(in) :: measuring_height
     real(kind = dbl), intent(in) :: displ_height
@@ -109,26 +110,18 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
     !> calculate correction factors
     call BandPassTransferFunction(BPTF, w,  u,  w_u, nfreq)
     call BandPassTransferFunction(BPTF, w, ts, w_ts, nfreq)
-    if (loc_var_present(co2)) &
-        call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-    if (loc_var_present(h2o))  &
-        call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-    if (loc_var_present(ch4))  &
-        call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-    if (loc_var_present(gas4)) &
-        call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+    end do
 
     !> calculate correction factors
     call SpectralCorrectionFactors(Cospectrum%of(w_u),  u,  nf, nfreq, BPTF)
     call SpectralCorrectionFactors(Cospectrum%of(w_ts), ts, nf, nfreq, BPTF)
-    if(loc_var_present(co2)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_co2), co2, nf, nfreq, BPTF)
-    if(loc_var_present(h2o)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_h2o), h2o, nf, nfreq, BPTF)
-    if(loc_var_present(ch4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_ch4), ch4, nf, nfreq, BPTF)
-    if(loc_var_present(gas4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_gas4), gas4, nf, nfreq, BPTF)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call SpectralCorrectionFactors(Cospectrum%of(gas), gas, nf, nfreq, BPTF)
+    end do
 
     if (printout) write(*,'(a)') ' Done.'
 end subroutine BPCF_LI7550AnalogFilters

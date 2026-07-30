@@ -54,7 +54,12 @@ subroutine SetTransferFunctionsToValue(BPTF, nfreq, val)
     !> local variables
     integer :: var
 
-    do var = u, gas4
+    !> Every variable, not the first eight. `BPTF` is `intent(out)`, so a slot
+    !> this loop skips is left undefined - and SpectralCorrectionFactors then
+    !> finds no usable band-pass value and reports no correction factor. That
+    !> is why a gas past the fourth got none under *every* method, analytic
+    !> ones included, with nothing to do with the cospectra file.
+    do var = u, lastGas
         BPTF(1:nfreq)%HP(var)  = val
         BPTF(1:nfreq)%EXP(var) = val
         BPTF(1:nfreq)%LP(var)  = LPTFType(val, val, val, val, val, val, &
@@ -347,6 +352,7 @@ end subroutine CorrectionFactorsIbrom07
 subroutine ExperimentalLPTF(shape, nf, N, BPTF)
     use m_common_global_var
     implicit none
+    integer :: gas
     !> in/out variables
     integer, intent(in) :: N
     real(kind = dbl), intent(in) :: nf(N)
@@ -355,48 +361,22 @@ subroutine ExperimentalLPTF(shape, nf, N, BPTF)
 
     !> experimental transfer function, Fratini et al. 2012, Eq. 1 and 3
     if (shape == 'iir') then
-        if (f_c(co2) /= error) then
-            BPTF(1:N)%EXP(w_co2) = 1d0 / (1d0 + (nf(1:N) / f_c(co2))**2)
-        else
-            BPTF(:)%EXP(w_co2) = 1d0
-        end if
-        if (f_c(h2o) /= error) then
-            BPTF(1:N)%EXP(w_h2o) = 1d0 / (1d0 + (nf(1:N) / f_c(h2o))**2)
-        else
-            BPTF(:)%EXP(w_h2o) = 1d0
-        end if
-        if (f_c(ch4) /= error) then
-            BPTF(1:N)%EXP(w_ch4) = 1d0 / (1d0 + (nf(1:N) / f_c(ch4))**2)
-        else
-            BPTF(:)%EXP(w_ch4) = 1d0
-        end if
-        if (f_c(gas4) /= error) then
-            BPTF(1:N)%EXP(w_gas4) = 1d0 / (1d0 + (nf(1:N) / f_c(gas4))**2)
-        else
-            BPTF(:)%EXP(w_gas4) = 1d0
-        end if
+        do gas = firstGas, lastGas
+            if (f_c(gas) /= error) then
+                BPTF(1:N)%EXP(gas) = 1d0 / (1d0 + (nf(1:N) / f_c(gas))**2)
+            else
+                BPTF(:)%EXP(gas) = 1d0
+            end if
+        end do
 
     !> experimental transfer function, see Aubinet et al. (2001, AFM)
     elseif (shape == 'sigma') then
-        if (f_2(co2) /= error) then
-            BPTF(1:N)%EXP(w_co2) = dexp(-0.346574d0 * (nf(1:N) / f_2(co2))**2)
-        else
-            BPTF(:)%EXP(w_co2) = 1d0
-        end if
-        if (f_2(h2o) /= error) then
-            BPTF(1:N)%EXP(w_h2o) = dexp(-0.346574d0 * (nf(1:N) / f_2(h2o))**2)
-        else
-            BPTF(:)%EXP(w_h2o) = 1d0
-        end if
-        if (f_2(ch4) /= error) then
-            BPTF(1:N)%EXP(w_ch4) = dexp(-0.346574d0 * (nf(1:N) / f_2(ch4))**2)
-        else
-            BPTF(:)%EXP(w_ch4) = 1d0
-        end if
-        if (f_2(gas4) /= error) then
-            BPTF(1:N)%EXP(w_gas4) = dexp(-0.346574d0 * (nf(1:N) / f_2(gas4))**2)
-        else
-            BPTF(:)%EXP(w_gas4) = 1d0
-        end if
+        do gas = firstGas, lastGas
+            if (f_2(gas) /= error) then
+                BPTF(1:N)%EXP(gas) = dexp(-0.346574d0 * (nf(1:N) / f_2(gas))**2)
+            else
+                BPTF(:)%EXP(gas) = 1d0
+            end if
+        end do
     end if
 end subroutine ExperimentalLPTF

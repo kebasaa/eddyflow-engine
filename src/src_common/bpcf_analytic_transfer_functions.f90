@@ -83,7 +83,12 @@ subroutine AnalyticLowPassTransferFunction(nf, N, var, LocInstr, loc_var_present
                     BPTF(1:N)%LP(var)%wsonic = 1d0
                 end if
 
-            case (co2, h2o, ch4, gas4)
+            !> Every gas slot, not the historical four. A gas past the
+            !> fourth used to match no arm at all, so it got no low-pass
+            !> transfer function - and SpectralCorrectionFactors then
+            !> reported no correction factor for it, whichever method
+            !> was selected.
+            case (firstGas:lastGas)
                 irga_freq = 1d0 / LocInstr(var)%tau
                 fp_irga(1:N) = nf(1:N) * dabs(LocInstr(var)%vpath_length / wind_speed)
                 fs_ver(1:N)  = nf(1:N) * dabs(LocInstr(var)%vsep / wind_speed)
