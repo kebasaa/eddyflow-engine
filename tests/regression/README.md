@@ -26,11 +26,11 @@ that before trusting a difference.
 |---|---|
 | `base.eddyflow` | pre-5.0.0 project, no gas records. Must abort with `Fatal error(99)`. |
 | `base_rec.eddyflow` | the same selection as records: 4 gases, CH4 configured *without* a column, cell_t/int_p and the 7200 diagnostic as records. **Output must stay byte-identical** to the legacy reference - that is the proof a conversion is faithful. |
-| `base_5gas.eddyflow` | adds N2O on column 9. Header and rows must agree; no duplicate column names. |
+| `base_5gas.eddyflow` | the minimal case past the historical four - one gas in slot 9 and nothing else changed, so a failure here is about crossing the boundary rather than about scale. Adds N2O on column 9. Header and rows must agree; no duplicate column names. |
 | `base_dup.eddyflow` | the same species in slots 4 and 5, to check the `_2` disambiguation. |
-| `base_8gas.eddyflow` | eight gases across **two** analysers: the MIRO's four plus the LI-7200's CO2 and H2O, and a duplicate N2O. Exercises the capacity target (64 gases, 8 per instrument) and, because the two analysers measure the same species independently, catches slot cross-wiring: `CO2` and `CO2_2` must hold *different* real values, not the same one twice. |
+| `base_n_gas.eddyflow` | currently eight gases across **two** analysers - the count is a property of the fixture, not of the test: the MIRO's four plus the LI-7200's CO2 and H2O, and a duplicate N2O. Exercises the capacity target (64 gases, with no per-instrument cap) and, because the two analysers measure the same species independently, catches slot cross-wiring: `CO2` and `CO2_2` must hold *different* real values, not the same one twice. |
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |
-| `base_8gas_ru.eddyflow` | `base_8gas` with random uncertainty on. The only fixture that exercises `random_error_handle.f90` and `integral_turbulence_scale.f90` at all - every other one leaves `RUsetup%meth` at `none`, so those files run their `case('none')` arm and nothing else. Expect a real `RANDUNC_HF` for every gas that has a column, and `-9999` for one that does not. |
+| `base_n_gas_ru.eddyflow` | `base_n_gas` with random uncertainty on. The only fixture that exercises `random_error_handle.f90` and `integral_turbulence_scale.f90` at all - every other one leaves `RUsetup%meth` at `none`, so those files run their `case('none')` arm and nothing else. Expect a real `RANDUNC_HF` for every gas that has a column, and `-9999` for one that does not. |
 
 > **The `ru_*` keys are in the wrong section, and this fixture works around it.**
 > `ru_meth`, `ru_its_meth` and `ru_tlag_max` are declared in `EPPrjNTags`, and
@@ -39,7 +39,7 @@ that before trusting a difference.
 > into `[RawProcess_RandomUncertainty_Settings]`, where nothing looks for them
 > - so `RUsetup%meth` falls to its `case default` of `'none'` for every project
 > the interface has saved, and random uncertainty has never actually run.
-> `base_8gas_ru` repeats the keys under `[Project]` to get past it. Fixing the
+> `base_n_gas_ru` repeats the keys under `[Project]` to get past it. Fixing the
 > mismatch properly is a separate change: it turns the feature on for every
 > project that asked for it, which moves output that has been `-9999` until now.
 
@@ -88,7 +88,7 @@ formula, untested for want of a dataset.
 
 ## Per-instrument cell T/P: found, fixed, and what it exposed
 
-`base_8gas_cell` is `base_8gas` with cell records on **both** analysers - the
+`base_n_gas_cell` is `base_n_gas` with cell records on **both** analysers - the
 MIRO's cell_t/int_p on columns 11/12 and the LI-7200's on 23/24.
 
 **The bug.** `FilterDatasetForDiagnostics` selected the columns an analyser's
@@ -107,7 +107,7 @@ correctly), the end of `DefineE2Set` (`cell_ref` resolves to 73 correctly), and
 either side of the diagnostic filter (17474 values in, 0 out).
 
 **The fix** names quantities rather than a slot span: every gas slot, one cell
-pressure per instrument, and ambient T/P. With it, `base_8gas_cell` gives
+pressure per instrument, and ambient T/P. With it, `base_n_gas_cell` gives
 
     MV_AIR_CELL   MIRO gases 35.6776    LI-7200 gases 0.0253263
 
@@ -129,7 +129,7 @@ cell conditions.
 > diagnostic column will now lose its gases past the fourth, where before they
 > were silently kept.** Worth a release note.
 >
-> `base_8gas`, `base_8gas_ru` and `base_8gas_cell` therefore declare no
+> `base_n_gas`, `base_n_gas_ru` and `base_n_gas_cell` therefore declare no
 > diagnostic record; with one, their gas checks go inert. `base_rec` keeps its
 > record untouched - all four of its gases are on the MIRO, so nothing matches
 > and it stays the byte-identity anchor.
@@ -137,7 +137,7 @@ cell conditions.
 **FCC: done, and it fixed a unit bug on the way.** Three per-gas groups were
 added to the main record - `T_CELL_<tag>`, `PA_CELL_<tag>`, `W_PA_CELL_<tag>_COV`
 - carried in **SI and read back unchanged**, the rule the `NUM_GAS_INSTR` block
-already follows. On `base_8gas_cell` they read
+already follows. On `base_n_gas_cell` they read
 
     MIRO gases     300.382 K   69.9983 Pa   cov 4.577e-4
     LI-7200 gases  287.827 K   94486.4 Pa   cov 0.576
@@ -178,7 +178,7 @@ format, and renaming slot 8 to its species would change every existing
 full-cospectra file.
 
 > A gas only gets an in-situ correction if the project asks for its cospectrum.
-> `base_8gas` therefore sets `gas_N_out_full_cosp_w=1` for all eight; without
+> `base_n_gas` therefore sets `gas_N_out_full_cosp_w=1` for all eight; without
 > it the column is not written and there is nothing to import.
 
 **Still four-gas bounded, and not needed for the above:** the FCC spectral
