@@ -25,21 +25,16 @@ def normalize_custom_labels(raw_labels, ncustom):
     return labels
 
 
+#> Width of the CEC descriptor tail, mirroring nCecFields in read_ex_record.f90.
+CEC_TAIL_WIDTH = 11
+
+
 def split_cec_tail(fields):
-    if len(fields) == 11:
+    if len(fields) == CEC_TAIL_WIDTH:
         return [], fields
-    if len(fields) > 11:
-        return fields[:-11], fields[-11:]
+    if len(fields) > CEC_TAIL_WIDTH:
+        return fields[:-CEC_TAIL_WIDTH], fields[-CEC_TAIL_WIDTH:]
     return fields, []
-
-
-def normalize_cec_fraction(value, default):
-    value = float(value)
-    if 0 <= value <= 1:
-        return value
-    if 1 < value <= 100:
-        return value / 100
-    return default
 
 
 class FccFullHeaderStaticTests(unittest.TestCase):
@@ -246,12 +241,17 @@ class FccFullHeaderStaticTests(unittest.TestCase):
     def test_read_ex_record_parses_cec_tail_without_biomet_fields(self):
         source = read("src/src_common/read_ex_record.f90")
 
-        self.assertIn("if (remaining_fields == 11) then", source)
+        # The width is spelled nCecFields, not a bare 11. Assert the name at the
+        # use sites and the number once at its definition, so that renaming the
+        # constant fails here but adding a CEC field only has to be updated in
+        # one place.
+        self.assertIn(f"nCecFields   = {CEC_TAIL_WIDTH}", source)
+        self.assertIn("if (remaining_fields == nCecFields) then", source)
         self.assertIn("cec_line = dataline(1:len_trim(dataline))", source)
         self.assertIn("dataline = ''", source)
-        self.assertIn("elseif (remaining_fields > 11) then", source)
+        self.assertIn("elseif (remaining_fields > nCecFields) then", source)
         self.assertIn("if (len_trim(cec_line) > 0) then", source)
-        self.assertIn("strCharIndex(dataline, ',', remaining_fields - 11)", source)
+        self.assertIn("strCharIndex(dataline, ',', remaining_fields - nCecFields)", source)
 
         cec_fields = [
             "0.5", "-0.25", "17900", "1400", "1000", "0.078", "0.056",
@@ -269,20 +269,31 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertEqual(biomet, cec_fields[:-1])
         self.assertEqual(cec, [])
 
-    def test_ch_lae_cec_project_defaults_normalize_percent_style_values(self):
-        values = {}
-        for line in read("data/CH-LAE_COS.eddyflow").splitlines():
-            if "=" not in line or line.lstrip().startswith(";"):
-                continue
-            key, value = line.split("=", 1)
-            values[key.strip()] = value.strip()
+    def test_cec_percent_style_project_values_are_normalized_in_fortran(self):
+        # Replaces test_ch_lae_cec_project_defaults_normalize_percent_style_values,
+        # which read data/CH-LAE_COS.eddyflow (deleted in 84fbb7a) and asserted
+        # against a Python re-implementation of the rule - so it never exercised
+        # the engine even while the fixture existed. This asserts the Fortran.
+        source = read("src/src_common/write_processing_project_variables.f90")
 
-        self.assertEqual(values["cec_meth"], "1")
-        self.assertEqual(normalize_cec_fraction(values["cec_min_o1_o2"], 0.20), 0.20)
-        self.assertEqual(normalize_cec_fraction(values["cec_min_octant"], 0.05), 0.05)
-        self.assertEqual(normalize_cec_fraction(values["cec_min_valid"], 0.90), 0.90)
-        self.assertEqual(float(values["cec_signal_strength"]), 70)
-        self.assertEqual(int(float(values["cec_max_gap_fill"])), 4)
+        # A project may write these either as a fraction or as a percent; the
+        # normalizer is what makes 20.0 and 0.20 mean the same thing. Each tag
+        # has to keep its own default, or a missing setting silently adopts
+        # another setting's threshold.
+        for tag, normalizer, default in (
+            (27, "NormalizeCecFraction", "0.20d0"),
+            (28, "NormalizeCecFraction", "0.05d0"),
+            (29, "NormalizeCecFraction", "0.90d0"),
+            (30, "NormalizeCecSignalStrength", "70d0"),
+            (31, "NormalizeCecMaxGapFill", "4"),
+            (32, "NormalizeCecStationarity", "25d0"),
+        ):
+            self.assertIn(f"if (EPPrjNTagFound({tag}))", source)
+            self.assertIn(f"{normalizer}( &\n            EPPrjNTags({tag})%value, {default})", source)
+
+        # The percent branch is the point of the rule: a value in (1, 100] is a
+        # percentage and must be divided, not taken as a fraction.
+        self.assertIn("value / 100d0", source)
 
     def test_ch_lae_full_output_without_biomet_still_has_cec_columns(self):
         sample = ROOT / "data" / "eddyflow_CH-LAE_COS_full_output_2026-07-02T093117_adv.csv"
@@ -325,8 +336,16 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         parser_source = read("src/src_common/write_processing_project_variables.f90")
         cec_source = read("src/src_common/m_cec.f90")
 
-        self.assertIn("integer, parameter :: Npn = 32", tags_source)
+        # Do not assert Npn here. It is the length of the whole numerical
+        # project-tag table, so it grows whenever any unrelated setting is
+        # added - it went 32 -> 403 when the per-gas tags landed - and it was
+        # only ever a proxy for "this tag is registered", valid while
+        # cec_max_stationarity happened to be the last entry. Assert the tag.
         self.assertIn("EPPrjNTags(32)%Label / 'cec_max_stationarity'", tags_source)
+        # The table must still be long enough to hold it.
+        npn = re.search(r"integer, parameter :: Npn = (\d+)", tags_source)
+        self.assertIsNotNone(npn, "Npn not found in m_common_global_var.f90")
+        self.assertGreaterEqual(int(npn.group(1)), 32)
         self.assertIn("EddyFlowProj%cec%max_stationarity = 25d0", parser_source)
         self.assertIn("NormalizeCecStationarity", parser_source)
         self.assertIn("EPPrjNTagFound(32)", parser_source)

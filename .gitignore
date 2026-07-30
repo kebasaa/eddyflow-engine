@@ -44,17 +44,13 @@ src/src_rp/deprecated
 /static_checks
 !/static_checks/
 /static_checks/*
-!/static_checks/test_irga_path_classification_static.py
-!/static_checks/test_fcc_full_header_static.py
-!/static_checks/test_pwb_timelag_static.py
-!/static_checks/test_spectral_assessment_diagnostics_static.py
-!/static_checks/test_ini_tag_collisions_static.py
-# These two pin the positional ex-file layout. They were untracked, which is
-# how they went stale against two landed conversions - and were pytest-style,
-# which is how `unittest discover` reported zero from them - without anything
-# reporting either.
-!/static_checks/test_ex_record_layout_static.py
-!/static_checks/test_fluxnet_header_guard_static.py
+# Track every check, by pattern rather than by name. This used to be a list of
+# individual files, and the list kept falling behind: four checks were left
+# untracked, and two of those had gone stale against a landed conversion without
+# anything reporting it. `test_*_static.py` is also what `unittest discover`
+# runs, so a file that is collected is now necessarily a file that is tracked.
+!/static_checks/test_*_static.py
+/static_checks/__pycache__
 /data/__pycache__
 /data_test
 

@@ -79,7 +79,17 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertIn("case ('pwb')", handler)
         self.assertIn("call PwbDetectGas", handler)
         self.assertIn("call CovMax", handler)
-        self.assertIn("lPwbResult%fallback_used = .true.", handler)
+        # fallback_used was not renamed, but its carrier was: lPwbResult is now
+        # only the Pass-1 scratch copy, and the bookkeeping writes PWBResult(j).
+        self.assertIn("PWBResult(j)%fallback_used = .true.", handler)
+
+        # The single failure path became three labelled outcomes across the
+        # multi-pass logic. Pin the labels, not just the boolean - a pass that
+        # sets the flag without a source is what fallback_source was added for.
+        self.assertIn("PWBResult(j)%fallback_used = .false.", handler)
+        for label in ("'instrument_shared'", "'S3_carryforward'",
+                      "'maxcov_default'", "'native'"):
+            self.assertIn(f"fallback_source = {label}", handler)
         self.assertNotIn("call GetPwbFinalResult", handler)
         self.assertNotIn("pwb_prepass_loop", main)
         self.assertNotIn("PreparePwbBatch", main)
