@@ -30,6 +30,18 @@ that before trusting a difference.
 | `base_dup.eddyflow` | the same species in slots 4 and 5, to check the `_2` disambiguation. |
 | `base_8gas.eddyflow` | eight gases across **two** analysers: the MIRO's four plus the LI-7200's CO2 and H2O, and a duplicate N2O. Exercises the capacity target (64 gases, 8 per instrument) and, because the two analysers measure the same species independently, catches slot cross-wiring: `CO2` and `CO2_2` must hold *different* real values, not the same one twice. |
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |
+| `base_8gas_ru.eddyflow` | `base_8gas` with random uncertainty on. The only fixture that exercises `random_error_handle.f90` and `integral_turbulence_scale.f90` at all - every other one leaves `RUsetup%meth` at `none`, so those files run their `case('none')` arm and nothing else. Expect a real `RANDUNC_HF` for every gas that has a column, and `-9999` for one that does not. |
+
+> **The `ru_*` keys are in the wrong section, and this fixture works around it.**
+> `ru_meth`, `ru_its_meth` and `ru_tlag_max` are declared in `EPPrjNTags`, and
+> `ParseIniFile` is called with the section prefix `'Project'`, so those tags
+> are only ever matched inside `[Project*]`. The interface writes all three
+> into `[RawProcess_RandomUncertainty_Settings]`, where nothing looks for them
+> - so `RUsetup%meth` falls to its `case default` of `'none'` for every project
+> the interface has saved, and random uncertainty has never actually run.
+> `base_8gas_ru` repeats the keys under `[Project]` to get past it. Fixing the
+> mismatch properly is a separate change: it turns the feature on for every
+> project that asked for it, which moves output that has been `-9999` until now.
 
 ## Re-baselinings, and what each one accounted for
 

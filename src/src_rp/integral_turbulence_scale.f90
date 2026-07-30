@@ -56,7 +56,7 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
     dt = 1d0 / Metadata%ac_freq
 
     !> Cross-correlation (w and all variables) functions
-    do var = u, gas4
+    do var = u, lastGas
         if (E2Col(var)%present) then
             do lag = 0, LagMax
                 w_cross_corr(lag, var) = LaggedCovarianceNoError(Set(:, w), Set(:, var), size(Set, 1), lag, error)
@@ -66,7 +66,7 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
 
     !> Normalize cross-correlation function
     w_cross_corr_failed = .false.
-    do var = u, gas4
+    do var = u, lastGas
         if (var /= w .and. E2Col(var)%present) then
             if (w_cross_corr(0, var) /= 0d0 .and. w_cross_corr(0, var) /= error) then
                 w_cross_corr(0:lagMax, var) = w_cross_corr(0:lagMax, var) / w_cross_corr(0, var)
@@ -81,7 +81,7 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
     select case(RUsetup%its_meth)
         case('cross_0')
             !> First crossing of y = 0
-            do var = u, gas4
+            do var = u, lastGas
                 if (var /= w .and. E2Col(var)%present) then
                     if (.not. w_cross_corr_failed(var)) then
                         do lag = 0, LagMax
@@ -98,7 +98,7 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
             enddo
         case('cross_e')
             !> First crossing of y = 1/e
-            do var = u, gas4
+            do var = u, lastGas
                 if (var /= w .and. E2Col(var)%present) then
                     if (.not. w_cross_corr_failed(var)) then
                         do lag = 0, LagMax
@@ -114,7 +114,7 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
             end do
         case('full_integral')
             !> Integrate over the full range of variation of time-lag
-            do var = u, gas4
+            do var = u, lastGas
                 if (var /= w .and. E2Col(var)%present) then
                     if (.not. w_cross_corr_failed(var)) then
                         do lag = 0, LagMax
@@ -141,8 +141,8 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
     end if
     !> ITS shouldn't be higher than the integral of "1" over the whole time-lag period.
     !> Use a factor of 2 to account for anomalies.
-    where (ITS(u:gas4) > 2. * RUsetup%tlag_max .or. ITS(u:gas4) == error)
-       ITS(u:gas4) = ITS_bill
+    where (ITS(u:lastGas) > 2. * RUsetup%tlag_max .or. ITS(u:lastGas) == error)
+       ITS(u:lastGas) = ITS_bill
     end where
     write(*, '(a)') ' Done.'
 end subroutine IntegralTurbulenceScale
