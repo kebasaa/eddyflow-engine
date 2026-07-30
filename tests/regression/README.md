@@ -223,3 +223,18 @@ one would orphan every cached lag.
 > `GasIndexFromLabel`, so the donor would read back as slot 0 and the
 > instrument-sharing rule would drop it. Both are 32 now, and the compiler's
 > truncation warning is what caught it.
+
+> ### The widening broke the very thing it was meant to extend, and the 8-gas run caught it
+>
+> `SetTimelags`' `tlag_opt` branch reads `toPasGas`, the table filled from the
+> time-lag optimisation file - which names the historical four. Widening the
+> loop made gases 5+ take an **empty** entry, replacing the metadata's declared
+> window with `[0, 0]`; every lag was then detected as zero and every flux past
+> the fourth gas moved. That is precisely the "consulted at its zero default"
+> failure recorded all over this document, reproduced by my own change.
+>
+> It is guarded now - the optimiser window is used only where it exists - and
+> the guard is pinned by a check. Worth stating plainly: `base_rec` stayed
+> **byte-identical through the whole episode**, because the four-gas path was
+> never touched. Only the 8-gas fixture showed it. A widening gated solely on
+> the byte-identity test would have shipped.

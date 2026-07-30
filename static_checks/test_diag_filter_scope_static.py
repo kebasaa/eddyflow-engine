@@ -151,9 +151,6 @@ class CellConditionsCrossIntoFcc(unittest.TestCase):
             self.assertIn("integer, external :: cellPressureSlot", read(path))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SpectralCorrectionsReachEveryGas(unittest.TestCase):
     """Four independent gates kept gases 5+ from getting a correction factor.
@@ -219,3 +216,41 @@ class SpectralCorrectionsReachEveryGas(unittest.TestCase):
         for path in ("src/src_rp/fluxes23_rp.f90", "src/src_fcc/fluxes23.f90"):
             source = read(path)
             self.assertIn("if (BPCF%of(msl) /= error) then", source)
+
+
+class TimelagWindowsSurviveWidening(unittest.TestCase):
+    """Widening SetTimelags needed a was-this-configured guard.
+
+    Its tlag_opt branch reads toPasGas, filled from the time-lag optimisation
+    file, which names the historical four. Taking an empty entry replaced the
+    metadata's declared window with [0, 0], and every lag was then detected as
+    zero - the exact "consulted at its zero default" failure this effort keeps
+    hitting, reproduced by my own widening and caught by the 8-gas run.
+    """
+
+    def test_the_optimiser_window_is_only_used_when_it_exists(self):
+        source = read("src/src_rp/set_timelags.f90")
+        self.assertIn("do gas = firstGas, lastGas", source)
+        self.assertIn("if (toPasGas(gas)%max > toPasGas(gas)%min) then", source)
+
+    def test_the_pwb_label_round_trip_covers_every_gas(self):
+        """GasLabel and GasIndexFromLabel are inverses, via the cache file."""
+        source = read("src/src_rp/pwb_timelag_handle.f90")
+        self.assertIn("do gas = gas4 + 1, lastGas", source)
+        self.assertIn("if (gas < firstGas .or. gas > lastGas) return", source)
+        self.assertNotIn("if (gas < co2 .or. gas > gas4) return", source)
+
+    def test_the_label_is_wide_enough_to_round_trip(self):
+        """character(8) truncates a record-derived tag.
+
+        A truncated label does not match in GasIndexFromLabel, so the donor
+        reads back as slot 0 and the instrument-sharing rule drops it.
+        """
+        self.assertIn("character(32) function GasLabel(gas)",
+                      read("src/src_rp/pwb_timelag_handle.f90"))
+        self.assertIn("character(32) :: donor_gas",
+                      read("src/src_common/m_typedef.f90"))
+
+
+if __name__ == "__main__":
+    unittest.main()

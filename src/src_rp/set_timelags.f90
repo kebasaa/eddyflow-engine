@@ -58,10 +58,18 @@ subroutine SetTimelags()
         do gas = firstGas, lastGas
             if (E2Col(gas)%present) then
                 if (gas /= h2o) then
-                    !> Passive gases
-                    E2Col(gas)%def_tl = toPasGas(gas)%def
-                    E2Col(gas)%min_tl = toPasGas(gas)%min
-                    E2Col(gas)%max_tl = toPasGas(gas)%max
+                    !> Passive gases.
+                    !>
+                    !> Only where the optimiser actually has a window for this
+                    !> gas. Its table is filled from the time-lag optimisation
+                    !> file, which names the historical four; taking an empty
+                    !> entry would replace the metadata's declared window with
+                    !> [0, 0], and every lag would then be detected as zero.
+                    if (toPasGas(gas)%max > toPasGas(gas)%min) then
+                        E2Col(gas)%def_tl = toPasGas(gas)%def
+                        E2Col(gas)%min_tl = toPasGas(gas)%min
+                        E2Col(gas)%max_tl = toPasGas(gas)%max
+                    end if
                 else
                     !> For water vapor, if requested adjust time-lag to current RH
                     !> either taken from meteo or estimated locally from raw data
