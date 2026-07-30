@@ -247,6 +247,37 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
                 "must cover every configured gas",
             )
 
+    def test_a_gas_without_limits_is_not_tested_against_zero(self):
+        """Absent limits mean "not performed", not "everything is invalid".
+
+        Only the four historical slots take their limits from fixed project
+        keys; past those they come from the per-gas records, and a project that
+        names a gas without them leaves the pair at 0/0. Testing against that
+        rejects every value - and because this routine filters on the same
+        pass, it replaced the gas's entire series with the error code. The gas
+        then reached the flux code empty and EliminateCorruptedVariables
+        dropped it, so a fifth gas silently produced no concentrations or
+        fluxes at all while still reporting screening flags.
+
+        Widening the loop to every slot is what exposed this; the four-gas
+        regression cannot see it, because four gases always have limits.
+        """
+        source = read("src/src_rp/test_absolute_limits.f90")
+        body = source[source.index("do i = firstGas, lastGas") :]
+        guard = "if (al%gas_max(i) <= al%gas_min(i)) then"
+        self.assertIn(
+            guard,
+            body,
+            "a gas whose limits were never configured is tested against 0/0, "
+            "which wipes its whole time series",
+        )
+        # The guard has to precede the counting, or the damage is already done.
+        self.assertLess(
+            body.index(guard),
+            body.index("Essentials%al_s(i) = count("),
+            "the unconfigured-limits guard must run before the test itself",
+        )
+
     def test_water_is_singled_out_by_species_not_by_slot_number(self):
         """The two values that differ between gases both belong to water.
 
@@ -261,6 +292,94 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
         self.assertIn("if (i == h2o) then", body)
         self.assertIn("dens_scale = StdVair", body)
         self.assertIn("dens_scale = StdVair * 1d3", body)
+
+
+class FluxnetGasScalesAreBySpecies(unittest.TestCase):
+    """No column scale may be chosen by which slot a gas occupies.
+
+    The FLUXNET row carried a hard-coded x1000 applied only when the slot was
+    ch4 or gas4. That names a position, not a species, so the same gas was
+    reported in nmol mol-1 from slot 7 and in umol mol-1 from slot 9 - and a
+    project with CO2 in slot four had it multiplied by a thousand.
+    """
+
+    WRITERS = (
+        "src/src_rp/write_out_fluxnet.f90",
+        "src/src_fcc/write_out_fluxnet_fcc.f90",
+    )
+
+    def test_no_gain_is_chosen_by_slot(self):
+        for path in self.WRITERS:
+            with self.subTest(writer=path):
+                source = read(path)
+                for line_no, line in enumerate(source.splitlines(), 1):
+                    if "gain=" not in line:
+                        continue
+                    self.assertNotRegex(
+                        line,
+                        r"gas\s*==\s*(ch4|gas4)|gas\s*>=\s*ch4",
+                        "line %d picks a scale from the slot" % line_no,
+                    )
+                # The instrument-geometry gains (cm, mm, l/min) are unit
+                # conversions of metadata, not of gas quantities, and stay.
+                gas_gains = [
+                    l for l in source.splitlines()
+                    if "gain=1d3" in l or "gain=1d6" in l
+                ]
+                self.assertTrue(
+                    all("Instr%" in l or "gas_instr" in l for l in gas_gains),
+                    "a literal per-gas gain is back: %s" % gas_gains,
+                )
+
+    def test_the_scale_comes_from_the_species_function(self):
+        for path in self.WRITERS:
+            with self.subTest(writer=path):
+                source = read(path)
+                self.assertIn("gain=FluxnetGasScale(", source)
+                self.assertIn("gain=FluxnetGasAdvScale(", source)
+
+    def test_the_reader_inverts_with_the_same_function(self):
+        """A writer and an inverse derived separately drift silently.
+
+        The inverse was a literal 1d-3 on two slots. If the writer's factor
+        ever stops being 1000 for those slots - which is exactly what making
+        it per-species does - a literal inverse un-scales by a number that was
+        never applied, and nothing reports it.
+        """
+        source = read("src/src_common/read_ex_record.f90")
+        block = source[source.index("!> Units adjustments") :]
+        block = block[: block.index("!> Variances were actually read as")]
+        # Every quantity the writer scales must be un-scaled here. Requiring
+        # merely one use would pass with three of the four left as literals.
+        self.assertEqual(
+            block.count("/ FluxnetGasScale(gas)"),
+            4,
+            "the inverse must cover all four scaled quantities - Flux0, "
+            "rand_uncer, r and chi - each through the same function",
+        )
+        for slot in ("ch4", "gas4"):
+            # Built by concatenation: '%r' in the Fortran text is a Python
+            # conversion specifier if this goes through % formatting.
+            self.assertNotIn(
+                "lEx%r(" + slot + ") * 1d-3",
+                block,
+                "the inverse is a literal again; it must come from the same "
+                "function the writer uses",
+            )
+
+    def test_the_species_rule_matches_the_fluxnet_bases(self):
+        """CO2 umol, H2O mmol, everything else nmol - and nothing by slot."""
+        source = read("src/src_common/gas4_output_units.f90")
+        body = source[source.index("function FluxnetGasScale") :]
+        body = body[: body.index("end function FluxnetGasScale")]
+        self.assertIn("EddyFlowProj%gas(rec)%var", body)
+        self.assertIn("case ('CO2', 'H2O')", body)
+        for slot in ("ch4", "gas4", "co2 ", "h2o "):
+            self.assertNotIn(
+                "gas_slot == %s" % slot.strip(),
+                body,
+                "the scale is being chosen by slot again",
+            )
 
 
 class TrailingBlocksArePerConfiguredGas(unittest.TestCase):

@@ -36,6 +36,19 @@ interface
         character(*), intent(out) :: mixr_label
         character(*), intent(out) :: dens_label
     end subroutine Gas4FullOutputUnits
+
+    !> FLUXNET column scales, per species rather than per slot.
+    real(kind = dbl) function FluxnetGasScale(gas_slot)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+    end function FluxnetGasScale
+
+    real(kind = dbl) function FluxnetGasAdvScale(gas_slot)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+    end function FluxnetGasAdvScale
 end interface
 
 interface

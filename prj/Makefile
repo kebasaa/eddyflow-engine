@@ -667,6 +667,11 @@ tapering.o: \
 define_all_var_set.o: \
 	define_all_var_set.f90 \
 	m_common_global_var.o
+# Had no rule at all, so once the object existed make never rebuilt it and an
+# edit to the source was silently linked against the previous compile.
+gas4_output_units.o: \
+	gas4_output_units.f90 \
+	m_common_global_var.o
 fluxes23_rp.o: \
 	fluxes23_rp.f90 \
 	m_rp_global_var.o

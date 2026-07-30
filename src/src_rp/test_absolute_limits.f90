@@ -121,6 +121,22 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             hflags(i) = 9
             cycle
         end if
+        !> A gas whose limits were never configured cannot be tested.
+        !>
+        !> Only the four historical slots get limits from the fixed project
+        !> keys; past those they come from the per-gas records, and a project
+        !> that names a gas without them leaves the pair at 0/0. Testing
+        !> against that rejects *every* value, and because filtering runs on
+        !> the same pass it replaces the whole series with the error code -
+        !> so the gas reaches the flux code with no data at all and is then
+        !> dropped by EliminateCorruptedVariables. Absent limits mean the test
+        !> was not performed, exactly as for an absent gas; they do not mean
+        !> the data is out of range.
+        if (al%gas_max(i) <= al%gas_min(i)) then
+            Essentials%al_s(i) = ierror
+            hflags(i) = 9
+            cycle
+        end if
         if (i == h2o) then
             dens_scale = StdVair
             rough_max = 80d0

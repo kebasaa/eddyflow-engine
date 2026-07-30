@@ -57,3 +57,6 @@ src/src_rp/deprecated
 !/static_checks/test_fluxnet_header_guard_static.py
 /data/__pycache__
 /data_test
+
+# gfortran's fallback output; see the note in the GUI repo's .gitignore.
+fort.*

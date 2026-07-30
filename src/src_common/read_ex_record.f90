@@ -843,6 +843,9 @@ subroutine CompleteEssentials(lEx)
     integer :: igas
     integer :: gas
     integer :: var
+    !> The inverse of WriteOutFluxnet's per-species column scale. This
+    !> subroutine has no interfaces include of its own, unlike ReadExRecord.
+    real(kind = dbl), external :: FluxnetGasScale
 
     if (lEx%fname == 'not_enough_data') then
         lEx%not_enough_data = .True.
@@ -859,11 +862,22 @@ subroutine CompleteEssentials(lEx)
         if (lEx%Flux0%gas(gas) /= error) lEx%var_present(gas) = .true.
     end do
 
-    !> Units adjustments
-    if (lEx%Flux0%gas(ch4) /= error) lEx%Flux0%gas(ch4) = lEx%Flux0%gas(ch4) * 1d-3
-    if (lEx%Flux0%gas(gas4) /= error) lEx%Flux0%gas(gas4) = lEx%Flux0%gas(gas4) * 1d-3
-    if (lEx%rand_uncer(ch4) /= error) lEx%rand_uncer(ch4) = lEx%rand_uncer(ch4) * 1d-3
-    if (lEx%rand_uncer(gas4) /= error) lEx%rand_uncer(gas4) = lEx%rand_uncer(gas4) * 1d-3
+    !> Units adjustments.
+    !>
+    !> The gas quantities are the exact inverse of what WriteOutFluxnet
+    !> applied, so they must come from the same function. This was a literal
+    !> 1d-3 on the ch4 and gas4 slots, which is only the right inverse while
+    !> those slots hold trace gases: a project with CO2 in slot four was
+    !> divided by a thousand it had never been multiplied by. CO2 and H2O
+    !> scale by 1, so covering every slot changes nothing for them.
+    do gas = co2, gas4
+        if (lEx%Flux0%gas(gas) /= error) &
+            lEx%Flux0%gas(gas) = lEx%Flux0%gas(gas) / FluxnetGasScale(gas)
+        if (lEx%rand_uncer(gas) /= error) &
+            lEx%rand_uncer(gas) = lEx%rand_uncer(gas) / FluxnetGasScale(gas)
+        if (lEx%r(gas) /= error) lEx%r(gas) = lEx%r(gas) / FluxnetGasScale(gas)
+        if (lEx%chi(gas) /= error) lEx%chi(gas) = lEx%chi(gas) / FluxnetGasScale(gas)
+    end do
     if (lEx%Ts /= error) lEx%Ts = lEx%Ts + 273.15d0
     if (lEx%Ta /= error) lEx%Ta = lEx%Ta + 273.15d0
     if (lEx%Tdew /= error) lEx%Tdew = lEx%Tdew + 273.15d0
@@ -872,10 +886,6 @@ subroutine CompleteEssentials(lEx)
     if (lEx%e /= error) lEx%e = lEx%e * 1d2
     if (lEx%es /= error) lEx%es = lEx%es * 1d2
     if (lEx%Pa /= error) lEx%VPD = lEx%VPD * 1d2
-    if (lEx%r(ch4) /= error) lEx%r(ch4) = lEx%r(ch4) * 1d-3
-    if (lEx%chi(ch4) /= error) lEx%chi(ch4) = lEx%chi(ch4) * 1d-3
-    if (lEx%r(gas4) /= error) lEx%r(gas4) = lEx%r(gas4) * 1d-3
-    if (lEx%chi(gas4) /= error) lEx%chi(gas4) = lEx%chi(gas4) * 1d-3
     if (lEx%stats%median(ts) /= error) lEx%stats%median(ts) = lEx%stats%median(ts) + 273.15d0
     if (lEx%stats%Q1(ts) /= error) lEx%stats%Q1(ts) = lEx%stats%Q1(ts) + 273.15d0
     if (lEx%stats%Q3(ts) /= error) lEx%stats%Q3(ts) = lEx%stats%Q3(ts) + 273.15d0
