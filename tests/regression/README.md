@@ -190,3 +190,36 @@ consult; with them absent, `CorrectionFactorsIbrom07` and the Fratini fallback
 skip a gas rather than invent a cutoff frequency, and the analytic path
 supplies the factor instead. Widening it would let gases 5+ use a *fitted*
 transfer function rather than an analytic one.
+
+## Time lags: detection already worked, the PWB path did not
+
+Under `maxcov`, which is what the fixtures use, detection was already correct
+for gases past the fourth:
+
+| gas | detected | used | window |
+|---|---|---|---|
+| N2O (slot 9) | 23.6 | 23.6 | [8, 25] |
+| H2O_2 (slot 11) | 14.4 | 14.4 | [0, 20] |
+| CO2_2 (slot 10) | 10.0 | **1.0** | [0, 10] |
+
+CO2_2 is not a defect. Its detected lag lands exactly on `max_timelag`, is
+rejected, and falls back to the nominal 1.0 - because the `.metadata` declares
+that column's window as `[0, 10]` with a nominal of 1.0, while its own H2O on
+the same tube detects 14.4. **The declared window is too narrow for the real
+lag**; widening `col_21_max_timelag` is a site-configuration fix, not a code
+one.
+
+The PWB path *was* four-gas bounded, and is now widened: the loops in
+`timelag_handle.f90`, `pwb_timelag_handle.f90`,
+`adjust_timelag_opt_settings.f90`, `set_timelags.f90`, `cross_corr_test.f90`
+and `optimize_timelags.f90`, the `gas < co2 .or. gas > gas4` range guards, and
+the `GasLabel`/`GasIndexFromLabel` pair that names gases in the PWB time-lag
+cache file. The historical four keep their literal labels there for the same
+reason as in the cospectra file - the cache is read back by name, so renaming
+one would orphan every cached lag.
+
+> `donor_gas` and `GasLabel` were `character(8)`, which silently truncates a
+> record-derived tag. A truncated label does not round-trip through
+> `GasIndexFromLabel`, so the donor would read back as slot 0 and the
+> instrument-sharing rule would drop it. Both are 32 now, and the compiler's
+> truncation warning is what caught it.

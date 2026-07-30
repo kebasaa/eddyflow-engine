@@ -44,7 +44,7 @@ subroutine CrossCorrTest(Set, nrow, ncol)
         '  Evaluating R2 on CCFs with and without repeated values..'
 
     dedup_set = Set
-    do icol = u, gas4
+    do icol = u, lastGas
         if (OutVarPresent(icol)) then
             do irec = 2, nrow
                 if (dabs(Set(irec, icol) - Set(irec-1, icol)) < 1d-8) then

@@ -58,26 +58,26 @@ subroutine AdjustTimelagOptSettings()
     safety = 0.3d0    !< Safety margin for min/max setting
 
     !> Transit time in cell and sampling lines of closed path instruments
-    where (E2Col(co2:gas4)%instr%path_type == 'closed')
-        tube_volume(co2:gas4) = &
-            (p * (E2Col(co2:gas4)%instr%tube_d / 2d0)**2 * &
-            E2Col(co2:gas4)%instr%tube_l)
-        tube_time(co2:gas4) =  tube_volume(co2:gas4) &
-            / E2Col(co2:gas4)%instr%tube_f
+    where (E2Col(firstGas:lastGas)%instr%path_type == 'closed')
+        tube_volume(firstGas:lastGas) = &
+            (p * (E2Col(firstGas:lastGas)%instr%tube_d / 2d0)**2 * &
+            E2Col(firstGas:lastGas)%instr%tube_l)
+        tube_time(firstGas:lastGas) =  tube_volume(firstGas:lastGas) &
+            / E2Col(firstGas:lastGas)%instr%tube_f
 
-        cell_volume(co2:gas4) = &
-            (p * (E2Col(co2:gas4)%instr%hpath_length / 2d0)**2 * &
-                                E2Col(co2:gas4)%instr%vpath_length)
-        cell_time(co2:gas4) = cell_volume(co2:gas4) &
-            / E2Col(co2:gas4)%instr%tube_f
+        cell_volume(firstGas:lastGas) = &
+            (p * (E2Col(firstGas:lastGas)%instr%hpath_length / 2d0)**2 * &
+                                E2Col(firstGas:lastGas)%instr%vpath_length)
+        cell_time(firstGas:lastGas) = cell_volume(firstGas:lastGas) &
+            / E2Col(firstGas:lastGas)%instr%tube_f
     elsewhere
-        tube_time(co2:gas4) = 0d0
-        cell_time(co2:gas4) = 0d0
+        tube_time(firstGas:lastGas) = 0d0
+        cell_time(firstGas:lastGas) = 0d0
     end where
 
     !> If user didn't set min and max time-lags, does so by using tube properties for closed path
     !> and distances for open path
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             if (TOSetup%min_lag(gas) < gui_tlag_threshold &
                 .or. TOSetup%max_lag(gas) < gui_tlag_threshold) then

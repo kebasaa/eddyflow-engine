@@ -1372,7 +1372,9 @@ module m_typedef
         character(24) :: reliability_class
         character(2) :: best_combination
         character(24) :: fallback_source
-        character(8) :: donor_gas
+        !> Wide enough for a record-derived species tag; a truncated label
+        !> would not round-trip through GasIndexFromLabel.
+        character(32) :: donor_gas
         integer :: origin_gas
         logical :: edge_pinned
         logical :: fallback_used

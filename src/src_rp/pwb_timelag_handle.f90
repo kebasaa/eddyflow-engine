@@ -81,14 +81,14 @@ subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
 
     TimelagOpt(n)%tlag = error
     TimelagOpt(n)%RH = error
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (.not. E2Col(gas)%present) cycle
         if (trim(PWBResult(gas)%reliability_class) == 'S1_optimal' .or. &
             trim(PWBResult(gas)%reliability_class) == 'S2_optimal') then
             TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
         else
             origin = PWBResult(gas)%origin_gas
-            if (origin >= co2 .and. origin <= gas4 .and. origin /= gas) &
+            if (origin >= firstGas .and. origin <= lastGas .and. origin /= gas) &
                 PwbSummaryDonorCount(gas, origin) = PwbSummaryDonorCount(gas, origin) + 1
         end if
     end do
@@ -106,14 +106,14 @@ subroutine ResolvePwbAggregateSummary(actn)
 
     PwbSummarySource = 0
     PwbSummaryEvidence = 0
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (E2Col(gas)%present .and. actn(gas) > 0) PwbSummarySource(gas) = gas
     end do
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (.not. E2Col(gas)%present .or. PwbSummarySource(gas) /= 0) cycle
         donor = 0
         best_count = 0
-        do candidate = co2, gas4
+        do candidate = firstGas, lastGas
             if (candidate == gas .or. candidate == h2o) cycle
             if (PwbSummarySource(candidate) == 0) cycle
             if (PwbSummaryDonorCount(gas, candidate) > best_count) then
@@ -153,6 +153,8 @@ end function ValidPwbPeriodTimestamp
 
 integer function GasIndexFromLabel(label)
     character(*), intent(in) :: label
+    character(64) :: tags(GHGNumVar)
+    integer :: gas
 
     select case (trim(label))
         case ('co2')
@@ -164,7 +166,17 @@ integer function GasIndexFromLabel(label)
         case ('gas4')
             GasIndexFromLabel = gas4
         case default
+            !> The inverse of GasLabel for slots past the fourth. Without it a
+            !> cached donor lag for such a gas read back as slot 0 and the
+            !> sharing rule silently dropped it.
             GasIndexFromLabel = 0
+            call SpectralVarTags(tags)
+            do gas = gas4 + 1, lastGas
+                if (len_trim(tags(gas)) > 0 .and. trim(tags(gas)) == trim(label)) then
+                    GasIndexFromLabel = gas
+                    return
+                end if
+            end do
     end select
 end function GasIndexFromLabel
 
@@ -450,7 +462,7 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
 
     call InitPwbResult(LocResult)
     success = .false.
-    if (gas < co2 .or. gas > gas4) return
+    if (gas < firstGas .or. gas > lastGas) return
     if (.not. E2Col(gas)%present .or. .not. E2Col(ts)%present) then
         LocResult%fallback_used = .true.
         return
@@ -1088,7 +1100,7 @@ subroutine CountPwbDiagnostic(gas, res)
     integer, intent(in) :: gas
     type(PWBResultType), intent(in) :: res
 
-    if (gas < co2 .or. gas > gas4) return
+    if (gas < firstGas .or. gas > lastGas) return
     pwb_attempts(gas) = pwb_attempts(gas) + 1
     if (res%fallback_used) then
         pwb_fallbacks(gas) = pwb_fallbacks(gas) + 1
@@ -1116,20 +1128,20 @@ subroutine ReportPwbDiagnostics()
     integer :: total_fallback_maxcov, total_fallback_nominal, total_fallback_other
     character(PathLen) :: path
 
-    total_attempts = sum(pwb_attempts(co2:gas4))
+    total_attempts = sum(pwb_attempts(firstGas:lastGas))
     if (total_attempts == 0) return
 
-    total_successes = sum(pwb_successes(co2:gas4))
-    total_instrument_shared = sum(pwb_instrument_shared(co2:gas4))
-    total_carryforwards = sum(pwb_carryforwards(co2:gas4))
-    total_fallbacks = sum(pwb_fallbacks(co2:gas4))
-    total_fallback_maxcov = sum(pwb_fallback_maxcov(co2:gas4))
-    total_fallback_nominal = sum(pwb_fallback_nominal(co2:gas4))
-    total_fallback_other = sum(pwb_fallback_other(co2:gas4))
+    total_successes = sum(pwb_successes(firstGas:lastGas))
+    total_instrument_shared = sum(pwb_instrument_shared(firstGas:lastGas))
+    total_carryforwards = sum(pwb_carryforwards(firstGas:lastGas))
+    total_fallbacks = sum(pwb_fallbacks(firstGas:lastGas))
+    total_fallback_maxcov = sum(pwb_fallback_maxcov(firstGas:lastGas))
+    total_fallback_nominal = sum(pwb_fallback_nominal(firstGas:lastGas))
+    total_fallback_other = sum(pwb_fallback_other(firstGas:lastGas))
 
     write(*, '(a)')
     write(*, '(a)') ' PWB time-lag detection summary:'
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (pwb_attempts(gas) > 0) then
             write(*, '(a, a, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a)') &
                 '  ', trim(GasLabel(gas)), &
@@ -1159,7 +1171,7 @@ subroutine ReportPwbDiagnostics()
     if (ios /= 0) return
     write(u, '(a)') 'gas,attempts,S1_S2_optimal,S4_instrument_shared,S3_carryforward,' &
         // 'fallback,maxcov_default,nominal_default,other_fallback'
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (pwb_attempts(gas) > 0) then
             write(u, '(a,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0,",",i0)') trim(GasLabel(gas)), &
                 pwb_attempts(gas), pwb_successes(gas), pwb_instrument_shared(gas), &
@@ -1173,8 +1185,14 @@ subroutine ReportPwbDiagnostics()
     close(u)
 end subroutine ReportPwbDiagnostics
 
-character(8) function GasLabel(gas)
+character(32) function GasLabel(gas)
     integer, intent(in) :: gas
+    character(32) :: tags(GHGNumVar)
+
+    !> The historical four keep their literal labels: these strings go into the
+    !> PWB time-lag cache file and are read back by GasIndexFromLabel, so
+    !> renaming one would orphan every cached lag. Slots past the fourth had no
+    !> label at all and read back as 'unknown'.
     select case(gas)
         case(co2)
             GasLabel = 'co2'
@@ -1186,6 +1204,10 @@ character(8) function GasLabel(gas)
             GasLabel = 'gas4'
         case default
             GasLabel = 'unknown'
+            if (gas > gas4 .and. gas <= lastGas) then
+                call SpectralVarTags(tags)
+                if (len_trim(tags(gas)) > 0) GasLabel = tags(gas)
+            end if
     end select
 end function GasLabel
 

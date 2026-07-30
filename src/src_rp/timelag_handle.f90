@@ -132,7 +132,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 cache_stage = 'post_wpl'
             end if
             !> Pass 1: Run PWB detection and S1/S2 classification for all gases
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 call LookupPwbTimelagCache(j, cache_stage, cache_found, cache_actual_lag, &
                     cache_used_lag, cache_row_lag, cache_default_used, lPwbResult)
@@ -192,10 +192,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             end do
 
             !> Pass 2: Same-instrument lag sharing for gases that didn't get S1/S2
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
-                do k = co2, gas4
+                do k = firstGas, lastGas
                     if (k == j) cycle
                     if (.not. E2Col(k)%present) cycle
                     if (E2Col(k)%instr%model /= E2Col(j)%instr%model) cycle
@@ -221,7 +221,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             end do
 
             !> Pass 3: S3 carry-forward or maxcov/default fallback for remaining gases
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
                 if (pwb_has_previous(j)) then
@@ -252,7 +252,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             end do
 
             !> Finalize: set fallback_source labels and write diagnostics
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
                     PWBResult(j)%fallback_source = 'maxcov_default'

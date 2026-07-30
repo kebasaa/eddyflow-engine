@@ -72,7 +72,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
 !TO REFINE integer :: h2on
 
     E2Col(h2o)%present = .true.
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             !> All gases, including H2O, are treated here
             toPasGas(gas)%def = error

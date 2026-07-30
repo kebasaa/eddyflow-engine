@@ -55,7 +55,7 @@ subroutine SetTimelags()
 
     !> set time-lags to optimized values if selected so by user
     if (meth%tlag == 'tlag_opt') then
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (E2Col(gas)%present) then
                 if (gas /= h2o) then
                     !> Passive gases
@@ -85,7 +85,7 @@ subroutine SetTimelags()
             end if
         end do
     else
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (E2Col(gas)%instr%path_type == 'closed') then
                 if (E2Col(gas)%def_tl == 0d0) then
                     tube_volume(gas) = (p * (E2Col(gas)%instr%tube_d / 2d0)**2 * E2Col(gas)%instr%tube_l)
