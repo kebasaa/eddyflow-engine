@@ -116,15 +116,6 @@ subroutine WriteOutFluxnetOnlyBiomet()
         end do
     end do
 
-    !> Per-gas families of the extra gases: real slot, error values.
-    call AddIntDatumToDataline(nFluxnetInstrSlots, csv_row, EddyFlowProj%err_label)
-    do i = 1, nFluxnetInstrSlots
-        call AddIntDatumToDataline(FluxnetInstrSlots(i), csv_row, EddyFlowProj%err_label)
-        do indx = 1, 28
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        end do
-    end do
-
     !> write all aggregated biomet values in FLUXNET units
     call AddIntDatumToDataline(nbVars, csv_row, EddyFlowProj%err_label)
     if (nbVars > 0) then

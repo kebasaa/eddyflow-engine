@@ -57,8 +57,14 @@ class PwbTimelagStaticTests(unittest.TestCase):
         header_source = read("src/src_rp/init_fluxnet_file_rp.f90")
         writer_source = read("src/src_rp/write_out_fluxnet.f90")
 
+        # The column is now generated per configured gas rather than spelled
+        # out for the four historical slots, so the literal names are gone.
+        # What must survive is that every gas still gets the column.
+        self.assertIn(
+            "trim(FluxnetLayoutTags(j)) // '_TLAG_PWB_SOURCE'", header_source
+        )
         for gas in ("CO2", "H2O", "CH4", "GS4"):
-            self.assertIn(f"{gas}_TLAG_PWB_SOURCE", header_source)
+            self.assertNotIn(f"{gas}_TLAG_PWB_SOURCE", header_source)
 
         self.assertIn("0=native, 1=S3 carry-forward, 2=instrument_shared", writer_source)
         self.assertIn("Meth%tlag == 'pwb' .and. E2Col(gas)%present", writer_source)

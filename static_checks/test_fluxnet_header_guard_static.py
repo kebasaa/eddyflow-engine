@@ -351,6 +351,10 @@ class FluxnetGasScalesAreBySpecies(unittest.TestCase):
         block = block[: block.index("!> Variances were actually read as")]
         # Every quantity the writer scales must be un-scaled here. Requiring
         # merely one use would pass with three of the four left as literals.
+        # ...over every configured gas, not the historical four. Stopping at
+        # gas4 left slot 5+ un-inverted, so FCC scaled it a second time and
+        # N2O came out at 339273 nmol/mol instead of 339.
+        self.assertIn("do gas = co2, ts + min(EddyFlowProj%gas_num", block)
         self.assertEqual(
             block.count("/ FluxnetGasScale(gas)"),
             4,

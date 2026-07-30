@@ -58,6 +58,7 @@ RUNTIME_COUNTS = {
     "nSsTestFields",
     "nSsItcFields",
     "nLicorFields",
+    "nMainFields",
 }
 
 #: The expression that stands for "how many gases this project configures".
@@ -152,14 +153,25 @@ def _runtime_assignment(text, name):
     where it is used, so it cannot be recovered from the declaration block the
     parameter parser reads.
     """
-    m = re.search(
-        r"^[ \t]*%s\s*=\s*((?:[^\n!&]|&[ \t]*\n[ \t]*&?)+)" % re.escape(name),
-        text,
-        re.MULTILINE,
-    )
-    if not m:
-        return None
-    return re.sub(r"&[ \t]*\n[ \t]*&?", " ", m.group(1)).strip()
+    lines = text.splitlines()
+    start = re.compile(r"^[ \t]*%s\s*=" % re.escape(name))
+    for i, line in enumerate(lines):
+        if not start.match(line):
+            continue
+        # A continued Fortran statement runs while each line ends with '&',
+        # and any line may carry a trailing '!<' comment. nMainFields is
+        # written that way - one commented term per group it covers.
+        parts, j = [], i
+        while True:
+            body = re.sub(r"!.*", "", lines[j]).rstrip()
+            cont = body.endswith("&")
+            parts.append(body.rstrip("&"))
+            if not cont or j + 1 >= len(lines):
+                break
+            j += 1
+        rhs = " ".join(parts)
+        return rhs.split("=", 1)[1].strip()
+    return None
 
 
 def _gas_count_names(text):
@@ -170,7 +182,7 @@ def _gas_count_names(text):
     the expression. Resolving one level of indirection lets that read well
     without weakening the check: the local must itself come from GAS_TERM.
     """
-    return {
+    names = {
         m.group(1)
         for m in re.finditer(
             r"^[ \t]*(\w+)\s*=\s*min\s*\(\s*EddyFlowProj%gas_num\s*,\s*"
@@ -179,6 +191,31 @@ def _gas_count_names(text):
             re.MULTILINE | re.IGNORECASE,
         )
     }
+    return names
+
+
+def _derived_widths(text, gas_count=4):
+    """Locals derived from the gas count, evaluated at `gas_count` gases.
+
+    The main record is written in terms of three group widths - nExGas,
+    nExVar, nExScal - which are themselves computed from the clamped count.
+    They must be *evaluated*, not substituted: at four gases nExVar is 8 and
+    nExScal 5, so treating them as the gas count would silently under-count
+    the record by 31 fields.
+    """
+    env = {n: gas_count for n in _gas_count_names(text)}
+    for _ in range(4):
+        for m in re.finditer(
+            r"^[ \t]*(\w+)\s*=\s*([-+*0-9 A-Za-z_]+)$", text, re.MULTILINE
+        ):
+            name, expr = m.group(1), m.group(2).strip()
+            if name in env:
+                continue
+            try:
+                env[name] = eval(expr, {"__builtins__": {}}, dict(env))  # noqa: S307
+            except Exception:
+                continue
+    return env
 
 
 def _substitute_gas_count(rhs, text, value="4"):
@@ -192,6 +229,17 @@ def _substitute_gas_count(rhs, text, value="4"):
     for name in sorted(_gas_count_names(text), key=len, reverse=True):
         out, k = re.subn(r"\b%s\b" % re.escape(name), value, out)
         n += k
+    if n == 0:
+        # The count may be written in terms of the derived group widths
+        # instead. Those count as a dependency only if they actually move with
+        # the gas count - a width that does not is a re-frozen literal wearing
+        # a name.
+        at4, at5 = _derived_widths(text, 4), _derived_widths(text, 5)
+        for name in at4:
+            if at4[name] != at5.get(name) and re.search(
+                r"\b%s\b" % re.escape(name), out
+            ):
+                n += 1
     return out, n > 0
 
 
@@ -280,8 +328,10 @@ class ExRecordLayout(unittest.TestCase):
                     % (name, GAS_TERM, rhs),
                 )
                 four_gas = four_gas.replace("/ 2", "// 2")
+                env = dict(_read_slots())
+                env.update(_derived_widths(text))
                 value = eval(  # noqa: S307 - fixed expression from our own source
-                    four_gas, {"__builtins__": {}}, dict(_read_slots())
+                    four_gas, {"__builtins__": {}}, env
                 )
                 self.assertEqual(
                     value,

@@ -42,6 +42,7 @@ subroutine InitFluxnetFile_rp()
     integer :: dot
     integer :: i
     integer :: j
+    integer :: k
     character(PathLen) :: Test_Path
     character(32) :: g4label
     character(64) :: e2sg(E2NumVar)
@@ -91,52 +92,123 @@ subroutine InitFluxnetFile_rp()
 
     call clearstr(csv_row)
     csv_row = 'TIMESTAMP_START,TIMESTAMP_END,DOY_START,DOY_END,FILENAME_HF,SW_IN_POT,NIGHT,EXPECT_NR,&
-                &FILE_NR,CUSTOM_FILTER_NR,WD_FILTER_NR,SONIC_NR,T_SONIC_NR,CO2_NR,H2O_NR,CH4_NR,GS4_NR,&
-                &TAU_NR,H_NR,FC_NR,LE_NR,FCH4_NR,FGS4_NR,&
-                &TAU,H,LE,ET,FC,FH2O,FCH4,FGS4,TAU_RANDUNC_HF,H_RANDUNC_HF,LE_RANDUNC_HF,ET_RANDUNC_HF,&
-                &FC_RANDUNC_HF,FH2O_RANDUNC_HF,FCH4_RANDUNC_HF,FGS4_RANDUNC_HF,&
-                &SH_SINGLE,SLE_SINGLE,SET_SINGLE,SC_SINGLE,SH2O_SINGLE,SCH4_SINGLE,SGS4_SINGLE,&
-                &FC_VADV,FH2O_VADV,FCH4_VADV,FGS4_VADV,&
-                &U_UNROT,V_UNROT,W_UNROT,U,V,W,&
+                &FILE_NR,CUSTOM_FILTER_NR,WD_FILTER_NR,'
+
+    !> Record counts: the sonic, the sonic temperature, then one per gas.
+    call AddDatum(csv_row, 'SONIC_NR', separator)
+    call AddDatum(csv_row, 'T_SONIC_NR', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_NR', separator)
+    end do
+    !> Records behind each covariance with w. Water is LE in this family.
+    call AddDatum(csv_row, 'TAU_NR', separator)
+    call AddDatum(csv_row, 'H_NR', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetNrwTag(j)) // '_NR', separator)
+    end do
+
+    call AddFluxFamily('')
+    call AddFluxFamily('_RANDUNC_HF')
+
+    !> Single-point storage. CO2 is SC, not SCO2.
+    call AddDatum(csv_row, 'SH_SINGLE', separator)
+    call AddDatum(csv_row, 'SLE_SINGLE', separator)
+    call AddDatum(csv_row, 'SET_SINGLE', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetStorTag(j)) // '_SINGLE', separator)
+    end do
+    !> Vertical advection, per gas only.
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_VADV', separator)
+    end do
+
+    csv_row = trim(csv_row) // 'U_UNROT,V_UNROT,W_UNROT,U,V,W,&
                 &WS,WS_MAX,WD,WD_SIGMA,USTAR,TKE,MO_LENGTH,ZL,BOWEN,TSTAR,&
                 &T_SONIC,TA_EP,PA_EP,RH_EP,AIR_MV,AIR_DENSITY,AIR_RHO_CP,AIR_CP,&
                 &VAPOR_DENSITY,VAPOR_PARTIAL_PRESSURE,VAPOR_PARTIAL_PRESSURE_SAT,SPECIFIC_HUMIDITY,VPD_EP,TDEW,&
                 &DRYAIR_PARTIAL_PRESSURE,DRYAIR_DENSITY,DRYAIR_MV,SPECIFIC_HEAT_EVAP,VAPOR_DRYAIR_RATIO,&
-                &CO2_MEAS_TYPE,CO2_MOLAR_DENSITY,CO2_MIXING_RATIO,CO2,&
-                &H2O_MEAS_TYPE,H2O_MOLAR_DENSITY,H2O_MIXING_RATIO,H2O,&
-                &CH4_MEAS_TYPE,CH4_MOLAR_DENSITY,CH4_MIXING_RATIO,CH4,&
-                &GS4_MEAS_TYPE,GS4_MOLAR_DENSITY,GS4_MIXING_RATIO,GS4,&
-                &CO2_TLAG_ACTUAL,CO2_TLAG_USED,CO2_TLAG_NOMINAL,CO2_TLAG_MIN,CO2_TLAG_MAX,&
-                &H2O_TLAG_ACTUAL,H2O_TLAG_USED,H2O_TLAG_NOMINAL,H2O_TLAG_MIN,H2O_TLAG_MAX,&
-                &CH4_TLAG_ACTUAL,CH4_TLAG_USED,CH4_TLAG_NOMINAL,CH4_TLAG_MIN,CH4_TLAG_MAX,&
-                &GS4_TLAG_ACTUAL,GS4_TLAG_USED,GS4_TLAG_NOMINAL,GS4_TLAG_MIN,GS4_TLAG_MAX,&
-                &CO2_TLAG_PWB_SOURCE,H2O_TLAG_PWB_SOURCE,CH4_TLAG_PWB_SOURCE,GS4_TLAG_PWB_SOURCE,&
-                &U_MEDIAN,V_MEDIAN,W_MEDIAN,T_SONIC_MEDIAN,&
-                &CO2_MEAS_MEDIAN,H2O_MEAS_MEDIAN,CH4_MEAS_MEDIAN,GS4_MEAS_MEDIAN,&
-                &U_P25,V_P25,W_P25,T_SONIC_P25,CO2_MEAS_P25,H2O_MEAS_P25,CH4_MEAS_P25,GS4_MEAS_P25,&
-                &U_P75,V_P75,W_P75,T_SONIC_P75,CO2_MEAS_P75,H2O_MEAS_P75,CH4_MEAS_P75,GS4_MEAS_P75,&
-                &U_SIGMA,V_SIGMA,W_SIGMA,T_SONIC_SIGMA,CO2_MEAS_SIGMA,H2O_MEAS_SIGMA,CH4_MEAS_SIGMA,GS4_MEAS_SIGMA,&
-                &U_SKW,V_SKW,W_SKW,T_SONIC_SKW,CO2_MEAS_SKW,H2O_MEAS_SKW,CH4_MEAS_SKW,GS4_MEAS_SKW,&
-                &U_KUR,V_KUR,W_KUR,T_SONIC_KUR,CO2_MEAS_KUR,H2O_MEAS_KUR,CH4_MEAS_KUR,GS4_MEAS_KUR,&
-                &W_U_COV,W_T_SONIC_COV,W_CO2_MEAS_COV,W_H2O_MEAS_COV,W_CH4_MEAS_COV,W_GS4_MEAS_COV,&
-                &CO2_MEAS_H2O_MEAS_COV,CO2_MEAS_CH4_MEAS_COV,CO2_MEAS_GS4_MEAS_COV,&
-                &H2O_MEAS_CH4_MEAS_COV,H2O_MEAS_GS4_MEAS_COV,CH4_MEAS_GS4_MEAS_COV,&
-                &FETCH_MAX,FETCH_OFFSET,FETCH_10,FETCH_30,FETCH_50,FETCH_70,FETCH_80,FETCH_90,&
+                &'
+
+    !> Concentration quadruple, then the timelag quintuplet, then the PWB
+    !> lag source - each one block per configured gas.
+    do j = 1, nFluxnetLayoutSlots
+        g4label = FluxnetLayoutTags(j)
+        call AddDatum(csv_row, trim(g4label) // '_MEAS_TYPE', separator)
+        call AddDatum(csv_row, trim(g4label) // '_MOLAR_DENSITY', separator)
+        call AddDatum(csv_row, trim(g4label) // '_MIXING_RATIO', separator)
+        call AddDatum(csv_row, trim(g4label), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        g4label = FluxnetLayoutTags(j)
+        call AddDatum(csv_row, trim(g4label) // '_TLAG_ACTUAL', separator)
+        call AddDatum(csv_row, trim(g4label) // '_TLAG_USED', separator)
+        call AddDatum(csv_row, trim(g4label) // '_TLAG_NOMINAL', separator)
+        call AddDatum(csv_row, trim(g4label) // '_TLAG_MIN', separator)
+        call AddDatum(csv_row, trim(g4label) // '_TLAG_MAX', separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_TLAG_PWB_SOURCE', separator)
+    end do
+
+    !> Per-variable statistics. The wind half and the gas half take different
+    !> suffixes: U_MEDIAN beside CO2_MEAS_MEDIAN.
+    call AddStatFamily('_MEDIAN', '_MEAS_MEDIAN')
+    call AddStatFamily('_P25', '_MEAS_P25')
+    call AddStatFamily('_P75', '_MEAS_P75')
+    call AddStatFamily('_SIGMA', '_MEAS_SIGMA')
+    call AddStatFamily('_SKW', '_MEAS_SKW')
+    call AddStatFamily('_KUR', '_MEAS_KUR')
+
+    !> Covariances with w, then the gas-gas triangle.
+    call AddDatum(csv_row, 'W_U_COV', separator)
+    call AddDatum(csv_row, 'W_T_SONIC_COV', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'W_' // trim(FluxnetLayoutTags(j)) // '_MEAS_COV', separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots - 1
+        do k = j + 1, nFluxnetLayoutSlots
+            call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_MEAS_' &
+                // trim(FluxnetLayoutTags(k)) // '_MEAS_COV', separator)
+        end do
+    end do
+
+    csv_row = trim(csv_row) // 'FETCH_MAX,FETCH_OFFSET,FETCH_10,FETCH_30,FETCH_50,FETCH_70,FETCH_80,FETCH_90,&
                 &USTAR_UNCORR,MO_LENGTH_UNCORR,ZL_UNCORR,&
-                &TAU_UNCORR,H_UNCORR,LE_UNCORR,ET_UNCORR,FC_UNCORR,FH2O_UNCORR,FCH4_UNCORR,FGS4_UNCORR,&
-                &TAU_STAGE1,H_STAGE1,LE_STAGE1,ET_STAGE1,FC_STAGE1,FH2O_STAGE1,FCH4_STAGE1,FGS4_STAGE1,&
-                &TAU_STAGE2,H_STAGE2,LE_STAGE2,ET_STAGE2,FC_STAGE2,FH2O_STAGE2,FCH4_STAGE2,FGS4_STAGE2,&
-                &T_CELL,PA_CELL,MV_AIR_CELL_CO2,MV_AIR_CELL_H2O,MV_AIR_CELL_CH4,MV_AIR_CELL_GS4,&
-                &FH2O_CELL_CO2,FH2O_CELL_CH4,FH2O_CELL_GS4,H_CELL_CO2,H_CELL_H2O,H_CELL_CH4,H_CELL_GS4,&
-                &H_BU_BOT,H_BU_TOP,H_BU_SPAR,SPEC_CORR_LI7700_A,SPEC_CORR_LI7700_B,SPEC_CORR_LI7700_C,&
-                &TAU_SCF,H_SCF,LE_SCF,ET_SCF,FC_SCF,FH2O_SCF,FCH4_SCF,FGS4_SCF,&
-                &W_T_SONIC_COV_IBROM,W_T_SONIC_COV_IBROM_N1626,W_T_SONIC_COV_IBROM_N0614,&
+                &'
+
+    call AddFluxFamily('_UNCORR')
+    call AddFluxFamily('_STAGE1')
+    call AddFluxFamily('_STAGE2')
+
+    !> Cell quantities: the shared cell T and P, the per-gas cell molar volume,
+    !> the per-gas water flux in the cell - which the water slot itself does not
+    !> have - and the per-gas cell sensible heat.
+    call AddDatum(csv_row, 'T_CELL', separator)
+    call AddDatum(csv_row, 'PA_CELL', separator)
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'MV_AIR_CELL_' // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        if (FluxnetLayoutSlots(j) == h2o) cycle
+        call AddDatum(csv_row, 'FH2O_CELL_' // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'H_CELL_' // trim(FluxnetLayoutTags(j)), separator)
+    end do
+
+    csv_row = trim(csv_row) // 'H_BU_BOT,H_BU_TOP,H_BU_SPAR,&
+                &SPEC_CORR_LI7700_A,SPEC_CORR_LI7700_B,SPEC_CORR_LI7700_C,&
+                &'
+
+    call AddFluxFamily('_SCF')
+
+    csv_row = trim(csv_row) // 'W_T_SONIC_COV_IBROM,W_T_SONIC_COV_IBROM_N1626,W_T_SONIC_COV_IBROM_N0614,&
                 &W_T_SONIC_COV_IBROM_N0277,W_T_SONIC_COV_IBROM_N0133,&
                 &W_T_SONIC_COV_IBROM_N0065,W_T_SONIC_COV_IBROM_N0032,&
                 &W_T_SONIC_COV_IBROM_N0016,W_T_SONIC_COV_IBROM_N0008,W_T_SONIC_COV_IBROM_N0004,&
-                &U_NUM_SPIKES,V_NUM_SPIKES,W_NUM_SPIKES,T_SONIC_NUM_SPIKES,&
-                &CO2_NUM_SPIKES,H2O_NUM_SPIKES,CH4_NUM_SPIKES,GS4_NUM_SPIKES,&
                 &'
+
+    call AddStatFamily('_NUM_SPIKES', '_NUM_SPIKES')
     !> Records excluded by each screening test.
     !>
     !> Three per-gas runs - diagnostics, the spike test and the absolute
@@ -380,51 +452,6 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_KO2', separator)
     end do
 
-    !> Per-gas families for each gas past the four historical slots.
-    !>
-    !> Omits the NREX counts and the VM97 flag string: those reach FCC only
-    !> inside the raw chunks it echoes verbatim, not as per-slot values, so it
-    !> could not reproduce them here. They stay four-gas until those chunks are
-    !> parsed per slot.
-    !>
-    !> The fixed part of the row carries these families for CO2/H2O/CH4/GS4
-    !> only, interleaved and in fixed positions. Rather than renumber ~300
-    !> columns, the same families are emitted here for the remaining gases,
-    !> grouped per gas. Consumers read this file by column name, so grouping
-    !> rather than interleaving costs nothing.
-    call AddDatum(csv_row, 'NUM_GAS_EXTRA', separator)
-    do j = 1, nFluxnetInstrSlots
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_SLOT', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_NR', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_NR_W', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_TYPE', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MOLAR_DENSITY', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MIXING_RATIO', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX_LEVEL0', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX_STAGE1', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_FLUX_STAGE2', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_SCF', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_RANDUNC_HF', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_STORAGE', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_ACTUAL', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_USED', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_NOMINAL', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_MIN', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_MAX', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_TLAG_PWB_SOURCE', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_MEDIAN', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_P25', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_P75', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_SIGMA', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_SKW', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MEAS_KUR', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_W_MEAS_COV', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_MV_AIR_CELL', separator)
-        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_NUM_SPIKES', separator)
-    end do
-
     !> Add biomet variables
     call AddDatum(csv_row, 'NUM_BIOMET_VARS', separator)
 
@@ -644,6 +671,68 @@ subroutine AddVariableFamily(suffix)
         call AddDatum(csv_row, trim(FluxnetLayoutTags(n)) // suffix, separator)
     end do
 end subroutine AddVariableFamily
+
+!> Per-gas prefix of the record-count family: FC, LE, FCH4, F<TAG>.
+!>
+!> Water is LE here and FH2O everywhere else - the column counts the records
+!> behind the latent-heat flux. One of three per-gas naming conventions in this
+!> row; they cannot be collapsed without renaming shipped columns.
+function FluxnetNrwTag(layout_index) result(tag)
+    integer, intent(in) :: layout_index
+    character(32) :: tag
+
+    if (FluxnetLayoutSlots(layout_index) == h2o) then
+        tag = 'LE'
+    else
+        tag = FluxnetFluxTag(layout_index)
+    end if
+end function FluxnetNrwTag
+
+!> Per-gas prefix of the single-point storage family: SC, SH2O, SCH4, S<TAG>.
+!>
+!> Carbon dioxide is SC, not SCO2 - the S is prefixed to the flux name with its
+!> F dropped, which only shows up as a difference for CO2.
+function FluxnetStorTag(layout_index) result(tag)
+    integer, intent(in) :: layout_index
+    character(32) :: tag
+
+    if (FluxnetLayoutSlots(layout_index) == co2) then
+        tag = 'SC'
+    else
+        tag = 'S' // trim(FluxnetLayoutTags(layout_index))
+    end if
+end function FluxnetStorTag
+
+!> One column per flux: momentum, sensible heat, the two water fluxes, then one
+!> per configured gas under the flux naming.
+subroutine AddFluxFamily(suffix)
+    character(*), intent(in) :: suffix
+    integer :: n
+
+    call AddDatum(csv_row, 'TAU' // suffix, separator)
+    call AddDatum(csv_row, 'H' // suffix, separator)
+    call AddDatum(csv_row, 'LE' // suffix, separator)
+    call AddDatum(csv_row, 'ET' // suffix, separator)
+    do n = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetFluxTag(n)) // suffix, separator)
+    end do
+end subroutine AddFluxFamily
+
+!> A per-variable statistic whose wind and gas halves take different suffixes:
+!> U_MEDIAN beside CO2_MEAS_MEDIAN.
+subroutine AddStatFamily(wind_suffix, gas_suffix)
+    character(*), intent(in) :: wind_suffix
+    character(*), intent(in) :: gas_suffix
+    integer :: n
+
+    call AddDatum(csv_row, 'U' // wind_suffix, separator)
+    call AddDatum(csv_row, 'V' // wind_suffix, separator)
+    call AddDatum(csv_row, 'W' // wind_suffix, separator)
+    call AddDatum(csv_row, 'T_SONIC' // wind_suffix, separator)
+    do n = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(n)) // gas_suffix, separator)
+    end do
+end subroutine AddStatFamily
 
 !> Flux-family prefix of a layout slot: FC, FH2O, FCH4, FCOS, ...
 !>

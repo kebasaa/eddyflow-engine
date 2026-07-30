@@ -65,10 +65,6 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     real(kind = dbl) :: moist_rhow
     real(kind = dbl) :: moist_sigma
     integer :: n_gas_instr
-    integer :: n_gas_extra
-    real(kind = dbl) :: xn, xnw, xmt, xd, xr, xchi, xf0, xf3, xf1, xf2, xscf
-    real(kind = dbl) :: xru, xstor, xtla, xtlu, xtln, xtlmin, xtlmax, xpwb
-    real(kind = dbl) :: xmed, xq1, xq3, xsig, xskw, xkur, xwcov, xvcell, xspk
     character(32) :: instr_firm
     character(32) :: instr_model
     real(kind = dbl) :: instr_nsep, instr_esep, instr_vsep
@@ -79,10 +75,10 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     character(16000) :: dataline
     character(16000) :: cec_line
     !> Scratch for fields that are read only to be discarded. Must hold the
-    !> largest such group, which is now the final Foken flags: four fluxes plus
-    !> one per configured gas. At 32 a project with more than 28 gases would
-    !> have written past the end of it.
-    real(kind = dbl) :: aux(4 + MaxNumGases)
+    !> largest such group, which is the level 1 and 2 fluxes: two flux families
+    !> of four plus one per gas each. At 32 a project with more than 28 gases
+    !> would have written past the end of it.
+    real(kind = dbl) :: aux(2 * (4 + MaxNumGases))
     !> Field counts of the ex-file layout.
     !>
     !> This file is navigated positionally: after each list-directed read the
@@ -96,46 +92,26 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> the reads below, so the layout is stated once and widening the gas
     !> capacity moves the offsets with it. WriteOutFluxnet and
     !> InitFluxnetFile must emit these same groups in this same order.
-    integer, parameter :: nExGas = gas4 - co2 + 1     !< gas slots in the layout
-    integer, parameter :: nExVar = gas4 - u + 1       !< u,v,w,ts + gas slots
-    integer, parameter :: nExScal = gas4 - ts + 1     !< ts + gas slots
+    !> The three group widths the main record is built from. Runtime now:
+    !> they used to be gas4-relative constants, which is what pinned the whole
+    !> record at four gases.
+    integer :: nExGas      !< gas slots in the layout
+    integer :: nExVar      !< u,v,w,ts + gas slots
+    integer :: nExScal     !< ts + gas slots
+    !> Last configured gas slot, and the implied-do indices of the main read.
+    integer :: lastCfg
+    integer :: mgas, mgi, mgj
+    !> Cell water flux arrives for every gas but the water slot, so it cannot
+    !> be an implied-do; read into this and scatter afterwards. Separate from
+    !> aux, which the skip groups in the same read are using.
+    real(kind = dbl) :: e_gas_buf(MaxNumGases)
 
     !> Main record: everything from DOY_START through the spike counts.
-    integer, parameter :: nMainFields = &
-          4                         &  !< DOY_start, DOY_end, fname, RP
-        + 2                         &  !< nighttime_int, nr_theor
-        + 3                         &  !< nr_files, nr_after_custom_flags, nr_after_wdf
-        + 2 * (1 + nExScal)         &  !< nr, nr_w
-        + 8                         &  !< skipped: final fluxes
-        + 2                         &  !< rand_uncer u, ts
-        + 2 + nExGas                &  !< rand_uncer LE/ET, per gas
-        + 3 + nExGas                &  !< storage H/LE/ET, per gas
-        + 4                         &  !< skipped: advection fluxes
-        + 6                         &  !< unrotated and rotated u,v,w
-        + 10                        &  !< WS .. Tstar
-        + 8                         &  !< Ts .. Cp
-        + 6                         &  !< RHO%w .. Tdew
-        + 5                         &  !< Pd .. sigma
-        + 4 * nExGas                &  !< measure_type, d, r, chi per gas
-        + 5 * nExGas                &  !< timelag quintuplet per gas
-        + 4                         &  !< skipped: PWB timelag source
-        + 3 * nExVar                &  !< median, Q1, Q3
-        + 3 * nExVar                &  !< variance, skewness, kurtosis
-        + 1 + nExScal               &  !< Cov(w,u), Cov(w, ts:gas4)
-        + (nExGas * (nExGas - 1)) / 2 & !< gas-gas covariances
-        + 8                         &  !< skipped: footprint
-        + 3                         &  !< Flux0 ustar, L, zL
-        + 4                         &  !< Flux0 Tau, H, LE, ET
-        + nExGas                    &  !< Flux0 per gas
-        + 16                        &  !< skipped: fluxes level 1 and 2
-        + 2 + nExGas                &  !< Tcell, Pcell, Vcell per gas
-        + (nExGas - 1)              &  !< cell E per gas except h2o
-        + nExGas                    &  !< cell Hi per gas
-        + 3                         &  !< Burba terms
-        + 3                         &  !< LI-7700 multipliers
-        + 8                         &  !< skipped: spectral correction factors
-        + 1 + 9                     &  !< degraded T covariance and its 9 lags
-        + nExVar                       !< spike counts
+    !>
+    !> Runtime, like every other per-gas count: thirteen gas families live
+    !> inside the single read below, so the moment one of them follows the
+    !> configured gas count they all must, and so must this.
+    integer :: nMainFields
 
     !> NREX chunk. Three per-gas runs, so its width is a runtime
     !> quantity; the chunk itself is copied verbatim and never parsed.
@@ -179,9 +155,6 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> (slot, firm, model, nsep, esep, vsep, tube_l, tube_d, tube_f,
     !>  hpath, vpath, tau, kw, ko).
     integer, parameter :: nGasInstrFields = 14
-    !> Per-gas family block for gases past the four historical slots: a count,
-    !> then this many fields per gas.
-    integer, parameter :: nGasExtraFields = 29
     include 'interfaces_1.inc'
 
     ! integer, external :: strCharIndex
@@ -225,47 +198,87 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     lEx%end_date = lEx%end_timestamp(1:4) // '-' // lEx%end_timestamp(5:6) // '-' // lEx%end_timestamp(7:8) 
     lEx%end_time = lEx%end_timestamp(9:10) // ':' // lEx%end_timestamp(11:12)  
 
+    !> Widths of the main record, from the gas count the project configures.
+    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
+    lastCfg = ts + n_layout_gas
+    nExGas  = n_layout_gas
+    nExVar  = 4 + n_layout_gas
+    nExScal = 1 + n_layout_gas
+    nMainFields = &
+          4                         &  !< DOY_start, DOY_end, fname, RP
+        + 2                         &  !< nighttime_int, nr_theor
+        + 3                         &  !< nr_files, nr_after_custom_flags, nr_after_wdf
+        + 2 * (1 + nExScal)         &  !< nr, nr_w
+        + 4 + nExGas                &  !< skipped: final fluxes
+        + 2                         &  !< rand_uncer u, ts
+        + 2 + nExGas                &  !< rand_uncer LE/ET, per gas
+        + 3 + nExGas                &  !< storage H/LE/ET, per gas
+        + nExGas                    &  !< skipped: advection fluxes
+        + 6                         &  !< unrotated and rotated u,v,w
+        + 10                        &  !< WS .. Tstar
+        + 8                         &  !< Ts .. Cp
+        + 6                         &  !< RHO%w .. Tdew
+        + 5                         &  !< Pd .. sigma
+        + 4 * nExGas                &  !< measure_type, d, r, chi per gas
+        + 5 * nExGas                &  !< timelag quintuplet per gas
+        + nExGas                    &  !< PWB timelag source, per gas
+        + 3 * nExVar                &  !< median, Q1, Q3
+        + 3 * nExVar                &  !< variance, skewness, kurtosis
+        + 1 + nExScal               &  !< Cov(w,u), Cov(w, ts:gas4)
+        + (nExGas * (nExGas - 1)) / 2 & !< gas-gas covariances
+        + 8                         &  !< skipped: footprint
+        + 3                         &  !< Flux0 ustar, L, zL
+        + 4                         &  !< Flux0 Tau, H, LE, ET
+        + nExGas                    &  !< Flux0 per gas
+        + 2 * (4 + nExGas)          &  !< skipped: fluxes level 1 and 2
+        + 2 + nExGas                &  !< Tcell, Pcell, Vcell per gas
+        + (nExGas - 1)              &  !< cell E per gas except h2o
+        + nExGas                    &  !< cell Hi per gas
+        + 3                         &  !< Burba terms
+        + 3                         &  !< LI-7700 multipliers
+        + 4 + nExGas                &  !< skipped: spectral correction factors
+        + 1 + 9                     &  !< degraded T covariance and its 9 lags
+        + nExVar                       !< spike counts
+
     !> Extract some data
     read(dataline, *, iostat = read_status) lEx%DOY_start, lEx%DOY_end, lEx%fname, lEx%RP, &
         lEx%nighttime_int, lEx%nr_theor, &
         lEx%nr_files, lEx%nr_after_custom_flags, lEx%nr_after_wdf, &
-        lEx%nr(u), lEx%nr(ts:gas4), lEx%nr_w(u), lEx%nr_w(ts:gas4), &
-        aux(1:8), & !< Skip final fluxes
+        lEx%nr(u), lEx%nr(ts:lastCfg), lEx%nr_w(u), lEx%nr_w(ts:lastCfg), &
+        aux(1 : 4 + n_layout_gas), & !< Skip final fluxes
         lEx%rand_uncer(u), lEx%rand_uncer(ts), &
-        lEx%rand_uncer_LE, lEx%rand_uncer_ET, lEx%rand_uncer(co2:gas4), &
-        lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, lEx%Stor%of(co2:gas4), &
-        aux(1:4), & !< Skip advection fluxes
+        lEx%rand_uncer_LE, lEx%rand_uncer_ET, lEx%rand_uncer(firstGas:lastCfg), &
+        lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, lEx%Stor%of(firstGas:lastCfg), &
+        aux(1 : n_layout_gas), & !< Skip advection fluxes
         lEx%unrot_u, lEx%unrot_v, lEx%unrot_w, lEx%rot_u, lEx%rot_v, lEx%rot_w, &
         lEx%WS, lEx%MWS, lEx%WD, lEx%WD_SIGMA, lEx%ustar, lEx%TKE, lEx%L, lEx%zL, lEx%Bowen, lEx%Tstar, &
         lEx%Ts, lEx%Ta, lEx%Pa, lEx%RH, lEx%Va, lEx%RHO%a, lEx%RhoCp, lEx%Cp, &
         lEx%RHO%w, lEx%e, lEx%es, lEx%Q, lEx%VPD, lEx%Tdew, &
         lEx%Pd, lEx%RHO%d, lEx%Vd, lEx%lambda, lEx%sigma, &
-        lEx%measure_type_int(co2), lEx%d(co2), lEx%r(co2), lEx%chi(co2), &
-        lEx%measure_type_int(h2o), lEx%d(h2o), lEx%r(h2o), lEx%chi(h2o), &
-        lEx%measure_type_int(ch4), lEx%d(ch4), lEx%r(ch4), lEx%chi(ch4), &
-        lEx%measure_type_int(gas4), lEx%d(gas4), lEx%r(gas4), lEx%chi(gas4), &
-        lEx%act_tlag(co2), lEx%used_tlag(co2), lEx%nom_tlag(co2), lEx%min_tlag(co2), lEx%max_tlag(co2), &
-        lEx%act_tlag(h2o), lEx%used_tlag(h2o), lEx%nom_tlag(h2o), lEx%min_tlag(h2o), lEx%max_tlag(h2o),&
-        lEx%act_tlag(ch4), lEx%used_tlag(ch4), lEx%nom_tlag(ch4), lEx%min_tlag(ch4), lEx%max_tlag(ch4),&
-        lEx%act_tlag(gas4), lEx%used_tlag(gas4), lEx%nom_tlag(gas4), lEx%min_tlag(gas4), lEx%max_tlag(gas4), &
-        lEx%pwb_source(co2:gas4), &
-        lEx%stats%median(u:gas4), lEx%stats%Q1(u:gas4), lEx%stats%Q3(u:gas4), &
-        (lEx%stats%Cov(var, var), var=u, gas4), lEx%stats%Skw(u:gas4), lEx%stats%Kur(u:gas4), &
-        lEx%stats%Cov(w, u), lEx%stats%Cov(w, ts:gas4), lEx%stats%Cov(co2, h2o:gas4), &
-        lEx%stats%Cov(h2o, ch4:gas4), lEx%stats%Cov(ch4, gas4), &
+        (lEx%measure_type_int(mgas), lEx%d(mgas), lEx%r(mgas), lEx%chi(mgas), &
+            mgas = firstGas, lastCfg), &
+        (lEx%act_tlag(mgas), lEx%used_tlag(mgas), lEx%nom_tlag(mgas), &
+            lEx%min_tlag(mgas), lEx%max_tlag(mgas), mgas = firstGas, lastCfg), &
+        lEx%pwb_source(firstGas:lastCfg), &
+        lEx%stats%median(u:lastCfg), lEx%stats%Q1(u:lastCfg), lEx%stats%Q3(u:lastCfg), &
+        (lEx%stats%Cov(var, var), var=u, lastCfg), &
+        lEx%stats%Skw(u:lastCfg), lEx%stats%Kur(u:lastCfg), &
+        lEx%stats%Cov(w, u), lEx%stats%Cov(w, ts:lastCfg), &
+        ((lEx%stats%Cov(mgi, mgj), mgj = mgi + 1, lastCfg), &
+            mgi = firstGas, lastCfg - 1), &
         aux(1:8), & !< Skip footprint
         lEx%Flux0%ustar, lEx%Flux0%L, lEx%Flux0%zL, &
         lEx%Flux0%Tau, lEx%Flux0%H, lEx%Flux0%LE, lEx%Flux0%ET, &
-        lEx%Flux0%gas(co2), lEx%Flux0%gas(h2o), lEx%Flux0%gas(ch4), lEx%Flux0%gas(gas4), &
-        aux(1:16), & !< Skip fluxes level 1 and 2
-        lEx%Tcell, lEx%Pcell, lEx%Vcell(co2:gas4), &
-        lEx%Flux0%E_gas(co2), lEx%Flux0%E_gas(ch4), lEx%Flux0%E_gas(gas4), &
-        lEx%Flux0%Hi_gas(co2), lEx%Flux0%Hi_gas(h2o), lEx%Flux0%Hi_gas(ch4), lEx%Flux0%Hi_gas(gas4), &
+        lEx%Flux0%gas(firstGas:lastCfg), &
+        aux(1 : 2 * (4 + n_layout_gas)), & !< Skip fluxes level 1 and 2
+        lEx%Tcell, lEx%Pcell, lEx%Vcell(firstGas:lastCfg), &
+        e_gas_buf(1 : max(n_layout_gas - 1, 0)), &
+        lEx%Flux0%Hi_gas(firstGas:lastCfg), &
         lEx%Burba%h_bot, lEx%Burba%h_top, lEx%Burba%h_spar, &
         lEx%Mul7700%A, lEx%Mul7700%B, lEx%Mul7700%C, &
-        aux(1:8), & !< Skip SCFs
+        aux(1 : 4 + n_layout_gas), & !< Skip SCFs
         lEx%degT%cov, lEx%degT%dcov(1:9), &
-        lEx%spikes(u:gas4)
+        lEx%spikes(u:lastCfg)
     if (read_status /= 0) then
         call InvalidateRecord()
         return
@@ -274,6 +287,18 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         call InvalidateRecord()
         return
     end if
+
+    !> Scatter the cell water flux back onto its slots. The row carries one
+    !> field per gas except the water slot, which no implied-do can express,
+    !> so it was read into a buffer above.
+    lEx%Flux0%E_gas(firstGas:lastCfg) = error
+    mgi = 0
+    do mgas = firstGas, lastCfg
+        if (mgas == h2o) cycle
+        mgi = mgi + 1
+        lEx%Flux0%E_gas(mgas) = e_gas_buf(mgi)
+    end do
+
     ix = strCharIndex(dataline, ',', nMainFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -702,69 +727,6 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         end do
     end if
 
-    !> Read the per-gas families of the gases past the four historical slots
-    !> straight into the slot-indexed arrays the first four already use, so
-    !> downstream code addresses every gas the same way.
-    n_gas_extra = 0
-    if (len_trim(dataline) > 0) then
-        read(dataline, *, iostat = read_status) n_gas_extra
-        if (read_status /= 0) then
-            call InvalidateRecord()
-            return
-        end if
-        ix = strCharIndex(dataline, ',', 1)
-        if (ix <= 0) then
-            call InvalidateRecord()
-            return
-        end if
-        dataline = dataline(ix+1: len_trim(dataline))
-        if (n_gas_extra < 0 .or. n_gas_extra > GHGNumVar) then
-            call InvalidateRecord()
-            return
-        end if
-        do i = 1, n_gas_extra
-            read(dataline, *, iostat = read_status) gas, &
-                xn, xnw, xmt, xd, xr, xchi, xf0, xf3, xf1, xf2, xscf, xru, xstor, &
-                xtla, xtlu, xtln, xtlmin, xtlmax, xpwb, &
-                xmed, xq1, xq3, xsig, xskw, xkur, xwcov, xvcell, xspk
-            if (read_status /= 0) then
-                call InvalidateRecord()
-                return
-            end if
-            if (gas >= firstGas .and. gas <= lastGas) then
-                lEx%nr(gas) = nint(xn)
-                lEx%nr_w(gas) = nint(xnw)
-                lEx%measure_type_int(gas) = nint(xmt)
-                lEx%d(gas) = xd
-                lEx%r(gas) = xr
-                lEx%chi(gas) = xchi
-                lEx%Flux0%gas(gas) = xf0
-                lEx%rand_uncer(gas) = xru
-                lEx%Stor%of(gas) = xstor
-                lEx%act_tlag(gas) = xtla
-                lEx%used_tlag(gas) = xtlu
-                lEx%nom_tlag(gas) = xtln
-                lEx%min_tlag(gas) = xtlmin
-                lEx%max_tlag(gas) = xtlmax
-                lEx%pwb_source(gas) = xpwb
-                lEx%stats%median(gas) = xmed
-                lEx%stats%Q1(gas) = xq1
-                lEx%stats%Q3(gas) = xq3
-                lEx%stats%Cov(gas, gas) = xsig
-                lEx%stats%Skw(gas) = xskw
-                lEx%stats%Kur(gas) = xkur
-                lEx%stats%Cov(w, gas) = xwcov
-                lEx%Vcell(gas) = xvcell
-                lEx%spikes(gas) = nint(xspk)
-            end if
-            ix = strCharIndex(dataline, ',', nGasExtraFields)
-            if (ix <= 0) then
-                call InvalidateRecord()
-                return
-            end if
-            dataline = dataline(ix+1: len_trim(dataline))
-        end do
-    end if
 
     !> Split and read the CEC descriptor appended after variable biomet data.
     lEx%cec%r_ET = error
@@ -870,7 +832,8 @@ subroutine CompleteEssentials(lEx)
     !> those slots hold trace gases: a project with CO2 in slot four was
     !> divided by a thousand it had never been multiplied by. CO2 and H2O
     !> scale by 1, so covering every slot changes nothing for them.
-    do gas = co2, gas4
+    do gas = co2, ts + min(EddyFlowProj%gas_num, MaxNumGases)
+        if (gas > lastGas) exit
         if (lEx%Flux0%gas(gas) /= error) &
             lEx%Flux0%gas(gas) = lEx%Flux0%gas(gas) / FluxnetGasScale(gas)
         if (lEx%rand_uncer(gas) /= error) &
