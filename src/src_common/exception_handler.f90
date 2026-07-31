@@ -381,5 +381,13 @@ subroutine ExceptionHandler(error_code)
             write(*,*) '  Fatal error(99)> older file is upgraded automatically on opening.'
             write(*,*) '  Fatal error(99)> Program execution aborted.'
             stop 1
+        case(100)
+            write(*,*) ' Warning(100)> A gas record names a species EddyFlow has no molecular'
+            write(*,*) ' Warning(100)> weight or diffusivity for, and carries neither of its own.'
+            write(*,*) ' Warning(100)> Nitrous oxide values were used instead. A molecular weight'
+            write(*,*) ' Warning(100)> that is wrong by a factor gives a flux wrong by the same'
+            write(*,*) ' Warning(100)> factor, and nothing else in the output will look unusual.'
+            write(*,*) ' Warning(100)> Set the molecular weight and diffusivity for that gas in'
+            write(*,*) ' Warning(100)> the EddyFlow GUI.'
     end select
 end subroutine ExceptionHandler

@@ -553,6 +553,16 @@ subroutine ReadMeasurementRecords()
         else
             Dc(slot) = DefaultDiffusivity(EddyFlowProj%gas(i)%var)
         end if
+        !> Say so when we had to guess. A record that carries neither value
+        !> and names a species the tables do not know is given nitrous
+        !> oxide's numbers, and a molecular weight wrong by a factor produces
+        !> a flux wrong by the same factor while looking entirely ordinary.
+        if (EddyFlowProj%gas(i)%mw <= 0d0 .and. EddyFlowProj%gas(i)%diff <= 0d0) then
+            !> Nested rather than one .and. chain: gfortran warns that a
+            !> function in a compound condition might not be evaluated.
+            if (.not. HasSpeciesDefaults(EddyFlowProj%gas(i)%var)) &
+                call ExceptionHandler(100)
+        end if
     end do
 
     do i = 1, MaxNumCellCols
@@ -687,9 +697,42 @@ real(kind = sgl) function DefaultMolecularWeight(var)
         case ('H2O'); DefaultMolecularWeight = MW_H2O
         case ('CH4'); DefaultMolecularWeight = 16.04e-3
         case ('N2O'); DefaultMolecularWeight = 44.01e-3
+        case ('CO');  DefaultMolecularWeight = 28.0101e-3
+        case ('SO2'); DefaultMolecularWeight = 64.066e-3
+        case ('NH3'); DefaultMolecularWeight = 17.0305e-3
+        case ('O3');  DefaultMolecularWeight = 47.9982e-3
+        case ('NO2'); DefaultMolecularWeight = 46.0055e-3
+        case ('NO');  DefaultMolecularWeight = 30.0061e-3
+        case ('N2');  DefaultMolecularWeight = 28.0134e-3
+        case ('O2');  DefaultMolecularWeight = 31.9988e-3
+        case ('AR');  DefaultMolecularWeight = 39.948e-3
+        case ('COS'); DefaultMolecularWeight = 60.075e-3
         case default; DefaultMolecularWeight = 44.01e-3
     end select
 end function DefaultMolecularWeight
+
+!***************************************************************************
+!> Whether the species tables above carry values for this gas.
+!>
+!> Callers use this to warn rather than to choose: a record naming a species
+!> the engine does not know still gets numbers, but they are nitrous oxide's,
+!> and a molecular weight that is wrong by a factor produces a flux that is
+!> wrong by the same factor while looking entirely ordinary.
+!***************************************************************************
+logical function HasSpeciesDefaults(var)
+    character(*), intent(in) :: var
+    character(32) :: species
+
+    species = var
+    call uppercase(species)
+    select case (trim(adjustl(species)))
+        case ('CO2', 'H2O', 'CH4', 'N2O', 'CO', 'SO2', 'NH3', 'O3', &
+              'NO2', 'NO', 'N2', 'O2', 'AR', 'COS')
+            HasSpeciesDefaults = .true.
+        case default
+            HasSpeciesDefaults = .false.
+    end select
+end function HasSpeciesDefaults
 
 !***************************************************************************
 !> Molecular diffusivity in air [m+2 s-1], Massman (1998, Atm Env, Table 2),
@@ -706,6 +749,16 @@ real(kind = dbl) function DefaultDiffusivity(var)
         case ('H2O'); DefaultDiffusivity = 0.00002178d0
         case ('CH4'); DefaultDiffusivity = 0.00001952d0
         case ('N2O'); DefaultDiffusivity = 0.00001436d0
+        case ('CO');  DefaultDiffusivity = 0.00001807d0
+        case ('SO2'); DefaultDiffusivity = 0.00001089d0
+        case ('NH3'); DefaultDiffusivity = 0.00001978d0
+        case ('O3');  DefaultDiffusivity = 0.00001444d0
+        case ('NO2'); DefaultDiffusivity = 0.00001361d0
+        case ('NO');  DefaultDiffusivity = 0.00001988d0
+        case ('N2');  DefaultDiffusivity = 0.000019939d0
+        case ('O2');  DefaultDiffusivity = 0.000020255d0
+        case ('AR');  DefaultDiffusivity = 0.000019064d0
+        case ('COS'); DefaultDiffusivity = 0.000012344d0
         case default; DefaultDiffusivity = 0.00001436d0
     end select
 end function DefaultDiffusivity
