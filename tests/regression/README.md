@@ -123,6 +123,7 @@ only after every moved cell has been named. So far:
 | full output per gas | `full_output` **units row only**: 4 whitespace-only cells. Three unit labels and one flux label are `character(32)` and used to be concatenated unpadded, so those fields carried trailing blanks. Every gas now trims. No data cell moved, no column added or removed at four gases |
 | per-gas cell conditions into FCC | FLUXNET row: **12 new columns**, `T_CELL_<tag>`, `PA_CELL_<tag>` and `W_PA_CELL_<tag>_COV` at four gases. Purely additive - every pre-existing column kept its value. `nMainFields` 263 -> 275 |
 | FCC spectral assessment over every gas | `spectral_correction_diagnostics_adv.txt`, **one line**: the fourth gas's report line changed from `Gas 4:` to `COS:`. `GasName` returned the literal `Gas 4` for every slot past CH4, which on an eight-gas project named five different species identically; it now returns the species. No other file moved, and no flux value moved at four gases |
+| spectral tags record-derived | `full_cospectra/*.csv` **header only**, two lines per file: `cov(w_gas4)` -> `cov(w_cos)` and `f_nat*cospec(w_gas4)` -> `...(w_cos)`. SpectralVarTags pinned slots 5-8 to co2/h2o/ch4/gas4, which names a position rather than a species. No numeric cell moved and no other file moved. Readers accept both spellings through LegacySpectralVarTag, so an existing full-cospectra directory still imports |
 
 ## The arithmetic cross-check
 

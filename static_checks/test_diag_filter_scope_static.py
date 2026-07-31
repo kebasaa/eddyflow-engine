@@ -234,11 +234,37 @@ class TimelagWindowsSurviveWidening(unittest.TestCase):
         self.assertIn("if (toPasGas(gas)%max > toPasGas(gas)%min) then", source)
 
     def test_the_pwb_label_round_trip_covers_every_gas(self):
-        """GasLabel and GasIndexFromLabel are inverses, via the cache file."""
+        """GasLabel and GasIndexFromLabel are inverses, via the cache file.
+
+        Both must walk the full range and neither may special-case a slot.
+        A literal `case ('h2o')` in the inverse shadowed the record-derived
+        match: a project with water at slot 9 wrote 'h2o' for slot 9 and read
+        it back as slot 6, so the cached lag was applied to the wrong gas and
+        the right one silently fell back to its nominal window.
+        """
         source = read("src/src_rp/pwb_timelag_handle.f90")
-        self.assertIn("do gas = gas4 + 1, lastGas", source)
         self.assertIn("if (gas < firstGas .or. gas > lastGas) return", source)
         self.assertNotIn("if (gas < co2 .or. gas > gas4) return", source)
+
+        bodies = {}
+        for name in ("GasLabel", "GasIndexFromLabel"):
+            start = source.index("function %s(" % name)
+            bodies[name] = source[start:source.index("end function %s" % name,
+                                                     start)]
+            #> Both sides must derive from the same helper, or they are not
+            #> inverses however carefully each is written.
+            self.assertIn("call SpectralVarTags", bodies[name],
+                          "%s must name slots from the records" % name)
+            for literal in ("case(co2)", "case (co2)", "case ('co2')",
+                            "case ('h2o')", "case ('gas4')"):
+                self.assertNotIn(
+                    literal, bodies[name],
+                    "%s special-cases %s; a literal shadows the "
+                    "record-derived match and sends a label back to a slot "
+                    "that no longer holds that species" % (name, literal))
+
+        #> The inverse has to search, since it is given a name not a slot.
+        self.assertIn("do gas = firstGas, lastGas", bodies["GasIndexFromLabel"])
 
     def test_the_label_is_wide_enough_to_round_trip(self):
         """character(8) truncates a record-derived tag.

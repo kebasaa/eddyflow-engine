@@ -47,6 +47,8 @@ subroutine Storage(PrevStats, prevAmbient)
 !    integer, parameter :: stCH4 = 4
 !    integer, parameter :: stGAS4 = 5
     integer :: gas
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
 !    integer :: i
 !    integer :: j
 !    integer :: var
@@ -57,6 +59,11 @@ subroutine Storage(PrevStats, prevAmbient)
     character(10) tmp_date
     character(5) tmp_time
 
+
+    !> Latent-heat and ET storage follow the primary water record; a
+    !> second hygrometer gets its own storage term but must not
+    !> overwrite them.
+    wsl = PrimaryWaterSlot()
 
     write(*, '(a)', advance = 'no') '  Calculating storage terms..'
 
@@ -146,7 +153,7 @@ subroutine Storage(PrevStats, prevAmbient)
 !    end do
 !
 !    if (Stor%of(h2o) /= 0d0) then
-!        Stor%LE = Stor%of(h2o) * MW(h2o) * Ambient%lambda * 1d-3
+!        Stor%LE = Stor%of(h2o) * MW_H2O * Ambient%lambda * 1d-3
 !    else
 !        Stor%LE = 0d0
 !    end if
@@ -170,10 +177,10 @@ subroutine Storage(PrevStats, prevAmbient)
             !> Branched on the species, not the slot: which gas occupies a slot
             !> past the first four is decided by the project at run time, so a
             !> `select case (gas)` over fixed slot numbers would silently skip
-            !> every gas beyond them. The fixed h2o slot keeps its branch even
-            !> when absent, so that an absent H2O still clears LE and ET the
-            !> way it always did.
-            if (gas == h2o .or. trim(E2Col(gas)%var) == 'h2o') then
+            !> every gas beyond them. The primary water slot keeps its branch
+            !> even when absent, so that an absent H2O still clears LE and ET
+            !> the way it always did.
+            if (GasSlotIsWater(gas)) then
                 if (Stats%chi(gas) /= error &
                     .and. PrevStats%chi(gas) /= error) then
                     Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
@@ -181,13 +188,13 @@ subroutine Storage(PrevStats, prevAmbient)
                     !> Latent heat and evapotranspiration storage follow the
                     !> project's primary H2O only. A second H2O measurement
                     !> gets its own storage term but must not overwrite these.
-                    if (gas == h2o) then
-                        Stor%LE = Stor%of(h2o) * MW(h2o) * Ambient%lambda * 1d-3
-                        Stor%ET = Stor%of(h2o) * h2o_to_ET
+                    if (gas == wsl) then
+                        Stor%LE = Stor%of(wsl) * MW_H2O * Ambient%lambda * 1d-3
+                        Stor%ET = Stor%of(wsl) * h2o_to_ET
                     end if
                 else
                     Stor%of(gas) = error
-                    if (gas == h2o) then
+                    if (gas == wsl) then
                         Stor%LE = error
                         Stor%ET = error
                     end if

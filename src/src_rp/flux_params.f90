@@ -43,9 +43,17 @@ subroutine FluxParams(printout)
     real(kind = dbl) :: Cpd
     real(kind = dbl) :: Cpv
     integer :: msl
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating auxiliary variables..'
+
+    !> The site's humidity, and everything derived from it, comes from the
+    !> first water record - not from the h2o slot, which is record two and
+    !> holds water only by convention. A gas that needs its *own* water for a
+    !> WPL correction uses the per-slot RHO%w_at / sigma_at arrays below.
+    wsl = PrimaryWaterSlot()
 
     Ambient%alpha = 0.51d0
 
@@ -61,7 +69,16 @@ subroutine FluxParams(printout)
         Ambient%es = error
     end if
 
-    if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
+    if (wsl < firstGas) then
+        !> The project describes no water at all. Every humidity-derived
+        !> quantity is *not performed* rather than computed from a slot that
+        !> holds something else - which is what reading the h2o slot did.
+        RHO%w = error
+        RHO%w_at = error
+        Ambient%e = error
+        Ambient%VPD = error
+        Stats%RH = error
+    elseif (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
         !> If meteo RH is available, uses it for all slow parameters,
         !> including redefining chi, r and d of H2O
         Stats%RH = biomet%val(bRH)
@@ -86,33 +103,33 @@ subroutine FluxParams(printout)
         !> Water vapour concentrations and densities
         !> Water vapour mole fractions
         if (RHO%w /= error .and. Ambient%Va /= error) then
-            Stats%chi(h2o) = RHO%w * Ambient%Va / MW(h2o) * 1d3
+            Stats%chi(wsl) = RHO%w * Ambient%Va / MW_H2O * 1d3
             !> Water vapour mixing ratio
-            Stats%r(h2o)   = Stats%chi(h2o) / (1.d0 - Stats%chi(h2o) * 1d-3)
+            Stats%r(wsl)   = Stats%chi(wsl) / (1.d0 - Stats%chi(wsl) * 1d-3)
             !> Water vapour molar density
-            if (E2Col(h2o)%instr%path_type == 'closed') then
-                if (E2Col(h2o)%Va > 0d0) then
-                    Stats%d(h2o) = Stats%chi(h2o) / E2Col(h2o)%Va
+            if (E2Col(wsl)%instr%path_type == 'closed') then
+                if (E2Col(wsl)%Va > 0d0) then
+                    Stats%d(wsl) = Stats%chi(wsl) / E2Col(wsl)%Va
                 else
-                    Stats%d(h2o) = error
-                    Stats%r(h2o) = error
-                    Stats%chi(h2o) = error
+                    Stats%d(wsl) = error
+                    Stats%r(wsl) = error
+                    Stats%chi(wsl) = error
                 end if
             else
-                Stats%d(h2o) = Stats%chi(h2o) / Ambient%Va
+                Stats%d(wsl) = Stats%chi(wsl) / Ambient%Va
             end if
         else
-            Stats%chi(h2o) = error
-            Stats%r(h2o) = error
-            Stats%d(h2o) = error
+            Stats%chi(wsl) = error
+            Stats%r(wsl) = error
+            Stats%d(wsl) = error
         end if
     else
         !> If meteo RH is not available or out of range, uses H2O from raw data
         !> Molecular weight of wet air:
-        !> Ma = chi(h2o) * MW(h2o) + chi(dry_air) * Md
+        !> Ma = chi(h2o) * MW_H2O + chi(dry_air) * Md
         !> if chi(dry_air) = 1 - chi(h2o) (assumes chi(h2o) in mmol mol_a-1)
         ! if (Stats%chi(h2o) > 0d0) then
-        !     Ma = (Stats%chi(h2o) * 1d-3) * MW(h2o) &
+        !     Ma = (Stats%chi(h2o) * 1d-3) * MW_H2O &
         !        + (1d0 - Stats%chi(h2o) * 1d-3) * Md
         ! else
         !     Ma = error
@@ -121,8 +138,8 @@ subroutine FluxParams(printout)
         !> Water vapour mass density [kg_w m-3]
         !> from mole fraction [mmol_w / mol_a]
         !> (good also when native is molar density)
-        if (Stats%chi(h2o) > 0d0 .and. Ambient%Va > 0d0) then
-            RHO%w = (Stats%chi(h2o) / Ambient%Va) * MW(h2o) * 1d-3
+        if (Stats%chi(wsl) > 0d0 .and. Ambient%Va > 0d0) then
+            RHO%w = (Stats%chi(wsl) / Ambient%Va) * MW_H2O * 1d-3
         else
             RHO%w = error
         end if
@@ -134,9 +151,9 @@ subroutine FluxParams(printout)
         RHO%w_at = error
         do msl = firstGas, lastGas
             if (.not. E2Col(msl)%present) cycle
-            if (trim(E2Col(msl)%var) /= 'h2o') cycle
+            if (.not. GasSlotIsWater(msl)) cycle
             if (Stats%chi(msl) > 0d0 .and. Ambient%Va > 0d0) &
-                RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW(h2o) * 1d-3
+                RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW_H2O * 1d-3
         end do
 
         if (Stats%T > 0d0 .and. RHO%w >= 0d0) then
@@ -213,7 +230,7 @@ subroutine FluxParams(printout)
             RHO%a = RHO%d + RHO%w
             !> alternative: analytically derived from RHO%a = Pa * Ma / (Ru * T)
             !> Gives identical result.
-            !RHO%a = (Stats%Pr - (1d0-MW(h2o)/Md) * Ambient%e) / (Rd*Stats%T)
+            !RHO%a = (Stats%Pr - (1d0-MW_H2O/Md) * Ambient%e) / (Rd*Stats%T)
         else
             RHO%a = RHO%d
         end if

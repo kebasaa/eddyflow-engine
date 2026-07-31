@@ -39,8 +39,9 @@ subroutine MoleFractionsAndMixingRatios()
     implicit none
     !> local variables
     integer :: gas
+    integer :: msl
     real(kind = dbl) :: LocVa(GHGNumVar)
-
+    logical, external :: GasSlotIsWater
 
     !> Initialization
     do gas = firstGas, lastGas
@@ -57,89 +58,97 @@ subroutine MoleFractionsAndMixingRatios()
         end if
     end do
 
-    !> First calculate stuff for H2O
-    select case (E2Col(h2o)%measure_type)
-        case ('mixing_ratio')
-            !> If water vapour is mixing ratio, convert to mole fraction
-            Stats%r(h2o)   = Stats%Mean(h2o)
-            Stats%chi(h2o) = Stats%Mean(h2o) / (1d0 + Stats%Mean(h2o) / 1d3)
-            if (LocVa(h2o) > 0d0) then
-                Stats%d(h2o) = Stats%chi(h2o) / LocVa(h2o)
-            else
-                Stats%d(h2o) = error
-            end if
-        case('mole_fraction')
-            !> If water vapour is already mole fraction, takes mean value
-            Stats%chi(h2o) = Stats%Mean(h2o)
-            Stats%r(h2o)   = Stats%Mean(h2o) / (1.d0 - Stats%Mean(h2o) / 1d3)
-            if (LocVa(h2o) > 0d0) then
-                Stats%d(h2o) = Stats%chi(h2o) / LocVa(h2o)
-            else
-                Stats%d(h2o) = error
-            end if
-        case('molar_density')
-            !> If water vapour is molar density [mmol_w m-3]
-            !> calculate mole fraction [mmol_w mol_a-1] by multiplication by
-            !> air mole volume [m+3 mol_a-1]
-            Stats%d(h2o) = Stats%Mean(h2o)
-            if (LocVa(h2o) > 0d0) then
-                Stats%chi(h2o) = Stats%Mean(h2o) * LocVa(h2o)
-                Stats%r(h2o)   = Stats%chi(h2o) / (1.d0 - Stats%chi(h2o) / 1d3)
-            else
-                Stats%chi(h2o) = error
-                Stats%r(h2o) = error
-            end if
-        case default
-            Stats%d(h2o) = error
-            Stats%r(h2o) = error
-            Stats%chi(h2o) = error
-    end select
-
-    !> Calculate average mole fractions and mixing ratios where applicable
+    !> Pass 1: every water record. Water converts without a dilution term -
+    !> it is the dilutant - so it has to be done before the gases that name
+    !> it. This was a single block for the h2o slot, which is record two and
+    !> holds water only by convention: a project that declared its water
+    !> elsewhere had that block compute a non-water gas's chi/r/d, and then
+    !> diluted every real gas by it.
     do gas = firstGas, lastGas
-        if (gas /= h2o) then
-            select case (E2Col(gas)%measure_type)
-                case('mixing_ratio')
-                    Stats%r(gas)   = Stats%Mean(gas)
-                    if (Stats%r(h2o) /= error) then
-                        Stats%chi(gas) = Stats%Mean(gas) &
-                            / (1.d0 + Stats%r(h2o) * 1d-3)
-                    else
-                        Stats%chi(gas) = Stats%r(gas)
-                    end if
-                    if (LocVa(gas) > 0d0) then
-                        Stats%d(gas) = Stats%chi(gas) / LocVa(gas) * 1d-3
-                    else
-                        Stats%d(gas) = error
-                    end if
-                case('mole_fraction')
-                    Stats%chi(gas) = Stats%Mean(gas)
-                    if (Stats%chi(h2o) /= error) then
+        if (.not. GasSlotIsWater(gas)) cycle
+        select case (E2Col(gas)%measure_type)
+            case ('mixing_ratio')
+                Stats%r(gas)   = Stats%Mean(gas)
+                Stats%chi(gas) = Stats%Mean(gas) / (1d0 + Stats%Mean(gas) / 1d3)
+                if (LocVa(gas) > 0d0) then
+                    Stats%d(gas) = Stats%chi(gas) / LocVa(gas)
+                else
+                    Stats%d(gas) = error
+                end if
+            case ('mole_fraction')
+                Stats%chi(gas) = Stats%Mean(gas)
+                Stats%r(gas)   = Stats%Mean(gas) / (1.d0 - Stats%Mean(gas) / 1d3)
+                if (LocVa(gas) > 0d0) then
+                    Stats%d(gas) = Stats%chi(gas) / LocVa(gas)
+                else
+                    Stats%d(gas) = error
+                end if
+            case ('molar_density')
+                Stats%d(gas) = Stats%Mean(gas)
+                if (LocVa(gas) > 0d0) then
+                    Stats%chi(gas) = Stats%Mean(gas) * LocVa(gas)
+                    Stats%r(gas)   = Stats%chi(gas) &
+                        / (1.d0 - Stats%chi(gas) / 1d3)
+                else
+                    Stats%chi(gas) = error
+                    Stats%r(gas) = error
+                end if
+            case default
+                Stats%d(gas) = error
+                Stats%r(gas) = error
+                Stats%chi(gas) = error
+        end select
+    end do
+
+    !> Pass 2: every other gas, diluted by the water *it* names. A gas whose
+    !> moisture reference does not resolve is left undiluted rather than
+    !> diluted by an arbitrary slot - the same fallback the single-water code
+    !> used when Stats%r(h2o) was in error.
+    do gas = firstGas, lastGas
+        if (GasSlotIsWater(gas)) cycle
+        msl = E2Col(gas)%moist_ref
+        if (msl < firstGas .or. msl > lastGas) msl = gas
+        select case (E2Col(gas)%measure_type)
+            case('mixing_ratio')
+                Stats%r(gas)   = Stats%Mean(gas)
+                if (msl /= gas .and. Stats%r(msl) /= error) then
+                    Stats%chi(gas) = Stats%Mean(gas) &
+                        / (1.d0 + Stats%r(msl) * 1d-3)
+                else
+                    Stats%chi(gas) = Stats%r(gas)
+                end if
+                if (LocVa(gas) > 0d0) then
+                    Stats%d(gas) = Stats%chi(gas) / LocVa(gas) * 1d-3
+                else
+                    Stats%d(gas) = error
+                end if
+            case('mole_fraction')
+                Stats%chi(gas) = Stats%Mean(gas)
+                if (msl /= gas .and. Stats%chi(msl) /= error) then
+                    Stats%r(gas) = Stats%chi(gas) &
+                        / (1.d0 - Stats%chi(msl) * 1d-3)
+                else
+                    Stats%r(gas) = Stats%chi(gas)
+                end if
+                if (LocVa(gas) > 0d0) then
+                    Stats%d(gas) = Stats%chi(gas) / LocVa(gas) * 1d-3
+                else
+                    Stats%d(gas) = error
+                end if
+            case('molar_density')
+                Stats%d(gas) = Stats%Mean(gas)
+                if (LocVa(gas) > 0d0) then
+                    Stats%chi(gas) = Stats%Mean(gas) * LocVa(gas) * 1d3
+                    if (msl /= gas .and. Stats%chi(msl) /= error) then
                         Stats%r(gas) = Stats%chi(gas) &
-                            / (1.d0 - Stats%chi(h2o) * 1d-3)
+                            / (1.d0 - Stats%chi(msl) * 1d-3)
                     else
                         Stats%r(gas) = Stats%chi(gas)
                     end if
-                    if (LocVa(gas) > 0d0) then
-                        Stats%d(gas) = Stats%chi(gas) / LocVa(gas) * 1d-3
-                    else
-                        Stats%d(gas) = error
-                    end if
-                case('molar_density')
-                    Stats%d(gas) = Stats%Mean(gas)
-                    if (LocVa(gas) > 0d0) then
-                        Stats%chi(gas) = Stats%Mean(gas) * LocVa(gas) * 1d3
-                        if (Stats%chi(h2o) /= error) then
-                            Stats%r(gas) = Stats%chi(gas) &
-                                / (1.d0 - Stats%chi(h2o) * 1d-3)
-                        else
-                            Stats%r(gas) = Stats%chi(gas)
-                        end if
-                    else
-                        Stats%chi(h2o) = error
-                        Stats%r(h2o) = error
-                    end if
-            end select
-        end if
+                else
+                    Stats%chi(gas) = error
+                    Stats%r(gas) = error
+                end if
+        end select
     end do
 end subroutine MoleFractionsAndMixingRatios

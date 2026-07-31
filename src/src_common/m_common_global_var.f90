@@ -169,7 +169,21 @@ module m_common_global_var
     real(kind = dbl) :: Dc(E2NumVar) !< Diffus. coeff. of gases in air [m+2 s-1]
     data (Dc(mmm), mmm = co2, gas4) / 0.00001381d0, 0.00002178d0, 0.00001952d0, 0.00001436d0/ !--> Massman (1998, Atm Env, Table 2)
     real(kind = sgl) :: MW(E2NumVar) !< Molecular weights
+    !> Defaults keyed by legacy slot position, not by species. A record that
+    !> carries its own mw supersedes the entry for its slot - including slots
+    !> one to four - so nothing may read MW(co2) and mean "carbon dioxide" or
+    !> MW(h2o) and mean "water". Use MW_H2O for the latter.
     data (MW(mmm), mmm = co2, gas4) / 44.01e-3, 18.02e-3, 16.04e-3, 44.01e-3/
+    !> The molecular weight of water as a physical constant, for the latent
+    !> heat, evapotranspiration and vapour-density terms - all of which are
+    !> about water itself and not about whatever gas occupies a slot. These
+    !> read MW(h2o), which is the same number only for as long as record two
+    !> happens to be water: a project declaring N2O there made every LE, E and
+    !> ET wrong by a factor of 2.44.
+    !>
+    !> Deliberately `sgl` with the identical literal, so the promotion to
+    !> double is bit-for-bit what the data statement above produced.
+    real(kind = sgl), parameter :: MW_H2O = 18.02e-3
     real(kind = dbl), parameter :: h2o_to_ET =  0.0648d0  !< To convert between H2O flux [mmol m-2 s-1] and ET flux (mm  hour-1)
     real(kind = dbl), parameter :: p = 3.14159265358979323846d0 !< Greek pi
     real(kind = dbl), parameter :: StdVair = 0.02245d0  !< gas molar volume at 25 �C and 101.325 kPa

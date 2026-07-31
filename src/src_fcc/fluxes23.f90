@@ -132,7 +132,7 @@ subroutine Fluxes23(lEx)
 
     !> Level 2 h2o and latent heat flux
     if (Flux2%E /= error) then
-        Flux2%gas(h2o) = Flux2%E * 1d3 / MW(h2o)
+        Flux2%gas(h2o) = Flux2%E * 1d3 / MW_H2O
         Flux2%ET = Flux2%gas(h2o) * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux2%LE = Flux2%E * lEx%lambda
@@ -214,7 +214,7 @@ subroutine Fluxes23(lEx)
 
     !> Level 3 h2o flux and latent heat flux
     if (Flux3%E /= error) then
-        Flux3%gas(h2o) = Flux3%E * 1d3 / MW(h2o)
+        Flux3%gas(h2o) = Flux3%E * 1d3 / MW_H2O
         Flux3%ET = Flux3%gas(h2o) * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux3%LE = Flux3%E * lEx%lambda

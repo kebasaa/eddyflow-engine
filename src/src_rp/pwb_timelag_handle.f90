@@ -155,29 +155,32 @@ integer function GasIndexFromLabel(label)
     character(*), intent(in) :: label
     character(64) :: tags(GHGNumVar)
     integer :: gas
+    character(32) :: legacy
+    character(32), external :: LegacySpectralVarTag
 
-    select case (trim(label))
-        case ('co2')
-            GasIndexFromLabel = co2
-        case ('h2o')
-            GasIndexFromLabel = h2o
-        case ('ch4')
-            GasIndexFromLabel = ch4
-        case ('gas4')
-            GasIndexFromLabel = gas4
-        case default
-            !> The inverse of GasLabel for slots past the fourth. Without it a
-            !> cached donor lag for such a gas read back as slot 0 and the
-            !> sharing rule silently dropped it.
-            GasIndexFromLabel = 0
-            call SpectralVarTags(tags)
-            do gas = gas4 + 1, lastGas
-                if (len_trim(tags(gas)) > 0 .and. trim(tags(gas)) == trim(label)) then
-                    GasIndexFromLabel = gas
-                    return
-                end if
-            end do
-    end select
+    !> The exact inverse of GasLabel, over every slot. No literal cases: one
+    !> would shadow the record-derived match and send a label back to a slot
+    !> that no longer holds that species.
+    GasIndexFromLabel = 0
+    call SpectralVarTags(tags)
+    do gas = firstGas, lastGas
+        if (len_trim(tags(gas)) > 0 .and. trim(tags(gas)) == trim(label)) then
+            GasIndexFromLabel = gas
+            return
+        end if
+    end do
+
+    !> A cache written before the tags became record-derived spells the first
+    !> four slots co2/h2o/ch4/gas4. Accepted only after the record-derived
+    !> pass has failed, so a current label never resolves to a legacy slot.
+    do gas = firstGas, lastGas
+        legacy = LegacySpectralVarTag(gas)
+        if (len_trim(legacy) == 0) cycle
+        if (trim(legacy) == trim(label)) then
+            GasIndexFromLabel = gas
+            return
+        end if
+    end do
 end function GasIndexFromLabel
 
 subroutine StorePwbTimelagCache(gas, stage, actual_lag, used_lag, row_lag, default_used, res)
@@ -1189,26 +1192,16 @@ character(32) function GasLabel(gas)
     integer, intent(in) :: gas
     character(32) :: tags(GHGNumVar)
 
-    !> The historical four keep their literal labels: these strings go into the
-    !> PWB time-lag cache file and are read back by GasIndexFromLabel, so
-    !> renaming one would orphan every cached lag. Slots past the fourth had no
-    !> label at all and read back as 'unknown'.
-    select case(gas)
-        case(co2)
-            GasLabel = 'co2'
-        case(h2o)
-            GasLabel = 'h2o'
-        case(ch4)
-            GasLabel = 'ch4'
-        case(gas4)
-            GasLabel = 'gas4'
-        case default
-            GasLabel = 'unknown'
-            if (gas > gas4 .and. gas <= lastGas) then
-                call SpectralVarTags(tags)
-                if (len_trim(tags(gas)) > 0) GasLabel = tags(gas)
-            end if
-    end select
+    !> Every slot named from its record. These strings go into the PWB
+    !> time-lag cache file and come back through GasIndexFromLabel, so the two
+    !> must be exact inverses. They were not: the literal cases pinned slots
+    !> 5-8 to co2/h2o/ch4/gas4, so a project with water at slot 9 wrote 'h2o'
+    !> for slot 9 and read it back as slot 6 - the cached lag was applied to
+    !> the wrong gas, and the right one fell back to its nominal window.
+    GasLabel = 'unknown'
+    if (gas < firstGas .or. gas > lastGas) return
+    call SpectralVarTags(tags)
+    if (len_trim(tags(gas)) > 0) GasLabel = tags(gas)
 end function GasLabel
 
 end module m_pwb_timelag

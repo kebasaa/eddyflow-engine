@@ -47,17 +47,22 @@ subroutine SetTimelags()
     real(kind = dbl) :: cell_time(GHGNumVar)
     real(kind = dbl) :: cell_volume(GHGNumVar)
     real(kind = dbl) :: safety
+    logical, external :: GasSlotIsWater
 
-    !> Multiplier
+    !> Multiplier. Water is the active gas - it adsorbs on the tube wall and
+    !> its lag drifts with humidity - so it gets the wider search window.
+    !> That is a property of the species, not of slot six.
     mult(:) = 2d0 !< For passive gases
-    mult(h2o) = 10d0 !< For active gases
+    do gas = firstGas, lastGas
+        if (GasSlotIsWater(gas)) mult(gas) = 10d0 !< For active gases
+    end do
     safety = 0.3d0  !< Safety margin for min/max setting, should nominal tlag be very close to zero
 
     !> set time-lags to optimized values if selected so by user
     if (meth%tlag == 'tlag_opt') then
         do gas = firstGas, lastGas
             if (E2Col(gas)%present) then
-                if (gas /= h2o) then
+                if (.not. GasSlotIsWater(gas)) then
                     !> Passive gases.
                     !>
                     !> Only where the optimiser actually has a window for this
@@ -145,6 +150,8 @@ subroutine LocalRhEstimate(lRH)
     real(kind = dbl) :: lRHOw
     real(kind = dbl) :: locES
     real(kind = dbl) :: Ma
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
 
     !> Air temperature and pressure estimates
     !> Last true condition determines which temperature is used
@@ -166,17 +173,24 @@ subroutine LocalRhEstimate(lRH)
 
     !> First calculate stuff for H2O
     lChi = error
-    select case (E2Col(h2o)%measure_type)
+    !> The local humidity estimate comes from the primary water record.
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas) then
+        lRH = error
+        return
+    end if
+
+    select case (E2Col(wsl)%measure_type)
         case ('mixing_ratio')
             !> If water vapour is mixing ratio, convert to mole fraction
-            lChi = Stats%Mean(h2o) / (1d0 + Stats%Mean(h2o) / 1d3)
+            lChi = Stats%Mean(wsl) / (1d0 + Stats%Mean(wsl) / 1d3)
         case('mole_fraction')
-            lChi = Stats%Mean(h2o)
+            lChi = Stats%Mean(wsl)
         case('molar_density')
             !> If water vapour is molar density [mmol_w m-3] calculate mole fraction
             !> [mmol_w mol_a-1] by multiplication by air mole volume [m+3 mol_a-1]
             if (locVa > 0d0) then
-                lChi = Stats%Mean(h2o) * locVa
+                lChi = Stats%Mean(wsl) * locVa
             else
                 lChi = error
             end if
@@ -185,10 +199,10 @@ subroutine LocalRhEstimate(lRH)
     end select
 
     !> If meteo RH is not available or out of range, uses H2O from raw data
-    !> Molecular weight of wet air --> Ma = chi(h2o) * MW(h2o) + chi(dry_air) * Md
+    !> Molecular weight of wet air --> Ma = chi(h2o) * MW_H2O + chi(dry_air) * Md
     !> if chi(dry_air) = 1 - chi(h2o) (assumes chi(h2o) in mmol mol_a-1)
     if (lChi > 0d0) then
-        Ma = (lChi * 1d-3) * MW(h2o) + (1d0 - lChi * 1d-3) * Md
+        Ma = (lChi * 1d-3) * MW_H2O + (1d0 - lChi * 1d-3) * Md
     else
         Ma = error
     end if
@@ -196,7 +210,7 @@ subroutine LocalRhEstimate(lRH)
     !> Water vapour mass density [kg_w m-3]
     !> from mole fraction [mmol_w / mol_a] (good also when native is molar density)
     if (lChi > 0d0 .and. locVa > 0d0) then
-        lRHOw = (lChi / locVa) * MW(h2o) * 1d-3
+        lRHOw = (lChi / locVa) * MW_H2O * 1d-3
     else
         lRHOw = error
     end if

@@ -60,13 +60,21 @@ interface
         character(*), intent(out) :: tags(GHGNumVar)
     end subroutine SpectralVarTags
 
-    !> Species names for the spectral reports. Free text, unlike the labels
-    !> above: the fourth gas is named by species, not 'gas4'.
+    !> Species names for the spectral reports, one per configured gas slot,
+    !> taken from that slot's record. Free text, unlike the labels above.
     subroutine SpectralGasNames(names)
         use m_common_global_var
         implicit none
         character(*), intent(out) :: names(GHGNumVar)
     end subroutine SpectralGasNames
+
+    !> The slot holding the site's primary water, or 0 if there is none.
+    !> For one-per-site quantities only; a gas that needs its own water for
+    !> a WPL correction reads E2Col(gas)%moist_ref.
+    integer function PrimaryWaterSlot()
+        use m_common_global_var
+        implicit none
+    end function PrimaryWaterSlot
 
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.

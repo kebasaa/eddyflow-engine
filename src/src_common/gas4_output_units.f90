@@ -134,6 +134,47 @@ end function GasSlotIsWater
 
 !***************************************************************************
 !
+! \brief       The gas slot holding the site's primary water measurement.
+! \author      Jonathan Muller
+! \note        A site has one humidity, one latent heat flux and one
+!              evapotranspiration however many hygrometers it carries, and
+!              those come from the first water record. Gases that need *their
+!              own* water for a WPL correction use E2Col(gas)%moist_ref
+!              instead; this is only for the one-per-site quantities.
+!
+!              Returns 0 when the project describes no water at all. Callers
+!              must treat that as "not performed" - the quantity is `error`
+!              and its column is not written - rather than computing from a
+!              slot that holds something else.
+!
+!              Record-derived and not presence-derived, for the same reason
+!              GasOutputLabel is: output headers are written before the first
+!              data file is read, and FCC has no E2Col. Callers apply their
+!              own availability test on top.
+!
+!              This replaces reading the literal `h2o` slot. That slot is
+!              record two, which is water only by convention - and with
+!              per-instrument water there is more than one water record, so
+!              even the convention no longer identifies a unique slot.
+!***************************************************************************
+integer function PrimaryWaterSlot()
+    use m_common_global_var
+    implicit none
+    integer :: gas
+    logical, external :: GasSlotIsWater
+
+    PrimaryWaterSlot = 0
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (.not. GasSlotIsWater(gas)) cycle
+        if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
+        PrimaryWaterSlot = gas
+        return
+    end do
+end function PrimaryWaterSlot
+
+!***************************************************************************
+!
 ! \brief       Full-output column-name stems, one per configured gas slot.
 ! \author      Jonathan Muller
 ! \note        Returns 'co2_', 'h2o_', … indexed by gas slot, lowercased and
@@ -190,13 +231,17 @@ end subroutine FullOutputGasTags
 !              the gas silently gets no correction factor. One helper, so they
 !              cannot drift.
 !
-!              **The historical eight keep their literal names**, `gas4`
-!              included, even though slot 8 usually holds a named species.
-!              Those strings are the shipped file format: renaming slot 8 to
-!              its species would change every existing full-cospectra file and
-!              break any reader keyed to the old name. Slots past the fourth
-!              gas had no name at all - the writer emitted `cov(w_)` and the
-!              reader looked for a blank - so those take the record's tag.
+!              The four anemometer channels keep their literal names: those
+!              are fixed measurements, not gases. **Every gas slot is named
+!              from its record**, including the historical four. Pinning them
+!              to co2/h2o/ch4/gas4 named a position rather than a species, so
+!              on a project that orders its records differently the label lied
+!              about which gas a column held - and two slots could end up
+!              carrying the same name, which breaks the round trip through
+!              GasIndexFromLabel.
+!
+!              Readers of files written before this keep working through an
+!              alias set, since the old names are still what those files say.
 !***************************************************************************
 subroutine SpectralVarTags(tags)
     use m_common_global_var
@@ -210,19 +255,43 @@ subroutine SpectralVarTags(tags)
     tags(v)    = 'v'
     tags(w)    = 'w'
     tags(ts)   = 'ts'
-    tags(co2)  = 'co2'
-    tags(h2o)  = 'h2o'
-    tags(ch4)  = 'ch4'
-    tags(gas4) = 'gas4'
 
     call FullOutputGasTags(gas_tags)
-    do gas = gas4 + 1, lastGas
+    do gas = firstGas, lastGas
         !> FullOutputGasTags returns a stem with a trailing underscore, since
         !> the full output concatenates it directly onto a quantity name.
         if (len_trim(gas_tags(gas)) > 1) &
             tags(gas) = gas_tags(gas)(1:len_trim(gas_tags(gas)) - 1)
     end do
 end subroutine SpectralVarTags
+
+!***************************************************************************
+!
+! \brief       The legacy on-disk name of a gas slot, or blank if it has none.
+! \author      Jonathan Muller
+! \note        Files written before SpectralVarTags became record-derived name
+!              the first four gas slots co2/h2o/ch4/gas4 regardless of what
+!              those slots held. A reader matching columns by name has to
+!              accept both spellings or it silently imports nothing for those
+!              gases - and "no cospectrum" means "no correction applied",
+!              which is a quiet loss rather than a loud one.
+!
+!              Only ever used to *widen* what a reader accepts. Nothing
+!              writes these.
+!***************************************************************************
+character(32) function LegacySpectralVarTag(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+
+    select case (gas_slot)
+        case (co2);  LegacySpectralVarTag = 'co2'
+        case (h2o);  LegacySpectralVarTag = 'h2o'
+        case (ch4);  LegacySpectralVarTag = 'ch4'
+        case (gas4); LegacySpectralVarTag = 'gas4'
+        case default; LegacySpectralVarTag = ''
+    end select
+end function LegacySpectralVarTag
 
 !***************************************************************************
 !

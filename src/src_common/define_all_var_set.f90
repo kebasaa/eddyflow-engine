@@ -232,15 +232,15 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                             end where
                         case ('g_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o)
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O
                             end where
                         case ('mg_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-3
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-3
                             end where
                         case ('ug_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-6
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-6
                             end where
                         case default
                             cycle
@@ -260,15 +260,15 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                             end where
                         case ('g_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o)
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O
                             end where
                         case ('mg_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-3
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-3
                             end where
                         case ('ug_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-6
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-6
                             end where
                         case default
                             cycle

@@ -41,6 +41,12 @@ subroutine Fluxes0_rp(printout)
     real(kind = dbl) :: Tp
     real(kind = dbl) :: dens_gain
     integer :: msl
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
+
+    !> The site's latent heat flux and evapotranspiration come from the
+    !> first water record, not from the h2o slot.
+    wsl = PrimaryWaterSlot()
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating fluxes Level 0..'
@@ -69,10 +75,12 @@ subroutine Fluxes0_rp(printout)
             Flux0%Hi_gas(co2) = error
         end if
 
-        if (Stats%tc_cov_tl_h2o /= error) then
-            Flux0%Hi_gas(h2o) = Ambient%RhoCp * Stats%tc_cov_tl_h2o
-        else
-            Flux0%Hi_gas(h2o) = error
+        if (wsl >= firstGas) then
+            if (Stats%tc_cov_tl_h2o /= error) then
+                Flux0%Hi_gas(wsl) = Ambient%RhoCp * Stats%tc_cov_tl_h2o
+            else
+                Flux0%Hi_gas(wsl) = error
+            end if
         end if
 
         if (Stats%tc_cov_tl_ch4 /= error) then
@@ -88,7 +96,7 @@ subroutine Fluxes0_rp(printout)
         end if
     else
         Flux0%Hi_gas(co2) = error
-        Flux0%Hi_gas(h2o) = error
+        if (wsl >= firstGas) Flux0%Hi_gas(wsl) = error
         Flux0%Hi_gas(ch4) = error
         Flux0%Hi_gas(gas4) = error
     end if
@@ -106,7 +114,7 @@ subroutine Fluxes0_rp(printout)
             Flux0%gas(msl) = error
             cycle
         end if
-        if (msl == h2o .or. trim(E2Col(msl)%var) == 'h2o') then
+        if (GasSlotIsWater(msl)) then
             dens_gain = 1d0
         else
             dens_gain = 1d3
@@ -159,20 +167,29 @@ subroutine Fluxes0_rp(printout)
         end select
     end do
 
-    !> Latent heat flux [W m-2], lambda in [J+1kg-1]
-    if (Flux0%gas(h2o) /= error .and. Ambient%lambda > 0d0) then
-        Flux0%LE = Flux0%gas(h2o) * Ambient%lambda * MW(h2o) * 1d-3
+    !> Latent heat flux and evapotranspiration. These are one-per-site
+    !> quantities and come from the primary water record; a project that
+    !> describes no water performs none of them, rather than computing them
+    !> from whatever gas happens to sit in the h2o slot.
+    if (wsl >= firstGas .and. Flux0%gas(wsl) /= error &
+        .and. Ambient%lambda > 0d0) then
+        Flux0%LE = Flux0%gas(wsl) * Ambient%lambda * MW_H2O * 1d-3
+        Flux0%E  = Flux0%gas(wsl) * MW_H2O * 1d-3
+        Flux0%ET = Flux0%gas(wsl) * h2o_to_ET
     else
         Flux0%LE = error
+        Flux0%E  = error
+        Flux0%ET = error
     end if
 
-    !> Random uncertainty on Latent heat flux, lambda in [J+1kg-1]
+    !> Random uncertainty on latent heat flux, lambda in [J+1kg-1]
     if (RUsetup%meth /= 'none') then
-        if (Essentials%rand_uncer(h2o) /= error .and. Ambient%lambda > 0d0) then
+        if (wsl >= firstGas .and. Essentials%rand_uncer(wsl) /= error &
+            .and. Ambient%lambda > 0d0) then
             Essentials%rand_uncer_LE = &
-                Essentials%rand_uncer(h2o) * Ambient%lambda * MW(h2o) * 1d-3
+                Essentials%rand_uncer(wsl) * Ambient%lambda * MW_H2O * 1d-3
             Essentials%rand_uncer_ET = &
-                Essentials%rand_uncer(h2o) * h2o_to_ET
+                Essentials%rand_uncer(wsl) * h2o_to_ET
         else
             Essentials%rand_uncer_LE = error
             Essentials%rand_uncer_ET = error
@@ -180,68 +197,65 @@ subroutine Fluxes0_rp(printout)
     end if
 
     !> Level 0 evapotranspiration flux [kg m-2 -1]
-    if (Flux0%gas(h2o) /= error .and. Ambient%lambda > 0d0) then
-        Flux0%E = Flux0%gas(h2o) * MW(h2o) * 1d-3
-        Flux0%ET = Flux0%gas(h2o) * h2o_to_ET
-    else
-        Flux0%E = error
-        Flux0%ET = error
-    end if
-
-    !> Level 0 evapotranspiration flux [kg m-2 -1]
     !> with H2O covariances at timelags of other scalars
-    if (E2Col(h2o)%Instr%path_type == 'closed') then
-        if(E2Col(h2o)%measure_type == 'molar_density') then
+    if (wsl >= firstGas) then
+    if (E2Col(wsl)%Instr%path_type == 'closed') then
+        if(E2Col(wsl)%measure_type == 'molar_density') then
             if(Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2 * MW(h2o) * 1d-3
+                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2 * MW_H2O * 1d-3
             else
                 Flux0%E_gas(co2) = error
             end if
             if(Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4 * MW(h2o) * 1d-3
+                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4 * MW_H2O * 1d-3
             else
                 Flux0%E_gas(ch4) = error
             end if
             if(Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4 * MW(h2o) * 1d-3
+                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4 * MW_H2O * 1d-3
             else
                 Flux0%E_gas(gas4) = error
             end if
 
-        else if(E2Col(h2o)%measure_type == 'mole_fraction') then
+        else if(E2Col(wsl)%measure_type == 'mole_fraction') then
             if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW(h2o) * 1d-3 / Ambient%Va
+                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW_H2O * 1d-3 / Ambient%Va
             else
                 Flux0%E_gas(co2) = error
             end if
             if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW(h2o) * 1d-3 / Ambient%Va
+                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW_H2O * 1d-3 / Ambient%Va
             else
                 Flux0%E_gas(ch4) = error
             end if
             if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW(h2o) * 1d-3 / Ambient%Va
+                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW_H2O * 1d-3 / Ambient%Va
             else
                 Flux0%E_gas(gas4) = error
             end if
 
-        else if (E2Col(h2o)%measure_type == 'mixing_ratio') then
+        else if (E2Col(wsl)%measure_type == 'mixing_ratio') then
             if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW(h2o) * 1d-3 / Ambient%Vd
+                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW_H2O * 1d-3 / Ambient%Vd
             else
                 Flux0%E_gas(co2) = error
             end if
             if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW(h2o) * 1d-3 / Ambient%Vd
+                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW_H2O * 1d-3 / Ambient%Vd
             else
                 Flux0%E_gas(ch4) = error
             end if
             if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW(h2o) * 1d-3 / Ambient%Vd
+                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW_H2O * 1d-3 / Ambient%Vd
             else
                 Flux0%E_gas(gas4) = error
             end if
         end if
+    else
+        Flux0%E_gas(co2) = error
+        Flux0%E_gas(ch4) = error
+        Flux0%E_gas(gas4) = error
+    end if
     else
         Flux0%E_gas(co2) = error
         Flux0%E_gas(ch4) = error
