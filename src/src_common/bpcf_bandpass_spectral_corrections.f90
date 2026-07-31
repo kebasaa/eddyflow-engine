@@ -61,6 +61,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     !> local variables
     integer :: month
     integer :: gas
+    integer :: wsl
     character(32) :: actual_hf_method
     type(SpectralType) :: tmpBPCF
     include 'interfaces_1.inc'
@@ -92,7 +93,14 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
         select case (trim(adjustl(EddyFlowProj%hf_meth)))
             case('horst_97', 'ibrom_07', 'fratini_12')
                 call char2int(lEx%end_date(6:7), month, 2)
-                if(lEx%var_present(h2o) .and. (RegPar(dum, dum)%e1 == error &
+                !> Asked of the site's water rather than of slot 6: the gate
+                !> is "this project has a hygrometer whose RH regression was
+                !> never fitted", and a project declaring its water elsewhere
+                !> skipped the check entirely and then used unfitted
+                !> coefficients.
+                wsl = PrimaryWaterSlot()
+                if (wsl < firstGas) wsl = h2o
+                if(lEx%var_present(wsl) .and. (RegPar(dum, dum)%e1 == error &
                     .or. RegPar(dum, dum)%e2 == error &
                     .or. RegPar(dum, dum)%e3 == error)) then
                     actual_hf_method = 'moncrieff_97'

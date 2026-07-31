@@ -175,6 +175,35 @@ end function PrimaryWaterSlot
 
 !***************************************************************************
 !
+! \brief       Slot to gate the one-per-site water columns on.
+! \author      Jonathan Muller
+! \note        The full output and the QC details carry LE_strg, un_LE, LE_scf
+!              and the water QC cells only when the site measures humidity.
+!              That question used to be asked as OutVarPresent(h2o) - the
+!              historical slot, which is water only by convention - so a
+!              project declaring its water elsewhere could have those columns
+!              decided by whichever species record two happened to hold.
+!
+!              Header and rows are written by different routines in different
+!              executables, and they must agree exactly or the file shifts.
+!              So the choice lives here, in one function both call, rather
+!              than being spelled out at each of the seventeen gates.
+!
+!              Falls back to the historical slot when the project describes no
+!              water at all, which is what those gates have always evaluated
+!              in that case.
+!***************************************************************************
+integer function PrimaryWaterOutSlot()
+    use m_common_global_var
+    implicit none
+    integer, external :: PrimaryWaterSlot
+
+    PrimaryWaterOutSlot = PrimaryWaterSlot()
+    if (PrimaryWaterOutSlot < firstGas) PrimaryWaterOutSlot = h2o
+end function PrimaryWaterOutSlot
+
+!***************************************************************************
+!
 ! \brief       Full-output column-name stems, one per configured gas slot.
 ! \author      Jonathan Muller
 ! \note        Returns 'co2_', 'h2o_', … indexed by gas slot, lowercased and

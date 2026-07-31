@@ -52,7 +52,9 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     !> them; an internal procedure cannot see a sibling's locals.
     integer :: nCellInstr
     integer :: i
+    integer :: wsl
     character(32) :: cellInstr(MaxNumInstruments)
+    integer, external :: PrimaryWaterSlot
 
 
     E2Col = NullCol
@@ -232,16 +234,25 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
         end do
     end do
 
-    !> Default every unresolved gas to the H2O in the fixed slot. The legacy
+    !> Default every unresolved gas to the site's primary water. The legacy
     !> selection has exactly one H2O, so this is what the single-analyser case
     !> has always used implicitly; making it explicit means both paths describe
     !> their moisture the same way instead of the legacy one leaving it blank.
-    if (E2Col(h2o)%present) then
-        do j = firstGas, lastGas
-            if (.not. E2Col(j)%present) cycle
-            if (E2Col(j)%moist_ref < firstGas .or. E2Col(j)%moist_ref > lastGas) &
-                E2Col(j)%moist_ref = h2o
-        end do
+    !>
+    !> Resolved by species rather than taken from the fixed slot. That slot is
+    !> record two, which is water only by convention - a project declaring its
+    !> water elsewhere had every unresolved gas pointed at whatever species
+    !> record two happened to hold, and the WPL correction then ran against a
+    !> trace gas's density as though it were humidity.
+    wsl = PrimaryWaterSlot()
+    if (wsl >= firstGas) then
+        if (E2Col(wsl)%present) then
+            do j = firstGas, lastGas
+                if (.not. E2Col(j)%present) cycle
+                if (E2Col(j)%moist_ref < firstGas .or. E2Col(j)%moist_ref > lastGas) &
+                    E2Col(j)%moist_ref = wsl
+            end do
+        end if
     end if
 
 contains
@@ -429,6 +440,15 @@ integer function ResolveGasRef(gasIdx, ref, wantedVar)
     integer, intent(in) :: ref
     character(*), intent(in) :: wantedVar
     integer :: k, slot
+    character(32) :: candidate, wanted
+
+    !> Species matching is case-insensitive, as it is in GasSlotIsWater.
+    !> The interface normalises a slug to lower case when it creates it, but
+    !> writes it to the file verbatim and re-normalises nothing on the way
+    !> back in - so a hand-edited project naming H2O rather than h2o would
+    !> have resolved no moisture reference at all, silently.
+    wanted = wantedVar
+    call uppercase(wanted)
 
     ResolveGasRef = 0
 
@@ -446,7 +466,9 @@ integer function ResolveGasRef(gasIdx, ref, wantedVar)
         do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
             slot = firstGas + k - 1
             if (.not. E2Col(slot)%present) cycle
-            if (trim(EddyFlowProj%gas(k)%var) /= trim(wantedVar)) cycle
+            candidate = EddyFlowProj%gas(k)%var
+            call uppercase(candidate)
+            if (trim(adjustl(candidate)) /= trim(wanted)) cycle
             if (trim(EddyFlowProj%gas(k)%instr) == &
                 trim(EddyFlowProj%gas(gasIdx)%instr)) then
                 ResolveGasRef = slot
@@ -459,7 +481,9 @@ integer function ResolveGasRef(gasIdx, ref, wantedVar)
     do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         slot = firstGas + k - 1
         if (.not. E2Col(slot)%present) cycle
-        if (trim(EddyFlowProj%gas(k)%var) == trim(wantedVar)) then
+        candidate = EddyFlowProj%gas(k)%var
+        call uppercase(candidate)
+        if (trim(adjustl(candidate)) == trim(wanted)) then
             ResolveGasRef = slot
             return
         end if

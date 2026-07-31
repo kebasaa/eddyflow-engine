@@ -114,7 +114,7 @@ subroutine InitOutFiles(lEx)
             end if
 
             !> LE
-            if(fcc_var_present(h2o)) then
+            if(fcc_var_present(PrimaryWaterOutSlot())) then
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'LE,qc_LE', separator)
                 call AddDatum(header3, '[W+1m-2],[#]', separator)
@@ -144,9 +144,9 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header1, 'storage_fluxes', separator)
             call AddDatum(header2,'H_strg', separator)
             call AddDatum(header3,'[W+1m-2]', separator)
-            if(fcc_var_present(h2o)) call AddDatum(header1, '', separator)
-            if(fcc_var_present(h2o)) call AddDatum(header2,'LE_strg', separator)
-            if(fcc_var_present(h2o)) call AddDatum(header3,'[W+1m-2]', separator)
+            if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header1, '', separator)
+            if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header2,'LE_strg', separator)
+            if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2]', separator)
             do gas = firstGas, lastGas
                 if(.not. fcc_var_present(gas)) cycle
                 call AddDatum(header1, '', separator)
@@ -209,9 +209,9 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header2,'un_Tau,Tau_scf,un_H,H_scf', separator)
             call AddDatum(header3,'[kg+1m-1s-2],[#],[W+1m-2],[#]', separator)
             !> LE
-            if(fcc_var_present(h2o)) call AddDatum(header1, ',', separator)
-            if(fcc_var_present(h2o)) call AddDatum(header2,'un_LE,LE_scf', separator)
-            if(fcc_var_present(h2o)) call AddDatum(header3,'[W+1m-2],[#]', separator)
+            if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header1, ',', separator)
+            if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header2,'un_LE,LE_scf', separator)
+            if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2],[#]', separator)
             !> Uncorrected gas fluxes (Level 0)
             do gas = firstGas, lastGas
                 if(.not. fcc_var_present(gas)) cycle
@@ -501,7 +501,7 @@ subroutine InitOutFiles(lEx)
                 &co2_irga_eastward_separation,co2_irga_vertical_separation,&
                 &co2_irga_tube_length,co2_irga_tube_diameter,co2_irga_tube_flowrate,&
                 &co2_irga_kw,co2_irga_ko,co2_irga_hpath_length,co2_irga_vpath_length,co2_irga_tau', separator)
-        if (fcc_var_present(h2o)) &
+        if (fcc_var_present(PrimaryWaterOutSlot())) &
             call AddDatum(header1,'h2o_irga_manufacturer,h2o_irga_model,h2o_measure_type,h2o_irga_northward_separation,&
                 &h2o_irga_eastward_separation,h2o_irga_vertical_separation,&
                 &h2o_irga_tube_length,h2o_irga_tube_diameter,h2o_irga_tube_flowrate,&

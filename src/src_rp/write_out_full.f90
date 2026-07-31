@@ -93,10 +93,10 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end if
 
     !> LE
-    if(OutVarPresent(h2o)) then
+    if(OutVarPresent(PrimaryWaterOutSlot())) then
         call WriteDatumFloat(Flux3%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas(h2o), field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(QCFlag%gas(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(Essentials%rand_uncer_LE, field_val, EddyFlowProj%err_label)
@@ -137,7 +137,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> storage fluxes
     call WriteDatumFloat(Stor%H, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    if(OutVarPresent(h2o)) then
+    if(OutVarPresent(PrimaryWaterOutSlot())) then
         call WriteDatumFloat(Stor%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     elseif(EddyFlowProj%fix_out_format) then
@@ -222,8 +222,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end if
     call WriteDatumFloat(Ambient%Va, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    if (Flux3%gas(h2o) /= error) then
-        call WriteDatumFloat(Flux3%gas(h2o) * h2o_to_ET, field_val, EddyFlowProj%err_label)
+    if (Flux3%gas(PrimaryWaterOutSlot()) /= error) then
+        call WriteDatumFloat(Flux3%gas(PrimaryWaterOutSlot()) * h2o_to_ET, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -331,7 +331,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call WriteDatumFloat(BPCF%of(w_ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
     !> LE
-    if(OutVarPresent(h2o)) then
+    if(OutVarPresent(PrimaryWaterOutSlot())) then
         call WriteDatumFloat(Flux0%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumFloat(BPCF%of(w_h2o), field_val, EddyFlowProj%err_label)

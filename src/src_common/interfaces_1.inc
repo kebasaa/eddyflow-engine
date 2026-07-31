@@ -76,6 +76,13 @@ interface
         implicit none
     end function PrimaryWaterSlot
 
+    !> Slot the one-per-site water columns are gated on. Header and rows are
+    !> written by different routines and must agree, so both ask this.
+    integer function PrimaryWaterOutSlot()
+        use m_common_global_var
+        implicit none
+    end function PrimaryWaterOutSlot
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &

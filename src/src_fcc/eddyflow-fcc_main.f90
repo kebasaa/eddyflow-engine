@@ -547,10 +547,17 @@ Program EddyFlowFCC
         !> Calculate quality flags
         StDiff%w_u    = nint(lEx%TAU_SS)
         StDiff%w_ts   = nint(lEx%H_SS)
-        StDiff%w_gas(co2)  = nint(lEx%F_SS(co2))
-        StDiff%w_gas(h2o)  = nint(lEx%F_SS(h2o))
-        StDiff%w_gas(ch4)  = nint(lEx%F_SS(ch4))
-        StDiff%w_gas(gas4) = nint(lEx%F_SS(gas4))
+        !> Every configured gas. lEx%F_SS is slot-indexed and read_ex_record
+        !> already fills firstGas..firstGas+n_layout_gas-1 from the file, so
+        !> the data was there all along - only this copy stopped at the fourth
+        !> slot, leaving QualityFlags to make a flag out of unset memory for
+        !> every gas past it. That reached the full output as qc_LE whenever
+        !> the site's water sat further out.
+        StDiff%w_gas = nint(error)
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            StDiff%w_gas(gas) = nint(lEx%F_SS(gas))
+        end do
         DtDiff%u      = nint(lEx%U_ITC)
         DtDiff%w      = nint(lEx%W_ITC)
         DtDiff%ts     = nint(lEx%TS_ITC)

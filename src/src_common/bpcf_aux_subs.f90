@@ -189,6 +189,8 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
     real(kind = dbl)  :: C
     real(kind = dbl)  :: lRH
     logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
 
     f_c(firstGas:lastGas) = error
     f_2(firstGas:lastGas) = error
@@ -197,13 +199,22 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
         case('iir')
             !> calculate H2O cut-off frequency from current RH, using
             !> exponential fit parameters
-            if (lEx%var_present(h2o)) then
-                A = RegPar(dum, dum)%e1
-                B = RegPar(dum, dum)%e2
-                C = RegPar(dum, dum)%e3
-                lRH = lEx%RH * 1d-2
-                f_c(h2o) = dexp(A * lRH**2 + B * lRH + C)
-            end if
+            !> Every hygrometer, not the one in the fixed slot. The three
+            !> exponential coefficients are a single set for the whole project
+            !> - a documented limit of the data model, recorded in
+            !> fit_rh_to_cutoff - so a second hygrometer reuses the primary's
+            !> RH dependence rather than having none at all. Before this, only
+            !> slot 6 was given a cut-off and every other water record fell
+            !> through to the analytic correction without saying so.
+            A = RegPar(dum, dum)%e1
+            B = RegPar(dum, dum)%e2
+            C = RegPar(dum, dum)%e3
+            lRH = lEx%RH * 1d-2
+            do gas = firstGas, lastGas
+                if (.not. GasSlotIsWater(gas)) cycle
+                if (.not. lEx%var_present(gas)) cycle
+                f_c(gas) = dexp(A * lRH**2 + B * lRH + C)
+            end do
             !> select relevant tranfer function parameters
             !> according to the month, for CO2, CH4, GAS4
             call char2int(lEx%end_date(6:7), month, 2)
@@ -222,11 +233,19 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
         case('sigma')
             !> select relevant tranfer function parameters
             !> according to the RH-class, for H2O
-            if (lEx%var_present(h2o)) then
+            !> Same rule as the iir arm: every hygrometer, each taking the
+            !> primary water's RH-class parameter, since that is the only
+            !> water slot the assessment fits.
+            wsl = PrimaryWaterSlot()
+            if (wsl >= firstGas) then
                 do RH = RH10, RH90
                     if(lEx%RH > dfloat(RH)*10d0 - 5d0 &
                        .and. lEx%RH < dfloat(RH)*10d0 + 5d0) then
-                        f_2(h2o) = RegPar(h2o, RH)%f2
+                        do gas = firstGas, lastGas
+                            if (.not. GasSlotIsWater(gas)) cycle
+                            if (.not. lEx%var_present(gas)) cycle
+                            f_2(gas) = RegPar(wsl, RH)%f2
+                        end do
                         exit
                     end if
                 end do
