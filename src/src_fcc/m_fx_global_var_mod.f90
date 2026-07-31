@@ -39,7 +39,6 @@ module m_fx_global_var
     save
 
     !> global variables
-    integer :: g4l
     integer :: nstat
     integer :: nfull
     integer, parameter :: ndkf = 60     !< TO BE INCREASED????!!!!!!!
@@ -56,7 +55,6 @@ module m_fx_global_var
     real(kind = dbl), allocatable :: custVars(:)
 
     character(12), parameter :: fcc_app = 'EddyFlow-FCC'
-    character(32) :: g4lab
     character(32) :: gas_full_flux_label(GHGNumVar)
     character(32) :: gas_full_conc_label(GHGNumVar)
     character(32) :: gas_full_mixr_label(GHGNumVar)

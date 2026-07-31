@@ -558,19 +558,23 @@ function GasOutputLabel(gas_slot) result(label)
     !> gases configured it could hand back the species of a different slot.
     !> That produced a FLUXNET row with two sets of N2O_* columns and no COS
     !> columns at all.
-    if (EddyFlowProj%gas_num >= rec4 .and. EddyFlowProj%gas(rec4)%col > 0) then
-        !> Prefer the metadata column's own label, which is what the legacy
-        !> path used, so an upgraded project keeps its column names.
-        do i = 1, MaxNumCol
-            if (Col(i)%orig_col /= EddyFlowProj%gas(rec4)%col) cycle
-            if (len_trim(Col(i)%label) == 0 .or. &
-                trim(Col(i)%label) == 'none') exit
-            label = trim(Col(i)%label)
-            return
-        end do
-        !> No usable label: fall back to the species the record names.
-        if (len_trim(EddyFlowProj%gas(rec4)%var) > 0 .and. &
-            trim(EddyFlowProj%gas(rec4)%var) /= 'none') then
+    if (EddyFlowProj%gas_num >= rec4) then
+        if (EddyFlowProj%gas(rec4)%col > 0) then
+            !> Prefer the metadata column's own label, which is what the
+            !> legacy path used, so an upgraded project keeps its column names.
+            do i = 1, MaxNumCol
+                if (Col(i)%orig_col /= EddyFlowProj%gas(rec4)%col) cycle
+                if (.not. UsableLabel(Col(i)%label)) exit
+                label = trim(Col(i)%label)
+                return
+            end do
+        end if
+        !> Fall back to the species the record names. This is deliberately
+        !> outside the column test: a gas configured *without* a column still
+        !> declares a species, and it still has to be named - it appears in
+        !> the spectral readiness report and in the assessment file. While
+        !> this sat inside the branch, such a gas fell through to E2Col below.
+        if (UsableLabel(EddyFlowProj%gas(rec4)%var)) then
             label = trim(EddyFlowProj%gas(rec4)%var)
             return
         end if
@@ -579,8 +583,7 @@ function GasOutputLabel(gas_slot) result(label)
     !> No record for this slot: fall back to whatever the per-file path
     !> resolved, then to the slot name. 'gas4' is kept for the fourth slot so
     !> a project that resolves nothing still produces the historical name.
-    if (len_trim(E2Col(gas_slot)%label) > 0 .and. &
-        trim(E2Col(gas_slot)%label) /= 'none') then
+    if (UsableLabel(E2Col(gas_slot)%label)) then
         label = trim(E2Col(gas_slot)%label)
         return
     end if
@@ -589,6 +592,32 @@ function GasOutputLabel(gas_slot) result(label)
     else
         write(label, '(a,i0)') 'gas', gas_slot - firstGas + 1
     end if
+
+contains
+
+!> Whether a candidate label can be used as a name.
+!>
+!> Blank and 'none' are the declared "unset" values. The printable test is
+!> the one that matters: E2Col is never populated in FCC, so its %label holds
+!> whatever the module default left there - in practice NUL bytes, which
+!> len_trim counts as content. That made this function hand back 32 NULs for
+!> a gas configured without a column, and callers then wrote them into
+!> report headers as `avrg_cosp(w/^@^@^@...)`. Every caller treated a blank
+!> as "no name" and none of them could recognise that.
+logical function UsableLabel(text)
+    implicit none
+    character(*), intent(in) :: text
+    integer :: k
+
+    UsableLabel = .false.
+    if (len_trim(text) == 0) return
+    if (trim(text) == 'none') return
+    do k = 1, len_trim(text)
+        if (iachar(text(k:k)) < 32 .or. iachar(text(k:k)) > 126) return
+    end do
+    UsableLabel = .true.
+end function UsableLabel
+
 end function GasOutputLabel
 
 !***************************************************************************

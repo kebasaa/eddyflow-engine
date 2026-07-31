@@ -44,8 +44,6 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     type(DateType), intent(out) :: EndTimestamp
     !> local variables
     integer :: open_status
-    integer :: st
-    integer :: en
     integer :: j
     integer :: gas
     integer :: field_start
@@ -77,12 +75,16 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     !> Store header to string, for writing it on output
     read(udf, '(a)') fluxnet_header
 
-    st = index(fluxnet_header, ',FCH4,') + 6
-    en = st + index(fluxnet_header(st:), ',') - 2
-    g4lab = fluxnet_header(st+1:en)
-    call lowercase(g4lab)
-    g4l = len_trim(g4lab)
-    
+    !> The fourth gas's label used to be recovered here by finding ',FCH4,'
+    !> in the header and taking the column after it, then stripping one
+    !> character to drop the 'F' flux prefix. That assumed a gas named
+    !> methane exists, that the fourth gas is written immediately after it,
+    !> and that its flux tag is one character longer than its name - none of
+    !> which holds once records assign species to slots by declaration order.
+    !> On a project without methane `index` returned 0 and the label became a
+    !> slice of the first columns of the header. Every consumer now names its
+    !> gas from the project's own records, via SpectralGasNames.
+
 
     UserVarHeader = ''
     marker_custom = index(fluxnet_header, 'NUM_CUSTOM_VARS')

@@ -61,6 +61,7 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
     real(kind = dbl) :: tol = 1d-06
     real(kind = dbl), allocatable  :: fvec(:), fjac(:,:)
     character(32) :: cvar
+    character(16), external :: GasName
     include '../src_common/interfaces.inc'
 
 
@@ -75,18 +76,15 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
         yFit = 0d0
         m = nfit(var, unstable)
         if (m < 200) cycle !< includes variables that are not present
-        select case (var)
-            case (w_ts)
-                cvar = 'w/T'
-            case (w_co2)
-                cvar = 'w/CO2'
-            case (w_h2o)
-                cvar = 'w/H2O'
-            case (w_ch4)
-                cvar = 'w/CH4'
-            case (w_gas4)
-                cvar = 'w/' // g4lab(1:g4l)
-        end select
+        !> Name the cospectrum from the gas's own record. The select case
+        !> this replaces only assigned for w_ts..w_gas4 while the loop runs
+        !> to lastGas, so every slot past the fourth reported under whatever
+        !> label the previous iteration had left in cvar.
+        if (var == w_ts) then
+            cvar = 'w/T'
+        else
+            cvar = 'w/' // trim(GasName(var))
+        end if
 
         write(*, '(a)', advance = 'no') &
             ' Fitting model cospectra to unstable ' // &
@@ -121,18 +119,15 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
         yFit = 0d0
         m = nfit(var, stable)
         if (m < 100) cycle !< includes variables that are not present
-        select case (var)
-            case (w_ts)
-                cvar = 'w/T'
-            case (w_co2)
-                cvar = 'w/CO2'
-            case (w_h2o)
-                cvar = 'w/H2O'
-            case (w_ch4)
-                cvar = 'w/CH4'
-            case (w_gas4)
-                cvar = 'w/' // g4lab(1:g4l)
-        end select
+        !> Name the cospectrum from the gas's own record. The select case
+        !> this replaces only assigned for w_ts..w_gas4 while the loop runs
+        !> to lastGas, so every slot past the fourth reported under whatever
+        !> label the previous iteration had left in cvar.
+        if (var == w_ts) then
+            cvar = 'w/T'
+        else
+            cvar = 'w/' // trim(GasName(var))
+        end if
         write(*, '(a)', advance = 'no') &
             ' Fitting model cospectra to stable ' // cvar(1:len_trim(cvar)) // ' cospectra..'
 

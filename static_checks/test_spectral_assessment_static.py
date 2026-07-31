@@ -56,6 +56,13 @@ def read(path):
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def strip_comments(source):
+    """Fortran comment lines, so a note *about* a removed construct does not
+    read as the construct itself."""
+    return "\n".join(ln for ln in source.splitlines()
+                     if not ln.lstrip().startswith("!"))
+
+
 class TheChainIsNotBoundedAtTheFourthGas(unittest.TestCase):
     def test_no_gas_loop_stops_at_gas4(self):
         # `co2, gas4` and `co2:gas4` as a loop bound or an array section.
@@ -112,17 +119,50 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
         self.assertIn("RegPar(gas, JAN:DEC)%Fn = error", source)
 
     def test_the_headers_name_the_species(self):
-        """Not 'gas4'. SpectralVarTags carries the fixed on-disk labels of
-        the historical eight; the reports take the species name instead."""
+        """Every slot, named from its own record - no slot is a species.
+
+        Slots are assigned by record order (slot = firstGas + i - 1), so the
+        constants co2/h2o/ch4 name records one to three and say nothing about
+        what those records declare. This used to pin the first three and name
+        everything past the fourth "Gas 4".
+        """
         self.assertIn("call SpectralGasNames", read(WRITER))
         self.assertIn("call SpectralGasNames",
                       read("src/src_fcc/spectral_assessment_diagnostics.f90"))
-        names = read("src/src_common/gas4_output_units.f90")
-        self.assertIn("subroutine SpectralGasNames", names)
-        self.assertIn("do gas = gas4, lastGas", names,
-                      "the fourth gas must be named by species here - that "
-                      "is what the assessment file and the diagnostics "
-                      "report have always printed")
+
+        source = read("src/src_common/gas4_output_units.f90")
+        body = source[source.index("subroutine SpectralGasNames"):]
+        body = body[:body.index("end subroutine SpectralGasNames")]
+        self.assertIn("do gas = firstGas, lastGas", body,
+                      "the naming loop must cover every configured slot")
+        for literal in ("'co2'", "'h2o'", "'ch4'", "'gas4'"):
+            self.assertNotIn(
+                literal, body,
+                f"SpectralGasNames names slot {literal} as a fixed species; "
+                f"a project that orders its records differently puts a "
+                f"different gas there")
+
+    def test_the_diagnostics_report_names_no_fixed_species(self):
+        source = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        body = source[source.index("function GasName(gas)"):]
+        body = body[:body.index("end function GasName")]
+        for literal in ("'CO2'", "'H2O'", "'CH4'", "'Gas 4'"):
+            self.assertNotIn(literal, body,
+                             f"GasName still hard-codes {literal}")
+
+    def test_the_fourth_gas_label_is_not_parsed_out_of_the_header(self):
+        """g4lab searched the FLUXNET header for ',FCH4,' and took the next
+        column, which is a garbage substring on a project without methane."""
+        for path in ("src/src_fcc/init_ex_vars.f90",
+                     "src/src_fcc/m_fx_global_var_mod.f90",
+                     "src/src_fcc/fit_cospectral_models.f90",
+                     WRITER):
+            code = strip_comments(read(path))
+            self.assertNotIn("g4lab", code, f"{path} still uses g4lab")
+        self.assertNotIn(
+            "FCH4", strip_comments(read("src/src_fcc/init_ex_vars.f90")),
+            "the fourth gas's label is being recovered by searching the "
+            "FLUXNET header for a methane column again")
 
 
 class EveryConfiguredGasCanBeClassified(unittest.TestCase):

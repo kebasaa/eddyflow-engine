@@ -52,6 +52,9 @@ subroutine OutputSpectralAssessmentResults(nbins)
     character(128) :: Filename
     character(64) :: sa_tags(GHGNumVar)
     character(64) :: sa_name
+    integer :: cosp_slots(1 + MaxNumGases)
+    integer :: n_cosp
+    integer :: k
     character(PathLen) :: FilePath
     character(PathLen) :: SpecDir
     character(LongOutstringLen) :: dataline
@@ -81,6 +84,21 @@ subroutine OutputSpectralAssessmentResults(nbins)
     !> passive-gas spectra file further down is written under its own
     !> condition and is reachable without the assessment block.
     call SpectralGasNames(sa_tags)
+
+    !> The cospectrum column set, built once and walked by both the headers
+    !> and the row writers below. They used to be a literal naming w/T and
+    !> four gases against a loop over w_ts..w_gas4; on a project with more
+    !> gases the rows grew and the header did not, so the extra columns were
+    !> unlabelled. A gas slot is its own w_ index, so the slot list serves
+    !> both. Water is included: unlike the transfer-function blocks, a
+    !> cospectrum with w is meaningful for every gas.
+    n_cosp = 1
+    cosp_slots(1) = w_ts
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = gas
+    end do
 
     !> SPECTRAL ASSESSMENT
     if (FCCsetup%do_spectral_assessment) then
@@ -492,7 +510,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
             dataline = ''
             call AddDatum(dataline, '', separator)
             do cls = 1, 8
-                do gas = w_ts, w_gas4
+                do k = 1, n_cosp
+                    gas = cosp_slots(k)
                     call WriteDatumInt(MeanBinCosp(1, cls)%cnt(gas), &
                         datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, 'n_=_' // trim(adjustl(datum)), &
@@ -500,24 +519,22 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 end do
             end do
             write(udf,'(a)') dataline(1:len_trim(dataline) - 1)
-            !> Add header piece
-            write(udf,'(a)') &
-                'nat_freq,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')'
+            !> Add header piece, one group per time-of-day class and one
+            !> column per cospectrum slot, walked in the same order as the
+            !> rows below.
+            dataline = 'nat_freq'
+            do cls = 1, 8
+                do k = 1, n_cosp
+                    if (cosp_slots(k) == w_ts) then
+                        sa_name = 'T'
+                    else
+                        sa_name = sa_tags(cosp_slots(k))
+                    end if
+                    dataline = trim(dataline) // ',avrg_cosp(w/' &
+                        // trim(sa_name) // ')'
+                end do
+            end do
+            write(udf,'(a)') trim(dataline)
 
             do i = 1, nbins - 1
                 call clearstr(dataline)
@@ -526,7 +543,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
                         datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, datum, separator)
                     do cls = 1, 8
-                        do gas = w_ts, w_gas4
+                        do k = 1, n_cosp
+                            gas = cosp_slots(k)
                             if (MeanBinCospAvailable(cls, gas))then
                                 call WriteDatumFloat(MeanBinCosp(i, goodj)%fn(pick) &
                                     * MeanBinCosp(i, cls)%of(gas), datum, &
@@ -587,69 +605,63 @@ subroutine OutputSpectralAssessmentResults(nbins)
             &corresponding_to_z/L=0.01_(slightly_stable)_and_to_z/L=10.0_(very_stable).'
         write(udf,'(a)') '-----------------------------------------------------------------------'
         write(udf,'(a)') 'Massman_model_fit_parameters_for_this_run:'
-        write(udf,'(a)') 'w/T (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ts, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ts, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ts, unstable)%mu
-        write(udf,'(a)') 'w/T (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ts, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ts, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ts, stable)%mu
-        write(udf,'(a)') 'w/CO2 (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_co2, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_co2, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_co2, unstable)%mu
-        write(udf,'(a)') 'w/CO2 (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_co2, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_co2, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_co2, stable)%mu
-        write(udf,'(a)') 'w/H2O (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_h2o, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_h2o, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_h2o, unstable)%mu
-        write(udf,'(a)') 'w/H2O (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_h2o, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_h2o, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_h2o, stable)%mu
-        write(udf,'(a)') 'w/CH4 (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ch4, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ch4, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ch4, unstable)%mu
-        write(udf,'(a)') 'w/CH4 (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ch4, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ch4, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ch4, stable)%mu
-        write(udf,'(a)') 'w/'// g4lab(1:g4l) // ' (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_gas4, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_gas4, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_gas4, unstable)%mu
-        write(udf,'(a)') 'w/'// g4lab(1:g4l) // ' (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_gas4, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_gas4, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_gas4, stable)%mu
+        !> One pair of blocks per cospectrum slot. These were five
+        !> hand-written pairs naming CO2, H2O, CH4 and whatever g4lab had
+        !> parsed out of the FLUXNET header, so a project with more gases
+        !> reported fit parameters for four of them and no way to tell which.
+        do k = 1, n_cosp
+            gas = cosp_slots(k)
+            if (gas == w_ts) then
+                sa_name = 'T'
+            else
+                sa_name = sa_tags(gas)
+                call uppercase(sa_name)
+            end if
+            write(udf,'(a)') 'w/' // trim(sa_name) // ' (unstable):'
+            write(udf,'(a, f10.4)') 'a0,', MassPar(gas, unstable)%a0
+            write(udf,'(a, f10.4)') 'fpeak,', MassPar(gas, unstable)%fpeak
+            write(udf,'(a, f10.4)') 'mu,', MassPar(gas, unstable)%mu
+            write(udf,'(a)') 'w/' // trim(sa_name) // ' (stable):'
+            write(udf,'(a, f10.4)') 'a0,', MassPar(gas, stable)%a0
+            write(udf,'(a, f10.4)') 'fpeak,', MassPar(gas, stable)%fpeak
+            write(udf,'(a, f10.4)') 'mu,', MassPar(gas, stable)%mu
+        end do
         write(udf,'(a, f10.4)') '-----------------------------------------------------------------------'
 
 
         write(udf,'(a)') 'unstable_(-650<L<0),,,,,,,,,,,,,,,,,,,,,,,,,stable(0<L<1000)'
-        !> Add header piece
-        write(udf,'(a)') 'fn,avrg_cosp(w/T),fit_cosp(w/T),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/co2),fit_cosp(w/co2),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/h2o),fit_cosp(w/h2o),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/ch4),fit_cosp(w/ch4),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/' // g4lab(1:g4l) //'),fit_cosp(w/' &
-                        // g4lab(1:g4l) //'),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/T),fit_cosp(w/T),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/co2),fit_cosp(w/co2),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/h2o),fit_cosp(w/h2o),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/ch4),fit_cosp(w/ch4),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/' // g4lab(1:g4l) //'),fit_cosp(w/' &
-                        // g4lab(1:g4l) //'),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0'
+        !> Add header piece: the unstable groups, then the stable ones,
+        !> each walking the same slot list as the rows below.
+        dataline = ''
+        do k = 1, n_cosp
+            gas = cosp_slots(k)
+            if (gas == w_ts) then
+                sa_name = 'T'
+            else
+                sa_name = sa_tags(gas)
+            end if
+            dataline = trim(dataline) // 'fn,avrg_cosp(w/' // trim(sa_name) &
+                // '),fit_cosp(w/' // trim(sa_name) // '),kaimal_cosp,,'
+        end do
+        do k = 1, n_cosp
+            gas = cosp_slots(k)
+            if (gas == w_ts) then
+                sa_name = 'T'
+            else
+                sa_name = sa_tags(gas)
+            end if
+            dataline = trim(dataline) // 'fn,avrg_cosp(w/' // trim(sa_name) &
+                // '),fit_cosp(w/' // trim(sa_name) &
+                // '),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,'
+        end do
+        write(udf,'(a)') dataline(1:len_trim(dataline) - 2)
 
 
         do i = 1, ndkf
             call clearstr(dataline)
             !> Unstable
-            do gas = w_ts, w_gas4
+            do k = 1, n_cosp
+                gas = cosp_slots(k)
                 if (MeanStabCospAvailable(unstable, gas))then
                     if (MeanStabilityCosp(i, unstable)%fn(gas) /= error .and. MeanStabilityCosp(i, unstable)%fn(gas) /= 0d0) then
                         call WriteDatumFloat(MeanStabilityCosp(i, unstable)%fn(gas), datum, EddyFlowProj%err_label)
@@ -688,7 +700,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
             end do
 
             !> Stable
-            do gas = w_ts, w_gas4
+            do k = 1, n_cosp
+                gas = cosp_slots(k)
                 if (MeanStabCospAvailable(stable, gas))then
                     if (MeanStabilityCosp(i, stable)%fn(gas) /= error .and. MeanStabilityCosp(i, stable)%fn(gas) /= 0d0) then
                             call WriteDatumFloat(MeanStabilityCosp(i, stable)%fn(gas), datum, EddyFlowProj%err_label)

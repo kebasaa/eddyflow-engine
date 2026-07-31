@@ -60,8 +60,8 @@ real(kind = dbl) function FluxnetGasScale(gas_slot)
     use m_common_global_var
     implicit none
     integer, intent(in) :: gas_slot
-    character(32) :: species
     integer :: rec
+    character(32) :: species
 
     !> Anything not named by a record is a trace gas by default.
     FluxnetGasScale = 1d3
@@ -228,15 +228,16 @@ end subroutine SpectralVarTags
 !
 !> \brief       Human-readable species names for the spectral reports
 !> \author      EddyFlow
-!> \note        Companion to SpectralVarTags, and deliberately different at
-!>              one slot. SpectralVarTags carries the fixed on-disk labels
-!>              of the historical eight, where the fourth gas is written
-!>              'gas4' because that literal is the shipped file format.
-!>              Here the fourth gas is named by its species - which is what
-!>              the spectral assessment file's block headers and the
-!>              correction diagnostics report have always printed, via the
-!>              old g4lab. Both are free text: the assessment reader skips
-!>              the header line rather than matching it.
+!> \note        Every gas slot is named by its own record. No slot is assumed
+!>              to hold a particular species: slots are assigned by record
+!>              order (slot = firstGas + i - 1), so the constants co2, h2o
+!>              and ch4 are aliases for records one to three and say nothing
+!>              about what those records declare. This used to pin the first
+!>              three to 'co2'/'h2o'/'ch4', which named the wrong gas on any
+!>              project that ordered its records differently.
+!>
+!>              Free text throughout - the assessment reader skips these
+!>              header lines rather than matching them.
 !
 !***************************************************************************
 subroutine SpectralGasNames(names)
@@ -244,15 +245,17 @@ subroutine SpectralGasNames(names)
     implicit none
     character(*), intent(out) :: names(GHGNumVar)
     character(64) :: gas_tags(GHGNumVar)
-    integer :: gas
+    integer :: gas, rec
 
     names = ''
-    names(co2) = 'co2'
-    names(h2o) = 'h2o'
-    names(ch4) = 'ch4'
-
     call FullOutputGasTags(gas_tags)
-    do gas = gas4, lastGas
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        !> FullOutputGasTags returns a stem with a trailing underscore,
+        !> since the full output concatenates it onto a quantity name. A gas
+        !> configured without a column is named too - GasOutputLabel falls
+        !> back to the species its record declares.
         if (len_trim(gas_tags(gas)) > 1) &
             names(gas) = gas_tags(gas)(1:len_trim(gas_tags(gas)) - 1)
     end do

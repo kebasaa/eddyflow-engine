@@ -575,26 +575,24 @@ function GasName(gas) result(name)
     character(64) :: tags(GHGNumVar)
     include '../src_common/interfaces_1.inc'
 
-    !> The historical three keep their names; everything else takes the
-    !> record's species. Calling every slot past CH4 "Gas 4" made a report on
-    !> an eight-gas project name five different species identically.
-    select case (gas)
-        case (co2)
-            name = 'CO2'
-        case (h2o)
-            name = 'H2O'
-        case (ch4)
-            name = 'CH4'
-        case default
-            name = 'Gas 4'
-            if (gas >= firstGas .and. gas <= lastGas) then
-                call SpectralGasNames(tags)
-                if (len_trim(tags(gas)) > 0) then
-                    name = tags(gas)(1:min(len_trim(tags(gas)), len(name)))
-                    call uppercase(name)
-                end if
-            end if
-    end select
+    !> Every slot takes its record's species. Nothing here may assume a slot
+    !> holds a given gas: slots are assigned by record order, so a project
+    !> that declares its gases in a different order puts something other than
+    !> CO2 in the first one. Pinning the first three named the wrong species,
+    !> and calling everything past them "Gas 4" named five gases identically.
+    call clearstr(name)
+    if (gas >= firstGas .and. gas <= lastGas) then
+        call SpectralGasNames(tags)
+        if (len_trim(tags(gas)) > 0) then
+            name = tags(gas)(1:min(len_trim(tags(gas)), len(name)))
+            call uppercase(name)
+        end if
+    end if
+
+    !> Only when the record names nothing at all. Positional, because at that
+    !> point there is no species to report - but the number is the record's,
+    !> not a fixed slot's.
+    if (len_trim(name) == 0) write(name, '(a,i0)') 'Gas ', gas - firstGas + 1
 end function GasName
 
 !*******************************************************************************
