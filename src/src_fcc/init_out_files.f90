@@ -496,43 +496,29 @@ subroutine InitOutFiles(lEx)
             &master_sonic_manufacturer,master_sonic_model,master_sonic_height,&
             &master_sonic_wformat,master_sonic_wref,master_sonic_north_offset,&
             &master_sonic_hpath_length,master_sonic_vpath_length,master_sonic_tau', separator)
-        if (fcc_var_present(co2)) &
-            call AddDatum(header1,'co2_irga_manufacturer,co2_irga_model,co2_measure_type,co2_irga_northward_separation,&
-                &co2_irga_eastward_separation,co2_irga_vertical_separation,&
-                &co2_irga_tube_length,co2_irga_tube_diameter,co2_irga_tube_flowrate,&
-                &co2_irga_kw,co2_irga_ko,co2_irga_hpath_length,co2_irga_vpath_length,co2_irga_tau', separator)
-        if (fcc_var_present(PrimaryWaterOutSlot())) &
-            call AddDatum(header1,'h2o_irga_manufacturer,h2o_irga_model,h2o_measure_type,h2o_irga_northward_separation,&
-                &h2o_irga_eastward_separation,h2o_irga_vertical_separation,&
-                &h2o_irga_tube_length,h2o_irga_tube_diameter,h2o_irga_tube_flowrate,&
-                &h2o_irga_kw,h2o_irga_ko,h2o_irga_hpath_length,h2o_irga_vpath_length,h2o_irga_tau', separator)
-        if (fcc_var_present(ch4)) &
-            call AddDatum(header1,'ch4_irga_manufacturer,ch4_irga_model,ch4_measure_type,ch4_irga_northward_separation,&
-                &ch4_irga_eastward_separation,ch4_irga_vertical_separation,&
-                &ch4_irga_tube_length,ch4_irga_tube_diameter,ch4_irga_tube_flowrate,&
-                &ch4_irga_kw,ch4_irga_ko,ch4_irga_hpath_length,ch4_irga_vpath_length,ch4_irga_tau', separator)
-        if (fcc_var_present(gas4)) &
-            call AddDatum(header1, e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_manufacturer,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_model,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'measure_type,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_northward_separation,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_eastward_separation,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vertical_separation,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_length,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_diameter,' &
-                !> The five commas below were missing, so tube_flowrate, kw,
-                !> ko, hpath_length, vpath_length and tau arrived as one
-                !> run-together name. WriteOutMetadataFcc emits fourteen
-                !> fields for this gas and the header declared nine, so the
-                !> file has been five columns short of its own rows for every
-                !> project with a fourth gas - and every column after that
-                !> point was read under the wrong name.
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_flowrate,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_kw,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_ko,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_hpath_length,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vpath_length,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tau', separator)
+        !> One block per configured gas, named from the same e2sg tags the
+        !> full output uses. These were three literals and a fourth built by
+        !> concatenation, so a gas past the fourth had no metadata columns -
+        !> while WriteOutMetadataFcc, once widened, emits fourteen fields for
+        !> it. Header and row move together or the file shifts.
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            call AddDatum(header1, &
+                  trim(e2sg(gas)) // 'irga_manufacturer,' &
+               // trim(e2sg(gas)) // 'irga_model,' &
+               // trim(e2sg(gas)) // 'measure_type,' &
+               // trim(e2sg(gas)) // 'irga_northward_separation,' &
+               // trim(e2sg(gas)) // 'irga_eastward_separation,' &
+               // trim(e2sg(gas)) // 'irga_vertical_separation,' &
+               // trim(e2sg(gas)) // 'irga_tube_length,' &
+               // trim(e2sg(gas)) // 'irga_tube_diameter,' &
+               // trim(e2sg(gas)) // 'irga_tube_flowrate,' &
+               // trim(e2sg(gas)) // 'irga_kw,' &
+               // trim(e2sg(gas)) // 'irga_ko,' &
+               // trim(e2sg(gas)) // 'irga_hpath_length,' &
+               // trim(e2sg(gas)) // 'irga_vpath_length,' &
+               // trim(e2sg(gas)) // 'irga_tau', separator)
+        end do
         write(umd, '(a)') header1(1:len_trim(header1) - 1)
     end if
 

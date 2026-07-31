@@ -39,7 +39,7 @@ subroutine WriteOutMetadataFcc(lEx)
     character(16000) :: csv_row
 
     !> local variables
-    integer :: igas
+    integer :: gas
     character(DatumLen) :: field_val
     include '../src_common/interfaces_1.inc'
 
@@ -92,35 +92,43 @@ subroutine WriteOutMetadataFcc(lEx)
     write(field_val, *) lEx%instr(sonic)%tau
     call AddDatum(csv_row, field_val, separator)
     !> irgas
-    do igas = ico2, igas4
-        if (fcc_var_present(3 + igas)) then
-            write(field_val, *) lEx%instr(igas)%firm(1:len_trim(lEx%instr(igas)%firm))
+    !> One block per configured gas, matching the header loop in InitOutFiles.
+    !>
+    !> This indexed lEx%instr, which has one entry per instrument *role* -
+    !> co2, h2o, ch4, the fourth gas, the sonic - so it could never describe
+    !> more than four analysers, and past the fourth the role index addresses
+    !> an unrelated instrument. lEx%gas_instr is per gas *slot* and the reader
+    !> mirrors the four historical analysers into it after their unit
+    !> conversions, so the values here are unchanged for a four-gas project.
+    do gas = firstGas, lastGas
+        if (fcc_var_present(gas)) then
+            write(field_val, *) lEx%gas_instr(gas)%firm(1:len_trim(lEx%gas_instr(gas)%firm))
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%model(1:len_trim(lEx%instr(igas)%model))
+            write(field_val, *) lEx%gas_instr(gas)%model(1:len_trim(lEx%gas_instr(gas)%model))
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%measure_type(3 + igas)
+            write(field_val, *) lEx%measure_type(gas)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%nsep
+            write(field_val, *) lEx%gas_instr(gas)%nsep
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%esep
+            write(field_val, *) lEx%gas_instr(gas)%esep
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%vsep
+            write(field_val, *) lEx%gas_instr(gas)%vsep
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%tube_l
+            write(field_val, *) lEx%gas_instr(gas)%tube_l
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%tube_d
+            write(field_val, *) lEx%gas_instr(gas)%tube_d
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%tube_f
+            write(field_val, *) lEx%gas_instr(gas)%tube_f
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%kw
+            write(field_val, *) lEx%gas_instr(gas)%kw
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%ko
+            write(field_val, *) lEx%gas_instr(gas)%ko
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%hpath_length
+            write(field_val, *) lEx%gas_instr(gas)%hpath_length
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%vpath_length
+            write(field_val, *) lEx%gas_instr(gas)%vpath_length
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%instr(igas)%tau
+            write(field_val, *) lEx%gas_instr(gas)%tau
             call AddDatum(csv_row, field_val, separator)
         end if
     end do
