@@ -2252,7 +2252,11 @@ program EddyFlowRP
 
             !> ===== 7.1 QC tests =============================================
             !> Fisher's test
-            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+            !> ncol must describe the section actually passed, not E2Primes's
+            !> full second dimension - that is E2NumVar, half as wide again as
+            !> the GHGNumVar columns handed over, so the explicit-shape dummy
+            !> inside read past the end of them. Matches the KID call above.
+            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), GHGNumVar)
 
             !> Cross-correlation R^2 test for repeated values 
             call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))

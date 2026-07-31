@@ -311,3 +311,63 @@ one would orphan every cached lag.
 > **byte-identical through the whole episode**, because the four-gas path was
 > never touched. Only the 8-gas fixture showed it. A widening gated solely on
 > the byte-identity test would have shipped.
+
+## The fabricated zero: three producers that stopped at the fourth gas
+
+Three families reported **exactly `0.00000`** for every gas past the fourth,
+in a file that declared a column for each of them. A zero is not a missing
+value: a normalised cospectrum of zero, a kurtosis index of zero and a storage
+term of zero are all claims about the data.
+
+All three had the same shape - an N-gas *consumer* over a four-gas *producer*,
+with the intervening array `intent(out)`, so the skipped slots were never
+assigned and the writers' `/= error` guard passed whatever the stack held.
+
+| family | producer that stopped at gas4 | symptom on `base_n_gas` |
+|---|---|---|
+| storage | `define_relative_separations.f90:43` | `n2o_strg`, `co2_2_strg`, `h2o_2_strg`, `n2o_2_strg` = `0.00000`; `LE_strg` and `ET` zero when the primary water sits past slot 8 |
+| binned and full (co)spectra | `spectral_analysis.f90` - `AllCospectra`, `NormalizeCoSpectra`, `ExpAvrgCospectra`, the ogive binning | `spec(n2o)`, `spec(co2_2)`, `spec(h2o_2)`, `spec(n2o_2)` and their cospectra `0.00000` in all 50 bins |
+| KID / ZCD, correlation difference | `kid.f90:45`, `fisher.f90:43,53,54` | `N2O_KID` … `N2O_2_KID` = `0.00000`, ZCDs `0` |
+
+**Storage was the one with a causal chain worth following.** `Stor%of(gas)`
+scales by `E2Col(gas)%Instr%height`, and `DefineRelativeSeparations` is what
+turns the metadata's absolute separations into height above the anemometer.
+It ran `co2, gas4`, so past slot 8 the height stayed zero and so did the
+storage. Swapping records 2 and 5 (`base_h2o_late`) moved the zero with the
+**slot**, not with the species - which is what identified it:
+
+```
+                h2o_strg     n2o_strg        LE_strg
+base_n_gas      -0.651796     0.00000       -28.8760      (water at slot 6)
+base_h2o_late    0.00000      0.0445455      -0.00000     (water at slot 9)
+```
+
+After the fix both fixtures agree by header name, and every configured gas
+carries a real storage term.
+
+> **The spectra were undefined, not merely wrong, and one accident proved it.**
+> Changing `define_relative_separations.f90` - which touches no spectral code
+> whatever - moved eight columns in the binned files, and *only* the eight
+> belonging to gases 5+. Two runs of an unchanged tree had disagreed on them.
+> They are deterministic now, and `AllCospectra`/`AllOgives` set every slot to
+> `error` before filling the feasible ones, so a slot no loop reaches says
+> "not performed" instead of carrying the previous period's memory.
+
+**A second defect was sitting behind Fisher's bound.** It was passed
+`E2Primes(:, 1:GHGNumVar)` - 68 columns - with `ncol = size(E2Primes, 2)`,
+which is `E2NumVar`. The explicit-shape dummy therefore described half again
+as many columns as were handed over, and `CorrelationMatrixNoError` read past
+them. `-fbounds-check` does not catch this, and the four-gas loops never
+reached far enough to trip it; widening them without fixing the count would
+have walked straight in. The `KID` call site immediately above had it right.
+
+**Gates.** `base_rec` byte-identical throughout. On `base_n_gas`: no
+`spec()`/`cospec()` column may read `0.00000` for a configured gas, every
+`<gas>_strg` and `*_KID`/`*_ZCD` is real or `-9999`, `base_h2o_late` matches
+`base_n_gas` by header name, and two consecutive runs must diff clean. A gas
+configured *without* a column - `base_rec`'s CH4 - must stay `-9999`
+throughout, which is the check that the widening did not promote "absent" to
+"zero".
+
+Pinned by `static_checks/test_spectral_compute_bounds_static.py` (6 checks)
+and `test_quality_test_bounds_static.py` (4), both negative-tested.
