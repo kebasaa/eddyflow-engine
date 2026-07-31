@@ -193,6 +193,13 @@ module m_typedef
     integer, parameter :: w_ch4 = 7
     integer, parameter :: w_gas4 = 8
 
+    !> The cospectral index space is the *same* space as u..lastGas - w_u = 1
+    !> is u = 1 and w_co2 = 5 is co2 = 5 - so a cospectrum is addressed by the
+    !> gas slot it belongs to. The four names above stop at the historical
+    !> fourth slot; a loop that must cover every configured gas ends here.
+    integer, parameter :: w_firstGas = firstGas
+    integer, parameter :: w_lastGas  = lastGas
+
     !> Other labels
     integer, parameter :: fink_sims = 1
     integer, parameter :: mann_lens = 2

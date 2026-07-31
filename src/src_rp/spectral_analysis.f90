@@ -219,6 +219,16 @@ subroutine AllCospectra(Set, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectru
 
     write(*, '(a)', advance = 'no') '   Cospectral densities..'
 
+    !> Both are intent(out), so a slot the loops below skip is left undefined.
+    !> The binning downstream reads the whole range, so "skipped" has to be a
+    !> value and not whatever the stack held - error, meaning not performed.
+    !> One subscript per part reference: `Spectrum(:)%of(:)` would be two
+    !> nonzero-rank part references, which Fortran does not allow.
+    do j = u, GHGNumVar
+        Spectrum(1:N/2 + 1)%of(j) = error
+        Cospectrum(1:N/2 + 1)%of(j) = error
+    end do
+
     !> spectra
     do j = u, GHGNumVar
         if (DoSpectrum(j)) then
@@ -228,7 +238,7 @@ subroutine AllCospectra(Set, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectru
     end do
 
     !> Cospectra
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
         if (j /= w_w) then
             if (DoCospectrum(j)) then
                 xx(1:N) = Set(1:N, w)
@@ -270,6 +280,13 @@ subroutine AllOgives(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, Ogive, CoOg
 
     write(*, '(a)', advance = 'no') '   Ogives..'
 
+    !> Same reason as in AllCospectra: intent(out), and the binning reads the
+    !> whole range, so a slot no loop fills must say "not performed".
+    do j = u, GHGNumVar
+        Ogive(1:N/2 + 1)%of(j) = error
+        CoOgive(1:N/2 + 1)%of(j) = error
+    end do
+
     df = Metadata%ac_freq / dble(N)
 
     !> Ogive
@@ -283,7 +300,7 @@ subroutine AllOgives(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, Ogive, CoOg
     end do
 
     !> CoOgive
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
         if (j /= w_w) then
             if (DoCospectrum(j)) then
                 CoOgive(N/2+1)%Of(j) = Cospectrum(N/2+1)%of(j)
@@ -300,7 +317,7 @@ subroutine AllOgives(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, Ogive, CoOg
             Ogive(1:N/2 + 1)%of(j) = Ogive(1:N/2 + 1)%of(j) / Stats%Cov(j, j)
     end do
 
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
     if (DoCospectrum(j) .and. Stats%Cov(w, j) /= 0d0 .and. Stats%Cov(w, j) /= error) &
         CoOgive(1:N/2 + 1)%of(j) = CoOgive(1:N/2 + 1)%of(j) / Stats%Cov(w, j)
     end do
@@ -331,12 +348,12 @@ subroutine NormalizeCoSpectra(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, N)
     !> local variables
     integer :: j
 
-    do j = u, gas4
+    do j = u, GHGNumVar
         if (DoSpectrum(j) .and. Stats%Cov(j, j) /= 0d0 .and. Stats%Cov(j, j) /= error) &
             Spectrum(1:N/2 + 1)%of(j) = Spectrum(1:N/2 + 1)%of(j) / Stats%Cov(j, j)
     end do
 
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
     if (DoCospectrum(j) .and. Stats%Cov(w, j) /= 0d0 .and. Stats%Cov(w, j) /= error) &
         Cospectrum(1:N/2 + 1)%of(j) = Cospectrum(1:N/2 + 1)%of(j) / Stats%Cov(w, j)
     end do
@@ -386,28 +403,28 @@ subroutine ExpAvrgCospectra(bf, nf, Spectrum, Cospectrum, N, bin_nf, &
     do i = 1, Meth%spec%nbins
         bin_cnt(i) = 0
         bin_nf(i) = 0.d0
-        BinnedSpectrum(i)%of(u:gas4) = 0d0
-        BinnedCospectrum(i)%of(w_u:w_gas4) = 0d0
+        BinnedSpectrum(i)%of(u:GHGNumVar) = 0d0
+        BinnedCospectrum(i)%of(w_u:w_lastGas) = 0d0
         do j = 1, N/2
             if(nf(j) > bf(i) .and. nf(j) <= bf(i + 1)) then
                 bin_nf(i) = bin_nf(i) + nf(j)
-                BinnedSpectrum(i)%of(u:gas4) = &
-                    BinnedSpectrum(i)%of(u:gas4) + Spectrum(j)%of(u:gas4)
-                BinnedCospectrum(i)%of(w_u:w_gas4) = &
-                    BinnedCospectrum(i)%of(w_u:w_gas4) + Cospectrum(j)%of(w_u:w_gas4)
+                BinnedSpectrum(i)%of(u:GHGNumVar) = &
+                    BinnedSpectrum(i)%of(u:GHGNumVar) + Spectrum(j)%of(u:GHGNumVar)
+                BinnedCospectrum(i)%of(w_u:w_lastGas) = &
+                    BinnedCospectrum(i)%of(w_u:w_lastGas) + Cospectrum(j)%of(w_u:w_lastGas)
                 bin_cnt(i) = bin_cnt(i) + 1
             end if
         end do
         if(bin_cnt(i) /= 0) then
             bin_nf(i)    = bin_nf(i) / dble(bin_cnt(i))
-            BinnedSpectrum(i)%of(u:gas4) = &
-                BinnedSpectrum(i)%of(u:gas4) / dble(bin_cnt(i))
-            BinnedCospectrum(i)%of(w_u:w_gas4) = &
-                BinnedCospectrum(i)%of(w_u:w_gas4) / dble(bin_cnt(i))
+            BinnedSpectrum(i)%of(u:GHGNumVar) = &
+                BinnedSpectrum(i)%of(u:GHGNumVar) / dble(bin_cnt(i))
+            BinnedCospectrum(i)%of(w_u:w_lastGas) = &
+                BinnedCospectrum(i)%of(w_u:w_lastGas) / dble(bin_cnt(i))
         else
             bin_nf(i)    = error
-            BinnedSpectrum(i)%of(u:gas4) = error
-            BinnedCospectrum(i)%of(w_u:w_gas4) = error
+            BinnedSpectrum(i)%of(u:GHGNumVar) = error
+            BinnedCospectrum(i)%of(w_u:w_lastGas) = error
         end if
     end do
     write(*,'(a)') ' Done.'
@@ -455,28 +472,28 @@ subroutine ExpAvrgOgives(bf, nf, Ogive, CoOgive, N, bin_nf, &
     do i = 1, Meth%spec%nbins
         bin_cnt(i) = 0
         bin_nf(i) = 0.d0
-        BinnedOgive(i)%of(u:gas4) = 0d0
-        BinnedCoOgive(i)%of(w_u:w_gas4) = 0d0
+        BinnedOgive(i)%of(u:GHGNumVar) = 0d0
+        BinnedCoOgive(i)%of(w_u:w_lastGas) = 0d0
         do j = 1, N/2
             if(nf(j) >= bf(i) .and. nf(j) < bf(i + 1)) then
                 bin_nf(i) = bin_nf(i) + nf(j)
-                BinnedOgive(i)%of(u:gas4) = &
-                    BinnedOgive(i)%of(u:gas4) + Ogive(j)%of(u:gas4)
-                BinnedCoOgive(i)%of(w_u:w_gas4) = &
-                    BinnedCoOgive(i)%of(w_u:w_gas4) + CoOgive(j)%of(w_u:w_gas4)
+                BinnedOgive(i)%of(u:GHGNumVar) = &
+                    BinnedOgive(i)%of(u:GHGNumVar) + Ogive(j)%of(u:GHGNumVar)
+                BinnedCoOgive(i)%of(w_u:w_lastGas) = &
+                    BinnedCoOgive(i)%of(w_u:w_lastGas) + CoOgive(j)%of(w_u:w_lastGas)
                 bin_cnt(i) = bin_cnt(i) + 1
             end if
         end do
         if(bin_cnt(i) /= 0) then
             bin_nf(i)    = bin_nf(i)    / dble(bin_cnt(i))
-            BinnedOgive(i)%of(u:gas4) = &
-                BinnedOgive(i)%of(u:gas4) / dble(bin_cnt(i))
-            BinnedCoOgive(i)%of(w_u:w_gas4) = &
-                BinnedCoOgive(i)%of(w_u:w_gas4) / dble(bin_cnt(i))
+            BinnedOgive(i)%of(u:GHGNumVar) = &
+                BinnedOgive(i)%of(u:GHGNumVar) / dble(bin_cnt(i))
+            BinnedCoOgive(i)%of(w_u:w_lastGas) = &
+                BinnedCoOgive(i)%of(w_u:w_lastGas) / dble(bin_cnt(i))
         else
             bin_nf(i)    = error
-            BinnedOgive(i)%of(u:gas4) = error
-            BinnedCoOgive(i)%of(w_u:w_gas4) = error
+            BinnedOgive(i)%of(u:GHGNumVar) = error
+            BinnedCoOgive(i)%of(w_u:w_lastGas) = error
         end if
     end do
     write(*,'(a)') ' Done.'
