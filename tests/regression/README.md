@@ -372,3 +372,59 @@ throughout, which is the check that the widening did not promote "absent" to
 
 Pinned by `static_checks/test_spectral_compute_bounds_static.py` (6 checks)
 and `test_quality_test_bounds_static.py` (4), both negative-tested.
+
+## What the water-displacement gate was actually measuring
+
+`base_h2o_late` exists to prove that moving water off slot 6 changes nothing.
+It was failing on five full-output columns - `h2o_var`, `n2o_var`,
+`w/h2o_cov`, `w/n2o_cov` and `h2o_spikes` - and the five had three different
+causes, only one of which was a defect.
+
+**Four of them were a sixth fabricated zero.** `read_ex_record` copied
+`stats%Cov` into `lEx%var` and `lEx%cov_w` over `u, gas4`, so every gas past
+the fourth reported a variance and a w-covariance of exactly `0.00000`. The
+data was in the file all along - `stats%Cov` is read over `u..lastCfg` - and
+`write_out_full_fcc` already loops `firstGas..lastGas` over both. Only the
+copy between them stopped early. A variance of zero says the series was
+constant, which is a claim, not a gap.
+
+It surfaced here because the swap moves H2O and N2O across the slot-8
+boundary, so the two traded a real value for a zero:
+
+```
+                base_n_gas      base_h2o_late
+h2o_var         0.274558E-01    0.00000        (h2o at slot 6 -> slot 9)
+n2o_var         0.00000         0.206797E-06   (n2o at slot 9 -> slot 6)
+```
+
+Fixing it also lit up `co2_2_var`, `h2o_2_var`, `n2o_2_var` and their
+covariances, which had been zero in *every* run of the 8-gas fixture.
+
+The un-squaring immediately above it had the same bound, and the two had to
+move together: variances are read from the file as standard deviations, so
+widening only the copy would have replaced an obvious zero with a plausible
+wrong number.
+
+**The fifth was the fixture, not the code.** `h2o_spikes` differed in one
+period out of six, 3 against 5. The legacy `al_h2o_min`/`al_h2o_max` keys are
+keyed by *slot*: water at slot 6 is filtered against them before despiking,
+water at slot 9 is not, so the two runs despike different inputs. Supplying
+`gas_5_al_min=0.0` / `gas_5_al_max=40.0` - the per-gas record that says the
+same thing about the species rather than about the position - makes the two
+agree exactly.
+
+That is the dual path behaving as designed, and it is worth stating plainly:
+**a project saved by the interface always writes per-gas records, so it does
+not depend on slot position; a hand-authored fixture that omits them does.**
+`base_h2o_late` omits them deliberately, which is why the gate is quoted as
+"195 of 196 columns" rather than "all".
+
+The one column that then remains is `absolute_limits_hf`, and it is *correct*
+that it differs: the flag string is one digit per slot, so moving a species
+between slots moves its digit. Comparing it across the two fixtures compares
+two different layouts.
+
+> The general lesson repeats: this gate was written to test water resolution
+> and spent most of its life failing for reasons that had nothing to do with
+> water. Read what a red gate is actually telling you before fixing what you
+> expected it to be telling you.

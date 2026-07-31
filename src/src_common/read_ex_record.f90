@@ -871,8 +871,15 @@ subroutine CompleteEssentials(lEx)
     if (lEx%Burba%h_top == error) lEx%Burba%h_top = 0d0
     if (lEx%Burba%h_spar == error) lEx%Burba%h_spar = 0d0    
 
-    !> Variances were actually read as standard deviations
-    do var = u, gas4 
+    !> Variances were actually read as standard deviations.
+    !>
+    !> Every configured gas: the read above fills stats%Cov over u..lastCfg,
+    !> so squaring only as far as the fourth gas left every slot past it
+    !> holding a standard deviation in a slot the rest of the code reads as a
+    !> variance. It never surfaced because the copy below stopped at the same
+    !> place and those columns came out as zero instead - the two bounds have
+    !> to move together, or the zero becomes a plausible wrong number.
+    do var = u, lastGas
         if (lEx%var_present(var)) &
             lEx%stats%Cov(var, var) = lEx%stats%Cov(var, var)**2
     end do
@@ -965,9 +972,28 @@ subroutine CompleteEssentials(lEx)
     lEx%used_records = lEx%nr_after_wdf
     lEx%tlag = lEx%used_tlag
     lEx%def_tlag = lEx%used_tlag == lEx%nom_tlag
-    do var = u, gas4
+    !> Variances and w-covariances for every configured gas, not four.
+    !>
+    !> write_out_full_fcc already loops firstGas..lastGas over both, and the
+    !> ex file already carries them - stats%Cov is read over u..lastCfg. Only
+    !> this copy stopped at the fourth gas, so <gas>_var and w/<gas>_cov came
+    !> out as exactly 0.00000 for every gas past it. That is a claim about the
+    !> data, not a missing value: a variance of zero says the series was
+    !> constant.
+    !>
+    !> Found by moving water from slot 6 to slot 9 between two fixtures and
+    !> watching h2o_var and n2o_var trade places - the zero followed the slot,
+    !> not the species.
+    lEx%var(firstGas:lastGas) = error
+    lEx%cov_w(firstGas:lastGas) = error
+    do var = u, ts
         lEx%var(var) = lEx%stats%Cov(var, var)
     end do
+    do var = firstGas, lastGas
+        if (.not. lEx%var_present(var)) cycle
+        lEx%var(var) = lEx%stats%Cov(var, var)
+        lEx%cov_w(var) = lEx%stats%cov(w, var)
+    end do
     lEx%cov_w(u) = lEx%stats%cov(w, u)
-    lEx%cov_w(ts:gas4) = lEx%stats%cov(w, ts:gas4)
+    lEx%cov_w(ts) = lEx%stats%cov(w, ts)
 end subroutine CompleteEssentials
