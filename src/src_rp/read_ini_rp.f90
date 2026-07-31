@@ -734,6 +734,19 @@ subroutine WriteVariablesRP()
     end if
 
     !> Time lag optimizer settings
+    !>
+    !> The period is set unconditionally. WriteOutTimelagOptimization prints
+    !> it into every summary it writes, including the PWB aggregate one, which
+    !> runs with to_onthefly false - so these four fields were being written
+    !> straight out of uninitialised memory. The result was NUL bytes in the
+    !> two header lines, which is why the file reads as binary rather than as
+    !> text. The processing period is the right answer for the PWB summary
+    !> anyway: that is the span it aggregates over.
+    TOSetup%start_date = EddyFlowProj%start_date
+    TOSetup%end_date   = EddyFlowProj%end_date
+    TOSetup%start_time = EddyFlowProj%start_time
+    TOSetup%end_time   = EddyFlowProj%end_time
+
     if (RPsetup%to_onthefly) then
         TOSetup%h2o_nclass    = 0
         TOSetup%subperiod     = SCTags(98)%value(1:1) == '1'
