@@ -520,11 +520,18 @@ subroutine InitOutFiles(lEx)
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vertical_separation,' &
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_length,' &
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_diameter,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_flowrate' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_kw' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_ko' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_hpath_length' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vpath_length' &
+                !> The five commas below were missing, so tube_flowrate, kw,
+                !> ko, hpath_length, vpath_length and tau arrived as one
+                !> run-together name. WriteOutMetadataFcc emits fourteen
+                !> fields for this gas and the header declared nine, so the
+                !> file has been five columns short of its own rows for every
+                !> project with a fourth gas - and every column after that
+                !> point was read under the wrong name.
+                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_flowrate,' &
+                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_kw,' &
+                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_ko,' &
+                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_hpath_length,' &
+                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vpath_length,' &
                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tau', separator)
         write(umd, '(a)') header1(1:len_trim(header1) - 1)
     end if

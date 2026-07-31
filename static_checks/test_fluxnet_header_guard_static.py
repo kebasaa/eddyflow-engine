@@ -283,13 +283,33 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
 
         Water's mole fraction is reported in mmol mol-1 where the other gases
         use umol mol-1, so it needs a different molar-density scale and a
-        different rough-outlier ceiling. That is a fact about the species, and
-        it is settled the same way the analyser block settles the krypton
-        coefficients.
+        different rough-outlier ceiling. That is a fact about the species.
+
+        This assertion used to require `i == h2o`, which is the historical
+        slot rather than the species - so it pinned the very thing its own
+        docstring said was wrong. A second hygrometer sits well past slot 6
+        and was given the trace-gas scale and the trace-gas ceiling, its
+        readings compared against limits three orders of magnitude out.
+
+        FilterDatasetForPhysicalThresholds consults the same
+        al%gas_min/gas_max pair on the same pass, so both must settle water
+        the same way or they disagree about one gas.
         """
-        source = read("src/src_rp/test_absolute_limits.f90")
-        body = source[source.index("do i = firstGas, lastGas") :]
-        self.assertIn("if (i == h2o) then", body)
+        for path, opener in (
+            ("src/src_rp/test_absolute_limits.f90", "do i = firstGas, lastGas"),
+            ("src/src_rp/filter_dataset_for_physical_thresholds.f90",
+             "do gas = firstGas, lastGas"),
+        ):
+            body = read(path)
+            body = body[body.index(opener):]
+            self.assertNotRegex(
+                body, r"==\s*h2o\b",
+                "%s must ask GasSlotIsWater, not compare against the h2o "
+                "slot" % path)
+            self.assertIn("GasSlotIsWater(", body,
+                          "%s must single water out by species" % path)
+        body = read("src/src_rp/test_absolute_limits.f90")
+        body = body[body.index("do i = firstGas, lastGas"):]
         self.assertIn("dens_scale = StdVair", body)
         self.assertIn("dens_scale = StdVair * 1d3", body)
 

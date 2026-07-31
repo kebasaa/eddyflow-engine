@@ -675,7 +675,10 @@ program EddyFlowRP
                     cycle to_periods_loop
                 end if
 
-                if (.not. any(E2Col(co2:gas4)%present)) then
+                !> Every configured gas, not the four historical slots: a
+                !> project whose gases all sit past the fourth record would
+                !> otherwise have every period discarded here as gas-less.
+                if (.not. any(E2Col(firstGas:lastGas)%present)) then
                     if(allocated(E2Set)) deallocate(E2Set)
                     if(allocated(E2Primes)) deallocate(E2Primes)
                     if(allocated(DiagSet)) deallocate(DiagSet)
@@ -829,7 +832,7 @@ program EddyFlowRP
 
                 !> Apply filter for absolute limits test, if the case
                 FilterWhat = .false.
-                FilterWhat(co2:gas4) = .true.
+                FilterWhat(firstGas:lastGas) = .true.
                 call FilterDatasetForPhysicalThresholds(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), FilterWhat)
 
@@ -2167,7 +2170,7 @@ program EddyFlowRP
                 if (Test%al .and. RPsetup%filter_al) then
                     !> Apply filter for absolute limits test, if the case
                     FilterWhat = .false.
-                    FilterWhat(co2:gas4) = .true.
+                    FilterWhat(firstGas:lastGas) = .true.
                     call FilterDatasetForPhysicalThresholds(E2Set, &
                         size(E2Set, 1), size(E2Set, 2), FilterWhat)
                     !> Define as not present, variables for which &

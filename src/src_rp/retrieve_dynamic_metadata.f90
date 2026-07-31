@@ -617,7 +617,7 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
         LocCol(u:ts)%instr%north_offset = DynamicMetadata%instr(u)%north_offset
     !> Gases
     instr_updated = .false.
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (DynamicMetadata%instr(gas)%path_type /= 'none') then
             instr_updated(gas) = .true.
             LocCol(gas)%instr%path_type = DynamicMetadata%instr(gas)%path_type
@@ -673,8 +673,8 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
     end do
 
     !> Consideration of gases from same analyser
-    do gas = co2, gas4
-        do gas2 = co2, gas4
+    do gas = firstGas, lastGas
+        do gas2 = firstGas, lastGas
             if ((LocCol(gas2)%instr%model == LocCol(gas)%instr%model) .and. instr_updated(gas)) &
                 LocCol(gas2)%instr = LocCol(gas)%instr
         end do

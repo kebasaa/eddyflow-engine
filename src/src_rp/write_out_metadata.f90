@@ -85,7 +85,7 @@ subroutine WriteOutMetadata(init_string)
     write(field_val, *) E2Col(u)%instr%tau
     call AddDatum(csv_row, field_val, separator)
     !> irgas
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (OutVarPresent(gas)) then
             write(field_val, *) E2Col(gas)%instr%firm(1:len_trim(E2Col(gas)%Instr%firm))
             call AddDatum(csv_row, field_val, separator)

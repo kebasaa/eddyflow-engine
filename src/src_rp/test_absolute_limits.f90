@@ -52,6 +52,7 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     !> is reported in mmol mol-1 rather than umol mol-1.
     real(kind = dbl) :: dens_scale
     real(kind = dbl) :: rough_max
+    logical, external :: GasSlotIsWater
 
 
     if (printout) write(*, '(a)', advance = 'no') '   Absolute limits test..'
@@ -113,8 +114,13 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     !>   - the ceiling of the rough outlier filter that runs before mean T and
     !>     P are known, in those same units.
     !>
-    !> Which slot holds water is settled the same way the analyser block
-    !> settles where the krypton coefficients go: by comparing against h2o.
+    !> Which slot holds water is asked of the gas record. It used to be
+    !> `i == h2o`, which is the historical slot and not the species: a second
+    !> hygrometer sits well past it and was given the trace-gas scale and the
+    !> trace-gas rough ceiling, so its readings were compared against limits
+    !> three orders of magnitude out. FilterDatasetForPhysicalThresholds
+    !> consults the same al%gas_min/gas_max pair on the same pass, so the two
+    !> have to settle water the same way or they disagree about one gas.
     do i = firstGas, lastGas
         if (.not. E2Col(i)%present) then
             Essentials%al_s(i) = ierror
@@ -137,7 +143,7 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             hflags(i) = 9
             cycle
         end if
-        if (i == h2o) then
+        if (GasSlotIsWater(i)) then
             dens_scale = StdVair
             rough_max = 80d0
         else

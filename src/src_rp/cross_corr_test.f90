@@ -54,7 +54,7 @@ subroutine CrossCorrTest(Set, nrow, ncol)
         end if
     end do
 
-    do icol = ts, gas4
+    do icol = ts, lastGas
         if (OutVarPresent(icol)) then
             call CrossCorrelation(Set(:, w), Set(:, icol), nrow, lagmin, lagmax, raw_ccf)
             call CrossCorrelation(dedup_set(:, w), dedup_set(:, icol), &

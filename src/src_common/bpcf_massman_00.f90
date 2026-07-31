@@ -177,7 +177,7 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
     endwhere
 
     !> Correction factors, Massman(2001, Table 1; refining Table 2 in Massman, 2000)
-    do var = w_u, w_gas4
+    do var = w_u, w_lastGas
         if (pp(var) /= error .and. unstable_corr_fact(var) /= error) then
             BPCF%of(var) = (aaa*bbb/((aaa+1d0)*(bbb+1d0))) * (aaa*bbb/((aaa+pp(var))*(bbb+pp(var)))) &
                          * (1d0/(pp(var)+1d0)) * (1d0+(pp(var)+1d0)/(aaa+bbb))
