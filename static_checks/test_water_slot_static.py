@@ -173,5 +173,62 @@ class SpeciesPropertiesAreKeyedOnSpecies(unittest.TestCase):
         self.assertIn("do i = firstGas, lastGas", block)
 
 
+class EveryHygrometerIsTreatedAsWater(unittest.TestCase):
+    """Not just the one in record two.
+
+    None of these is exercised by a fixture, and each says why in its own
+    docstring. They are pinned here because a static check is the only thing
+    standing between them and a silent revert.
+    """
+
+    def test_rh_class_sorting_covers_every_hygrometer(self):
+        """Water is binned by humidity, everything else by month, because
+        water's tube attenuation drifts with humidity - a property of the
+        species.
+
+        Unprovable until the binned (co)spectra file carries more than four
+        gases: a second hygrometer sits past slot 8 and so has no binned
+        spectra to sort at all.
+        """
+        source = code("src/src_fcc/spectra_sorting_and_averaging.f90")
+        self.assertNotIn("if (gas /= h2o) then", source)
+        self.assertIn("if (.not. GasSlotIsWater(gas)) then", source)
+
+    def test_the_rh_cutoff_fit_resolves_its_slot(self):
+        """The fit belongs to the primary water record.
+
+        Its *result* - the exponential RegPar(dum, dum) - is one set of
+        coefficients for the whole project, so a second hygrometer reuses the
+        primary's RH dependence. That is a data-model limit, not a loop bound,
+        and widening it is a separate change.
+        """
+        source = code("src/src_fcc/fit_rh_to_cutoff.f90")
+        self.assertNotIn("RegPar(h2o,", source)
+        self.assertIn("wsl = PrimaryWaterSlot()", source)
+        self.assertIn("if (wsl < firstGas) return", source,
+                      "with no water there is nothing to fit")
+
+    def test_the_oxygen_correction_covers_every_hygrometer(self):
+        """Krypton and Lyman-alpha instruments, each with its own ko/kw.
+
+        Genuinely a water-vapour correction - oxygen absorbs in the band the
+        instrument uses for water - so the H2O assumption stays and only the
+        slot is resolved. No fixture carries a krypton, so this is pinned
+        here and nowhere else.
+        """
+        source = code("src/src_rp/fluxes1_rp.f90")
+        block = source[source.index("open_path_krypton"):]
+        block = source[:source.index("open_path_krypton")].rsplit("do msl", 1)
+        self.assertEqual(len(block), 2,
+                         "the correction must loop over slots, not apply to "
+                         "a single resolved one")
+        body = source[source.index("do msl = firstGas, lastGas"):]
+        body = body[:body.index("end do")]
+        self.assertIn("GasSlotIsWater(msl)", body)
+        self.assertIn("E2Col(msl)%Instr%ko", body,
+                      "each hygrometer must use its own extinction "
+                      "coefficients, never another instrument's")
+
+
 if __name__ == "__main__":
     unittest.main()

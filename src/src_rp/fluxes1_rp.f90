@@ -52,27 +52,38 @@ subroutine Fluxes1_rp()
     wsl = PrimaryWaterSlot()
 
     !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
-    !> according to van Dijk et al. (2003, JAOT, eq. 13b)
-    if (wsl >= firstGas) then
-    select case (E2Col(wsl)%Instr%model(1:len_trim(E2Col(wsl)%Instr%model) - 2))
-        case('open_path_krypton','closed_path_krypton', &
-                'open_path_lyman','closed_path_lyman')
-            if (E2Col(wsl)%Instr%ko /= error .and. E2Col(wsl)%Instr%kw /= 0d0 &
-                .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
-                .and. Ambient%lambda > 0) then
-                Cox = 1d0 + 0.23d0 * E2Col(wsl)%Instr%ko / E2Col(wsl)%Instr%kw &
-                    * Ambient%Bowen * Ambient%lambda / Ambient%Ta
-                Stats%Cov(w, wsl) = Cox * Stats%Cov(w, wsl)
-                Stats%Cov(wsl, wsl) = Cox**2 * Stats%Cov(wsl, wsl)
-                !> Alternative formulation by T.W. Horst
-                !> http://www.eol.ucar.edu/instrumentation/sounding&
-                !> &/isfs/isff-support-center/how-tos/&
-                !> $corrections-to-sensible-and-latent-heat-flux-measurements
-                !Stats%Cov(w, wsl) = Stats%Cov(w, wsl) / (1 - 8d0 * 0.23d0 &
-                !* E2Col(wsl)%Instr%ko / E2Col(wsl)%Instr%kw * Ambient%bowen)
-            endif
-    end select
-    end if
+    !> according to van Dijk et al. (2003, JAOT, eq. 13b).
+    !>
+    !> Over every hygrometer, each with its own ko/kw. This is genuinely a
+    !> water-vapour correction - oxygen absorbs in the same band the
+    !> instrument uses to measure water - so the H2O assumption stays; only
+    !> the slot is resolved. Applied to the primary water alone, a second
+    !> krypton on the same site was never corrected at all.
+    do msl = firstGas, lastGas
+        if (.not. GasSlotIsWater(msl)) cycle
+        if (.not. E2Col(msl)%present) cycle
+        select case (E2Col(msl)%Instr%model(1:len_trim(E2Col(msl)%Instr%model) - 2))
+            case('open_path_krypton','closed_path_krypton', &
+                    'open_path_lyman','closed_path_lyman')
+                !> That hygrometer's own extinction coefficients. Absent, the
+                !> correction is not performed for it - never performed with
+                !> another instrument's numbers.
+                if (E2Col(msl)%Instr%ko /= error .and. E2Col(msl)%Instr%kw /= 0d0 &
+                    .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
+                    .and. Ambient%lambda > 0) then
+                    Cox = 1d0 + 0.23d0 * E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw &
+                        * Ambient%Bowen * Ambient%lambda / Ambient%Ta
+                    Stats%Cov(w, msl) = Cox * Stats%Cov(w, msl)
+                    Stats%Cov(msl, msl) = Cox**2 * Stats%Cov(msl, msl)
+                    !> Alternative formulation by T.W. Horst
+                    !> http://www.eol.ucar.edu/instrumentation/sounding&
+                    !> &/isfs/isff-support-center/how-tos/&
+                    !> $corrections-to-sensible-and-latent-heat-flux-measurements
+                    !Stats%Cov(w, msl) = Stats%Cov(w, msl) / (1 - 8d0 * 0.23d0 &
+                    !* E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw * Ambient%bowen)
+                end if
+        end select
+    end do
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = Flux0%H

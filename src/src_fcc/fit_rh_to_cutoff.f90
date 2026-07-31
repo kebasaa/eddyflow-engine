@@ -51,6 +51,7 @@ subroutine FitRh2Fco()
     real(kind = dbl) :: EXPPar(npar_EXP)
     real(kind = dbl) :: tol = 1d-04
     real(kind = dbl) :: mean_fc
+    integer :: wsl
     include '../src_common/interfaces.inc'
 
 
@@ -59,10 +60,19 @@ subroutine FitRh2Fco()
     if (.not. allocated(yFit)) allocate(yFit(10))
     if (.not. allocated(ddum)) allocate(ddum(10))
 
+    !> The RH-class cut-offs belong to the project's primary water record,
+    !> not to the h2o slot. Note the *result* of this fit - the exponential
+    !> RegPar(dum, dum) - is a single set of coefficients for the whole
+    !> project, so a second hygrometer necessarily reuses the primary's RH
+    !> dependence. That is a limit of the data model, not of this loop, and
+    !> widening it is a separate change.
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas) return
+
     !> Preliminary validation of calculated cut-offs for water vapour
-    where (RegPar(h2o, RH10:RH90)%fc > FCCMetadata%ac_freq / 2d0 .or. &
-        RegPar(h2o, RH10:RH90)%fc < 0d0) &
-        RegPar(h2o, RH10:RH90)%fc = error
+    where (RegPar(wsl, RH10:RH90)%fc > FCCMetadata%ac_freq / 2d0 .or. &
+        RegPar(wsl, RH10:RH90)%fc < 0d0) &
+        RegPar(wsl, RH10:RH90)%fc = error
 
     if (FCCMetadata%H2oPathType == 'open') then
         !> If the instrument associated to the first H2O reading is an open path
@@ -74,8 +84,8 @@ subroutine FitRh2Fco()
         mean_fc = 0d0
         cnt2 = 0
         do RH = RH10, RH90
-            if (RegPar(h2o, RH)%fc /= error) then
-                mean_fc = mean_fc + RegPar(h2o, RH)%fc
+            if (RegPar(wsl, RH)%fc /= error) then
+                mean_fc = mean_fc + RegPar(wsl, RH)%fc
                 cnt2 = cnt2 + 1
             end if
         end do
@@ -96,10 +106,10 @@ subroutine FitRh2Fco()
         EXPPar(3) = -2.d0
         m = 0
         do cls = RH10, RH90
-            if (RegPar(h2o, cls)%fc /= error) then
+            if (RegPar(wsl, cls)%fc /= error) then
                 m = m + 1
                 xFit(m) = dfloat(cls) * 1d-1
-                yFit(m) = RegPar(h2o, cls)%fc
+                yFit(m) = RegPar(wsl, cls)%fc
             end if
         end do
 
@@ -122,12 +132,12 @@ subroutine FitRh2Fco()
             cnt = 0
             mean_fc = 0d0
             do cls = RH10, RH90
-                if (RegPar(h2o, cls)%fc /= error) then
+                if (RegPar(wsl, cls)%fc /= error) then
                     cnt = cnt + 1
-                    mean_fc = mean_fc + RegPar(h2o, cls)%fc
+                    mean_fc = mean_fc + RegPar(wsl, cls)%fc
                     if (cnt == m) then
                         mean_fc = mean_fc / cnt
-                        RegPar(h2o, RH10:RH90)%fc = mean_fc
+                        RegPar(wsl, RH10:RH90)%fc = mean_fc
                         RegPar(dum, dum)%e1 = 1d-15
                         RegPar(dum, dum)%e2 = 1d-15
                         RegPar(dum, dum)%e3 = dlog(mean_fc)
@@ -137,11 +147,11 @@ subroutine FitRh2Fco()
             end do
         elseif(m == 1) then
             do cls = RH10, RH90
-                if (RegPar(h2o, cls)%fc /= error) then
-                    RegPar(h2o, RH10:RH90)%fc = RegPar(h2o, cls)%fc
+                if (RegPar(wsl, cls)%fc /= error) then
+                    RegPar(wsl, RH10:RH90)%fc = RegPar(wsl, cls)%fc
                     RegPar(dum, dum)%e1 = 1d-15
                     RegPar(dum, dum)%e2 = 1d-15
-                    RegPar(dum, dum)%e3 = dlog(RegPar(h2o, cls)%fc)
+                    RegPar(dum, dum)%e3 = dlog(RegPar(wsl, cls)%fc)
                     exit
                 end if
             end do
@@ -155,11 +165,11 @@ subroutine FitRh2Fco()
         if (m >= 3) then
             !> For low RH classes, uses higher ones
             do cls = RH50, RH10, - 1
-                if (RegPar(h2o, cls)%fc == error) then
+                if (RegPar(wsl, cls)%fc == error) then
                     do cls2 = cls + 1, RH90
-                        if (RegPar(h2o, cls2)%fc /= error) then
-                            RegPar(h2o, cls)%fc = RegPar(h2o, cls2)%fc
-                            RegPar(h2o, cls)%Fn = RegPar(h2o, cls2)%Fn
+                        if (RegPar(wsl, cls2)%fc /= error) then
+                            RegPar(wsl, cls)%fc = RegPar(wsl, cls2)%fc
+                            RegPar(wsl, cls)%Fn = RegPar(wsl, cls2)%Fn
                             exit
                         end if
                     enddo
@@ -167,11 +177,11 @@ subroutine FitRh2Fco()
             end do
             !> For high RH classes, uses lower ones
             do cls = RH60, RH90
-                if (RegPar(h2o, cls)%fc == error) then
+                if (RegPar(wsl, cls)%fc == error) then
                     do cls2 = cls - 1, RH10, - 1
-                        if (RegPar(h2o, cls2)%fc /= error) then
-                            RegPar(h2o, cls)%fc = RegPar(h2o, cls2)%fc
-                            RegPar(h2o, cls)%Fn = RegPar(h2o, cls2)%Fn
+                        if (RegPar(wsl, cls2)%fc /= error) then
+                            RegPar(wsl, cls)%fc = RegPar(wsl, cls2)%fc
+                            RegPar(wsl, cls)%Fn = RegPar(wsl, cls2)%Fn
                             exit
                         end if
                     enddo
