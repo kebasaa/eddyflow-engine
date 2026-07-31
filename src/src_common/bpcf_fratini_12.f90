@@ -68,14 +68,23 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     type(DateType) :: Timestamp
     logical, external :: GasSlotIsWater
 
-    data min_bpcf_f12(co2)  / 0.8d0 / &
-         min_bpcf_f12(h2o)  / 0.8d0 / &
-         min_bpcf_f12(ch4)  / 0.8d0 / &
-         min_bpcf_f12(gas4) / 0.8d0 / &
-         max_bpcf_f12(co2)  / 5.d0  / &
-         max_bpcf_f12(h2o)  / 20.d0 / &
-         max_bpcf_f12(ch4)  / 5.d0  / &
-         max_bpcf_f12(gas4) / 5.d0  /
+    !> Plausibility band for the correction factor the direct method returns.
+    !>
+    !> This was four `data` statements naming co2/h2o/ch4/gas4, so every slot
+    !> past the fourth held whatever the saved storage did - zero in practice.
+    !> That does not make the test permissive, it inverts it: `BPCF >= 0` is
+    !> always true, so a gas past the fourth was pushed onto the Ibrom 2007
+    !> fallback in every period and never kept its direct factor.
+    !>
+    !> The band is a property of the species, not of the slot: water's upper
+    !> bound is four times the others because its tube attenuation is that
+    !> much larger, so a correction factor that would be absurd for a trace
+    !> gas is ordinary for water.
+    min_bpcf_f12(:) = 0.8d0
+    max_bpcf_f12(:) = 5d0
+    do i = firstGas, lastGas
+        if (GasSlotIsWater(i)) max_bpcf_f12(i) = 20d0
+    end do
 
     !> Detect name of file to be read
     indx = nint(error)

@@ -302,19 +302,20 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
         if (.not. lEx%var_present(i) .or. .not. usable_wt) cycle
         if (.not. vm_ok(i) .or. .not. foken_ok(i)) cycle
         sort = 0
-        if (i == h2o) then
+        !> Water sorts by relative humidity and is judged on its latent heat
+        !> flux; every other species sorts by month and is judged on its own.
+        !> Asked of the record, not of the slot - the two tests above in this
+        !> routine already do, and a second hygrometer sits well past slot 6.
+        if (GasSlotIsWater(i)) then
             if (lEx%RH > 5d0 .and. lEx%RH < 95d0) sort = nint(lEx%RH / 10d0)
             flux = dabs(lEx%Flux0%LE)
         else
             if (month >= JAN .and. month <= DEC) sort = FCCsetup%SA%class(i, month)
-            select case (i)
-                case (co2)
-                    flux = dabs(lEx%Flux0%gas(co2))
-                case (ch4)
-                    flux = dabs(lEx%Flux0%gas(ch4))
-                case default
-                    flux = dabs(lEx%Flux0%gas(gas4))
-            end select
+            !> Was a select case whose arms each read their own slot and whose
+            !> default read gas4's, so every gas past the seventh was judged
+            !> on the fourth slot's flux. The arms were all the same
+            !> expression; the slot is the loop variable.
+            flux = dabs(lEx%Flux0%gas(i))
         end if
         if (flux == dabs(error)) cycle
         if (sort == 0) cycle
