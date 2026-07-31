@@ -70,7 +70,7 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
     TFShape = 'cospectra_massman'
     !> Unstable case
     MassPar = MassParType(error, error, error)
-    do var = w_ts, w_gas4
+    do var = ts, lastGas
         xFit = 0d0
         yFit = 0d0
         m = nfit(var, unstable)
@@ -116,7 +116,7 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
     end do
 
     !> Stable case
-    do var = w_ts, w_gas4
+    do var = ts, lastGas
         xFit = 0d0
         yFit = 0d0
         m = nfit(var, stable)

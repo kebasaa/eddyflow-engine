@@ -60,6 +60,14 @@ interface
         character(*), intent(out) :: tags(GHGNumVar)
     end subroutine SpectralVarTags
 
+    !> Species names for the spectral reports. Free text, unlike the labels
+    !> above: the fourth gas is named by species, not 'gas4'.
+    subroutine SpectralGasNames(names)
+        use m_common_global_var
+        implicit none
+        character(*), intent(out) :: names(GHGNumVar)
+    end subroutine SpectralGasNames
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &

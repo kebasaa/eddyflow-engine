@@ -41,6 +41,8 @@ subroutine ReadSpectralAssessmentFile()
     integer :: cls
     integer :: i
     integer :: open_status
+    integer :: read_status
+    logical :: short_file
     character(ShortInstringLen) :: dataline
 
 
@@ -52,6 +54,8 @@ subroutine ReadSpectralAssessmentFile()
     RegPar%Fn = 0d0
     RegPar%fc = 0d0
     RegPar%f2 = 0d0
+    read_status = 0
+    short_file = .false.
     if (open_status == 0) then
         write(*, '(a)') '  Spectral assessment file found, importing content..'
         !> skip 7 lines
@@ -65,18 +69,70 @@ subroutine ReadSpectralAssessmentFile()
             read(dataline, *)  RegPar(h2o, cls)%Fn, RegPar(h2o, cls)%fc
         end do
 
-        !> Read CO2, CH4 and GAS4 transfer functions for IIR filter
-        do gas = co2, gas4
+        !> One block per configured gas but water, matching what
+        !> OutputSpectralAssessmentResults writes over the same range.
+        !>
+        !> A file written before this range widened carries only three blocks,
+        !> and a file written for a smaller project carries fewer than this one
+        !> expects. Neither may be read as though the blocks were there: the
+        !> next thing in the file is the exponential-fit section, and a blind
+        !> `read` of its title line succeeds, so a count mismatch would be
+        !> consumed as transfer-function parameters rather than noticed.
+        !>
+        !> The block header is therefore checked, not skipped. On a mismatch
+        !> the two peeked lines are put back and the loop stops, leaving the
+        !> file positioned exactly where a full-length read would have left it
+        !> - so the sections below still parse and the remaining gases stay
+        !> unfitted, falling back to an analytic transfer function.
+        !> Start every gas block unfitted. RegPar is zeroed above, and a
+        !> cut-off of zero is not a missing value - it is an infinitely
+        !> aggressive correction, which is what a gas absent from the file
+        !> would silently receive. The readiness check keys on `error`, so
+        !> writing the sentinel here is what makes an absent gas fall back to
+        !> the analytic method instead of inventing a correction for it.
+        !> Water is left alone: its classes are the RH table read above.
+        do gas = firstGas, lastGas
             if (gas == h2o) cycle
-            !> Skip 2 lines
-            read(udf, *)
-            read(udf, *)
-            do cls = JAN, DEC
-                read(udf, '(a)') dataline
-                dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
-                read(dataline, *)  RegPar(gas, cls)%Fn, RegPar(gas, cls)%fc
-            end do
+            RegPar(gas, JAN:DEC)%Fn = error
+            RegPar(gas, JAN:DEC)%fc = error
         end do
+
+        do gas = firstGas, lastGas
+            if (gas == h2o) cycle
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+
+            !> Blank separator, then the block header naming the gas
+            read(udf, *, iostat = read_status)
+            if (read_status /= 0) exit
+            read(udf, '(a)', iostat = read_status) dataline
+            if (read_status /= 0) exit
+            if (index(dataline, 'TFP') == 0) then
+                backspace(udf)
+                backspace(udf)
+                short_file = .true.
+                exit
+            end if
+
+            do cls = JAN, DEC
+                read(udf, '(a)', iostat = read_status) dataline
+                if (read_status /= 0) exit
+                dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
+                read(dataline, *, iostat = read_status) &
+                    RegPar(gas, cls)%Fn, RegPar(gas, cls)%fc
+                if (read_status /= 0) exit
+            end do
+            if (read_status /= 0) exit
+        end do
+
+        !> A truncated block is a malformed file, not an older one: the
+        !> position is no longer trustworthy, so stop rather than parse on.
+        if (read_status /= 0) then
+            close(udf)
+            EddyFlowProj%hf_meth = 'moncrieff_97'
+            call ExceptionHandler(65)
+            return
+        end if
+        if (short_file) call ExceptionHandler(65)
 
         !> skip 4 lines
         do i = 1, 4

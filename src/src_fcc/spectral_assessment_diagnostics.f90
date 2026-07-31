@@ -111,7 +111,7 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
             RegPar(dum, dum)%e1 /= error .and. RegPar(dum, dum)%e2 /= error .and. &
             RegPar(dum, dum)%e3 /= error
         assessment_ready = h2o_ok
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (gas == h2o .or. .not. fcc_var_present(gas)) cycle
             gas_ok = .false.
             do cls = 1, MaxGasClasses
@@ -176,7 +176,10 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         call EmitReportLine(report_unit, open_status, 'Automatic spectral configuration: DISABLED')
     end if
 
-    do gas = co2, gas4
+    !> Only gases the project configures. Running the full slot range would
+    !> emit sixty "unavailable" lines for slots that do not exist.
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         gas_classes = 0
         if (allocated(MeanBinSpec)) then
             do cls = 1, MaxGasClasses
@@ -347,7 +350,7 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
     changes_written = any(SAAutoApplyMin) .or. any(SAAutoApplyMax)
     if (changes_written) then
         write(*, '(a)') ' Automatic spectral configuration: updating output project file.'
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             do stability = SADiagUnstable, SADiagStable
                 if (.not. SAAutoApplyMin(stability, gas)) cycle
                 call SpectralFluxLimitSettings(gas, stability, current_min, current_max, min_label, max_label)
@@ -569,6 +572,12 @@ function GasName(gas) result(name)
     implicit none
     integer, intent(in) :: gas
     character(16) :: name
+    character(64) :: tags(GHGNumVar)
+    include '../src_common/interfaces_1.inc'
+
+    !> The historical three keep their names; everything else takes the
+    !> record's species. Calling every slot past CH4 "Gas 4" made a report on
+    !> an eight-gas project name five different species identically.
     select case (gas)
         case (co2)
             name = 'CO2'
@@ -578,6 +587,13 @@ function GasName(gas) result(name)
             name = 'CH4'
         case default
             name = 'Gas 4'
+            if (gas >= firstGas .and. gas <= lastGas) then
+                call SpectralGasNames(tags)
+                if (len_trim(tags(gas)) > 0) then
+                    name = tags(gas)(1:min(len_trim(tags(gas)), len(name)))
+                    call uppercase(name)
+                end if
+            end if
     end select
 end function GasName
 

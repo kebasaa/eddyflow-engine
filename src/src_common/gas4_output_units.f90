@@ -226,6 +226,40 @@ end subroutine SpectralVarTags
 
 !***************************************************************************
 !
+!> \brief       Human-readable species names for the spectral reports
+!> \author      EddyFlow
+!> \note        Companion to SpectralVarTags, and deliberately different at
+!>              one slot. SpectralVarTags carries the fixed on-disk labels
+!>              of the historical eight, where the fourth gas is written
+!>              'gas4' because that literal is the shipped file format.
+!>              Here the fourth gas is named by its species - which is what
+!>              the spectral assessment file's block headers and the
+!>              correction diagnostics report have always printed, via the
+!>              old g4lab. Both are free text: the assessment reader skips
+!>              the header line rather than matching it.
+!
+!***************************************************************************
+subroutine SpectralGasNames(names)
+    use m_common_global_var
+    implicit none
+    character(*), intent(out) :: names(GHGNumVar)
+    character(64) :: gas_tags(GHGNumVar)
+    integer :: gas
+
+    names = ''
+    names(co2) = 'co2'
+    names(h2o) = 'h2o'
+    names(ch4) = 'ch4'
+
+    call FullOutputGasTags(gas_tags)
+    do gas = gas4, lastGas
+        if (len_trim(gas_tags(gas)) > 1) &
+            names(gas) = gas_tags(gas)(1:len_trim(gas_tags(gas)) - 1)
+    end do
+end subroutine SpectralGasNames
+
+!***************************************************************************
+!
 ! \brief       Full-output scales and labels for every configured gas slot.
 ! \author      Jonathan Muller
 ! \note        One call fills the header and the row writer alike, so the

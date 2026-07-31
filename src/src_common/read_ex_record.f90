@@ -823,7 +823,15 @@ subroutine CompleteEssentials(lEx)
     if (lEx%Ts /= error) lEx%var_present(ts)  = .true.
     !> Over every gas slot, not just the fixed four: a gas past the fourth
     !> that is left absent here is later gated out of the flux correction.
+    !>
+    !> Bounded by the declared gas count, not by lastGas. Flux0 is not reset
+    !> between records, so a slot the project never declared holds 0 rather
+    !> than the error sentinel and would test as present - a phantom gas that
+    !> every var_present-gated loop then processes. It surfaced as the whole
+    !> spectral correction falling back to Moncrieff, because the phantom has
+    !> no class and so no fitted cutoff to look up.
     do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (lEx%Flux0%gas(gas) /= error) lEx%var_present(gas) = .true.
     end do
 

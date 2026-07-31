@@ -285,7 +285,7 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     !> Keep flux candidates that passed every non-flux quality requirement.
     !> These support informational, data-driven threshold suggestions only.
     call char2int(lEx%end_date(6:7), month, 2)
-    do i = co2, gas4
+    do i = firstGas, lastGas
         if (.not. lEx%var_present(i) .or. .not. usable_wt) cycle
         if (.not. vm_ok(i) .or. .not. foken_ok(i)) cycle
         sort = 0
@@ -317,7 +317,7 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             call RecordSpectralAssessmentFluxCandidate(i, SADiagStable, flux, sort)
     end do
 
-    do i = co2, gas4
+    do i = firstGas, lastGas
         if (any(BinSpec%of(i) /= error)) SADiagAccepted(i) = SADiagAccepted(i) + 1
     end do
 

@@ -31,6 +31,8 @@ that before trusting a difference.
 | `base_n_gas.eddyflow` | currently eight gases across **two** analysers - the count is a property of the fixture, not of the test: the MIRO's four plus the LI-7200's CO2 and H2O, and a duplicate N2O. Exercises the capacity target (64 gases, with no per-instrument cap) and, because the two analysers measure the same species independently, catches slot cross-wiring: `CO2` and `CO2_2` must hold *different* real values, not the same one twice. |
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |
 | `base_n_gas_ru.eddyflow` | `base_n_gas` with random uncertainty on. The only fixture that exercises `random_error_handle.f90` and `integral_turbulence_scale.f90` at all - every other one leaves `RUsetup%meth` at `none`, so those files run their `case('none')` arm and nothing else. Expect a real `RANDUNC_HF` for every gas that has a column, and `-9999` for one that does not. |
+| `base_n_gas_sa.eddyflow` | `base_n_gas` with `hf_meth=ibrom_07` and `sa_mode=0`, reading the hand-authored assessment file `sa_n_gas_fitted.txt`. The only fixture where gases 5+ take a **fitted** transfer function rather than an analytic one. The file gives the first three gases `fc=1.00` and the rest `fc=0.05`, so the three resulting correction factors are far apart and cannot be confused: analytic 1.048, fitted-at-1.00 1.551, fitted-at-0.05 2.474. |
+| `base_n_gas_sa_short.eddyflow` | the same, against `sa_n_gas_short.txt` - an assessment file carrying only the first two blocks, standing in for one written before the range widened. Must fall back to the analytic factors for **every** gas and say so, not correct the missing gases with a cut-off of zero. |
 
 > **The `ru_*` keys reach the engine now; they never used to.**
 > `ru_meth`, `ru_its_meth` and `ru_tlag_max` are declared in `EPPrjNTags`, and
@@ -48,6 +50,68 @@ that before trusting a difference.
 > slots in the RP tag table - which nothing read, and which are what made the
 > keys look like RawProcess settings - are blanked.
 
+> **The assessment could not be fitted from the fixtures themselves.**
+> Fitting needs enough accepted half-hours to fill a class, and the regression
+> dataset is three hours - too few for *any* gas, CO2 included. So the fitted
+> path is exercised from the other end: `gen_sa.py` writes an assessment file
+> declaring the parameters, and `sa_mode=0` feeds it back through the same
+> reader the on-the-fly assessment writes for. That covers the half that was
+> four-gas bounded and the half that decides whether a fitted transfer
+> function can reach a fifth gas at all.
+>
+> Regenerate both files and both projects with:
+>
+> ```
+> C:/Users/jonmuell/.platformio/python3/python.exe gen_sa.py
+> ```
+
+## What widening the assessment chain uncovered
+
+The chain that fits transfer functions - bin, sort, ensemble, fit, write, read
+back, apply - was bounded at the fourth gas end to end. Gases past it were
+never assessed and fell through to an analytic transfer function, while the
+output reported a correction factor either way and nothing said which gases
+had actually been fitted.
+
+Widening it turned up three defects that were inert *only* because the loops
+stopped early. Each is the same failure class this effort keeps paying for:
+widening a loop over gas slots promotes every unconfigured per-gas parameter
+from never-consulted to consulted at its zero default.
+
+1. **No month/class table past the fourth gas.** The interface exposes three
+   month-grouping tables - CO2, CH4, the fourth gas - so a fifth gas kept
+   class 0. That is not merely unfitted: 0 is not a valid `RegPar` index, and
+   the assessment could never have fitted those gases either, because every
+   month would have been written as `error`. Gases past the fourth now inherit
+   CO2's grouping; the grouping bins the calendar, not the species.
+2. **A phantom gas tested as present.** `var_present` was derived over every
+   slot from `Flux0`, which is not reset between records, so a slot the
+   project never declared held 0 rather than the error sentinel and read as
+   present. It reached every `var_present`-gated loop. It surfaced as the
+   *whole* spectral correction falling back to Moncrieff - the phantom has no
+   class, so no cut-off to look up.
+3. **Horst & Lenschow indexed the by-role instrument array by gas slot.**
+   `lEx%instr` has one entry per role - CO2, H2O, CH4, the fourth gas, the
+   sonic - and the code reached it as `gas - 3`, which runs off its end at the
+   fifth gas and addresses an unrelated analyser before that. Under
+   `-fbounds-check` this aborts the run; it is the per-gas `lEx%gas_instr`
+   that carries the geometry. This is the last site of the "FCC passes
+   instruments by role, not by slot" defect.
+
+Two further things the widening made honest:
+
+- **A short assessment file is detected rather than misread.** The reader used
+  to skip the block header; a blind `read` of the next section's title line
+  succeeds, so a file with too few blocks would have had its exponential-fit
+  section consumed as transfer-function parameters. The header is now checked
+  for `TFP`, and on a mismatch the peeked lines are put back so the sections
+  below still parse.
+- **An absent gas reads as unfitted, not as zero.** `RegPar` is zeroed before
+  the read, and a cut-off of zero is not a missing value - it is an infinitely
+  aggressive correction. It gave gases the short file did not carry a
+  correction factor of 2.6. Gas blocks now start at `error`, which is what the
+  readiness check keys on.
+
 ## Re-baselinings, and what each one accounted for
 
 `out_ref` is regenerated only when a change is meant to move the output, and
@@ -58,6 +122,7 @@ only after every moved cell has been named. So far:
 | main record converted (`3511493`) | FLUXNET: exactly one column removed, `NUM_GAS_EXTRA`; every surviving cell byte-identical. `full_output`: 48 VM97 flag cells widened from 9 to 69 characters, each a pure extension of its old value with `'9'` (test not performed) padding |
 | full output per gas | `full_output` **units row only**: 4 whitespace-only cells. Three unit labels and one flux label are `character(32)` and used to be concatenated unpadded, so those fields carried trailing blanks. Every gas now trims. No data cell moved, no column added or removed at four gases |
 | per-gas cell conditions into FCC | FLUXNET row: **12 new columns**, `T_CELL_<tag>`, `PA_CELL_<tag>` and `W_PA_CELL_<tag>_COV` at four gases. Purely additive - every pre-existing column kept its value. `nMainFields` 263 -> 275 |
+| FCC spectral assessment over every gas | `spectral_correction_diagnostics_adv.txt`, **one line**: the fourth gas's report line changed from `Gas 4:` to `COS:`. `GasName` returned the literal `Gas 4` for every slot past CH4, which on an eight-gas project named five different species identically; it now returns the species. No other file moved, and no flux value moved at four gases |
 
 ## The arithmetic cross-check
 

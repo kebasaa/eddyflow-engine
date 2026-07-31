@@ -46,33 +46,33 @@ subroutine NormalizeMeanSpectraCospectra(nbins)
     do cls = 1, MaxGasClasses
         do bin = 1, nbins
             !> Sorted spectra
-            where (MeanBinSpec(bin, cls)%cnt(co2:gas4) >= FCCsetup%SA%min_smpl)
-                MeanBinSpec(bin, cls)%fnum(co2:gas4) = &
-                    MeanBinSpec(bin, cls)%fnum(co2:gas4) / MeanBinSpec(bin, cls)%cnt(co2:gas4)
-                MeanBinSpec(bin, cls)%fn(co2:gas4) = &
-                    MeanBinSpec(bin, cls)%fn(co2:gas4)   / dfloat(MeanBinSpec(bin, cls)%cnt(co2:gas4))
-                MeanBinSpec(bin, cls)%of(co2:gas4) = &
-                    MeanBinSpec(bin, cls)%of(co2:gas4)   / dfloat(MeanBinSpec(bin, cls)%cnt(co2:gas4))
-                MeanBinSpec(bin, cls)%ts(co2:gas4) = &
-                    MeanBinSpec(bin, cls)%ts(co2:gas4)   / dfloat(MeanBinSpec(bin, cls)%cnt(co2:gas4))
+            where (MeanBinSpec(bin, cls)%cnt(firstGas:lastGas) >= FCCsetup%SA%min_smpl)
+                MeanBinSpec(bin, cls)%fnum(firstGas:lastGas) = &
+                    MeanBinSpec(bin, cls)%fnum(firstGas:lastGas) / MeanBinSpec(bin, cls)%cnt(firstGas:lastGas)
+                MeanBinSpec(bin, cls)%fn(firstGas:lastGas) = &
+                    MeanBinSpec(bin, cls)%fn(firstGas:lastGas)   / dfloat(MeanBinSpec(bin, cls)%cnt(firstGas:lastGas))
+                MeanBinSpec(bin, cls)%of(firstGas:lastGas) = &
+                    MeanBinSpec(bin, cls)%of(firstGas:lastGas)   / dfloat(MeanBinSpec(bin, cls)%cnt(firstGas:lastGas))
+                MeanBinSpec(bin, cls)%ts(firstGas:lastGas) = &
+                    MeanBinSpec(bin, cls)%ts(firstGas:lastGas)   / dfloat(MeanBinSpec(bin, cls)%cnt(firstGas:lastGas))
             elsewhere
-                MeanBinSpec(bin, cls)%fnum(co2:gas4) = nint(error)
-                MeanBinSpec(bin, cls)%fn(co2:gas4) = error
-                MeanBinSpec(bin, cls)%of(co2:gas4) = error
-                MeanBinSpec(bin, cls)%ts(co2:gas4) = error
+                MeanBinSpec(bin, cls)%fnum(firstGas:lastGas) = nint(error)
+                MeanBinSpec(bin, cls)%fn(firstGas:lastGas) = error
+                MeanBinSpec(bin, cls)%of(firstGas:lastGas) = error
+                MeanBinSpec(bin, cls)%ts(firstGas:lastGas) = error
             end where
             !> Sorted cospectra
-            where (MeanBinCosp(bin, cls)%cnt(ts:gas4) > 0)
-                MeanBinCosp(bin, cls)%fnum(ts:gas4) = &
-                    MeanBinCosp(bin, cls)%fnum(ts:gas4) / MeanBinCosp(bin, cls)%cnt(ts:gas4)
-                MeanBinCosp(bin, cls)%fn(ts:gas4) = &
-                    MeanBinCosp(bin, cls)%fn(ts:gas4)   / dfloat(MeanBinCosp(bin, cls)%cnt(ts:gas4))
-                MeanBinCosp(bin, cls)%of(ts:gas4) = &
-                    MeanBinCosp(bin, cls)%of(ts:gas4)   / dfloat(MeanBinCosp(bin, cls)%cnt(ts:gas4))
+            where (MeanBinCosp(bin, cls)%cnt(ts:lastGas) > 0)
+                MeanBinCosp(bin, cls)%fnum(ts:lastGas) = &
+                    MeanBinCosp(bin, cls)%fnum(ts:lastGas) / MeanBinCosp(bin, cls)%cnt(ts:lastGas)
+                MeanBinCosp(bin, cls)%fn(ts:lastGas) = &
+                    MeanBinCosp(bin, cls)%fn(ts:lastGas)   / dfloat(MeanBinCosp(bin, cls)%cnt(ts:lastGas))
+                MeanBinCosp(bin, cls)%of(ts:lastGas) = &
+                    MeanBinCosp(bin, cls)%of(ts:lastGas)   / dfloat(MeanBinCosp(bin, cls)%cnt(ts:lastGas))
             elsewhere
-                MeanBinCosp(bin, cls)%fnum(ts:gas4) = nint(error)
-                MeanBinCosp(bin, cls)%fn(ts:gas4) = error
-                MeanBinCosp(bin, cls)%of(ts:gas4) = error
+                MeanBinCosp(bin, cls)%fnum(ts:lastGas) = nint(error)
+                MeanBinCosp(bin, cls)%fn(ts:lastGas) = error
+                MeanBinCosp(bin, cls)%of(ts:lastGas) = error
             end where
         end do
     end do

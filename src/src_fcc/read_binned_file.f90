@@ -94,7 +94,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
     end do
 
     !> Un-normalize binned cospectra by dividing by the frequency
-    do var = w_ts, w_gas4
+    do var = ts, lastGas
         where (BinCosp(1:nbins)%fn /= error &
             .and. BinCosp(1:nbins)%fn /= 0d0 .and. BinCosp(1:nbins)%of(var) /= error)
             BinCosp(1:nbins)%of(var) = BinCosp(1:nbins)%of(var) / BinCosp(1:nbins)%fn
@@ -116,7 +116,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
         end do il
     end do ol
 
-    ol2: do var = w_ts, w_gas4
+    ol2: do var = ts, lastGas
         il2: do i = 1, nbins
             if (dabs(BinCosp(i)%of(var)) > MaxNormSpecValue) then
                 BinCosp(:)%of(var) = error
@@ -136,7 +136,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
         end do il3
     end do ol3
 
-    ol4: do var = w_ts, w_gas4
+    ol4: do var = ts, lastGas
         il4: do i = 1, nbins
             if (BinCosp(i)%fn /= error .and. BinCosp(i)%of(var) /= error .and. &
                 dabs(BinCosp(i)%fn * BinCosp(i)%of(var)) > 10d0) then

@@ -40,6 +40,8 @@ src/src_rp/deprecated
 !/tests/regression/README.md
 !/tests/regression/run.sh
 !/tests/regression/base*.eddyflow
+!/tests/regression/gen_sa.py
+!/tests/regression/sa_*.txt
 /_temp
 /static_checks
 !/static_checks/

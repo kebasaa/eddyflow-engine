@@ -381,6 +381,24 @@ subroutine WriteVariablesFCC()
     end do
     FCCsetup%SA%nclass(gas4) = 12 - skipped_classes
 
+    !> Gases past the fourth have no class tags of their own - the interface
+    !> exposes three month-grouping tables, one each for CO2, CH4 and the
+    !> fourth gas - so they inherit CO2's grouping. The grouping is a binning
+    !> of the *calendar*, not a property of the species: it says which months
+    !> are pooled before a transfer function is fitted, and seasons do not
+    !> differ per analyte.
+    !>
+    !> Without this they keep class 0, which is not a valid RegPar index. That
+    !> was inert only while the correction loops stopped at the fourth gas;
+    !> now that they run the full range, an unclassified gas would index
+    !> RegPar(gas, 0). It also means the assessment could never fit them:
+    !> every month would be written as `error` and read back as no fit.
+    do gas = gas4 + 1, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(co2, JAN:DEC)
+        FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(co2)
+    end do
+
     !> Whether to keep or delete parent fluxnet file
     FCCsetup%keep_parent = SCTags(26)%value(1:1) == '1'
     

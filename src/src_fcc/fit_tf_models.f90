@@ -90,7 +90,7 @@ subroutine FitTFModels(nbins, printout)
     if (.not. allocated(ddum)) allocate(ddum(maxval(nlong)))
 
     !> regression for transfer functions, class-sorted
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, MaxGasClasses
             if (MeanBinSpecAvailable(cls, gas)) then
                 !> Initialization of IIR and SIGMA filter parameters
@@ -180,7 +180,7 @@ subroutine LongSpectraLength(nbins, maxnlong)
 
 
     nlong = 0
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, MaxGasClasses
             if (MeanBinSpecAvailable(cls, gas)) then
                 !> If spectra are available, creates the long spectra
@@ -224,7 +224,7 @@ subroutine UnbinSpectra(lSpec, nrow, ncol, nlong, nnrow, nncol, nbins)
     integer :: err_cnt
 
     nlong = 0
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, nncol
             if (MeanBinSpecAvailable(cls, gas)) then
                 !> Check if current-class spectra are available by

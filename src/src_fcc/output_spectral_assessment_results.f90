@@ -50,6 +50,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
     real(kind = dbl), external :: func
     real(kind = dbl), external :: kaimal
     character(128) :: Filename
+    character(64) :: sa_tags(GHGNumVar)
+    character(64) :: sa_name
     character(PathLen) :: FilePath
     character(PathLen) :: SpecDir
     character(LongOutstringLen) :: dataline
@@ -74,6 +76,11 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 end if
         end do il
     end do ol
+
+    !> Species names for every block header written below. Hoisted: the
+    !> passive-gas spectra file further down is written under its own
+    !> condition and is reachable without the assessment block.
+    call SpectralGasNames(sa_tags)
 
     !> SPECTRAL ASSESSMENT
     if (FCCsetup%do_spectral_assessment) then
@@ -129,14 +136,17 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 MeanBinSpec(nbins/2, RH90)%cnt(h2o)
             write(udf,'(a)') ''
 
-            do gas = co2, gas4
-                if (gas == co2)  write(udf,'(a)') 'CO2            TFP            &
+            !> One block per configured gas but water, whose cutoffs are the
+            !> RH-class table above. The reader consumes these blocks
+            !> positionally over the same range, so the two must agree on the
+            !> count; the header line names the gas so the file stays readable.
+            do gas = firstGas, lastGas
+                if (gas == h2o) cycle
+                if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                sa_name = sa_tags(gas)
+                call uppercase(sa_name)
+                write(udf,'(a)') trim(sa_name) // '            TFP            &
                     &Fn          fc'
-                if (gas == h2o)  cycle
-                if (gas == ch4)  write(udf,'(a)') 'CH4            TFP            &
-                    &Fn          fc'
-                if (gas == gas4) write(udf,'(a)') g4lab(1:g4l) // '           &
-                    &TFP            Fn          fc'
 
                 if (FCCsetup%SA%class(gas, JAN) /= 0) then
                     write(udf,'(a, 2(f11.5,1x))') 'January            = ', &
@@ -359,7 +369,9 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 dataline = ''
                 call AddDatum(dataline, '', separator)
                 do month = JAN, JAN
-                    do gas = co2, gas4
+                    do gas = firstGas, lastGas
+                        if (gas - firstGas + 1 > &
+                            min(EddyFlowProj%gas_num, MaxNumGases)) exit
                         if (gas /= h2o) then
                             if (FCCsetup%SA%class(gas, month) /= 0) then
                                 call WriteDatumInt(MeanBinSpec(1, FCCsetup%SA%class(gas, month))%cnt(gas) &
@@ -375,11 +387,24 @@ subroutine OutputSpectralAssessmentResults(nbins)
                     end do
                 end do
                 write(udf,'(a)') dataline(1:len_trim(dataline) - 1)
-                write(udf,'(a)') 'nat_freq,&
-                    &avrg_sp(T),avrg_sp(co2),denoised_avrg_sp(co2),pred_sp(co2),&
-                    &avrg_sp(T),avrg_sp(ch4),denoised_avrg_sp(ch4),pred_sp(ch4),&
-                    &avrg_sp(T),avrg_sp(' // g4lab(1:g4l) // '),denoised_avrg_sp(' // g4lab(1:g4l) // '),&
-                    &pred_sp(' // g4lab(1:g4l) // ')' !,&
+
+                !> Header generated over the same range as the row writer
+                !> below, four columns per gas. It used to be a literal
+                !> naming co2, ch4 and the fourth gas, so on a project with
+                !> more gases the rows grew and the header did not - the
+                !> columns past the third were unlabelled and misread.
+                dataline = 'nat_freq'
+                do gas = firstGas, lastGas
+                    if (gas - firstGas + 1 > &
+                        min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                    if (gas == h2o) cycle
+                    sa_name = sa_tags(gas)
+                    dataline = trim(dataline) // ',avrg_sp(T),avrg_sp(' &
+                        // trim(sa_name) // '),denoised_avrg_sp(' &
+                        // trim(sa_name) // '),pred_sp(' &
+                        // trim(sa_name) // ')'
+                end do
+                write(udf,'(a)') trim(dataline)
 
                 do i = 1, nbins - 1
                     call clearstr(dataline)
@@ -387,7 +412,9 @@ subroutine OutputSpectralAssessmentResults(nbins)
                         call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick), datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         do month = JAN, JAN
-                            do gas = co2, gas4
+                            do gas = firstGas, lastGas
+                                if (gas - firstGas + 1 > &
+                                    min(EddyFlowProj%gas_num, MaxNumGases)) exit
                                 if (gas == h2o) cycle
                                 if (FCCsetup%SA%class(gas, month) /= 0) then
                                     if (MeanBinSpecAvailable(FCCsetup%SA%class(gas, month), gas))then

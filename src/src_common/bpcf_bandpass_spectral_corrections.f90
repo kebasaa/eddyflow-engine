@@ -102,6 +102,15 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 if (actual_hf_method /= 'moncrieff_97') then
                     do gas = firstGas, lastGas
                         if(gas /= h2o .and. lEx%var_present(gas)) then
+                            !> An unclassified gas has no fitted cutoff to
+                            !> look up, and class 0 is not a valid RegPar
+                            !> index. Treat it as the missing fit it is.
+                            if (LocSetup%SA%class(gas, month) < 1 .or. &
+                                LocSetup%SA%class(gas, month) > MaxGasClasses) then
+                                actual_hf_method = 'moncrieff_97'
+                                call ExceptionHandler(69)
+                                exit
+                            end if
                             if(RegPar(gas,  LocSetup%SA%class(gas, month))%fc == error) then
                                 actual_hf_method = 'moncrieff_97'
                                 call ExceptionHandler(69)
