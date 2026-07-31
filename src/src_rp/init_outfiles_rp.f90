@@ -670,76 +670,40 @@ subroutine InitOutFiles_rp()
         call AddDatum(header1,'file_info,,,,stationarity test,,', separator)
         call AddDatum(header2,'filename,date,time,DOY,dev(u),dev(w),dev(ts)', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[%],[%],[%]', separator)
-        if (OutVarPresent(co2)) then
+        !> One column per configured gas. These were four blocks
+        !> naming co2/h2o/ch4 and whatever sat in the fourth slot,
+        !> so a gas past the fourth had no dev or flag column at
+        !> all. WriteOutQCDetails had the same four, which is what
+        !> kept the two in step; they move together or the file
+        !> shifts.
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
             call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(co2)', separator)
+            call AddDatum(header2,'dev(' // e2sg(gas)(1:len_trim(e2sg(gas)) - 1) // ')', separator)
             call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(PrimaryWaterOutSlot())) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(h2o)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(ch4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(ch4)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(gas4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)  // ')', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
+        end do
 
         call AddDatum(header1,',', separator)
         call AddDatum(header2,'dev(w/u),dev(w/ts)', separator)
         call AddDatum(header3,'[%],[%]', separator)
 
-        if (OutVarPresent(co2)) then
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
             call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/co2)', separator)
+            call AddDatum(header2,'dev(w/' // e2sg(gas)(1:len_trim(e2sg(gas)) - 1) // ')', separator)
             call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(PrimaryWaterOutSlot())) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/h2o)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(ch4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/ch4)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(gas4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)  // ')', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
+        end do
 
         call AddDatum(header1,',', separator)
         call AddDatum(header2,'flag(w/u),flag(w/ts)', separator)
         call AddDatum(header3,'[#],[#]', separator)
 
-        if (OutVarPresent(co2)) then
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
             call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/co2)', separator)
+            call AddDatum(header2,'flag(w/' // e2sg(gas)(1:len_trim(e2sg(gas)) - 1) // ')', separator)
             call AddDatum(header3,'[#]', separator)
-        end if
-        if (OutVarPresent(PrimaryWaterOutSlot())) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/h2o)', separator)
-            call AddDatum(header3,'[#]', separator)
-        end if
-        if (OutVarPresent(ch4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/ch4)', separator)
-            call AddDatum(header3,'[#]', separator)
-        end if
-        if (OutVarPresent(gas4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)  // ')', separator)
-            call AddDatum(header3,'[#]', separator)
-        end if
+        end do
 
         call AddDatum(header1,'well-developed_turbulence_test,,,,,', separator)
         call AddDatum(header2,'dev(u),dev(w),dev(ts),flag(u),flag(w),flag(ts)', separator)

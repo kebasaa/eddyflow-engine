@@ -45,6 +45,7 @@ subroutine WriteOutQCDetails(string, StDiff, DtDiff, STFlg, DTFlg)
     !> local variables
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum
+    integer :: gas
 
     call clearstr(dataline)
 
@@ -57,66 +58,37 @@ subroutine WriteOutQCDetails(string, StDiff, DtDiff, STFlg, DTFlg)
     call AddDatum(dataline, datum, separator)
     call WriteDatumInt(STDiff%ts, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
-    if (OutVarPresent(co2)) then
-        call WriteDatumInt(STDiff%gas(co2), datum, EddyFlowProj%err_label)
+    !> One field per configured gas, matching the three loops that
+    !> build this file's header in InitOutFiles_rp. The w_* names
+    !> index the same space as the gas slots, so STFlg(gas) is the
+    !> flag STFlg(w_co2) used to name.
+    do gas = firstGas, lastGas
+        if (.not. OutVarPresent(gas)) cycle
+        call WriteDatumInt(STDiff%gas(gas), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(h2o)) then
-        call WriteDatumInt(STDiff%gas(h2o), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(ch4)) then
-        call WriteDatumInt(STDiff%gas(ch4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(gas4)) then
-        call WriteDatumInt(STDiff%gas(gas4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
+    end do
 
     call WriteDatumInt(STDiff%w_u, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     call WriteDatumInt(STDiff%w_ts, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
 
-    if (OutVarPresent(co2)) then
-        call WriteDatumInt(STDiff%w_gas(co2), datum, EddyFlowProj%err_label)
+    do gas = firstGas, lastGas
+        if (.not. OutVarPresent(gas)) cycle
+        call WriteDatumInt(STDiff%w_gas(gas), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(h2o)) then
-        call WriteDatumInt(STDiff%w_gas(h2o), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(ch4)) then
-        call WriteDatumInt(STDiff%w_gas(ch4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(gas4)) then
-        call WriteDatumInt(STDiff%w_gas(gas4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
+    end do
 
     !> Flags for the stationarity test
     call WriteDatumInt(STFlg(w_u), datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     call WriteDatumInt(STFlg(w_ts), datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
-    if (OutVarPresent(co2)) then
-        call WriteDatumInt(STFlg(w_co2), datum, EddyFlowProj%err_label)
+    do gas = firstGas, lastGas
+        if (.not. OutVarPresent(gas)) cycle
+        call WriteDatumInt(STFlg(gas), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(h2o)) then
-        call WriteDatumInt(STFlg(w_h2o), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(ch4)) then
-        call WriteDatumInt(STFlg(w_ch4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
-    if (OutVarPresent(gas4)) then
-        call WriteDatumInt(STFlg(w_gas4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    end if
+    end do
 
     !> Differences (%) of the well developed turbulence test
     call WriteDatumInt(DtDiff%u, datum, EddyFlowProj%err_label)
