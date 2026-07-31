@@ -2111,7 +2111,17 @@ program EddyFlowRP
             !> flow rates provided by user with mean values from raw files
             if (EddyFlowProj%ftype /= 'licor_ghg' &
                 .or. EddyFlowProj%use_extmd_file) then
-                do i = co2, gas4
+                !> Over every configured gas, not the first four. The measured
+                !> flow rate drives tube velocity, Reynolds number and so the
+                !> tube-attenuation transfer function; bounded at the fourth
+                !> slot, a gas past it silently kept the flow rate declared in
+                !> the metadata while its neighbours used the measured one -
+                !> so the same analyser's gases were corrected with different
+                !> flow rates, and moving a gas between slots changed its
+                !> correction factor.
+                do i = firstGas, lastGas
+                    if (i - firstGas + 1 > &
+                        min(EddyFlowProj%gas_num, MaxNumGases)) exit
                     if (NumUserVar > 0) then
                         do j = 1, NumUserVar
                             if (UserCol(j)%var == 'flowrate' &

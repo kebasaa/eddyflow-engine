@@ -188,6 +188,7 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
     real(kind = dbl)  :: B
     real(kind = dbl)  :: C
     real(kind = dbl)  :: lRH
+    logical, external :: GasSlotIsWater
 
     f_c(firstGas:lastGas) = error
     f_2(firstGas:lastGas) = error
@@ -211,7 +212,7 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             !> spectral assessment never classified has none, and RegPar would
             !> be indexed out of range rather than merely give a wrong number.
             do gas = firstGas, lastGas
-                if (gas == h2o) cycle
+                if (GasSlotIsWater(gas)) cycle
                 if (.not. lEx%var_present(gas)) cycle
                 if (LocSetup%SA%class(gas, month) < 1 .or. &
                     LocSetup%SA%class(gas, month) > MaxGasClasses) cycle
@@ -236,7 +237,7 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             !> spectral assessment never classified has none, and RegPar would
             !> be indexed out of range rather than merely give a wrong number.
             do gas = firstGas, lastGas
-                if (gas == h2o) cycle
+                if (GasSlotIsWater(gas)) cycle
                 if (.not. lEx%var_present(gas)) cycle
                 if (LocSetup%SA%class(gas, month) < 1 .or. &
                     LocSetup%SA%class(gas, month) > MaxGasClasses) cycle

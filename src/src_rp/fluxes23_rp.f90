@@ -281,9 +281,17 @@ subroutine Fluxes23_rp()
     !> as an if/elseif cascade; accumulating each term when its inputs are
     !> available is equivalent, and does not have to be written once per gas.
     do msl = firstGas, lastGas
-        !> H2O's own flux is the evapotranspiration handled above, not a
-        !> WPL-corrected trace gas flux.
-        if (msl == h2o) cycle
+        !> The primary water's own flux is the evapotranspiration handled
+        !> above, not a WPL-corrected trace gas flux. Keyed on the resolved
+        !> slot, not the h2o constant: on a project that declares its water
+        !> anywhere but record two, that constant skipped a trace gas from
+        !> this loop - leaving its Level 2 and 3 fluxes unset - and sent the
+        !> real water through the trace-gas path instead.
+        !>
+        !> A *second* hygrometer is deliberately still treated as a trace gas
+        !> here: only one evapotranspiration is computed above, so skipping
+        !> it would leave its flux unreported.
+        if (msl == wsl) cycle
         if (.not. E2Col(msl)%present) then
             Flux2%gas(msl) = error
             cycle
@@ -297,7 +305,7 @@ subroutine Fluxes23_rp()
     !> BPCF%of is indexed by the w_* covariance labels, which carry the same
     !> numbering as the gas slots, so the slot indexes it directly.
     do msl = firstGas, lastGas
-        if (msl == h2o) cycle
+        if (msl == wsl) cycle
         if (E2Col(msl)%Instr%path_type == 'closed' .and. Flux2%gas(msl) /= error) then
             !> No correction factor means the corrected flux is
             !> unavailable, not that it equals the uncorrected one - and

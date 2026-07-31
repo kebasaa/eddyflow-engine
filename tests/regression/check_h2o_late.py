@@ -11,11 +11,11 @@ Two column sets, deliberately separated:
 SCALARS - one per site, derived from the water column and the anemometer
 alone. These must match exactly. They are the gate.
 
-PER_GAS_PREFIXES - each gas's own flux and mixing ratio. These must also
-match once dilution resolves through `moist_ref`, but they additionally
-depend on per-record settings that the swap legitimately moves (the PWB
-timelag cache is keyed by species label, so H2O's entry is looked up
-differently at slot 9). Reported, not asserted, until Stage B lands.
+PER_GAS - each gas's own flux and mixing ratio. Also asserted: once every
+slot-as-species assumption is gone these are identical too, because the same
+physical column feeds them. Getting here took the PWB time-lag cache round
+trip, the RH-class time-lag window, the FCC flux chain and the tube flow
+rate - each of which was keyed on a slot number.
 
 Usage:  check_h2o_late.py out_<ngas_run> out_<late_run>
 """
@@ -71,24 +71,26 @@ def main():
                 failures.append('%s row %d: %s vs %s' % (name, n + 1, ra[i], rb[j]))
                 break
 
-    print('scalars checked: %d' % len(SCALARS))
+    #> The per-gas family, held to the same standard.
+    per_gas = list(PER_GAS_PREFIXES) + [c for c in href if c.endswith(MIXING)]
+    for name in per_gas:
+        if name not in href or name not in hlate:
+            continue
+        i, j = href.index(name), hlate.index(name)
+        for n, (ra, rb) in enumerate(zip(dref, dlate)):
+            if ra[i] != rb[j]:
+                failures.append('%s row %d: %s vs %s'
+                                % (name, n + 1, ra[i], rb[j]))
+                break
+
+    print('columns checked: %d scalars, %d per-gas'
+          % (len(SCALARS), len(per_gas)))
     if failures:
         print('FAIL - water is still being read from its slot:')
         for f in failures:
             print('  ' + f)
     else:
-        print('PASS - every water-derived scalar is unchanged')
-
-    #> Informational: the per-gas family.
-    print()
-    print('per-gas (informational):')
-    for name in PER_GAS_PREFIXES + tuple(
-            c for c in href if c.endswith(MIXING)):
-        if name not in href or name not in hlate:
-            continue
-        i, j = href.index(name), hlate.index(name)
-        a, b = dref[0][i], dlate[0][j]
-        print('  %-24s %-16s %-16s %s' % (name, a, b, '' if a == b else '<-- moved'))
+        print('PASS - every water-derived and per-gas column is unchanged')
 
     sys.exit(1 if failures else 0)
 

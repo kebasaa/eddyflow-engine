@@ -46,25 +46,34 @@ subroutine Fluxes23(lEx)
     !> moisture reference, so a single-analyser site is unaffected.
     real(kind = dbl) :: sigma_g, rhow_g
     integer :: msl
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
     real(kind = dbl), parameter :: alpha = 0.51d0
 
+
+    !> Water's own slot, from the records. FCC is what publishes the FLUXNET
+    !> row under fcc_follows, so leaving this at the h2o constant undid the
+    !> RP-side work entirely: on a project with water anywhere but record
+    !> two, FCC wrote water's flux into slot 6 - overwriting whatever gas is
+    !> actually there - and left the real water on the generic trace-gas path.
+    wsl = PrimaryWaterSlot()
 
     Flux2 = errFlux
     Flux3 = errFlux
 
     !> Level 2 end 3 internal sensible heat, do nothing
     Flux2%Hi_gas(co2) = Flux1%Hi_gas(co2)
-    Flux2%Hi_gas(h2o) = Flux1%Hi_gas(h2o)
+    if (wsl >= firstGas) Flux2%Hi_gas(wsl) = Flux1%Hi_gas(wsl)
     Flux2%Hi_gas(ch4) = Flux1%Hi_gas(ch4)
     Flux2%Hi_gas(gas4) = Flux1%Hi_gas(gas4)
     Flux3%Hi_gas(co2) = Flux2%Hi_gas(co2)
-    Flux3%Hi_gas(h2o) = Flux2%Hi_gas(h2o)
+    if (wsl >= firstGas) Flux3%Hi_gas(wsl) = Flux2%Hi_gas(wsl)
     Flux3%Hi_gas(ch4) = Flux2%Hi_gas(ch4)
     Flux3%Hi_gas(gas4) = Flux2%Hi_gas(gas4)
 
     !> Level 2 evapotranspiration WPL corrected, including Burba if the case
     if (EddyFlowProj%wpl) then
-        if (lEx%instr(ih2o)%path_type == 'open') then
+        if (wsl >= firstGas .and. lEx%gas_instr(wsl)%path_type == 'open') then
             if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
                 .and. Flux1%E /= error .and. Flux1%H /= error &
                 .and. lEx%sigma /= error) then
@@ -82,39 +91,39 @@ subroutine Fluxes23(lEx)
             !> Closed-path uses Ibrom et al. (2007) if conversion to mixing
             !> ratio did not already occur (which implies that some variables
             !> were missing)
-            select case(lEx%measure_type(h2o))
+            select case(lEx%measure_type(wsl))
                 case ('molar_density', 'mole_fraction')
                     if (Flux1%E /= error .and. lEx%sigma /= error &
-                        .and. lEx%Vcell(h2o) > 0d0 .and. lEx%Va > 0d0) then
+                        .and. lEx%Vcell(wsl) > 0d0 .and. lEx%Va > 0d0) then
 
-                        if (Flux1%Hi_gas(h2o) /= error &
-                            .and. lEx%cov_w_pcell(h2o) /= error) then
+                        if (Flux1%Hi_gas(wsl) /= error &
+                            .and. lEx%cov_w_pcell(wsl) /= error) then
                             !> Complete formulation, should actually never be
                             !> used cause conversion to mixing ratio should have
                             !> already happened if everything is available
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
-                                * lEx%Vcell(h2o) / lEx%Va &
-                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(h2o) &
-                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(h2o)) &
-                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(h2o) &
-                                * lEx%RHO%w / (lEx%Pcell_at(h2o))
+                                * lEx%Vcell(wsl) / lEx%Va &
+                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(wsl) &
+                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(wsl)) &
+                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(wsl) &
+                                * lEx%RHO%w / (lEx%Pcell_at(wsl))
 
-                        elseif (Flux1%Hi_gas(h2o) /= error) then
+                        elseif (Flux1%Hi_gas(wsl) /= error) then
                             !> Correct only for effect of T
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
-                                * lEx%Vcell(h2o) / lEx%Va &
-                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(h2o) &
-                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(h2o))
+                                * lEx%Vcell(wsl) / lEx%Va &
+                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(wsl) &
+                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(wsl))
 
-                        elseif (lEx%cov_w_pcell(h2o)  /= error) then
+                        elseif (lEx%cov_w_pcell(wsl)  /= error) then
                             !> Correct only for effect of P
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
-                                * lEx%Vcell(h2o) / lEx%Va &
-                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(h2o) &
-                                * lEx%RHO%w / (lEx%Pcell_at(h2o))
+                                * lEx%Vcell(wsl) / lEx%Va &
+                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(wsl) &
+                                * lEx%RHO%w / (lEx%Pcell_at(wsl))
                         else
                             !> Can't correct for T and P
-                            Flux2%E = Flux1%E * lEx%Vcell(h2o) / lEx%Va
+                            Flux2%E = Flux1%E * lEx%Vcell(wsl) / lEx%Va
                         end if
                     else
                         Flux2%E = error
@@ -132,15 +141,15 @@ subroutine Fluxes23(lEx)
 
     !> Level 2 h2o and latent heat flux
     if (Flux2%E /= error) then
-        Flux2%gas(h2o) = Flux2%E * 1d3 / MW_H2O
-        Flux2%ET = Flux2%gas(h2o) * h2o_to_ET
+        Flux2%gas(wsl) = Flux2%E * 1d3 / MW_H2O
+        Flux2%ET = Flux2%gas(wsl) * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux2%LE = Flux2%E * lEx%lambda
         else
             Flux2%LE = error
         end if
     else
-        Flux2%gas(h2o) = error
+        Flux2%gas(wsl) = error
         Flux2%LE  = error
         Flux2%ET  = error
     end if
@@ -191,7 +200,8 @@ subroutine Fluxes23(lEx)
 
     !> Level 3 for evapotranspiration: for open path, WPL again with corrected H
     !> Starts again from Level 1 of E, Level 2 was only used to calculate H Level 3.
-    if(EddyFlowProj%wpl .and. lEx%instr(ih2o)%path_type == 'open') then
+    if(EddyFlowProj%wpl .and. wsl >= firstGas &
+        .and. lEx%gas_instr(wsl)%path_type == 'open') then
         if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. Flux1%E /= error &
             .and. Flux1%H /= error .and. lEx%sigma /= error) then
             Flux3%E = (1d0 + mu * lEx%sigma) * Flux1%E &
@@ -214,23 +224,23 @@ subroutine Fluxes23(lEx)
 
     !> Level 3 h2o flux and latent heat flux
     if (Flux3%E /= error) then
-        Flux3%gas(h2o) = Flux3%E * 1d3 / MW_H2O
-        Flux3%ET = Flux3%gas(h2o) * h2o_to_ET
+        Flux3%gas(wsl) = Flux3%E * 1d3 / MW_H2O
+        Flux3%ET = Flux3%gas(wsl) * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux3%LE = Flux3%E * lEx%lambda
         else
             Flux3%LE = error
         end if
     else
-        Flux3%gas(h2o) = error
+        Flux3%gas(wsl) = error
         Flux3%LE  = error
         Flux3%ET  = error
     end if
 
     !> Calculate E_nowpl for closed and open path systems
-    if (lEx%instr(ih2o)%path_type == 'closed') then
-        if (Flux1%E /= error .and. BPCF%of(w_h2o) /= error) then
-            E_nowpl = Flux1%E * BPCF%of(w_h2o)
+    if (wsl >= firstGas .and. lEx%gas_instr(wsl)%path_type == 'closed') then
+        if (Flux1%E /= error .and. BPCF%of(wsl) /= error) then
+            E_nowpl = Flux1%E * BPCF%of(wsl)
         elseif(Flux1%E /= error) then
             E_nowpl = Flux1%E
         else
@@ -241,16 +251,20 @@ subroutine Fluxes23(lEx)
     end if
 
     !> Apply spectral correction to h2o and E/LE Level 3 fluxes for closed path
-    if (lEx%instr(ih2o)%path_type == 'closed' .and. Flux3%E /= error) then
-        !> Level 3, spectral correction
-        Flux3%gas(h2o) = Flux3%gas(h2o) * BPCF%of(w_h2o)
-        Flux3%E   = Flux3%E   * BPCF%of(w_h2o)
-        Flux3%LE  = Flux3%LE  * BPCF%of(w_h2o)
-        Flux3%ET  = Flux3%ET  * BPCF%of(w_h2o)
+    if (wsl >= firstGas .and. Flux3%E /= error) then
+        if (lEx%gas_instr(wsl)%path_type == 'closed') then
+            !> Level 3, spectral correction
+            Flux3%gas(wsl) = Flux3%gas(wsl) * BPCF%of(wsl)
+            Flux3%E   = Flux3%E   * BPCF%of(wsl)
+            Flux3%LE  = Flux3%LE  * BPCF%of(wsl)
+            Flux3%ET  = Flux3%ET  * BPCF%of(wsl)
+        end if
     end if
 
-    if (.not. lEx%var_present(h2o)) then
-        Flux3%gas(h2o) = error
+    if (wsl < firstGas) then
+        Flux3%E = error; Flux3%LE = error; Flux3%ET = error
+    elseif (.not. lEx%var_present(wsl)) then
+        Flux3%gas(wsl) = error
         Flux3%E   = error
         Flux3%LE  = error
         Flux3%ET  = error
@@ -266,7 +280,7 @@ subroutine Fluxes23(lEx)
     !> ex file now carries an analyser for every configured gas.
     do msl = firstGas, lastGas
         !> H2O's own flux is the evapotranspiration handled above.
-        if (msl == h2o) cycle
+        if (msl == wsl) cycle
         call MoistTerms(msl, sigma_g, rhow_g)
         call Level2GasFlux(msl, sigma_g, rhow_g)
     end do
@@ -274,7 +288,7 @@ subroutine Fluxes23(lEx)
     !> Level 3 other gases. For closed path apply the spectral correction now
     !> (e.g. Ibrom et al. 2007); for open path it is already included.
     do msl = firstGas, lastGas
-        if (msl == h2o) cycle
+        if (msl == wsl) cycle
         if (lEx%gas_instr(msl)%path_type == 'closed' &
             .and. Flux2%gas(msl) /= error) then
             !> No correction factor means the corrected flux is

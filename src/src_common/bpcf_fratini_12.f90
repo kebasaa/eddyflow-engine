@@ -66,6 +66,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     real(kind = dbl) :: min_bpcf_f12(GHGNumVar)
     real(kind = dbl) :: max_bpcf_f12(GHGNumVar)
     type(DateType) :: Timestamp
+    logical, external :: GasSlotIsWater
 
     data min_bpcf_f12(co2)  / 0.8d0 / &
          min_bpcf_f12(h2o)  / 0.8d0 / &
@@ -200,7 +201,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         !> carve-out water has everywhere else in this work.
         do gas = firstGas, lastGas
             if (.not. loc_var_present(gas)) cycle
-            if (gas == h2o) then
+            if (GasSlotIsWater(gas)) then
                 low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
                     .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE
             else

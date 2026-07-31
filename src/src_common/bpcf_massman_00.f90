@@ -222,6 +222,7 @@ double precision function LUT_delta(Re, var)
     real(kind = dbl) :: Lambda_ch4(naux)
     real(kind = dbl) :: Reynolds(naux)
     real(kind = dbl) :: Lambda(naux)
+    character(32) :: species
 
     data (Lambda_co2(mmm), mmm = 1, naux) &
         / 24.39, 12.21, 10.33, 8.13, 6.83, 5.3, 4.05, 2.97, 2.37, 1.99, &
@@ -241,13 +242,27 @@ double precision function LUT_delta(Re, var)
          17000, 18000, 19000, 20000, 30000, 40000, 60000, 80000, 100000 /
 
 
-    select case(var)
-        case (co2, gas4)
-            Lambda = Lambda_co2
-        case (h2o)
+    !> Tube-wall adsorption is a property of the molecule, so it is chosen by
+    !> species and not by slot. Keyed on the slot number, a project that put
+    !> water anywhere but record two gave the gas at slot 6 water's adsorption
+    !> curve and water none at all - and slots past the fourth matched no case
+    !> whatever, leaving Lambda undefined rather than defaulted. The two gases
+    !> then swapped correction factors.
+    !>
+    !> Everything but water and methane takes the CO2 curve, which is what the
+    !> fourth slot always did: these are the weakly-adsorbing species.
+    species = ''
+    if (var >= firstGas .and. var <= lastGas) then
+        species = EddyFlowProj%gas(var - firstGas + 1)%var
+        call uppercase(species)
+    end if
+    select case (trim(adjustl(species)))
+        case ('H2O')
             Lambda = Lambda_h2o
-        case (ch4)
+        case ('CH4')
             Lambda = Lambda_ch4
+        case default
+            Lambda = Lambda_co2
     end select
 
     !> Detect closest (smaller) Reynolds

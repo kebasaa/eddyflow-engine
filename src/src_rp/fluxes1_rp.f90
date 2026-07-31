@@ -38,38 +38,48 @@ subroutine Fluxes1_rp()
     implicit none
     real(kind = dbl)  :: Cox
     integer :: msl
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
 
     write(*,'(a)', advance = 'no') '  Calculating fluxes Level 1..'
 
     Flux1 = errFlux
 
+    !> Water's own slot. The oxygen correction below is a krypton /
+    !> Lyman-alpha hygrometer correction - genuinely about water - and the
+    !> E/ET/LE terms are the primary water's. Both resolve the slot rather
+    !> than assuming record two holds water.
+    wsl = PrimaryWaterSlot()
+
     !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
     !> according to van Dijk et al. (2003, JAOT, eq. 13b)
-    select case (E2Col(h2o)%Instr%model(1:len_trim(E2Col(h2o)%Instr%model) - 2))
+    if (wsl >= firstGas) then
+    select case (E2Col(wsl)%Instr%model(1:len_trim(E2Col(wsl)%Instr%model) - 2))
         case('open_path_krypton','closed_path_krypton', &
                 'open_path_lyman','closed_path_lyman')
-            if (E2Col(h2o)%Instr%ko /= error .and. E2Col(h2o)%Instr%kw /= 0d0 &
+            if (E2Col(wsl)%Instr%ko /= error .and. E2Col(wsl)%Instr%kw /= 0d0 &
                 .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
                 .and. Ambient%lambda > 0) then
-                Cox = 1d0 + 0.23d0 * E2Col(h2o)%Instr%ko / E2Col(h2o)%Instr%kw &
+                Cox = 1d0 + 0.23d0 * E2Col(wsl)%Instr%ko / E2Col(wsl)%Instr%kw &
                     * Ambient%Bowen * Ambient%lambda / Ambient%Ta
-                Stats%Cov(w, h2o) = Cox * Stats%Cov(w, h2o)
-                Stats%Cov(h2o, h2o) = Cox**2 * Stats%Cov(h2o, h2o)
+                Stats%Cov(w, wsl) = Cox * Stats%Cov(w, wsl)
+                Stats%Cov(wsl, wsl) = Cox**2 * Stats%Cov(wsl, wsl)
                 !> Alternative formulation by T.W. Horst
                 !> http://www.eol.ucar.edu/instrumentation/sounding&
                 !> &/isfs/isff-support-center/how-tos/&
                 !> $corrections-to-sensible-and-latent-heat-flux-measurements
-                !Stats%Cov(w, h2o) = Stats%Cov(w, h2o) / (1 - 8d0 * 0.23d0 &
-                !* E2Col(h2o)%Instr%ko / E2Col(h2o)%Instr%kw * Ambient%bowen)
+                !Stats%Cov(w, wsl) = Stats%Cov(w, wsl) / (1 - 8d0 * 0.23d0 &
+                !* E2Col(wsl)%Instr%ko / E2Col(wsl)%Instr%kw * Ambient%bowen)
             endif
     end select
+    end if
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = Flux0%H
 
     !> Internal sensible heat flux, Hint in [W m-2]
     Flux1%Hi_gas(co2) = Flux0%Hi_gas(co2)
-    Flux1%Hi_gas(h2o) = Flux0%Hi_gas(h2o)
+    if (wsl >= firstGas) Flux1%Hi_gas(wsl) = Flux0%Hi_gas(wsl)
     Flux1%Hi_gas(ch4) = Flux0%Hi_gas(ch4)
     Flux1%Hi_gas(gas4) = Flux0%Hi_gas(gas4)
 
@@ -91,19 +101,27 @@ subroutine Fluxes1_rp()
     !> The water flux carries evapotranspiration and latent heat with it.
     !> Those are scalars - one per project, from the primary H2O slot - so
     !> they are corrected here rather than inside the loop.
-    if (E2Col(h2o)%Instr%path_type /= 'closed' .and. BPCF%of(w_h2o) /= error) then
-        Flux1%E   = Flux0%E   * BPCF%of(w_h2o)
-        Flux1%ET  = Flux0%ET  * BPCF%of(w_h2o)
-        Flux1%LE  = Flux0%LE  * BPCF%of(w_h2o)
+    if (wsl >= firstGas .and. BPCF%of(max(wsl, 1)) /= error) then
+    if (E2Col(wsl)%Instr%path_type /= 'closed') then
+        Flux1%E   = Flux0%E   * BPCF%of(wsl)
+        Flux1%ET  = Flux0%ET  * BPCF%of(wsl)
+        Flux1%LE  = Flux0%LE  * BPCF%of(wsl)
     else
         Flux1%E   = Flux0%E
         Flux1%ET  = Flux0%ET
         Flux1%LE  = Flux0%LE
     end if
-    if (Flux0%gas(h2o) == error) then
+    else
+        Flux1%E   = Flux0%E
+        Flux1%ET  = Flux0%ET
+        Flux1%LE  = Flux0%LE
+    end if
+    if (wsl >= firstGas) then
+    if (Flux0%gas(wsl) == error) then
         Flux1%E   = error
         Flux1%ET  = error
         Flux1%LE  = error
+    end if
     end if
 
     !> Level 1 evapotranspiration fluxes with H2O covariances

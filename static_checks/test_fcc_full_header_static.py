@@ -61,13 +61,29 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertEqual(source.count("call AddDatum(header3, custom_unit"), 2)
 
     def test_raw_flowrate_override_is_gas_scoped_and_instrument_specific(self):
+        """Every configured gas, still matched to its own analyser.
+
+        The measured flow rate drives tube velocity, Reynolds number and so
+        the tube-attenuation transfer function. Bounded at the fourth slot, a
+        gas past it kept the flow rate declared in the metadata while its
+        neighbours on the same analyser used the measured one - so moving a
+        gas between slots changed its correction factor.
+
+        Still gas-scoped: widening to the whole variable set would hand the
+        anemometer and cell columns an analyser flow rate.
+        """
         source = read("src/src_rp/eddyflow-rp_main.f90")
 
-        override_block = source[source.index("replace instrument"):]
-        self.assertIn("do i = co2, gas4", override_block)
+        start = source.index("replace instrument")
+        override_block = source[start:source.index("end do", source.index(
+            "E2Col(i)%instr%tube_f = UserStats%Mean(j)", start))]
+        self.assertIn("do i = firstGas, lastGas", override_block,
+                      "the flow-rate override is bounded at the fourth gas")
+        self.assertIn("min(EddyFlowProj%gas_num, MaxNumGases)", override_block,
+                      "the override must stop at the declared gas count")
         self.assertIn("UserCol(j)%var == 'flowrate'", override_block)
-        self.assertIn("UserCol(j)%instr_name == E2Col(i)%instr_name", override_block)
-        self.assertIn("E2Col(i)%instr%tube_f = UserStats%Mean(j)", override_block)
+        self.assertIn("UserCol(j)%instr_name == E2Col(i)%instr_name",
+                      override_block)
         self.assertNotIn("do i = 1, E2NumVar", override_block)
 
     def test_rp_flowrate_custom_headers_are_model_numbered_and_unitful(self):
