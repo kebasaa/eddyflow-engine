@@ -120,6 +120,45 @@ class SpeciesPropertiesAreKeyedOnSpecies(unittest.TestCase):
                       "an unrecognised species must fall back, not leave "
                       "Lambda undefined")
 
+    def test_molecular_weight_and_diffusivity_default_by_species(self):
+        """A record that names a species but does not quantify it.
+
+        The fallback was gated on `slot > gas4`, so the first four slots kept
+        whatever the compile-time table held: water declared at slot 9 was
+        given N2O's molecular weight and diffusivity, and a gas declared at
+        slot 6 was given water's.
+        """
+        source = read("src/src_common/write_processing_project_variables.f90")
+        block = source[source.index("g mol-1 -> kg mol-1"):]
+        block = block[:block.index("end do")]
+        self.assertNotIn("else if (slot > gas4)", block,
+                         "the MW/Dc fallback still keys on slot position")
+        self.assertIn("DefaultMolecularWeight(EddyFlowProj%gas(i)%var)", block)
+        self.assertIn("DefaultDiffusivity(EddyFlowProj%gas(i)%var)", block)
+        for name in ("DefaultMolecularWeight", "DefaultDiffusivity"):
+            body = source[source.index("function %s(var)" % name):]
+            body = body[:body.index("end function %s" % name)]
+            self.assertIn("case ('H2O')", body)
+            self.assertIn("case default", body,
+                          "%s must give an unrecognised species a usable "
+                          "number, never zero" % name)
+
+    def test_a_gas_converts_with_its_own_records_weight(self):
+        """Not with the weight of the first record naming that species.
+
+        HistoricGasSlot maps a column's species name to a fixed slot, so a
+        site measuring CO2 on two analysers converted both with record one's
+        molecular weight. base_mw proves it: its second CO2 scales by
+        44.01/30.0, its own record's weight, not by 44.01/90.0.
+        """
+        source = read("src/src_common/define_all_var_set.f90")
+        block = source[source.index("case('co2', 'ch4', 'n2o')"):]
+        block = block[:block.index("case('h2o')")]
+        self.assertIn("if (gasSlot > 0) then", block)
+        collapsed = " ".join(block.split())
+        self.assertIn("N, j, & gasSlot)", collapsed,
+                      "the conversion must be handed the column's own slot")
+
     def test_the_measured_flow_rate_reaches_every_gas(self):
         """It drives tube velocity, Reynolds number and the transfer function.
 

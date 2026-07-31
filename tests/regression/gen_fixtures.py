@@ -79,7 +79,40 @@ def build_h2o_late(src_lines):
     return write_records(src_lines, recs)
 
 
-TARGETS = {'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late)}
+def build_mw(src_lines, mw1='', mw6=''):
+    """base_n_gas pointed at the local metadata, with two CO2 records given
+    distinct molecular weights.
+
+    Molecular weight is only consulted on the g_m3 / mg_m3 / ug_m3 arms of the
+    unit conversion, so the metadata copy sets both CO2 columns to ug_m3 -
+    physically meaningless for a mole fraction, but it is the only way to make
+    MW observable at all, and the test is a ratio.
+
+    Two records, not one, because the defect has two halves: the *fallback*
+    was gated on `slot > gas4`, and the *lookup* mapped a column's species
+    name to a fixed slot. Giving the second CO2 its own weight catches the
+    second half - both CO2 columns used to convert with record one's.
+    """
+    count = 0
+    for ln in src_lines:
+        if ln.startswith('gas_num='):
+            count = int(ln.split('=', 1)[1])
+    recs = read_records(src_lines, count)
+    recs[0]['mw'] = mw1
+    recs[5]['mw'] = mw6
+    out = write_records(src_lines, recs)
+    local = os.path.join(HERE, 'base_mw.metadata').replace(os.sep, '/')
+    return [('proj_file=' + local) if ln.startswith('proj_file=') else ln
+            for ln in out]
+
+
+TARGETS = {
+    'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),
+    'base_mw_ref.eddyflow': ('base_n_gas.eddyflow',
+                             lambda ls: build_mw(ls, '', '')),
+    'base_mw.eddyflow': ('base_n_gas.eddyflow',
+                         lambda ls: build_mw(ls, '90.0000', '30.0000')),
+}
 
 
 def main():

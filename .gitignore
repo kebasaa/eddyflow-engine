@@ -44,6 +44,7 @@ src/src_rp/deprecated
 !/tests/regression/gen_fixtures.py
 !/tests/regression/check_h2o_late.py
 !/tests/regression/sa_*.txt
+!/tests/regression/*.metadata
 /_temp
 /static_checks
 !/static_checks/

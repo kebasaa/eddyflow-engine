@@ -534,19 +534,24 @@ subroutine ReadMeasurementRecords()
         if (EddyFlowProj%gas(i)%col <= 0) cycle
         !> g mol-1 -> kg mol-1, cm+2 s-1 -> m+2 s-1, matching the units the
         !> interface writes and the defaults below.
-        !> A record that carries neither still needs usable numbers. The four
-        !> historical slots keep their built-in values; anything past them has
-        !> none, so it falls back to N2O's - the same default the fourth slot
-        !> has always used.
+        !>
+        !> A record that carries neither still needs usable numbers, and those
+        !> come from the species it names - not from the slot it happens to
+        !> occupy. The fallback used to be gated on `slot > gas4`, which let
+        !> the first four slots keep whatever the compile-time table put
+        !> there: water declared at slot 9 was given N2O's molecular weight
+        !> and diffusivity, and a gas declared at slot 6 was given water's.
+        !> Only the two the interface can leave blank are wrong in practice,
+        !> but the rule is the same for all of them.
         if (EddyFlowProj%gas(i)%mw > 0d0) then
             MW(slot) = sngl(EddyFlowProj%gas(i)%mw) * 1e-3
-        else if (slot > gas4) then
-            MW(slot) = 44.01e-3
+        else
+            MW(slot) = DefaultMolecularWeight(EddyFlowProj%gas(i)%var)
         end if
         if (EddyFlowProj%gas(i)%diff > 0d0) then
             Dc(slot) = EddyFlowProj%gas(i)%diff * 1d-4
-        else if (slot > gas4) then
-            Dc(slot) = 0.00001436d0   !< Massman (1998, Atm Env, Table 2)
+        else
+            Dc(slot) = DefaultDiffusivity(EddyFlowProj%gas(i)%var)
         end if
     end do
 
@@ -663,4 +668,45 @@ real(kind = dbl) function NormalizeCecStationarity(value, default_value)
         NormalizeCecStationarity = default_value
     end if
 end function NormalizeCecStationarity
+
+!***************************************************************************
+!> Molecular weight [kg mol-1] for a species a record names but does not
+!> quantify. The interface writes an explicit mw for a gas it does not
+!> recognise, so in practice these cover the species it does.
+!>
+!> The unrecognised default is N2O's, which is what the fourth slot has
+!> always used, so nothing gets zero.
+real(kind = sgl) function DefaultMolecularWeight(var)
+    character(*), intent(in) :: var
+    character(32) :: species
+
+    species = var
+    call uppercase(species)
+    select case (trim(adjustl(species)))
+        case ('CO2'); DefaultMolecularWeight = 44.01e-3
+        case ('H2O'); DefaultMolecularWeight = MW_H2O
+        case ('CH4'); DefaultMolecularWeight = 16.04e-3
+        case ('N2O'); DefaultMolecularWeight = 44.01e-3
+        case default; DefaultMolecularWeight = 44.01e-3
+    end select
+end function DefaultMolecularWeight
+
+!***************************************************************************
+!> Molecular diffusivity in air [m+2 s-1], Massman (1998, Atm Env, Table 2),
+!> for a species a record names but does not quantify. Same rule and same
+!> unrecognised default as DefaultMolecularWeight.
+real(kind = dbl) function DefaultDiffusivity(var)
+    character(*), intent(in) :: var
+    character(32) :: species
+
+    species = var
+    call uppercase(species)
+    select case (trim(adjustl(species)))
+        case ('CO2'); DefaultDiffusivity = 0.00001381d0
+        case ('H2O'); DefaultDiffusivity = 0.00002178d0
+        case ('CH4'); DefaultDiffusivity = 0.00001952d0
+        case ('N2O'); DefaultDiffusivity = 0.00001436d0
+        case default; DefaultDiffusivity = 0.00001436d0
+    end select
+end function DefaultDiffusivity
 end subroutine WriteProcessingProjectVariables

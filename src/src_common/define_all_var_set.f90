@@ -205,14 +205,24 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                     end select
                 end if
 
-            !> Concentrations of trace gases
             !> Concentrations of trace gases. The conversion is identical for
             !> every species once the molecular weight is known, so it lives in
-            !> one place and is keyed on the gas slot; a record-named gas is
-            !> routed to the same code above.
+            !> one place and is keyed on the gas slot.
+            !>
+            !> The column's *own* slot, when a record claims it. Mapping the
+            !> species name to a fixed slot sent every column named 'co2' to
+            !> slot 5 whatever slot it occupied, so a site measuring CO2 on
+            !> two analysers converted both with the first record's molecular
+            !> weight - and an N2O column went to slot 8 regardless. Falls
+            !> back to the species map only for a column no record names.
             case('co2', 'ch4', 'n2o')
-                call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, &
-                                          HistoricGasSlot(LocCol(j)%var))
+                if (gasSlot > 0) then
+                    call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, &
+                                              gasSlot)
+                else
+                    call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, &
+                                              HistoricGasSlot(LocCol(j)%var))
+                end if
                 cycle
 
 
