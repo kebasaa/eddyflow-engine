@@ -41,7 +41,9 @@ subroutine RecordSpectralAssessmentFluxCandidate(gas, stability, flux, cls)
     real(kind = dbl), allocatable :: tmp_flux(:, :, :)
     integer, allocatable :: tmp_class(:, :, :)
 
-    if (gas < co2 .or. gas > gas4) return
+    !> Every configured gas. Bounded at the fourth, the readiness report
+    !> could only ever say flux=0 for a gas past it, whatever the data said.
+    if (gas < firstGas .or. gas > lastGas) return
     if (stability < SADiagUnstable .or. stability > SADiagStable) return
     if (cls < 1 .or. cls > MaxGasClasses) return
     if (flux == error .or. flux < 0d0) return

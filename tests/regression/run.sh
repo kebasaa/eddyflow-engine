@@ -42,6 +42,15 @@ EXFILE="$(find "$OUT" -name "*fluxnet*.csv" | head -1)"
 [ -n "$EXFILE" ] || { echo "no fluxnet file from RP"; tail -30 "$OUT/_rp.log"; exit 1; }
 sed -i "s|^ex_file=.*|ex_file=$(cygpath -w "$EXFILE" | sed 's|\\|/|g')|" "$HERE/run_$WHICH.eddyflow"
 
+# A fixture whose sa_bin_spectra is the token SELF reads the binned files this
+# run just wrote, rather than the shared directory the other fixtures point
+# at. That shared directory predates the N-gas binned format and has four
+# gases, which is what makes it the backward-compatibility case; SELF is the
+# forward one, and there is no other way to get it without a second run.
+if grep -q '^sa_bin_spectra=SELF' "$HERE/run_$WHICH.eddyflow"; then
+    sed -i "s|^sa_bin_spectra=SELF|sa_bin_spectra=$WIN_OUT/eddyflow_binned_cospectra|"         "$HERE/run_$WHICH.eddyflow"
+fi
+
 echo "== FCC =="
 "$BIN/eddyflow_fcc.exe" "$(cygpath -w "$HERE/run_$WHICH.eddyflow")" -e "$(cygpath -w "$HOME_DIR")/" > "$OUT/_fcc.log" 2>&1 \
     || { echo "FCC FAILED"; tail -30 "$OUT/_fcc.log"; exit 1; }

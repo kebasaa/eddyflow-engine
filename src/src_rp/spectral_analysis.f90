@@ -508,13 +508,40 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
     !> local variables
     integer :: i
     integer :: j
+    integer :: k
+    integer :: n_spec, n_cosp
+    integer :: spec_slots(E2NumVar), cosp_slots(E2NumVar)
     character(64) :: e2sg(E2NumVar)
     character(PathLen) :: BinCospectraPath
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
-    e2sg(gas4) = SpecCol(gas4)%label(1:len_trim(SpecCol(gas4)%label))
+    !> Column names from the records, the same helper the reader uses so the
+    !> two cannot drift. This used to be a literal naming u..ch4 with only
+    !> slot 8 substituted - from SpecCol, a third spelling, uppercase where
+    !> the other files are lower - and 18 fixed columns, so a project with
+    !> more than four gases wrote none of them here at all. That is what kept
+    !> the on-the-fly spectral assessment four-gas: this file is its input.
+    call SpectralVarTags(e2sg)
+    n_spec = 0
+    do j = u, ts
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+    end do
+    n_cosp = 0
+    do j = w_u, w_ts
+        if (j == w_w) cycle
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
+    do j = firstGas, lastGas
+        if (j - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
 
     !> Open output file for binned co-spectra
     BinCospectraPath = BinCospectraDir(1:len_trim(BinCospectraDir)) // String &
@@ -531,12 +558,18 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
     write(udf, '(a, i7)')   'averaging_interval_[min]_=_', RPsetup%avrg_len
     write(udf, '(a, i4)')   'number_of_bins_=_', Meth%spec%nbins
     write(udf, '(a, a)')    'tapering_window_=_', RPsetup%tap_win(1:len_trim(RPsetup%tap_win))
-    write(udf, *) '#_freq,natural_frequency,normalized_frequency,f_nat*spec(u)/var(u),f_nat*spec(v)/var(v)&
-        &,f_nat*spec(w)/var(w),f_nat*spec(ts)/var(ts),f_nat*spec(co2)/var(co2),f_nat*spec(h2o)/var(h2o),f_nat*spec(ch4)/var(ch4)&
-        &,f_nat*spec(' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')/var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')&
-        &,f_nat*cospec(w_u)/cov(w_u),f_nat*cospec(w_v)/cov(w_v),f_nat*cospec(w_ts)/cov(w_ts),f_nat*cospec(w_co2)/cov(w_co2)&
-        &,f_nat*cospec(w_h2o)/cov(w_h2o),f_nat*cospec(w_ch4)/cov(w_ch4)&
-        &,f_nat*cospec(w_' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')/cov(w_' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')'
+    dataline = '#_freq,natural_frequency,normalized_frequency'
+    do k = 1, n_spec
+        dataline = trim(dataline) // ',f_nat*spec(' &
+            // trim(e2sg(spec_slots(k))) // ')/var(' &
+            // trim(e2sg(spec_slots(k))) // ')'
+    end do
+    do k = 1, n_cosp
+        dataline = trim(dataline) // ',f_nat*cospec(w_' &
+            // trim(e2sg(cosp_slots(k))) // ')/cov(w_' &
+            // trim(e2sg(cosp_slots(k))) // ')'
+    end do
+    write(udf, '(a)') trim(dataline)
 
     !> Write to output file in csv style
     do i = 1, Meth%spec%nbins
@@ -553,7 +586,8 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
         end if
 
         !> Spectra
-        do j = u, gas4
+        do k = 1, n_spec
+            j = spec_slots(k)
             if (DoSpectrum(j) .and. bnf(i) /= error .and. BinnedSpectrum(i)%of(j) /= error) then
                 call WriteDatumFloat(bnf(i) * BinnedSpectrum(i)%of(j), datum, '-9999.0')
                 call AddDatum(dataline, datum, separator)
@@ -562,14 +596,14 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
             end if
         end do
         !> Cospectra
-        do j = w_u, w_gas4
-            if (j /= w_w) then
-                if (DoCospectrum(j) .and. bnf(i) /= error .and. BinnedCospectrum(i)%of(j) /= error) then
-                    call WriteDatumFloat(bnf(i) * BinnedCospectrum(i)%of(j), datum, '-9999.0')
-                    call AddDatum(dataline, datum, separator)
-                else
-                    call AddDatum(dataline, '-9999.0', separator)
-                end if
+        do k = 1, n_cosp
+            j = cosp_slots(k)
+            if (DoCospectrum(j) .and. bnf(i) /= error &
+                .and. BinnedCospectrum(i)%of(j) /= error) then
+                call WriteDatumFloat(bnf(i) * BinnedCospectrum(i)%of(j), datum, '-9999.0')
+                call AddDatum(dataline, datum, separator)
+            else
+                call AddDatum(dataline, '-9999.0', separator)
             end if
         end do
         write(udf, '(a)') dataline(1:len_trim(dataline) - 1)
@@ -603,13 +637,35 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
     !> local variables
     integer :: i
     integer :: j
+    integer :: k
+    integer :: n_spec, n_cosp
+    integer :: spec_slots(E2NumVar), cosp_slots(E2NumVar)
     character(64) :: e2sg(E2NumVar)
     character(PathLen) :: BinOgivesPath
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
-    e2sg(gas4) = SpecCol(gas4)%label(1:len_trim(SpecCol(gas4)%label))
+    !> Same slot list and the same helper as the binned (co)spectra above.
+    call SpectralVarTags(e2sg)
+    n_spec = 0
+    do j = u, ts
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+    end do
+    n_cosp = 0
+    do j = w_u, w_ts
+        if (j == w_w) cycle
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
+    do j = firstGas, lastGas
+        if (j - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
 
     !> Open output file for binned co-spectra
     BinOgivesPath = BinOgivesDir(1:len_trim(BinOgivesDir)) // String &
@@ -626,9 +682,15 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
     write(udf, '(a, i7)')   'averaging_interval_[min]_=_', RPsetup%avrg_len
     write(udf, '(a, i4)')   'number_of_bins_=_', Meth%spec%nbins
     write(udf, '(a, a)')    'tapering_window_=_', RPsetup%tap_win(1:len_trim(RPsetup%tap_win))
-    write(udf, *) '#_freq,natural_frequency,normalized_frequency,og(u),og(v),og(w),og(ts),og(co2),og(h2o),og(ch4)&
-        &,og(' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')&
-        &,og(w_u),og(w_v),og(w_ts),og(w_co2),og(w_h2o),og(w_ch4),og(w_' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')'
+    dataline = '#_freq,natural_frequency,normalized_frequency'
+    do k = 1, n_spec
+        dataline = trim(dataline) // ',og(' // trim(e2sg(spec_slots(k))) // ')'
+    end do
+    do k = 1, n_cosp
+        dataline = trim(dataline) // ',og(w_' &
+            // trim(e2sg(cosp_slots(k))) // ')'
+    end do
+    write(udf, '(a)') trim(dataline)
 
     !> Write to output file in csv style
     do i = 1, Meth%spec%nbins
@@ -646,7 +708,8 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
         end if
 
         !> Ogives
-        do j = u, gas4
+        do k = 1, n_spec
+            j = spec_slots(k)
             if (DoSpectrum(j)) then
                 call WriteDatumFloat(BinnedOgive(i)%of(j), datum, '-9999.0')
                 call AddDatum(dataline, datum, separator)
@@ -655,14 +718,13 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
             end if
         end do
         !> Co-ogives
-        do j = w_u, w_gas4
-            if (j /= w_w) then
-                if (DoCospectrum(j)) then
-                    call WriteDatumFloat(BinnedCoOgive(i)%of(j), datum, '-9999.0')
-                    call AddDatum(dataline, datum, separator)
-                else
-                    call AddDatum(dataline, '-9999.0', separator)
-                end if
+        do k = 1, n_cosp
+            j = cosp_slots(k)
+            if (DoCospectrum(j)) then
+                call WriteDatumFloat(BinnedCoOgive(i)%of(j), datum, '-9999.0')
+                call AddDatum(dataline, datum, separator)
+            else
+                call AddDatum(dataline, '-9999.0', separator)
             end if
         end do
         write(udf, '(a)') dataline(1:len_trim(dataline) - 1)

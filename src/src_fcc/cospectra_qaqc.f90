@@ -61,8 +61,13 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     integer :: DTFlg(GHGNumVar)
     integer :: qc_tau, qc_H, qc_co2, qc_h2o, qc_ch4, qc_gas4
     integer :: month
+    integer :: gas
     integer :: sort
     real(kind = dbl) :: flux
+    real(kind = dbl) :: gas_flux
+    real(kind = dbl) :: lo, hi
+    logical :: all_low
+    logical, external :: GasSlotIsWater
     logical :: usable_wt
     logical :: vm_ok(GHGNumVar)
     logical :: foken_ok(GHGNumVar)
@@ -89,34 +94,40 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (dabs(lEx%Flux0%H) > FCCsetup%SA%min_un_H &
         .and. dabs(lEx%Flux0%H) < FCCsetup%SA%max_H) then
 
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_un_LE &
-            .or. dabs(lEx%Flux0%LE) > FCCsetup%SA%max_LE) then
-            SADiagRejectedFlux(h2o) = SADiagRejectedFlux(h2o) + 1
-            BinSpec%of(h2o) = error
-            BinCospForUnstable%of(h2o) = error
-        end if
-        if (dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_un_gas(co2) &
-            .or. dabs(lEx%Flux0%gas(co2)) > FCCsetup%SA%max_gas(co2))  then
-            SADiagRejectedFlux(co2) = SADiagRejectedFlux(co2) + 1
-            BinSpec%of(co2) = error
-            BinCospForUnstable%of(co2) = error
-        end if
-        if (dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_un_gas(ch4) &
-            .or. dabs(lEx%Flux0%gas(ch4)) > FCCsetup%SA%max_gas(ch4))  then
-            SADiagRejectedFlux(ch4) = SADiagRejectedFlux(ch4) + 1
-            BinSpec%of(ch4) = error
-            BinCospForUnstable%of(ch4) = error
-        end if
-        if (dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_un_gas(gas4) &
-            .or. dabs(lEx%Flux0%gas(gas4)) > FCCsetup%SA%max_gas(gas4)) then
-            SADiagRejectedFlux(gas4) = SADiagRejectedFlux(gas4) + 1
-            BinSpec%of(gas4) = error
-            BinCospForUnstable%of(gas4) = error
-        end if
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_un_LE .and. &
-            dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_un_gas(co2) .and. &
-            dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_un_gas(ch4) .and. &
-            dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_un_gas(gas4)) then
+        !> One test per configured gas, replacing four hand-written blocks
+        !> that named co2/ch4/gas4 and water. Water is tested on its latent
+        !> heat flux and its own thresholds - the carve-out water has
+        !> everywhere else in this work - and every other gas on its own.
+        !>
+        !> A threshold still at the sentinel means the project never set one:
+        !> that test is skipped rather than applied at zero, which would read
+        !> as "accept everything" for a minimum and "reject everything" for a
+        !> maximum. The gas then contributes no term to the all-fluxes-low
+        !> conjunction below either.
+        all_low = .true.
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > &
+                min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (.not. fcc_var_present(gas)) cycle
+            if (GasSlotIsWater(gas)) then
+                gas_flux = dabs(lEx%Flux0%LE)
+                lo = FCCsetup%SA%min_un_LE
+                hi = FCCsetup%SA%max_LE
+            else
+                gas_flux = dabs(lEx%Flux0%gas(gas))
+                lo = FCCsetup%SA%min_un_gas(gas)
+                hi = FCCsetup%SA%max_gas(gas)
+            end if
+            if (gas_flux == dabs(error)) cycle
+            if ((lo /= error .and. gas_flux < lo) .or. &
+                (hi /= error .and. gas_flux > hi)) then
+                SADiagRejectedFlux(gas) = SADiagRejectedFlux(gas) + 1
+                BinSpec%of(gas) = error
+                BinCospForUnstable%of(gas) = error
+            end if
+            if (lo /= error .and. gas_flux >= lo) all_low = .false.
+        end do
+        if (all_low) then
             BinSpec = ErrSpec
             BinCospForUnstable = ErrSpec
             skip_spectra = .true.
@@ -138,26 +149,28 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (dabs(lEx%Flux0%H) > FCCsetup%SA%min_st_H &
         .and. dabs(lEx%Flux0%H) < FCCsetup%SA%max_H) then
 
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_st_LE &
-            .or. dabs(lEx%Flux0%LE) > FCCsetup%SA%max_LE) &
-            BinCospForStable%of(h2o) = error
-
-        if (dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_st_gas(co2) &
-            .or. dabs(lEx%Flux0%gas(co2)) > FCCsetup%SA%max_gas(co2))  &
-            BinCospForStable%of(co2) = error
-
-        if (dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_st_gas(ch4) &
-            .or. dabs(lEx%Flux0%gas(ch4)) > FCCsetup%SA%max_gas(ch4))  &
-            BinCospForStable%of(ch4) = error
-
-        if (dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_st_gas(gas4) &
-            .or. dabs(lEx%Flux0%gas(gas4)) > FCCsetup%SA%max_gas(gas4)) &
-            BinCospForStable%of(gas4) = error
-
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_st_LE .and. &
-            dabs(lEx%Flux0%gas(co2)) < FCCsetup%SA%min_un_gas(co2) .and. &
-            dabs(lEx%Flux0%gas(ch4)) < FCCsetup%SA%min_un_gas(ch4) .and. &
-            dabs(lEx%Flux0%gas(gas4)) < FCCsetup%SA%min_un_gas(gas4)) then
+        !> Same shape as the unstable case above, on the stable thresholds.
+        all_low = .true.
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > &
+                min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (.not. fcc_var_present(gas)) cycle
+            if (GasSlotIsWater(gas)) then
+                gas_flux = dabs(lEx%Flux0%LE)
+                lo = FCCsetup%SA%min_st_LE
+                hi = FCCsetup%SA%max_LE
+            else
+                gas_flux = dabs(lEx%Flux0%gas(gas))
+                lo = FCCsetup%SA%min_st_gas(gas)
+                hi = FCCsetup%SA%max_gas(gas)
+            end if
+            if (gas_flux == dabs(error)) cycle
+            if ((lo /= error .and. gas_flux < lo) .or. &
+                (hi /= error .and. gas_flux > hi)) &
+                BinCospForStable%of(gas) = error
+            if (lo /= error .and. gas_flux >= lo) all_low = .false.
+        end do
+        if (all_low) then
             BinCospForStable = ErrSpec
             skip_cospectra = .true.
         end if

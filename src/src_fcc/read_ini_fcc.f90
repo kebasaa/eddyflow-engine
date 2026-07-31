@@ -278,6 +278,15 @@ subroutine WriteVariablesFCC()
     !> Flux thresholds, used to include/exclude corresponding (co)spectra in
     !> ensemble averages and model fits. Also used to discriminate between
     !> direct method and model in spectral correction after Fratini et al. (2012).
+    !>
+    !> Not configured means not configured. Only slots co2/ch4/gas4 have
+    !> legacy keys, and only a gas with an sa_* record has an override, so
+    !> everything else must start at the sentinel: a threshold left at zero
+    !> would read as "accept every flux" for the minimum and "reject every
+    !> flux" for the maximum, and neither is a decision the project made.
+    FCCsetup%SA%min_un_gas = error
+    FCCsetup%SA%min_st_gas = error
+    FCCsetup%SA%max_gas    = error
     FCCsetup%SA%min_un_ustar = dble(SNTags(92)%value)
     FCCsetup%SA%min_un_gas(co2)   = dble(SNTags(93)%value)
     FCCsetup%SA%min_un_gas(ch4)   = dble(SNTags(94)%value)

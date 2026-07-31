@@ -106,8 +106,22 @@ def build_mw(src_lines, mw1='', mw6=''):
             for ln in out]
 
 
+def build_own_binned(src_lines):
+    """base_n_gas reading the binned (co)spectra it wrote itself.
+
+    Every other fixture points sa_bin_spectra at a shared directory that
+    predates the N-gas binned format and carries four gases - which is what
+    makes those runs the backward-compatibility case, and why they are right
+    to leave gases 5+ unassessed. SELF is the forward case: run.sh rewrites
+    the token to this run's own output between RP and FCC.
+    """
+    return [('sa_bin_spectra=SELF') if ln.startswith('sa_bin_spectra=') else ln
+            for ln in src_lines]
+
+
 TARGETS = {
     'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),
+    'base_n_gas_bin.eddyflow': ('base_n_gas.eddyflow', build_own_binned),
     'base_mw_ref.eddyflow': ('base_n_gas.eddyflow',
                              lambda ls: build_mw(ls, '', '')),
     'base_mw.eddyflow': ('base_n_gas.eddyflow',
