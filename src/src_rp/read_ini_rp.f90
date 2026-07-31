@@ -91,6 +91,7 @@ subroutine WriteVariablesRP()
     integer :: init_prof_z
     integer :: hlen
     integer :: gasslot
+    character(64) :: raw_gas_tag(GHGNumVar)
     logical :: proceed
 
     !> Initializations
@@ -432,12 +433,22 @@ subroutine WriteVariablesRP()
     !> Names come from the project configuration rather than from E2Col, whose
     !> %var is still empty at this point: DefineE2Set has not run yet. A
     !> project with no gas records keeps the historical names exactly.
+    call FullOutputGasTags(raw_gas_tag)
     do i = 1, MaxNumGases
         gasslot = firstGas + i - 1
         if (gasslot > lastGas) exit
         if (.not. RPsetup%out_raw_var(gasslot)) cycle
 
-        if (EddyFlowProj%gas_num > 0 .and. i <= EddyFlowProj%gas_num &
+        !> Disambiguated, so two records of the same species do not give two
+        !> columns of the same name. This used to take the record's %var
+        !> verbatim, and a site measuring CO2 on two analysers wrote `co2`
+        !> twice - a header a reader cannot key on. FullOutputGasTags is
+        !> record-derived for exactly this reason and is safe before
+        !> DefineE2Set has run; its stems carry a trailing underscore.
+        if (len_trim(raw_gas_tag(gasslot)) > 1) then
+            raw_out_header = raw_out_header(1:hlen) &
+                // raw_gas_tag(gasslot)(1:len_trim(raw_gas_tag(gasslot)) - 1)
+        else if (EddyFlowProj%gas_num > 0 .and. i <= EddyFlowProj%gas_num &
             .and. len_trim(EddyFlowProj%gas(i)%var) > 0) then
             raw_out_header = raw_out_header(1:hlen) &
                 // trim(EddyFlowProj%gas(i)%var)
