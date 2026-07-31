@@ -193,6 +193,56 @@ end function PrimaryWaterSlot
 !              water at all, which is what those gates have always evaluated
 !              in that case.
 !***************************************************************************
+!***************************************************************************
+!
+! \brief       Ordered slot list the statistics files are laid out on.
+! \author      Jonathan Muller
+! \note        The seven st1..st7 files write five per-slot families - mean,
+!              var, st_dev, skw, kur - and their header names the variables
+!              once. The two used to agree by coincidence: the writer looped
+!              `u, pe`, and while E2NumVar was 14 that produced exactly the
+!              twelve names the header lists. E2NumVar is now 102 - 64 gas
+!              slots and 32 per-instrument cell slots - so the rows became
+!              seven times wider than their own header and the files stopped
+!              being readable. No fixture enables them, which is why it went
+!              unseen.
+!
+!              Both sides now walk this list. It is the historical set
+!              generalised: the anemometer, then one entry per *configured*
+!              gas - by record count rather than by presence, so a gas named
+!              without a column keeps its column of error codes exactly as
+!              the fourth slot always did - then instrument 1's cell
+!              temperature and pressure, then ambient. At four gases it
+!              reproduces the historical twelve exactly.
+!***************************************************************************
+subroutine StatsLayoutSlots(slots, nslots)
+    use m_common_global_var
+    implicit none
+    integer, intent(out) :: slots(E2NumVar)
+    integer, intent(out) :: nslots
+    integer :: gas
+
+    slots = 0
+    slots(1) = u
+    slots(2) = v
+    slots(3) = w
+    slots(4) = ts
+    nslots = 4
+
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        nslots = nslots + 1
+        slots(nslots) = gas
+    end do
+
+    !> tc and pi are instrument 1's cell block, which is where these two have
+    !> always pointed; te and pe are ambient.
+    nslots = nslots + 1; slots(nslots) = tc
+    nslots = nslots + 1; slots(nslots) = pi
+    nslots = nslots + 1; slots(nslots) = te
+    nslots = nslots + 1; slots(nslots) = pe
+end subroutine StatsLayoutSlots
+
 integer function PrimaryWaterOutSlot()
     use m_common_global_var
     implicit none

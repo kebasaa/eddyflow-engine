@@ -428,3 +428,45 @@ two different layouts.
 > and spent most of its life failing for reasons that had nothing to do with
 > water. Read what a red gate is actually telling you before fixing what you
 > expected it to be telling you.
+
+## The statistics files had 88 header names over 528 columns
+
+`st1`..`st7` write five per-slot families - mean, var, st_dev, skw, kur - and
+name their variables once in a header. The two agreed only by coincidence: the
+row writer looped `u, pe`, and while `E2NumVar` was 14 that enumerated exactly
+the twelve names the header listed.
+
+`E2NumVar` is 102 now - 64 gas slots and 32 per-instrument cell slots - so the
+rows became about seven times wider than their own header. Measured on both
+fixtures, before the fix:
+
+```
+base_rec   (4 gases)   header 88 fields, rows 528
+base_n_gas (8 gases)   header 88 fields, rows 528
+```
+
+The gas count is irrelevant: this broke when the capacity was widened, and the
+files have been unreadable by column ever since.
+
+**Nothing caught it because no fixture switched them on.** Every project under
+this directory left `out_st_1`..`out_st_7` at 0, so the files were never
+written and their two halves were never compared. `base_n_gas_st.eddyflow`
+turns on the first and the last, and both now report header = rows = 120.
+
+Both sides walk `StatsLayoutSlots` - the anemometer, one entry per *configured*
+gas (by record count, not presence, so a gas named without a column keeps its
+column of error codes exactly as the fourth slot always did), then instrument
+1's cell temperature and pressure, then ambient. At four gases it reproduces
+the historical twelve, and the generated header is **byte-identical to the
+literal it replaces**, which is the check that the layout was reconstructed
+rather than merely made self-consistent.
+
+The seven header literals were byte-identical to one another, so the string is
+built once and written to each open unit. Seven copies were seven chances for
+one to drift away from the writer.
+
+> This is the mirror image of the other defects in this document. Everywhere
+> else a consumer was N-gas over a four-gas producer; here the producer was
+> widened and the header stayed at four. Both are invisible unless something
+> compares the two sides, which is why the missing fixture mattered as much as
+> the missing loop.

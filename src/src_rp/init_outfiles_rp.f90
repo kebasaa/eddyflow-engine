@@ -50,6 +50,14 @@ subroutine InitOutFiles_rp()
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
     character(64) :: gas_tag(GHGNumVar)
+    !> Statistics-file layout: the slots st1..st7 carry, and the name each
+    !> one goes by in their header.
+    integer :: st_slots(E2NumVar)
+    integer :: n_st_slots
+    integer :: st_gas(GHGNumVar)
+    integer :: n_st_gas
+    character(64) :: st_name(E2NumVar)
+    character(LongOutstringLen) :: stats_header
     character(64) :: usg(NumUserVar)
     character(64) :: user_header(NumUserVar)
     character(32) :: user_unit(NumUserVar)
@@ -719,6 +727,72 @@ subroutine InitOutFiles_rp()
     !>*********************************************************************************************
 
     !> Statistics files Level 1
+    !> Statistics files st1..st7 all carry the same columns, so the header is
+    !> built once here and written to whichever units are opened below.
+    !>
+    !> It used to be seven byte-identical literals naming twelve variables,
+    !> while WriteOutStats looped `u, pe`. Those agreed while E2NumVar was 14;
+    !> at 102 the rows carried 528 fields against a header of 88 and the files
+    !> could not be read at all. Both sides now walk StatsLayoutSlots.
+    call StatsLayoutSlots(st_slots, n_st_slots)
+    n_st_gas = 0
+    do i = 1, n_st_slots
+        j = st_slots(i)
+        if (j >= firstGas .and. j <= lastGas) then
+            n_st_gas = n_st_gas + 1
+            st_gas(n_st_gas) = j
+            st_name(j) = e2sg(j)(1:len_trim(e2sg(j)) - 1)
+        else if (j == u) then
+            st_name(j) = 'u'
+        else if (j == v) then
+            st_name(j) = 'v'
+        else if (j == w) then
+            st_name(j) = 'w'
+        else if (j == ts) then
+            st_name(j) = 'ts'
+        else if (j == tc) then
+            st_name(j) = 'tc'
+        else if (j == pi) then
+            st_name(j) = 'pc'
+        else if (j == te) then
+            st_name(j) = 'te'
+        else
+            st_name(j) = 'pe'
+        end if
+    end do
+
+    call clearstr(stats_header)
+    call AddDatum(stats_header, 'filename,date,time,DOY,used_records', separator)
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'mean(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'WindDirection', separator)
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'var(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(u/v),cov(u/w),cov(u/ts)', separator)
+    do i = 1, n_st_gas
+        call AddDatum(stats_header, 'cov(u/' // trim(st_name(st_gas(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(v/w),cov(v/ts)', separator)
+    do i = 1, n_st_gas
+        call AddDatum(stats_header, 'cov(v/' // trim(st_name(st_gas(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(w/ts)', separator)
+    do i = 1, n_st_gas
+        call AddDatum(stats_header, 'cov(w/' // trim(st_name(st_gas(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe)', separator)
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'st_dev(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'skw(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'kur(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+
     if (RPsetup%out_st(1)) then
         Test_Path = StatsDir(1:len_trim(StatsDir)) &
                   // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
@@ -728,25 +802,7 @@ subroutine InitOutFiles_rp()
         open(ust1, file = St1_Path, iostat = open_status, encoding = 'utf-8')
 
         write(ust1, '(a)') 'first_statistics:_on_raw_data'
-        write(ust1, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust1, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 2
@@ -759,25 +815,7 @@ subroutine InitOutFiles_rp()
         open(ust2, file = St2_Path, iostat = open_status, encoding = 'utf-8')
 
         write(ust2, '(a)') 'second_statistics:_on_raw_data_after_after_despiking'
-        write(ust2, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust2, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 3
@@ -790,25 +828,7 @@ subroutine InitOutFiles_rp()
         open(ust3, file = St3_Path, iostat = open_status, encoding = 'utf-8')
 
         write(ust3, '(a)') 'third_statistics:_on_raw_data_after_after_despiking_and_cross-wind_correction'
-        write(ust3, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust3, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 4
@@ -822,25 +842,7 @@ subroutine InitOutFiles_rp()
 
         write(ust4, '(a)') 'forth statistics:_on_raw_data_after_despiking_cross_wind_correction&
                             &_and_angle-of-attack_correction'
-        write(ust4, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust4, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 5
@@ -854,25 +856,7 @@ subroutine InitOutFiles_rp()
 
         write(ust5, '(a)') 'fifth_statistics:_on_raw_data_after_despiking_cross_wind_correction&
                             &_angle-of-attack_correction_and_tilt_correction'
-        write(ust5, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust5, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 6
@@ -886,25 +870,7 @@ subroutine InitOutFiles_rp()
 
         write(ust6, '(a)') 'sixth statistics:_on_raw_data_after_despiking_cross_wind_correction&
             &_angle-of-attack_correction_tilt_correction_and_time-lag_compensation'
-        write(ust6, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust6, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 7
@@ -918,25 +884,7 @@ subroutine InitOutFiles_rp()
 
         write(ust7, '(a)') 'seventh_statistics:seventh_statistics:_on_raw_data_after_despiking_cross_wind_correction&
             &_angle-of-attack_correction_tilt_correction_time-lag_compensation_and_detrending'
-        write(ust7, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust7, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
 contains
