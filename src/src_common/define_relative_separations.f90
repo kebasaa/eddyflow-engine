@@ -40,7 +40,13 @@ subroutine DefineRelativeSeparations()
     integer :: gas
 
 
-    do gas = co2, gas4
+    !> Every configured gas, not the four historical slots. A gas past the
+    !> fourth used to keep its *absolute* separations and never got %height at
+    !> all, which storage.f90 multiplies by - so every such gas reported a
+    !> storage term of exactly zero, and a site whose primary water sat past
+    !> slot 8 lost LE_strg and ET with it. %present is the was-configured
+    !> guard: a slot no record names keeps NullCol's values untouched.
+    do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             !> Separations relative to selected anemometer
             E2Col(gas)%instr%nsep = E2Col(gas)%instr%nsep - E2Col(u)%instr%nsep
