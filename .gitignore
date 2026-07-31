@@ -41,6 +41,8 @@ src/src_rp/deprecated
 !/tests/regression/run.sh
 !/tests/regression/base*.eddyflow
 !/tests/regression/gen_sa.py
+!/tests/regression/gen_fixtures.py
+!/tests/regression/check_h2o_late.py
 !/tests/regression/sa_*.txt
 /_temp
 /static_checks
