@@ -18,7 +18,10 @@ set -euo pipefail
 
 WHICH="${1:?usage: run.sh ref|chk}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BIN="/c/Users/jonmuell/Documents/GitHub/build/eddyflow-engine-win-release/bin"
+# Defaults to the release build the build script produces. Override with BIN=
+# to compare a working tree against itself: both ref and chk must come from the
+# same binaries, or the diff reports build differences as regressions.
+BIN="${BIN:-/c/Users/jonmuell/Documents/GitHub/build/eddyflow-engine-win-release/bin}"
 # The engine links the gfortran runtime dynamically and the build does not
 # copy it next to the binaries.
 export PATH="/c/Users/jonmuell/mingw64/bin:$PATH"

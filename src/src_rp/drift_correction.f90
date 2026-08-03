@@ -52,9 +52,6 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     real(kind = dbl) :: MeanAbs(ncol)
     real(kind = dbl) :: TempFact
 
-    real(kind = dbl) :: tmp
-    real(kind = dbl) :: tmp2
-
 
     !> Calculate best guesses of cell and air temperature and pressure
     call AirAndCellParameters()
@@ -108,10 +105,6 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
             end do
     end select
 
-
-!> Only for debug, eliminate!
-tmp  = Set(1, co2)
-tmp2 = Set(1, h2o)
 
     !> This call only to calculate chi_h2o, needed for equivalent pressure
     call MoleFractionsAndMixingRatios()
@@ -200,10 +193,6 @@ tmp2 = Set(1, h2o)
             Set(:, h2o) = Set(:, h2o) * (Ambient%Pcell / 1d3)
         end where
     end if
-
-!> ONLY FOR DEBUG, ELIMINATE!
-write(987,*) InitialTimestamp, &
-    (tmp - Set(1, co2)) * Ru * Ambient%Tcell / Ambient%Pcell * 1d3
 
 end subroutine DriftCorrection
 
