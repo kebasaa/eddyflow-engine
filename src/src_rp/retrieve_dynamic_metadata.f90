@@ -399,9 +399,12 @@ subroutine ReadMetadataFromTextVars(mdStringVars, nrow)
     if (DynamicMetadataOrder(gas4_irga_model) /= nint(error)) &
         read(mdStringVars(DynamicMetadataOrder(gas4_irga_model)), *) &
         DynamicMetadata%instr(gas4)%model
+    !> The other three read this into %measure_type; the fourth read it into
+    !> %nsep, a real, from a character token - and then overwrote %nsep two
+    !> statements later from its own column, so the value was lost either way.
     if (DynamicMetadataOrder(gas4_measure_type) /= nint(error)) &
         read(mdStringVars(DynamicMetadataOrder(gas4_measure_type)), *) &
-        DynamicMetadata%instr(gas4)%nsep
+        DynamicMetadata%measure_type(gas4)
     if (DynamicMetadataOrder(gas4_irga_northward_separation) /= nint(error)) &
         read(mdStringVars(DynamicMetadataOrder(gas4_irga_northward_separation)), *) &
         DynamicMetadata%instr(gas4)%nsep
