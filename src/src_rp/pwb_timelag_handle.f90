@@ -36,6 +36,7 @@ module m_pwb_timelag
     implicit none
     private
     public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic, GasLabel
+    public :: TimelagOptGasLabel
     public :: InitPwbTimelagCache, ReadPwbTimelagCache, WritePwbTimelagCache
     public :: LookupPwbTimelagCache, StorePwbTimelagCache, SetPwbPeriodTimestamp
     public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
@@ -1203,5 +1204,29 @@ character(32) function GasLabel(gas)
     call SpectralVarTags(tags)
     if (len_trim(tags(gas)) > 0) GasLabel = tags(gas)
 end function GasLabel
+
+!***************************************************************************
+!> Name a gas carries in the time-lag optimisation summary.
+!>
+!> The summary is read back by matching on these strings, so the four
+!> historical slots keep the spellings they have always had - including
+!> `4th_gas`, which is spelled differently here than in any other file.
+!> Renaming them would orphan every optimisation file a user already has.
+!> Past the fourth there is no historical spelling to preserve, so the
+!> record-derived label is used. Writer and reader both call this, so a gas
+!> cannot be written under one name and looked up under another.
+!***************************************************************************
+character(32) function TimelagOptGasLabel(gas)
+    integer, intent(in) :: gas
+
+    select case (gas)
+        case (co2);  TimelagOptGasLabel = 'co2'
+        case (h2o);  TimelagOptGasLabel = 'h2o'
+        case (ch4);  TimelagOptGasLabel = 'ch4'
+        case (gas4); TimelagOptGasLabel = '4th_gas'
+        case default
+            TimelagOptGasLabel = GasLabel(gas)
+    end select
+end function TimelagOptGasLabel
 
 end module m_pwb_timelag

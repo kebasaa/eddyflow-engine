@@ -311,7 +311,8 @@ adjust_sonic_coordinates.o: \
 	m_rp_global_var.o
 read_timelag_opt_file.o: \
 	read_timelag_opt_file.f90 \
-	m_rp_global_var.o
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 bpcf_read_full_cos_wt.o: \
 	bpcf_read_full_cos_wt.f90 \
 	m_common_global_var.o
@@ -546,7 +547,8 @@ user_timelag_handle.o: \
 	m_common_global_var.o
 writeout_timelag_optimization.o: \
 	writeout_timelag_optimization.f90 \
-	m_rp_global_var.o
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 read_biomet_meta_file.o: \
 	read_biomet_meta_file.f90 \
 	m_rp_global_var.o

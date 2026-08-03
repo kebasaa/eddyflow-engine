@@ -35,12 +35,17 @@
 !***************************************************************************
 subroutine ReadTimelagOptFile(ncls)
     use m_rp_global_var
+    use m_pwb_timelag, only: TimelagOptGasLabel
     implicit none
     !> in/out variables
     integer :: ncls
     !> local variables
     integer :: open_status
     integer :: read_status
+    integer :: gas
+    logical :: matched
+    character(32) :: gname
+    logical, external :: GasSlotIsWater
     character(500) :: strg
 
 
@@ -51,61 +56,40 @@ subroutine ReadTimelagOptFile(ncls)
     if (open_status == 0) then
         write(*, '(a)') ' Time lag optimization file found, retrieving content..'
         do
-            !> co2
             read(udf, '(a)', iostat = read_status) strg
             if (read_status /= 0) exit
-            if(index(strg, 'Median_co2_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(co2)%def
-                cycle
-            end if
-            if(index(strg, 'Mimimum_co2_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(co2)%min
-                cycle
-            end if
-            if(index(strg, 'Maximum_co2_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(co2)%max
-                cycle
-            end if
-            !> h2o
-            if(index(strg, 'Median_h2o_timelag_[s]') /= 0) then
-                ncls = 0
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(h2o)%def
-                cycle
-            end if
-            if(index(strg, 'Mimimum_h2o_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(h2o)%min
-                cycle
-            end if
-            if(index(strg, 'Maximum_h2o_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(h2o)%max
-                cycle
-            end if
-            !> ch4
-            if(index(strg, 'Median_ch4_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(ch4)%def
-                cycle
-            end if
-            if(index(strg, 'Mimimum_ch4_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(ch4)%min
-                cycle
-            end if
-            if(index(strg, 'Maximum_ch4_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(ch4)%max
-                cycle
-            end if
-            !> 4th gas
-            if(index(strg, 'Median_4th_gas_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(gas4)%def
-                cycle
-            end if
-            if(index(strg, 'Mimimum_4th_gas_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(gas4)%min
-                cycle
-            end if
-            if(index(strg, 'Maximum_4th_gas_timelag_[s]') /= 0) then
-                read(strg(index(strg, ':')+1:len_trim(strg)), '(f6.2)') toPasGas(gas4)%max
-                cycle
-            end if
+
+            !> One lookup per configured gas, under the same names
+            !> TimelagOptGasLabel gave the writer. These were four hand-written
+            !> triples, so a gas past the fourth was written by the optimiser
+            !> and then never read back - its window was lost between runs and
+            !> it fell to its nominal one without saying so.
+            !>
+            !> List-directed, not '(f6.2)': the sentinel a gas with no
+            !> determinations is written as needs nine characters, and a fixed
+            !> f6.2 read of it returns garbage rather than failing. This also
+            !> reads a file written by the previous, narrower format.
+            matched = .false.
+            do gas = firstGas, lastGas
+                gname = TimelagOptGasLabel(gas)
+                if (index(strg, 'Median_' // trim(gname) // '_timelag_[s]') /= 0) then
+                    read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%def
+                    if (GasSlotIsWater(gas)) ncls = 0
+                    matched = .true.
+                    exit
+                end if
+                if (index(strg, 'Mimimum_' // trim(gname) // '_timelag_[s]') /= 0) then
+                    read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%min
+                    matched = .true.
+                    exit
+                end if
+                if (index(strg, 'Maximum_' // trim(gname) // '_timelag_[s]') /= 0) then
+                    read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%max
+                    matched = .true.
+                    exit
+                end if
+            end do
+            if (matched) cycle
 
             !> h2o as a function of RH
             ncls = 0

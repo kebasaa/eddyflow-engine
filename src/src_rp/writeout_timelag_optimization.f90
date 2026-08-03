@@ -34,6 +34,7 @@
 !***************************************************************************
 subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     use m_rp_global_var
+    use m_pwb_timelag, only: TimelagOptGasLabel
     implicit none
     !> in/out variables
     integer, intent(in) :: M
@@ -44,7 +45,11 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     integer, external :: CreateDir
     !> local variables
     integer :: cls
+    integer :: gas
     integer :: open_status = 1
+    real(kind = dbl) :: tl_def, tl_min, tl_max
+    character(32) :: gname
+    logical, external :: GasSlotIsWater
     character(4) :: min
     character(4) :: max
     character(9) :: txt
@@ -68,41 +73,42 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     write(uto, '(a, a)') 'End_of_timelag_optimization_period: ', TOSetup%end_date
     write(uto, '(a)')
 
-    if (E2Col(co2)%present) then
-        write(uto, '(a, i5)') 'Number_of_timelags_used_for_co2:', actn(co2)
-        if (PwbAggregateSummary) call WritePwbProvenance(uto, co2)
-        write(uto, '(a, f6.2)') 'Median_co2_timelag_[s]:', toPasGas(co2)%def
-        write(uto, '(a, f6.2)') 'Mimimum_co2_timelag_[s]:', toPasGas(co2)%min
-        write(uto, '(a, f6.2)') 'Maximum_co2_timelag_[s]:', toPasGas(co2)%max
+    !> One block per configured gas, named from TimelagOptGasLabel so the
+    !> reader looks each one up under the name it was written with. These were
+    !> four hand-written blocks, so a gas past the fourth had no entry at all
+    !> and its optimised window was lost between runs.
+    !>
+    !> A gas the optimiser found no determinations for is written as the error
+    !> code, not as 0.00. Zero is a window - [0, 0] - and SetTimelags would
+    !> take it in place of the metadata's declared one, detecting every lag as
+    !> zero. Its guard is `max > min`, which the sentinel fails, so the
+    !> declared window survives. Absent means not performed, as everywhere
+    !> else in this file format.
+    !>
+    !> Water is skipped when it is classed by relative humidity; the per-class
+    !> table below carries it instead, which is what the original `ncls <= 1`
+    !> guard on the h2o block said.
+    do gas = firstGas, lastGas
+        if (.not. E2Col(gas)%present) cycle
+        if (GasSlotIsWater(gas) .and. ncls > 1) cycle
+        gname = TimelagOptGasLabel(gas)
+        if (actn(gas) > 0) then
+            tl_def = toPasGas(gas)%def
+            tl_min = toPasGas(gas)%min
+            tl_max = toPasGas(gas)%max
+        else
+            tl_def = error
+            tl_min = error
+            tl_max = error
+        end if
+        write(uto, '(a, i5)') 'Number_of_timelags_used_for_' &
+            // trim(gname) // ':', actn(gas)
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, gas)
+        write(uto, '(a, f9.2)') 'Median_' // trim(gname) // '_timelag_[s]:', tl_def
+        write(uto, '(a, f9.2)') 'Mimimum_' // trim(gname) // '_timelag_[s]:', tl_min
+        write(uto, '(a, f9.2)') 'Maximum_' // trim(gname) // '_timelag_[s]:', tl_max
         write(uto, '(a)')
-    end if
-
-    if (E2Col(h2o)%present .and. ncls <= 1) then
-        write(uto, '(a, i5)') 'Number_of_timelags_used_for_h2o:', actn(h2o)
-        if (PwbAggregateSummary) call WritePwbProvenance(uto, h2o)
-        write(uto, '(a, f6.2)') 'Median_h2o_timelag_[s]:', toPasGas(h2o)%def
-        write(uto, '(a, f6.2)') 'Mimimum_h2o_timelag_[s]:', toPasGas(h2o)%min
-        write(uto, '(a, f6.2)') 'Maximum_h2o_timelag_[s]:', toPasGas(h2o)%max
-        write(uto, '(a)')
-    end if
-
-    if (E2Col(ch4)%present) then
-        write(uto, '(a, i4)') 'Number_of_timelags_used_for_ch4:', actn(ch4)
-        if (PwbAggregateSummary) call WritePwbProvenance(uto, ch4)
-        write(uto, '(a, f6.2)') 'Median_ch4_timelag_[s]:', toPasGas(ch4)%def
-        write(uto, '(a, f6.2)') 'Mimimum_ch4_timelag_[s]:', toPasGas(ch4)%min
-        write(uto, '(a, f6.2)') 'Maximum_ch4_timelag_[s]:', toPasGas(ch4)%max
-        write(uto, '(a)')
-    end if
-
-    if (E2Col(gas4)%present) then
-        write(uto, '(a, i4)') 'Number_of_timelags_used_for_4th_gas:', actn(gas4)
-        if (PwbAggregateSummary) call WritePwbProvenance(uto, gas4)
-        write(uto, '(a, f6.2)') 'Median_4th_gas_timelag_[s]:' , toPasGas(gas4)%def
-        write(uto, '(a, f6.2)') 'Mimimum_4th_gas_timelag_[s]:', toPasGas(gas4)%min
-        write(uto, '(a, f6.2)') 'Maximum_4th_gas_timelag_[s]:', toPasGas(gas4)%max
-        write(uto, '(a)')
-    end if
+    end do
 
     if (E2Col(h2o)%present .and. ncls > 1) then
         if (PwbAggregateSummary) call WritePwbProvenance(uto, h2o)
@@ -126,18 +132,11 @@ contains
 subroutine WritePwbProvenance(unit, gas)
     integer, intent(in) :: unit, gas
     character(32) :: source
-    character(24) :: name
+    character(32) :: name
 
-    select case (gas)
-        case (co2)
-            name = 'co2'
-        case (h2o)
-            name = 'h2o'
-        case (ch4)
-            name = 'ch4'
-        case (gas4)
-            name = '4th_gas'
-    end select
+    !> Had no default arm, so a gas past the fourth printed whatever `name`
+    !> held. One helper, shared with the writer above and with the reader.
+    name = TimelagOptGasLabel(gas)
     if (PwbSummarySource(gas) == gas) then
         source = 'native'
     elseif (PwbSummarySource(gas) > 0) then

@@ -88,9 +88,19 @@ subroutine SetTimelags()
                         end if
                         do cls = 1, TOSetup%h2o_nclass
                             if (lRH >= (cls - 1) * TOSetup%h2o_class_size .and. lRH <= cls * TOSetup%h2o_class_size) then
-                                E2Col(gas)%def_tl = toH2O(cls)%def
-                                E2Col(gas)%min_tl = toH2O(cls)%min
-                                E2Col(gas)%max_tl = toH2O(cls)%max
+                                !> Only where the class actually has a window,
+                                !> the same test the gas branch above applies.
+                                !> The optimisation file carries a row per RH
+                                !> class whether or not any determination fell
+                                !> in it, and an empty one is the error code -
+                                !> so an unguarded copy replaced the metadata's
+                                !> declared window with [-9999, -9999] and the
+                                !> lag search ran off the end of the record.
+                                if (toH2O(cls)%max > toH2O(cls)%min) then
+                                    E2Col(gas)%def_tl = toH2O(cls)%def
+                                    E2Col(gas)%min_tl = toH2O(cls)%min
+                                    E2Col(gas)%max_tl = toH2O(cls)%max
+                                end if
                             end if
                         end do
                     end if
