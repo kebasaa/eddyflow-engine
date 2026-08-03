@@ -102,19 +102,32 @@ subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, desc
     real(kind = dbl) :: f_R
     real(kind = dbl) :: f_P
     type(CECSetupType) :: active_setup
+    integer :: csl
+    integer :: wsl
+    integer, external :: PrimaryCarbonSlot
+    integer, external :: PrimaryWaterSlot
 
     call ResetCecDescriptor(descriptor)
     call DefaultCecSetup(active_setup)
     if (present(setup)) active_setup = setup
 
-    if (size(primes, 2) < h2o) return
+    !> CEC is defined on a CO2/water pair (Zahn et al. 2022), so unlike the
+    !> rest of the gas handling this does not generalise to N gases - but the
+    !> pair is resolved by species rather than read out of slots five and six,
+    !> which are CO2 and water by convention only. A project measuring its
+    !> water on a second analyser, or its CO2 anywhere but record one, had the
+    !> partition computed from whichever gases those slots happened to hold.
+    csl = PrimaryCarbonSlot()
+    wsl = PrimaryWaterSlot()
+    if (csl < firstGas .or. wsl < firstGas) return
+    if (size(primes, 2) < max(csl, wsl)) return
     nrow = size(primes, 1)
     if (nrow < 2) return
 
     allocate(w_prime(nrow), c_prime(nrow), q_prime(nrow))
     w_prime = primes(:, w)
-    c_prime = primes(:, co2)
-    q_prime = primes(:, h2o)
+    c_prime = primes(:, csl)
+    q_prime = primes(:, wsl)
 
     if (active_setup%signal_strength > 0d0) then
         if (present(signal_strength_co2)) &

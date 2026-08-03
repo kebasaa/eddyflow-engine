@@ -89,10 +89,10 @@ subroutine Fluxes1_rp()
     Flux1%H = Flux0%H
 
     !> Internal sensible heat flux, Hint in [W m-2]
-    Flux1%Hi_gas(co2) = Flux0%Hi_gas(co2)
-    if (wsl >= firstGas) Flux1%Hi_gas(wsl) = Flux0%Hi_gas(wsl)
-    Flux1%Hi_gas(ch4) = Flux0%Hi_gas(ch4)
-    Flux1%Hi_gas(gas4) = Flux0%Hi_gas(gas4)
+    !> Pass-through: the whole gas block, not the four slots those names pick
+    !> out. Which four they picked out depended on where water sat, so two
+    !> projects differing only in record order disagreed about H_CELL.
+    Flux1%Hi_gas(firstGas:lastGas) = Flux0%Hi_gas(firstGas:lastGas)
 
     !> Level 1 all gases.
     !>
@@ -137,9 +137,7 @@ subroutine Fluxes1_rp()
 
     !> Level 1 evapotranspiration fluxes with H2O covariances
     !> at time-lags of other scalars. Do nothing, no spectral correction needed
-    Flux1%E_gas(co2) = Flux0%E_gas(co2)
-    Flux1%E_gas(ch4) = Flux0%E_gas(ch4)
-    Flux1%E_gas(gas4) = Flux0%E_gas(gas4)
+    Flux1%E_gas(firstGas:lastGas) = Flux0%E_gas(firstGas:lastGas)
 
     !> Momentum flux [kg m-1 s-2] and friction velocity [m s-1]
     if (BPCF%of(w_u) /= error) then

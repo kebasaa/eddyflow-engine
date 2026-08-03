@@ -62,14 +62,17 @@ subroutine Fluxes23(lEx)
     Flux3 = errFlux
 
     !> Level 2 end 3 internal sensible heat, do nothing
-    Flux2%Hi_gas(co2) = Flux1%Hi_gas(co2)
-    if (wsl >= firstGas) Flux2%Hi_gas(wsl) = Flux1%Hi_gas(wsl)
-    Flux2%Hi_gas(ch4) = Flux1%Hi_gas(ch4)
-    Flux2%Hi_gas(gas4) = Flux1%Hi_gas(gas4)
-    Flux3%Hi_gas(co2) = Flux2%Hi_gas(co2)
-    if (wsl >= firstGas) Flux3%Hi_gas(wsl) = Flux2%Hi_gas(wsl)
-    Flux3%Hi_gas(ch4) = Flux2%Hi_gas(ch4)
-    Flux3%Hi_gas(gas4) = Flux2%Hi_gas(gas4)
+    !>
+    !> A pass-through, so it carries the whole gas block. Spelled out for
+    !> co2, the water slot, ch4 and gas4, it dropped every gas past the
+    !> fourth record: Fluxes0_rp computes Hi_gas for each configured gas and
+    !> the FLUXNET file writes an H_CELL_* column for each, but only four
+    !> survived the level 1 -> 2 -> 3 chain, so the rest were error codes
+    !> whatever the analyser reported. It also relocated them - which four
+    !> slots those names pick out depends on where water sits, so two
+    !> projects differing only in record order disagreed about H_CELL.
+    Flux2%Hi_gas(firstGas:lastGas) = Flux1%Hi_gas(firstGas:lastGas)
+    Flux3%Hi_gas(firstGas:lastGas) = Flux2%Hi_gas(firstGas:lastGas)
 
     !> Level 2 evapotranspiration WPL corrected, including Burba if the case
     if (EddyFlowProj%wpl) then
@@ -155,10 +158,10 @@ subroutine Fluxes23(lEx)
     end if
 
     !> Level 2 evapotranspiration fluxes with H2O covariances
-    !> at time-lags of other scalars. Do nothing, WPL is deleterious here
-    Flux2%E_gas(co2) = Flux1%E_gas(co2)
-    Flux2%E_gas(ch4) = Flux1%E_gas(ch4)
-    Flux2%E_gas(gas4) = Flux1%E_gas(gas4)
+    !> at time-lags of other scalars. Do nothing, WPL is deleterious here.
+    !> Another pass-through, so it carries the whole gas block; the water
+    !> slot has no entry by construction and copying it costs nothing.
+    Flux2%E_gas(firstGas:lastGas) = Flux1%E_gas(firstGas:lastGas)
 
     !> Level 2 Sensible heat
     if (lEx%instr(sonic)%category == 'sonic') then
@@ -218,9 +221,7 @@ subroutine Fluxes23(lEx)
     !> Level 3 latent heat fluxes with H2O covariances at
     !> timelags of other scalars
     !> Do nothing
-    Flux3%E_gas(co2) = Flux2%E_gas(co2)
-    Flux3%E_gas(ch4) = Flux2%E_gas(ch4)
-    Flux3%E_gas(gas4) = Flux2%E_gas(gas4)
+    Flux3%E_gas(firstGas:lastGas) = Flux2%E_gas(firstGas:lastGas)
 
     !> Level 3 h2o flux and latent heat flux
     if (Flux3%E /= error) then

@@ -68,10 +68,10 @@ subroutine Fluxes1(lEx)
     Flux1%H = lEx%Flux0%H
 
     !> Internal sensible heat flux, Hint in [W m-2]
-    Flux1%Hi_gas(co2) = lEx%Flux0%Hi_gas(co2)
-    Flux1%Hi_gas(h2o) = lEx%Flux0%Hi_gas(h2o)
-    Flux1%Hi_gas(ch4) = lEx%Flux0%Hi_gas(ch4)
-    Flux1%Hi_gas(gas4) = lEx%Flux0%Hi_gas(gas4)
+    !> Pass-through: the whole gas block. This one still named the literal
+    !> h2o slot, so on a project whose water is not record two it copied
+    !> whatever gas sat in slot six and left the real water behind.
+    Flux1%Hi_gas(firstGas:lastGas) = lEx%Flux0%Hi_gas(firstGas:lastGas)
 
     !> Level 1 all gases.
     !>
@@ -111,9 +111,7 @@ subroutine Fluxes1(lEx)
 
     !> Level 1 evapotranspiration fluxes with H2O covariances at time-lags
     !> of other scalars. Do nothing, no spectral correction needed
-    Flux1%E_gas(co2) = lEx%Flux0%E_gas(co2)
-    Flux1%E_gas(ch4) = lEx%Flux0%E_gas(ch4)
-    Flux1%E_gas(gas4) = lEx%Flux0%E_gas(gas4)
+    Flux1%E_gas(firstGas:lastGas) = lEx%Flux0%E_gas(firstGas:lastGas)
 
     !> Momentum flux [kg m-1 s-2] and friction velocity [m s-1]
     if (BPCF%of(w_u) /= error) then

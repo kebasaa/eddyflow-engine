@@ -62,14 +62,12 @@ subroutine Fluxes23_rp()
     Flux3 = errFlux
 
     !> Level 2 end 3 internal sensible heat, do nothing
-    Flux2%Hi_gas(co2) = Flux1%Hi_gas(co2)
-    if (wsl >= firstGas) Flux2%Hi_gas(wsl) = Flux1%Hi_gas(wsl)
-    Flux2%Hi_gas(ch4) = Flux1%Hi_gas(ch4)
-    Flux2%Hi_gas(gas4) = Flux1%Hi_gas(gas4)
-    Flux3%Hi_gas(co2) = Flux2%Hi_gas(co2)
-    if (wsl >= firstGas) Flux3%Hi_gas(wsl) = Flux2%Hi_gas(wsl)
-    Flux3%Hi_gas(ch4) = Flux2%Hi_gas(ch4)
-    Flux3%Hi_gas(gas4) = Flux2%Hi_gas(gas4)
+    !> A pass-through, so it carries the whole gas block. Named for four
+    !> slots it dropped every gas past the fourth record - Fluxes0_rp computes
+    !> Hi_gas per configured gas and the FLUXNET file writes an H_CELL_*
+    !> column for each, but only four survived the chain.
+    Flux2%Hi_gas(firstGas:lastGas) = Flux1%Hi_gas(firstGas:lastGas)
+    Flux3%Hi_gas(firstGas:lastGas) = Flux2%Hi_gas(firstGas:lastGas)
 
     !> Level 2 evapotranspiration WPL corrected ,including Burba if the case
     if (EddyFlowProj%wpl) then
@@ -157,9 +155,7 @@ subroutine Fluxes23_rp()
 
     !> Level 2 evapotranspiration fluxes with H2O covariances
     !> at time-lags of other scalars. Do nothing, WPL is deleterious here
-    Flux2%E_gas(co2) = Flux1%E_gas(co2)
-    Flux2%E_gas(ch4) = Flux1%E_gas(ch4)
-    Flux2%E_gas(gas4) = Flux1%E_gas(gas4)
+    Flux2%E_gas(firstGas:lastGas) = Flux1%E_gas(firstGas:lastGas)
 
     !> Level 2 Sensible heat
     if (E2Col(ts)%instr%category == 'sonic') then
@@ -220,9 +216,7 @@ subroutine Fluxes23_rp()
     !> Level 3 latent heat fluxes with H2O covariances at
     !> timelags of other scalars
     !> Do nothing
-    Flux3%E_gas(co2) = Flux2%E_gas(co2)
-    Flux3%E_gas(ch4) = Flux2%E_gas(ch4)
-    Flux3%E_gas(gas4) = Flux2%E_gas(gas4)
+    Flux3%E_gas(firstGas:lastGas) = Flux2%E_gas(firstGas:lastGas)
 
     !> Level 3 h2o flux and latent heat flux
     if (Flux3%E /= error) then

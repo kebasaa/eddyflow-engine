@@ -180,9 +180,15 @@ class CecReferenceTests(unittest.TestCase):
             writer = (ROOT / writer_path).read_text(encoding="utf-8")
             #> Water first, then CO2 - the order ApplyCecDescriptor expects.
             #> This read `Flux3%h2o, Flux3%co2` until the multi-gas refactor
-            #> replaced the per-species scalars with Flux3%gas(slot); the
-            #> arguments and their order never changed, only the accessor.
-            self.assertIn("Flux3%gas(h2o), Flux3%gas(co2)", main)
+            #> replaced the per-species scalars with Flux3%gas(slot), and then
+            #> the literal slots with the resolved ones: CEC is defined on a
+            #> CO2/water pair, but the pair is a species question, and slots
+            #> five and six are CO2 and water by convention only.
+            water = main.index("Flux3%gas(PrimaryWaterOutSlot())")
+            carbon = main.index("Flux3%gas(PrimaryCarbonOutSlot())")
+            self.assertLess(water, carbon,
+                            "%s passes the CEC pair in the wrong order" % main_path)
+            self.assertNotIn("Flux3%gas(h2o), Flux3%gas(co2)", main)
             self.assertIn(expected_header, header)
             positions = [writer.index(field) for field in expected_fields]
             self.assertEqual(positions, sorted(positions))

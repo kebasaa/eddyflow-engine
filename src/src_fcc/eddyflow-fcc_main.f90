@@ -536,7 +536,9 @@ Program EddyFlowFCC
         !> Apply RP's high-frequency CEC descriptor to FCC's authoritative
         !> corrected totals.
         if (EddyFlowProj%do_cec > 0) &
-            call ApplyCecDescriptor(lEx%cec, Flux3%gas(h2o), Flux3%gas(co2), &
+            call ApplyCecDescriptor(lEx%cec, &
+                Flux3%gas(PrimaryWaterOutSlot()), &
+                Flux3%gas(PrimaryCarbonOutSlot()), &
                 EddyFlowProj%do_cec, CECFlux)
 
         !> Calculate footprint estimation   

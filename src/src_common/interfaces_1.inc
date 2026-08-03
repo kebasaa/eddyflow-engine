@@ -83,6 +83,20 @@ interface
         implicit none
     end function PrimaryWaterOutSlot
 
+    !> The slot holding the site's primary CO2, or 0 if there is none, and
+    !> the same falling back to the historical slot. Only conditional eddy
+    !> covariance needs these: it is defined on a CO2/water pair and so has
+    !> to name two species rather than iterate over all of them.
+    integer function PrimaryCarbonSlot()
+        use m_common_global_var
+        implicit none
+    end function PrimaryCarbonSlot
+
+    integer function PrimaryCarbonOutSlot()
+        use m_common_global_var
+        implicit none
+    end function PrimaryCarbonOutSlot
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &

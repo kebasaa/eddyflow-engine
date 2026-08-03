@@ -369,6 +369,55 @@ integer function GasSlotFromDynMDTag(field, suffix)
     if (IsHistoricGasVar(stem)) GasSlotFromDynMDTag = HistoricGasSlot(stem)
 end function GasSlotFromDynMDTag
 
+!***************************************************************************
+!
+! \brief       The gas slot holding the site's primary carbon dioxide.
+! \author      Jonathan Muller
+! \note        The companion to PrimaryWaterSlot, and it exists for one
+!              caller: conditional eddy covariance is defined on a CO2/water
+!              *pair* (Zahn et al. 2022), so unlike everything else in this
+!              file it does not generalise to N gases - it needs to know
+!              which two. What it must not do is take that pair from slots
+!              five and six, which are CO2 and water by convention only.
+!
+!              Returns 0 when the project describes no CO2. Callers treat
+!              that as "not performed", the same way they treat no water.
+!***************************************************************************
+integer function PrimaryCarbonSlot()
+    use m_common_global_var
+    implicit none
+    integer :: gas
+    character(32) :: species
+
+    PrimaryCarbonSlot = 0
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
+        species = EddyFlowProj%gas(gas - firstGas + 1)%var
+        call uppercase(species)
+        if (trim(adjustl(species)) /= 'CO2') cycle
+        PrimaryCarbonSlot = gas
+        return
+    end do
+end function PrimaryCarbonSlot
+
+!***************************************************************************
+!
+! \brief       Slot to gate the one-per-site carbon columns on.
+! \author      Jonathan Muller
+! \note        As PrimaryWaterOutSlot is to PrimaryWaterSlot: falls back to
+!              the historical slot when the project describes no CO2, which
+!              is what those gates evaluated in that case.
+!***************************************************************************
+integer function PrimaryCarbonOutSlot()
+    use m_common_global_var
+    implicit none
+    integer, external :: PrimaryCarbonSlot
+
+    PrimaryCarbonOutSlot = PrimaryCarbonSlot()
+    if (PrimaryCarbonOutSlot < firstGas) PrimaryCarbonOutSlot = co2
+end function PrimaryCarbonOutSlot
+
 integer function PrimaryWaterOutSlot()
     use m_common_global_var
     implicit none

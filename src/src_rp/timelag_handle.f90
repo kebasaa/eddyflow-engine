@@ -271,7 +271,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
 
             !> Handle non-gas scalars (ts, etc.)
             do j = ts, pe
-                if (j >= co2 .and. j <= gas4) cycle
+                if (j >= firstGas .and. j <= lastGas) cycle
                 if (E2Col(j)%present) then
                     RowLags(j) = def_rl(j)
                     TLag(j) = E2Col(j)%def_tl

@@ -2284,13 +2284,17 @@ program EddyFlowRP
                     end if
                 end do
                 if (cec_co2_signal_col > 0 .and. cec_h2o_signal_col > 0) then
-                    call ExtractCecDescriptor(E2Primes, StDiff%w_gas(co2), &
-                        StDiff%w_gas(h2o), CECDescriptor, EddyFlowProj%cec, &
+                    call ExtractCecDescriptor(E2Primes, &
+                        StDiff%w_gas(PrimaryCarbonOutSlot()), &
+                        StDiff%w_gas(PrimaryWaterOutSlot()), &
+                        CECDescriptor, EddyFlowProj%cec, &
                         UserSet(:, cec_co2_signal_col), &
                         UserSet(:, cec_h2o_signal_col))
                 else
-                    call ExtractCecDescriptor(E2Primes, StDiff%w_gas(co2), &
-                        StDiff%w_gas(h2o), CECDescriptor, EddyFlowProj%cec)
+                    call ExtractCecDescriptor(E2Primes, &
+                        StDiff%w_gas(PrimaryCarbonOutSlot()), &
+                        StDiff%w_gas(PrimaryWaterOutSlot()), &
+                        CECDescriptor, EddyFlowProj%cec)
                 end if
                 CECFlux%r_ET_cec = CECDescriptor%r_ET
                 CECFlux%r_Fc_cec = CECDescriptor%r_Fc
@@ -2437,7 +2441,9 @@ program EddyFlowRP
             !> RP applies the CEC descriptor only when it owns the final
             !> corrected totals. Otherwise FCC applies it to FCC Flux3.
             if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) &
-                call ApplyCecDescriptor(CECDescriptor, Flux3%gas(h2o), Flux3%gas(co2), &
+                call ApplyCecDescriptor(CECDescriptor, &
+                    Flux3%gas(PrimaryWaterOutSlot()), &
+                    Flux3%gas(PrimaryCarbonOutSlot()), &
                     EddyFlowProj%do_cec, CECFlux)
             if (allocated(E2Primes)) deallocate(E2Primes)
 

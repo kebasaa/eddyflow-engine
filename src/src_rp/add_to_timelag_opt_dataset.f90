@@ -41,44 +41,53 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     integer, intent(in) :: nrow
     integer, intent(in) :: n
     type(TimeLagOptType), intent(inout):: TimelagOpt(nrow)
+    !> local variables
+    integer :: gas
+    integer :: wsl
+    real(kind = dbl) :: flux_test
+    character(32) :: label
+    include '../src_common/interfaces.inc'
 
+    wsl = PrimaryWaterOutSlot()
 
-    !> Passive gases
-    if (E2Col(co2)%present &
-        .and. dabs(Flux0%gas(co2)) > TOSetup%gas_min_flux(co2) &
-        .and. Essentials%used_timelag(co2) /= E2Col(co2)%max_tl &
-        .and. Essentials%used_timelag(co2) /= E2Col(co2)%min_tl) then
-            TimelagOpt(n)%tlag(co2) = Essentials%used_timelag(co2)
-    else
-        TimelagOpt(n)%tlag(co2) = error
-    end if
+    !> Passive gases. Three unrolled arms before, naming co2, ch4 and the
+    !> fourth slot, so a fifth gas never contributed to the time-lag
+    !> optimisation dataset however strong its flux.
+    !>
+    !> NOTE: the CO2 arm compared dabs(flux) against the threshold and the
+    !> other two compared the signed flux. That is preserved rather than
+    !> unified - CO2 is the one gas routinely measured with a negative flux,
+    !> so on the others a signed comparison and a magnitude comparison agree
+    !> in practice, but making them agree by fiat would move numbers. Worth
+    !> deciding deliberately.
+    do gas = firstGas, lastGas
+        if (gas == wsl) cycle
+        TimelagOpt(n)%tlag(gas) = error
+        if (.not. E2Col(gas)%present) cycle
 
-    if (E2Col(ch4)%present &
-        .and. Flux0%gas(ch4) > TOSetup%gas_min_flux(ch4) &
-        .and. Essentials%used_timelag(ch4) /= E2Col(ch4)%max_tl &
-        .and. Essentials%used_timelag(ch4) /= E2Col(ch4)%min_tl) then
-        TimelagOpt(n)%tlag(ch4) = Essentials%used_timelag(ch4)
-    else
-        TimelagOpt(n)%tlag(ch4) = error
-    end if
-
-    if (E2Col(gas4)%present &
-        .and. Flux0%gas(gas4) > TOSetup%gas_min_flux(gas4) &
-        .and. Essentials%used_timelag(gas4) /= E2Col(gas4)%max_tl &
-        .and. Essentials%used_timelag(gas4) /= E2Col(gas4)%min_tl) then
-        TimelagOpt(n)%tlag(gas4) = Essentials%used_timelag(gas4)
-    else
-        TimelagOpt(n)%tlag(gas4) = error
-    end if
-
-    !> Water vapor and RH
-    if (E2Col(h2o)%present) then
-        if (Flux0%LE > TOSetup%le_min_flux &
-            .and. Essentials%used_timelag(h2o) /= E2Col(h2o)%max_tl &
-            .and. Essentials%used_timelag(h2o) /= E2Col(h2o)%min_tl) then
-            TimelagOpt(n)%tlag(h2o) = Essentials%used_timelag(h2o)
+        label = GasOutputLabel(gas)
+        call lowercase(label)
+        if (trim(adjustl(label)) == 'co2') then
+            flux_test = dabs(Flux0%gas(gas))
         else
-            TimelagOpt(n)%tlag(h2o) = error
+            flux_test = Flux0%gas(gas)
+        end if
+
+        if (flux_test > TOSetup%gas_min_flux(gas) &
+            .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
+            .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
+            TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+    end do
+
+    !> Water vapor and RH. Gated on the site's latent heat flux rather than on
+    !> its own flux, which is why it keeps an arm of its own.
+    if (E2Col(wsl)%present) then
+        if (Flux0%LE > TOSetup%le_min_flux &
+            .and. Essentials%used_timelag(wsl) /= E2Col(wsl)%max_tl &
+            .and. Essentials%used_timelag(wsl) /= E2Col(wsl)%min_tl) then
+            TimelagOpt(n)%tlag(wsl) = Essentials%used_timelag(wsl)
+        else
+            TimelagOpt(n)%tlag(wsl) = error
         end if
         if (Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
             TimelagOpt(n)%RH = Stats%RH
@@ -86,7 +95,7 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
             TimelagOpt(n)%RH = error
         end if
     else
-        TimelagOpt(n)%tlag(h2o) = error
+        TimelagOpt(n)%tlag(wsl) = error
         TimelagOpt(n)%RH = error
     end if
 end subroutine AddToTimelagOptDataset
