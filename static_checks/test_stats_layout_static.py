@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WRITER = "src/src_common/write_out_stats.f90"
 HEADER = "src/src_rp/init_outfiles_rp.f90"
 HELPER = "src/src_common/gas4_output_units.f90"
+TYPEDEF = "src/src_common/m_typedef.f90"
 FIXTURE = "tests/regression/base_n_gas_st.eddyflow"
 
 
@@ -78,6 +79,35 @@ class OneLayoutServesBothSides(unittest.TestCase):
         self.assertEqual(
             len(re.findall(r"write\(ust\d, '\(a\)'\) stats_header", src)), 7,
             "all seven statistics files must write the same generated header")
+
+
+class TheStatisticsTypeIsIndexedBySlot(unittest.TestCase):
+    """StatsType carried seven named scalars beside its E2NumVar-wide arrays:
+    h2ocov_tl_co2/ch4/gas4 and tc_cov_tl_co2/h2o/ch4/gas4. Those are the water
+    and cell-temperature covariances taken at *another* gas's timelag, and
+    they feed the internal sensible heat flux and the in-cell
+    evapotranspiration. Named per position, they stopped at the fourth slot,
+    so a fifth gas got neither however it was configured - and the water arm
+    had to read the field named for the historical slot while writing its
+    result to the resolved one."""
+
+    def test_the_covariances_at_other_timelags_are_arrays(self):
+        src = code(TYPEDEF)
+        for token in ("h2ocov_tl_", "tc_cov_tl_"):
+            self.assertNotIn(token, src,
+                             "%s names a fixed gas slot; these are per-slot "
+                             "quantities and must be indexed" % token)
+        self.assertIn("h2ocov_tl(E2NumVar)", src)
+        self.assertIn("tc_cov_tl(E2NumVar)", src)
+
+    def test_the_water_column_they_are_taken_against_is_resolved(self):
+        """The covariance is against the site's water. Reading E2Col(h2o) took
+        whatever species record two held - on base_h2o_late that was N2O, and
+        the in-cell water flux came out three orders of magnitude wrong."""
+        src = code("src/src_rp/timelag_handle.f90")
+        self.assertIn("PrimaryWaterOutSlot()", src)
+        self.assertNotIn("E2Col(h2o)", src,
+                         "the water column must be resolved, not indexed")
 
 
 class AFixtureTurnsThemOn(unittest.TestCase):

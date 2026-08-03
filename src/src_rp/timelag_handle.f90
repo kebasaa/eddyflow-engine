@@ -68,6 +68,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: cache_actual_lag
     real(kind = dbl) :: cache_used_lag
     integer :: cache_row_lag
+    !> The slot the site's water is measured in, for the covariances taken at
+    !> another gas's lag. Was the literal h2o, which is water by convention.
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
 
     skip_apply = pwb_detect_only_mode
     pwb_detect_only_mode = .false.
@@ -289,60 +293,42 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     if (.not. skip_apply .and. .not. InTimelagOpt) then
         !> For closed path instruments, calculate H2O covariances
         !> for time-lags of other scalars from the same instrument
-        Stats%h2ocov_tl_co2 = error
-        Stats%h2ocov_tl_ch4 = error
-        Stats%h2ocov_tl_gas4 = error
-        if (E2Col(h2o)%present &
-            .and. E2Col(h2o)%instr%path_type == 'closed') then
+        !>
+        !> One pass per configured gas, replacing three unrolled arms that
+        !> named co2, ch4 and the fourth slot. Water is skipped by identity
+        !> rather than by position: its covariance with itself at its own lag
+        !> is Cov(w, wsl), and with a second hygrometer there is more than one
+        !> slot that would have to be excluded.
+        Stats%h2ocov_tl = error
+        wsl = PrimaryWaterOutSlot()
+        if (E2Col(wsl)%present &
+            .and. E2Col(wsl)%instr%path_type == 'closed') then
             ColW(1:nrow) = Set(1:nrow, w)
-            ColH2O(1:nrow) = Set(1:nrow, h2o)
-            if (E2Col(co2)%present &
-                .and. E2Col(co2)%instr%model == E2Col(h2o)%instr%model &
-                .and. RowLags(co2) > 0) &
+            ColH2O(1:nrow) = Set(1:nrow, wsl)
+            do j = firstGas, lastGas
+                if (j == wsl) cycle
+                if (.not. E2Col(j)%present) cycle
+                if (E2Col(j)%instr%model /= E2Col(wsl)%instr%model) cycle
+                if (RowLags(j) <= 0) cycle
                 call CovarianceW(ColW, ColH2O, size(ColW), &
-                    RowLags(co2), Stats%h2ocov_tl_co2)
-            if (E2Col(ch4)%present &
-                .and. E2Col(ch4)%instr%model == E2Col(h2o)%instr%model &
-                .and. RowLags(ch4) > 0) &
-                call CovarianceW(ColW, ColH2O, size(ColW), &
-                    RowLags(ch4), Stats%h2ocov_tl_ch4)
-            if (E2Col(gas4)%present &
-                .and. E2Col(gas4)%instr%model == E2Col(h2o)%instr%model &
-                .and. RowLags(gas4) > 0) &
-                call CovarianceW(ColW, ColH2O, size(ColW), &
-                RowLags(gas4), Stats%h2ocov_tl_gas4)
+                    RowLags(j), Stats%h2ocov_tl(j))
+            end do
         end if
 
         !> Calculate cell temperature covariances with
         !> time-lags of scalars from the same instrument
-        Stats%tc_cov_tl_co2 = error
-        Stats%tc_cov_tl_h2o = error
-        Stats%tc_cov_tl_ch4 = error
-        Stats%tc_cov_tl_gas4 = error
+        Stats%tc_cov_tl = error
         if (E2Col(tc)%present) then
             !> Store vertical wind component and tc in ad-hoc arrays
             ColW(1:nrow) = Set(1:nrow, w)
             ColTC(1:nrow) = Set(1:nrow, tc)
-            if (E2Col(co2)%present &
-                .and. E2Col(co2)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(co2) > 0) &
+            do j = firstGas, lastGas
+                if (.not. E2Col(j)%present) cycle
+                if (E2Col(j)%instr%model /= E2Col(tc)%instr%model) cycle
+                if (RowLags(j) <= 0) cycle
                 call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(co2), Stats%tc_cov_tl_co2)
-            if (E2Col(h2o)%present &
-                .and. E2Col(h2o)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(h2o) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(h2o), Stats%tc_cov_tl_h2o)
-            if (E2Col(ch4)%present &
-                .and. E2Col(ch4)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(ch4) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(ch4), Stats%tc_cov_tl_ch4)
-            if (E2Col(gas4)%present &
-                .and. E2Col(gas4)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(gas4) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(gas4), Stats%tc_cov_tl_gas4)
+                    RowLags(j), Stats%tc_cov_tl(j))
+            end do
         end if
     end if
 

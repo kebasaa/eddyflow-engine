@@ -1266,13 +1266,16 @@ module m_typedef
         real(kind = dbl) :: d(E2NumVar)
         real(kind = dbl) :: chi(E2NumVar)
         real(kind = dbl) :: r(E2NumVar)
-        real(kind = dbl) :: h2ocov_tl_co2
-        real(kind = dbl) :: h2ocov_tl_ch4
-        real(kind = dbl) :: h2ocov_tl_gas4
-        real(kind = dbl) :: tc_cov_tl_co2
-        real(kind = dbl) :: tc_cov_tl_h2o
-        real(kind = dbl) :: tc_cov_tl_ch4
-        real(kind = dbl) :: tc_cov_tl_gas4
+        !> Water and cell-temperature covariances taken at *another* gas's
+        !> timelag, indexed by that gas's slot. Seven named scalars before -
+        !> h2ocov_tl_co2/ch4/gas4 and tc_cov_tl_co2/h2o/ch4/gas4 - which named
+        !> a position rather than a species and stopped at the fourth, so a
+        !> fifth gas got no internal sensible heat flux and no timelag-matched
+        !> evapotranspiration however it was configured. The water entry is
+        !> absent from h2ocov_tl by construction: water's covariance with
+        !> itself at its own lag is Cov(w, wsl).
+        real(kind = dbl) :: h2ocov_tl(E2NumVar)
+        real(kind = dbl) :: tc_cov_tl(E2NumVar)
         real(kind = dbl) :: T
         real(kind = dbl) :: Pr
         real(kind = dbl) :: RH

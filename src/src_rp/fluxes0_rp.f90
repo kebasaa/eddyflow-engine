@@ -68,37 +68,17 @@ subroutine Fluxes0_rp(printout)
     end if
 
     !> Internal sensible heat flux, Hint in [W m-2], Cp in [J Kg-1K-1]
+    !>
+    !> One pass over the gas slots. The four arms this replaces read four
+    !> named scalars, and the water arm already had to route its result to the
+    !> resolved slot while reading the field named for the historical one -
+    !> the covariances are now indexed by slot, so both ends agree.
+    Flux0%Hi_gas(firstGas:lastGas) = error
     if (Ambient%RhoCp > 0d0) then
-        if (Stats%tc_cov_tl_co2 /= error) then
-            Flux0%Hi_gas(co2) = Ambient%RhoCp * Stats%tc_cov_tl_co2
-        else
-            Flux0%Hi_gas(co2) = error
-        end if
-
-        if (wsl >= firstGas) then
-            if (Stats%tc_cov_tl_h2o /= error) then
-                Flux0%Hi_gas(wsl) = Ambient%RhoCp * Stats%tc_cov_tl_h2o
-            else
-                Flux0%Hi_gas(wsl) = error
-            end if
-        end if
-
-        if (Stats%tc_cov_tl_ch4 /= error) then
-            Flux0%Hi_gas(ch4) = Ambient%RhoCp * Stats%tc_cov_tl_ch4
-        else
-            Flux0%Hi_gas(ch4) = error
-        end if
-
-        if (Stats%tc_cov_tl_gas4 /= error) then
-            Flux0%Hi_gas(gas4) = Ambient%RhoCp * Stats%tc_cov_tl_gas4
-        else
-            Flux0%Hi_gas(gas4) = error
-        end if
-    else
-        Flux0%Hi_gas(co2) = error
-        if (wsl >= firstGas) Flux0%Hi_gas(wsl) = error
-        Flux0%Hi_gas(ch4) = error
-        Flux0%Hi_gas(gas4) = error
+        do msl = firstGas, lastGas
+            if (Stats%tc_cov_tl(msl) /= error) &
+                Flux0%Hi_gas(msl) = Ambient%RhoCp * Stats%tc_cov_tl(msl)
+        end do
     end if
 
     !> Uncorrected flux of each gas.
@@ -198,68 +178,31 @@ subroutine Fluxes0_rp(printout)
 
     !> Level 0 evapotranspiration flux [kg m-2 -1]
     !> with H2O covariances at timelags of other scalars
-    if (wsl >= firstGas) then
-    if (E2Col(wsl)%Instr%path_type == 'closed') then
-        if(E2Col(wsl)%measure_type == 'molar_density') then
-            if(Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2 * MW_H2O * 1d-3
-            else
-                Flux0%E_gas(co2) = error
-            end if
-            if(Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4 * MW_H2O * 1d-3
-            else
-                Flux0%E_gas(ch4) = error
-            end if
-            if(Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4 * MW_H2O * 1d-3
-            else
-                Flux0%E_gas(gas4) = error
-            end if
+    !>
+    !> Nine arms before - three measure types by three named gas slots - which
+    !> differed only in the divisor. The divisor is a property of the water
+    !> record's measure type, so it is chosen once and the gases loop inside.
+    !> The water slot itself has no entry in h2ocov_tl, so the loop skips it
+    !> the same way the unrolled arms did by omission.
+    Flux0%E_gas(firstGas:lastGas) = error
+    if (wsl >= firstGas .and. E2Col(wsl)%Instr%path_type == 'closed') then
+        dens_gain = error
+        select case (E2Col(wsl)%measure_type)
+            case ('molar_density')
+                dens_gain = 1d0
+            case ('mole_fraction')
+                if (Ambient%Va > 0d0) dens_gain = 1d0 / Ambient%Va
+            case ('mixing_ratio')
+                if (Ambient%Vd > 0d0) dens_gain = 1d0 / Ambient%Vd
+        end select
 
-        else if(E2Col(wsl)%measure_type == 'mole_fraction') then
-            if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW_H2O * 1d-3 / Ambient%Va
-            else
-                Flux0%E_gas(co2) = error
-            end if
-            if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW_H2O * 1d-3 / Ambient%Va
-            else
-                Flux0%E_gas(ch4) = error
-            end if
-            if (Ambient%Va > 0d0 .and. Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW_H2O * 1d-3 / Ambient%Va
-            else
-                Flux0%E_gas(gas4) = error
-            end if
-
-        else if (E2Col(wsl)%measure_type == 'mixing_ratio') then
-            if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_co2 /= error) then
-                Flux0%E_gas(co2) = Stats%h2ocov_tl_co2  * MW_H2O * 1d-3 / Ambient%Vd
-            else
-                Flux0%E_gas(co2) = error
-            end if
-            if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_ch4 /= error) then
-                Flux0%E_gas(ch4) = Stats%h2ocov_tl_ch4  * MW_H2O * 1d-3 / Ambient%Vd
-            else
-                Flux0%E_gas(ch4) = error
-            end if
-            if (Ambient%Vd > 0d0 .and. Stats%h2ocov_tl_gas4 /= error) then
-                Flux0%E_gas(gas4) = Stats%h2ocov_tl_gas4  * MW_H2O * 1d-3 / Ambient%Vd
-            else
-                Flux0%E_gas(gas4) = error
-            end if
+        if (dens_gain /= error) then
+            do msl = firstGas, lastGas
+                if (Stats%h2ocov_tl(msl) /= error) &
+                    Flux0%E_gas(msl) = &
+                        Stats%h2ocov_tl(msl) * MW_H2O * 1d-3 * dens_gain
+            end do
         end if
-    else
-        Flux0%E_gas(co2) = error
-        Flux0%E_gas(ch4) = error
-        Flux0%E_gas(gas4) = error
-    end if
-    else
-        Flux0%E_gas(co2) = error
-        Flux0%E_gas(ch4) = error
-        Flux0%E_gas(gas4) = error
     end if
 
     !> Friction velocity [m s-1]
