@@ -562,7 +562,18 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
         end if
     end do
 
-    !> Consideration of gases from same analyser
+    !> Consideration of gases from same analyser.
+    !>
+    !> The whole instrument record propagates, separations included, and that
+    !> is correct: gases measured by one analyser share its inlet, so they
+    !> share its displacement from the anemometer. Separations differ between
+    !> *analysers* - whose inlets sit in different places - not between the
+    !> gases one analyser reports.
+    !>
+    !> So a per-gas override in a dynamic metadata file is homogenised across
+    !> the analyser by design. Setting cos_irga_vertical_separation on a
+    !> project whose gases all sit on one analyser moves all of them, and
+    !> should.
     do gas = firstGas, lastGas
         do gas2 = firstGas, lastGas
             if ((LocCol(gas2)%instr%model == LocCol(gas)%instr%model) .and. instr_updated(gas)) &

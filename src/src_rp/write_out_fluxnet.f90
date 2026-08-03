@@ -412,7 +412,9 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     end do
     !> Evapotranspiration and sensible heat fluxes in the cell of 
     !> closed-paths (for WPL), with timelags of other gases
-    !> Water flux inside the cell, for every gas but the water slot itself.
+    !> Water flux inside the cell, for every gas that is not a hygrometer.
+    !> Every one of them: a site may carry more than one, and the reader has
+    !> to count them the same way or the record shifts.
     do gas = firstGas, ts + nFluxnetLayoutSlots
         if (GasSlotIsWater(gas)) cycle
         call AddFloatDatumToDataline(Flux3%E_gas(gas), csv_row, EddyFlowProj%err_label)

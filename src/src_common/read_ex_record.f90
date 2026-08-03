@@ -285,7 +285,15 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%Tcell, lEx%Pcell, lEx%Vcell(firstGas:lastCfg), &
         lEx%Tcell_at(firstGas:lastCfg), lEx%Pcell_at(firstGas:lastCfg), &
         lEx%cov_w_pcell(firstGas:lastCfg), &
-        e_gas_buf(1 : max(n_layout_gas - 1, 0)), &
+        !> One field per gas that is *not* a hygrometer, which is what
+        !> WriteOutFluxnet emits - it cycles on GasSlotIsWater, so it skips
+        !> every water record, not one. Reading `n_layout_gas - 1` assumed
+        !> exactly one: on a project with two hygrometers the buffer swallowed
+        !> the first field of the block after it and every value from there to
+        !> the end of the record came back one field out of step. nMainFields
+        !> above already counts this correctly as nExGas - nExWater; only the
+        !> read did not.
+        e_gas_buf(1 : max(nExGas - nExWater, 0)), &
         lEx%Flux0%Hi_gas(firstGas:lastCfg), &
         lEx%Burba%h_bot, lEx%Burba%h_top, lEx%Burba%h_spar, &
         lEx%Mul7700%A, lEx%Mul7700%B, lEx%Mul7700%C, &

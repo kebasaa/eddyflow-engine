@@ -389,3 +389,42 @@ class ExRecordLayout(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TheCellWaterBlockCountsEveryHygrometer(unittest.TestCase):
+    """WriteOutFluxnet emits the in-cell water flux for every gas that is not
+    a hygrometer, cycling on GasSlotIsWater - so it skips *all* of them.
+
+    ReadExRecord read `n_layout_gas - 1`, which assumes exactly one. With two
+    hygrometers the buffer swallowed the first field of the block after it and
+    every value from there to the end of the record came back one field out of
+    step: the internal sensible heat flux, the LI-7700 spectroscopic
+    multipliers, the Ibrom degraded-covariance series and every spike count.
+
+    Measured on base_n_gas, whose records 2 and 7 are both H2O: 29 FLUXNET
+    columns wrong, and H_CELL for every gas holding its neighbour's value.
+    Single-hygrometer projects were unaffected, which is why it survived - the
+    two expressions agree when nExWater is 1.
+
+    nMainFields had it right all along as `nExGas - nExWater`; only the read
+    did not, so the field *count* and the field *list* disagreed.
+    """
+
+    def test_the_read_counts_non_hygrometers(self):
+        text = _reader_text()
+        self.assertNotIn("e_gas_buf(1 : max(n_layout_gas - 1, 0))", text,
+                         "this assumes a project has exactly one hygrometer")
+        self.assertIn("e_gas_buf(1 : max(nExGas - nExWater, 0))", text)
+
+    def test_the_field_count_and_the_read_agree(self):
+        """They are two statements of the same quantity, in one file, and they
+        disagreed."""
+        text = _reader_text()
+        self.assertIn("(nExGas - nExWater)", text,
+                      "nMainFields must size the block the same way")
+
+    def test_the_scatter_skips_every_hygrometer(self):
+        text = _reader_text()
+        body = text[text.index("lEx%Flux0%E_gas(firstGas:lastCfg) = error"):]
+        self.assertIn("GasSlotIsWater(mgas)) cycle", body[:400],
+                      "the scatter must skip water the same way the writer does")
