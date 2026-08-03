@@ -55,6 +55,12 @@ subroutine OutputSpectralAssessmentResults(nbins)
     integer :: cosp_slots(1 + MaxNumGases)
     integer :: n_cosp
     integer :: k
+    !> The site's water record. The RH-class assessment is water's, and it
+    !> used to read the sixth slot regardless of what that record held.
+    integer :: wsl
+    character(64) :: sa_var_tags(GHGNumVar)
+    character(64) :: wtag
+    character(32) :: rh_label
     character(PathLen) :: FilePath
     character(PathLen) :: SpecDir
     character(LongOutstringLen) :: dataline
@@ -70,10 +76,15 @@ subroutine OutputSpectralAssessmentResults(nbins)
     !> Select one frequency vector which does not contain only -9999.
     !> If none, it means all spectra are -9999. Basically, spectral
     !> assessment failed.
+    !> The RH-class assessment is water's, so it reads the site's water
+    !> record rather than the sixth slot - which is water only when record
+    !> two happens to hold it.
+    wsl = PrimaryWaterOutSlot()
+
     goodj = ierror
     ol: do cls = RH10, RH90
         il: do i = 1, nbins - 1
-                if (MeanBinSpec(i, cls)%fn(h2o) /= error) then
+                if (MeanBinSpec(i, cls)%fn(wsl) /= error) then
                     goodj = cls
                     exit ol
                 end if
@@ -125,33 +136,18 @@ subroutine OutputSpectralAssessmentResults(nbins)
             write(udf,'(a)') '-----------------------------------------------------&
                 &-----------------------------'
             write(udf,'(a)') 'Water vapour TFP              Fn          fc    numerosity'
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class   5 - 15% = ', &
-                RegPar(h2o, RH10)%Fn, RegPar(h2o, RH10)%fc, &
-                MeanBinSpec(nbins/2, RH10)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  15 - 25% = ', &
-                RegPar(h2o, RH20)%Fn, RegPar(h2o, RH20)%fc, &
-                MeanBinSpec(nbins/2, RH20)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  25 - 35% = ', &
-                RegPar(h2o, RH30)%Fn, RegPar(h2o, RH30)%fc, &
-                MeanBinSpec(nbins/2, RH30)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  35 - 45% = ', &
-                RegPar(h2o, RH40)%Fn, RegPar(h2o, RH40)%fc, &
-                MeanBinSpec(nbins/2, RH40)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  45 - 55% = ', &
-                RegPar(h2o, RH50)%Fn, RegPar(h2o, RH50)%fc, &
-                MeanBinSpec(nbins/2, RH50)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  55 - 65% = ', &
-                RegPar(h2o, RH60)%Fn, RegPar(h2o, RH60)%fc, &
-                MeanBinSpec(nbins/2, RH60)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  65 - 75% = ', &
-                RegPar(h2o, RH70)%Fn, RegPar(h2o, RH70)%fc, &
-                MeanBinSpec(nbins/2, RH70)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  75 - 85% = ', &
-                RegPar(h2o, RH80)%Fn, RegPar(h2o, RH80)%fc, &
-                MeanBinSpec(nbins/2, RH80)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  85 - 95% = ', &
-                RegPar(h2o, RH90)%Fn, RegPar(h2o, RH90)%fc, &
-                MeanBinSpec(nbins/2, RH90)%cnt(h2o)
+            !> Nine classes, one loop. Nine copies of the same three-line
+            !> write differing only in the class index and the label they
+            !> spell out - and each naming the h2o slot rather than the site's
+            !> water. The label is generated from the class, so the bounds it
+            !> announces cannot disagree with the class it reports.
+            do cls = RH10, RH90
+                write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
+                    10 * cls - 5, ' - ', 10 * cls + 5, '% = '
+                write(udf,'(a, 2(f11.5,1x), i13)') rh_label, &
+                    RegPar(wsl, cls)%Fn, RegPar(wsl, cls)%fc, &
+                    MeanBinSpec(nbins/2, cls)%cnt(wsl)
+            end do
             write(udf,'(a)') ''
 
             !> One block per configured gas but water, whose cutoffs are the
@@ -297,7 +293,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             dataline = ''
             call AddDatum(dataline, '', separator)
             do cls = RH10, RH90
-                call WriteDatumInt(MeanBinSpec(1, cls)%cnt(h2o), datum, &
+                call WriteDatumInt(MeanBinSpec(1, cls)%cnt(wsl), datum, &
                     EddyFlowProj%err_label)
                 call AddDatum(dataline, 'n_=_' // datum(1:len_trim(datum)), &
                     separator)
@@ -306,45 +302,51 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 call AddDatum(dataline, '', separator)
             end do
             write(udf,'(a)') dataline(1:len_trim(dataline) - 1)
-            write(udf,'(a)') 'nat_freq,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)'
+            !> One four-column group per RH class, generated rather than
+            !> spelled out nine times. The water tag comes from the record, so
+            !> a project measuring its water on a second analyser reads
+            !> avrg_sp(h2o_2) and not a column that claims to be the first.
+            call SpectralVarTags(sa_var_tags)
+            wtag = sa_var_tags(wsl)
+            if (len_trim(wtag) == 0) wtag = 'h2o'
+            dataline = 'nat_freq'
+            do cls = RH10, RH90
+                dataline = trim(dataline) // ',avrg_sp(T)' &
+                    // ',avrg_sp(' // trim(wtag) // ')' &
+                    // ',denoised_avrg_sp(' // trim(wtag) // ')' &
+                    // ',pred_sp(' // trim(wtag) // ')'
+            end do
+            write(udf,'(a)') trim(dataline)
 
             do i = 1, nbins - 1
                 call clearstr(dataline)
-                if (MeanBinSpec(i, goodj)%fn(h2o) /= error) then
-                    call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o), &
+                if (MeanBinSpec(i, goodj)%fn(wsl) /= error) then
+                    call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl), &
                         datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, datum, separator)
                     do cls = RH10, RH90
-                        if (MeanBinSpecAvailable(cls, h2o)) then
+                        if (MeanBinSpecAvailable(cls, wsl)) then
                             !> Natural frequency
-                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
-                                * MeanBinSpec(i, cls)%ts(h2o), datum, &
+                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl) &
+                                * MeanBinSpec(i, cls)%ts(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Ensemble averaged spectrum
-                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
-                                * MeanBinSpec(i, cls)%of(h2o), datum, &
+                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl) &
+                                * MeanBinSpec(i, cls)%of(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Denoised ensemble averaged spectrum
-                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
-                                * dMeanBinSpec(i, cls)%of(h2o), datum, &
+                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl) &
+                                * dMeanBinSpec(i, cls)%of(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Modelled spectrum
-                            call WriteDatumFloat(RegPar(h2o, cls)%Fn &
-                                * (1d0 / (1d0 + (MeanBinSpec(i, goodj)%fn(h2o) &
-                                / RegPar(h2o, cls)%fc)**2 )) &
-                                * MeanBinSpec(i, cls)%ts(h2o) &
-                                * MeanBinSpec(i, goodj)%fn(h2o), datum, &
+                            call WriteDatumFloat(RegPar(wsl, cls)%Fn &
+                                * (1d0 / (1d0 + (MeanBinSpec(i, goodj)%fn(wsl) &
+                                / RegPar(wsl, cls)%fc)**2 )) &
+                                * MeanBinSpec(i, cls)%ts(wsl) &
+                                * MeanBinSpec(i, goodj)%fn(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
 

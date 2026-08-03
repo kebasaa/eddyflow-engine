@@ -83,6 +83,9 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     integer :: h2o_classes
     integer :: h2o_fits
     integer :: gas_classes
+    !> The site's water record. These counters are water's, and they read the
+    !> sixth slot whatever species that record held.
+    integer :: wsl
     integer :: report_unit
     integer :: mkdir_status
     integer :: open_status
@@ -98,13 +101,14 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     include '../src_common/interfaces_1.inc'
 
     assessment_ready = .true.
+    wsl = PrimaryWaterOutSlot()
     method = trim(adjustl(EddyFlowProj%hf_meth))
     h2o_classes = 0
     h2o_fits = 0
     if (allocated(MeanBinSpec)) then
         do cls = RH10, RH90
-            if (MeanBinSpecAvailable(cls, h2o)) h2o_classes = h2o_classes + 1
-            if (RegPar(h2o, cls)%fc /= error) h2o_fits = h2o_fits + 1
+            if (MeanBinSpecAvailable(cls, wsl)) h2o_classes = h2o_classes + 1
+            if (RegPar(wsl, cls)%fc /= error) h2o_fits = h2o_fits + 1
         end do
     end if
 
@@ -114,7 +118,7 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
             RegPar(dum, dum)%e3 /= error
         assessment_ready = h2o_ok
         do gas = firstGas, lastGas
-            if (gas == h2o .or. .not. fcc_var_present(gas)) cycle
+            if (gas == wsl .or. .not. fcc_var_present(gas)) cycle
             gas_ok = .false.
             do cls = 1, MaxGasClasses
                 if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
@@ -429,49 +433,61 @@ subroutine SpectralFluxLimitSettings(gas, stability, minimum, maximum, min_label
     real(kind = dbl), intent(out) :: maximum
     character(*), intent(out) :: min_label
     character(*), intent(out) :: max_label
+    logical, external :: GasSlotIsWater
 
-    select case (gas)
-        case (h2o)
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_LE
-                min_label = 'sa_min_un_le'
-            else
-                minimum = FCCsetup%SA%min_st_LE
-                min_label = 'sa_min_st_le'
-            end if
-            maximum = FCCsetup%SA%max_LE
-            max_label = 'sa_max_le'
-        case (co2)
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_gas(co2)
-                min_label = 'sa_min_un_co2'
-            else
-                minimum = FCCsetup%SA%min_st_gas(co2)
-                min_label = 'sa_min_st_co2'
-            end if
-            maximum = FCCsetup%SA%max_gas(co2)
-            max_label = 'sa_max_co2'
-        case (ch4)
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_gas(ch4)
-                min_label = 'sa_min_un_ch4'
-            else
-                minimum = FCCsetup%SA%min_st_gas(ch4)
-                min_label = 'sa_min_st_ch4'
-            end if
-            maximum = FCCsetup%SA%max_gas(ch4)
-            max_label = 'sa_max_ch4'
+    !> Water is gated on the latent heat flux, which is a one-per-site
+    !> quantity, so it keeps an arm of its own - resolved by species rather
+    !> than read off the sixth slot.
+    if (GasSlotIsWater(gas)) then
+        if (stability == SADiagUnstable) then
+            minimum = FCCsetup%SA%min_un_LE
+            min_label = 'sa_min_un_le'
+        else
+            minimum = FCCsetup%SA%min_st_LE
+            min_label = 'sa_min_st_le'
+        end if
+        maximum = FCCsetup%SA%max_LE
+        max_label = 'sa_max_le'
+        return
+    end if
+
+    !> Every other gas reads its own threshold. The four arms this replaces
+    !> ended in a `case default` that read gas4's limits, so a fifth gas was
+    !> filtered on the fourth slot's thresholds - even though ReadIniFCC had
+    !> already loaded that gas's own value into min_un_gas(gas) from its
+    !> record. The setting was written, read, and then not used.
+    if (stability == SADiagUnstable) then
+        minimum = FCCsetup%SA%min_un_gas(gas)
+        min_label = 'sa_min_un_' // trim(SpectralLimitTag(gas))
+    else
+        minimum = FCCsetup%SA%min_st_gas(gas)
+        min_label = 'sa_min_st_' // trim(SpectralLimitTag(gas))
+    end if
+    maximum = FCCsetup%SA%max_gas(gas)
+    max_label = 'sa_max_' // trim(SpectralLimitTag(gas))
+
+contains
+
+!> The name of the project setting that carries this gas's limits.
+!>
+!> The first four slots keep their flat spellings, which are the keys those
+!> settings still have. Beyond them the setting only exists per record, so the
+!> record key is what the diagnostic should tell the user to edit - it used to
+!> say `sa_min_un_gas4` for every gas past the fourth, naming a setting that
+!> does not control them.
+character(32) function SpectralLimitTag(gas_slot)
+    integer, intent(in) :: gas_slot
+
+    select case (gas_slot)
+        case (co2);  SpectralLimitTag = 'co2'
+        case (ch4);  SpectralLimitTag = 'ch4'
+        case (gas4); SpectralLimitTag = 'gas4'
         case default
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_gas(gas4)
-                min_label = 'sa_min_un_gas4'
-            else
-                minimum = FCCsetup%SA%min_st_gas(gas4)
-                min_label = 'sa_min_st_gas4'
-            end if
-            maximum = FCCsetup%SA%max_gas(gas4)
-            max_label = 'sa_max_gas4'
+            write(SpectralLimitTag, '(a,i0,a)') &
+                'gas_', gas_slot - firstGas + 1, '_record'
     end select
+end function SpectralLimitTag
+
 end subroutine SpectralFluxLimitSettings
 
 !*******************************************************************************

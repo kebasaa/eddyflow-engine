@@ -104,3 +104,39 @@ class SpectralAssessmentDiagnosticsStaticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaterIsResolvedInTheAssessment(unittest.TestCase):
+    """The RH-class assessment and the flux-limit thresholds are water's, and
+    both read the sixth slot - water only when record two holds it."""
+
+    def test_the_diagnostics_resolve_the_water_record(self):
+        src = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        self.assertIn("PrimaryWaterOutSlot()", src)
+        self.assertNotIn("MeanBinSpecAvailable(cls, h2o)", src)
+        self.assertNotIn("RegPar(h2o, cls)", src)
+
+    def test_the_results_writer_resolves_it_too(self):
+        src = read("src/src_fcc/output_spectral_assessment_results.f90")
+        self.assertIn("wsl = PrimaryWaterOutSlot()", src)
+        self.assertNotIn("%fn(h2o)", src)
+        self.assertNotIn("RegPar(h2o,", src)
+
+    def test_the_rh_class_table_is_one_loop(self):
+        """Nine copies of the same three-line write, each naming its class in
+        a literal that could disagree with the class it reported."""
+        src = read("src/src_fcc/output_spectral_assessment_results.f90")
+        self.assertNotIn("RH class   5 - 15% = ", src)
+        self.assertIn("10 * cls - 5", src)
+
+    def test_every_gas_reads_its_own_flux_limits(self):
+        """The four arms ended in a `case default` reading gas4's thresholds,
+        so a fifth gas was filtered on the fourth slot's limits even though
+        ReadIniFCC had loaded its own from the record. A water record past the
+        fourth slot was filtered on trace-gas limits rather than on LE."""
+        src = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        self.assertIn("FCCsetup%SA%min_un_gas(gas)", src)
+        self.assertIn("FCCsetup%SA%max_gas(gas)", src)
+        self.assertNotIn("FCCsetup%SA%min_un_gas(gas4)", src)
+        self.assertIn("GasSlotIsWater(gas)", src,
+                      "the latent-heat arm is a species question")
