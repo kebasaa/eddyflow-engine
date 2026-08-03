@@ -42,7 +42,11 @@ subroutine ReadSpectralAssessmentFile()
     integer :: i
     integer :: open_status
     integer :: read_status
+    integer :: slot
     logical :: short_file
+    real(kind = dbl) :: skipFn, skipfc
+    character(64) :: sa_tags(GHGNumVar)
+    character(64) :: blockname
     character(ShortInstringLen) :: dataline
 
 
@@ -97,31 +101,76 @@ subroutine ReadSpectralAssessmentFile()
             RegPar(gas, JAN:DEC)%fc = error
         end do
 
+        !> Blocks are matched by the name in their own header, not by their
+        !> position in the file.
+        !>
+        !> This loop used to walk the expected gas list and assign the Nth
+        !> block to the Nth slot, testing only that the header contained the
+        !> word TFP - the gas name it carries was never read. So a file whose
+        !> block set differed from what this project expects, by even one
+        !> gas, had every block after the difference silently assigned to the
+        !> wrong species. That is not hypothetical: it is what stops the water
+        !> carve-out here from being widened to a second hygrometer, because
+        !> every file written so far contains a block for one.
+        !>
+        !> Driven by the file now: read blocks until the headers stop, resolve
+        !> each name through SpectralGasNames - the same helper the writer
+        !> names them with - and consume a block for a gas this project does
+        !> not have rather than mis-assigning it.
+        call SpectralGasNames(sa_tags)
         do gas = firstGas, lastGas
-            if (gas == h2o) cycle
-            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            call uppercase(sa_tags(gas))
+        end do
 
+        do
             !> Blank separator, then the block header naming the gas
             read(udf, *, iostat = read_status)
             if (read_status /= 0) exit
             read(udf, '(a)', iostat = read_status) dataline
             if (read_status /= 0) exit
             if (index(dataline, 'TFP') == 0) then
+                !> End of the per-gas section. Put both lines back: what
+                !> follows is counted from here.
                 backspace(udf)
                 backspace(udf)
-                short_file = .true.
                 exit
             end if
+
+            blockname = adjustl(dataline(1:index(dataline, 'TFP') - 1))
+            call uppercase(blockname)
+            slot = 0
+            do gas = firstGas, lastGas
+                if (gas == h2o) cycle
+                if (len_trim(sa_tags(gas)) == 0) cycle
+                if (trim(adjustl(sa_tags(gas))) == trim(blockname)) then
+                    slot = gas
+                    exit
+                end if
+            end do
 
             do cls = JAN, DEC
                 read(udf, '(a)', iostat = read_status) dataline
                 if (read_status /= 0) exit
                 dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
-                read(dataline, *, iostat = read_status) &
-                    RegPar(gas, cls)%Fn, RegPar(gas, cls)%fc
+                if (slot > 0) then
+                    read(dataline, *, iostat = read_status) &
+                        RegPar(slot, cls)%Fn, RegPar(slot, cls)%fc
+                else
+                    !> A gas this project does not carry. Consume the block so
+                    !> the file stays aligned rather than skipping it.
+                    read(dataline, *, iostat = read_status) skipFn, skipfc
+                end if
                 if (read_status /= 0) exit
             end do
             if (read_status /= 0) exit
+        end do
+
+        !> Short means a gas this project wants got no block, which is now
+        !> answered by what was found rather than by how far the loop got.
+        do gas = firstGas, lastGas
+            if (gas == h2o) cycle
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (all(RegPar(gas, JAN:DEC)%fc == error)) short_file = .true.
         end do
 
         !> A truncated block is a malformed file, not an older one: the
