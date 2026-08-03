@@ -100,6 +100,11 @@ module m_typedef
     !> built directly as characters, so the only limit is this length.
     integer, parameter :: FlagStrLen = 1 + GHGNumVar
     integer, parameter :: MaxUserVar = 30
+    !> Per-analyser fields the dynamic metadata file can override, per gas:
+    !> manufacturer, model, measure type, the three separations, the three
+    !> tube properties, kw, ko, the two path lengths and tau. Spelled out in
+    !> DynMDGasFieldNames.
+    integer, parameter :: nDynMDGasFields = 14
     integer, parameter :: MaxNumBins = 300
     integer, parameter :: MaxNumBiometCol = 100
     !> Must track MaxNumInstruments, or instruments beyond this are silently

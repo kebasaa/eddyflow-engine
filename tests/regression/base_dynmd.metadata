@@ -1,0 +1,3 @@
+date,time,co2_irga_model,co2_irga_northward_separation,co2_irga_tube_length,gas4_measure_type,gas4_irga_vertical_separation
+2025-06-01,00:00,li7200_1,12.0,55.0,mixing_ratio,-18.0
+2025-06-01,02:00,li7200_1,13.5,55.0,mixing_ratio,-19.0

@@ -199,6 +199,11 @@ module m_rp_global_var
     !> Dynamic metadata
     type(DynMDType) :: DynamicMetadata
     integer :: DynamicMetadataOrder(256)
+    !> Header column of each per-gas field, by gas slot; nint(error) where the
+    !> file has none. The fixed DynamicMetadataOrder above covers the four
+    !> historical analysers only - its index table stops at gas4_irga_tau -
+    !> so a fifth gas had no way to be named in a dynamic metadata file at all.
+    integer :: DynMDGasOrder(GHGNumVar, nDynMDGasFields)
 
     !> biomet data related variables
     type(BiometSetupType) :: bSetup

@@ -435,6 +435,46 @@ end subroutine TimelagFlagLegend
 
 !***************************************************************************
 !
+! \brief       The per-gas field suffixes of the dynamic metadata file.
+! \author      Jonathan Muller
+! \note        Fourteen fields per analyser, in the order the historical index
+!              table lays them out (co2_irga_manufacturer = 20 through
+!              co2_irga_tau = 33, then the same for h2o, ch4 and gas4).
+!
+!              measure_type is the odd one: it has no `irga_` in its name,
+!              which is why the suffixes are listed rather than composed.
+!
+!              Named here so the header matcher and the reader cannot
+!              disagree about how many fields there are or what they are
+!              called - four unrolled blocks of fifteen statements each had
+!              already drifted once, with the fourth gas's measure_type
+!              landing in a separation field.
+!***************************************************************************
+subroutine DynMDGasFieldNames(names, nfields)
+    use m_common_global_var
+    implicit none
+    character(*), intent(out) :: names(nDynMDGasFields)
+    integer, intent(out) :: nfields
+
+    names(1)  = '_irga_manufacturer'
+    names(2)  = '_irga_model'
+    names(3)  = '_measure_type'
+    names(4)  = '_irga_northward_separation'
+    names(5)  = '_irga_eastward_separation'
+    names(6)  = '_irga_vertical_separation'
+    names(7)  = '_irga_tube_length'
+    names(8)  = '_irga_tube_diameter'
+    names(9)  = '_irga_tube_flowrate'
+    names(10) = '_irga_kw'
+    names(11) = '_irga_ko'
+    names(12) = '_irga_hpath_length'
+    names(13) = '_irga_vpath_length'
+    names(14) = '_irga_tau'
+    nfields = nDynMDGasFields
+end subroutine DynMDGasFieldNames
+
+!***************************************************************************
+!
 ! \brief       Gas slot a `<stem><suffix>` column name refers to, or 0.
 ! \author      Jonathan Muller
 ! \note        The drift subsystem reads two kinds of per-gas column whose

@@ -91,6 +91,10 @@ subroutine ReadDynamicMetadataHeader(unt)
     integer :: cnt
     integer :: i
     integer :: j
+    integer :: slot
+    integer :: nfields
+    character(64) :: field_suffix(nDynMDGasFields)
+    integer, external :: GasSlotFromDynMDTag
 
 
     read(unt, '(a)', iostat = read_status) dataline
@@ -112,6 +116,28 @@ subroutine ReadDynamicMetadataHeader(unt)
             DynamicMetadataOrder(j) = i
             exit
         end if
+        end do
+    end do
+
+    !> The same header, resolved per gas slot.
+    !>
+    !> StdDynMDVars is a fixed list ending at gas4_irga_tau, so a project with
+    !> more than four gases had no name it could give the fifth analyser -
+    !> nothing in the file could reach it. Here every configured gas is
+    !> offered `<label>_irga_*` under its own record label, so a COS record
+    !> answers to `cos_irga_model`, and the four historical spellings keep
+    !> working because GasSlotFromDynMDTag accepts them as aliases.
+    !>
+    !> Both passes fill in; for the first four gases they agree by
+    !> construction, and the reader takes this one.
+    call DynMDGasFieldNames(field_suffix, nfields)
+    DynMDGasOrder = nint(error)
+    do i = 1, cnt
+        do j = 1, nfields
+            slot = GasSlotFromDynMDTag(Headerlabels(i), field_suffix(j))
+            if (slot < firstGas .or. slot > lastGas) cycle
+            DynMDGasOrder(slot, j) = i
+            exit
         end do
     end do
 end subroutine ReadDynamicMetadataHeader
