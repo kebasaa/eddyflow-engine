@@ -96,6 +96,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> they used to be gas4-relative constants, which is what pinned the whole
     !> record at four gases.
     integer :: nExGas      !< gas slots in the layout
+    integer :: nExWater    !< how many of them are hygrometers
     integer :: nExVar      !< u,v,w,ts + gas slots
     integer :: nExScal     !< ts + gas slots
     !> Last configured gas slot, and the implied-do indices of the main read.
@@ -202,6 +203,15 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
     lastCfg = ts + n_layout_gas
     nExGas  = n_layout_gas
+    !> How many of the configured gases are water. Two families are sized by
+    !> it: the in-cell water flux, which is written for every gas but a
+    !> hygrometer, and the krypton pair, which only a hygrometer carries. Both
+    !> used to assume exactly one, so a second hygrometer moved the record
+    !> width and FCC could no longer read what RP had written.
+    nExWater = 0
+    do mgas = firstGas, lastCfg
+        if (GasSlotIsWater(mgas)) nExWater = nExWater + 1
+    end do
     nExVar  = 4 + n_layout_gas
     nExScal = 1 + n_layout_gas
     nMainFields = &
@@ -233,7 +243,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 2 * (4 + nExGas)          &  !< skipped: fluxes level 1 and 2
         + 2 + nExGas                &  !< Tcell, Pcell, Vcell per gas
         + 3 * nExGas                &  !< per-gas cell T, cell P, w/cell-P cov
-        + (nExGas - 1)              &  !< cell E per gas except h2o
+        + (nExGas - nExWater)       &  !< cell E per gas except hygrometers
         + nExGas                    &  !< cell Hi per gas
         + 3                         &  !< Burba terms
         + 3                         &  !< LI-7700 multipliers
@@ -297,7 +307,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     lEx%Flux0%E_gas(firstGas:lastCfg) = error
     mgi = 0
     do mgas = firstGas, lastCfg
-        if (mgas == h2o) cycle
+        if (GasSlotIsWater(mgas)) cycle
         mgi = mgi + 1
         lEx%Flux0%E_gas(mgas) = e_gas_buf(mgi)
     end do
@@ -499,7 +509,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         gas = firstGas + i - 1
         if (gas > lastGas) exit
-        if (gas == h2o) then
+        if (GasSlotIsWater(gas)) then
             read(dataline, *, iostat = read_status) &
                 instr_firm, instr_model, instr_nsep, instr_esep, instr_vsep, &
                 instr_tube_l, instr_tube_d, instr_tube_f, instr_kw, instr_ko, &
@@ -526,7 +536,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             lEx%instr(igas)%tube_l = instr_tube_l
             lEx%instr(igas)%tube_d = instr_tube_d
             lEx%instr(igas)%tube_f = instr_tube_f
-            if (gas == h2o) then
+            if (GasSlotIsWater(gas)) then
                 lEx%instr(igas)%kw = instr_kw
                 lEx%instr(igas)%ko = instr_ko
             end if

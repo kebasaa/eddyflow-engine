@@ -210,6 +210,14 @@ def _derived_widths(text, gas_count=4):
     the record by 31 fields.
     """
     env = {n: gas_count for n in _gas_count_names(text)}
+    #: How many of the configured gases are hygrometers. Counted by a loop in
+    #: the reader, so it cannot be evaluated from an assignment here - and it
+    #: is not a function of the gas count either. The layout this check pins
+    #: is the shipped four-gas one, which has exactly one water slot; that is
+    #: what makes the historical width reproduce. A project with two
+    #: hygrometers has a different width by design, which is the whole point
+    #: of the count existing.
+    env.setdefault("nExWater", 1)
     for _ in range(4):
         for m in re.finditer(
             r"^[ \t]*(\w+)\s*=\s*([-+*0-9 A-Za-z_]+)$", text, re.MULTILINE

@@ -310,7 +310,7 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddFloatDatumToDataline(lEx%cov_w_pcell(gas), csv_row, EddyFlowProj%err_label)
     end do
     do gas = co2, ts + n_layout_gas
-        if (gas == h2o) cycle
+        if (GasSlotIsWater(gas)) cycle
         call AddFloatDatumToDataline(lEx%Flux0%E_gas(gas), csv_row, EddyFlowProj%err_label)
     end do
     do gas = co2, ts + n_layout_gas
@@ -496,7 +496,7 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_l, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_d, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%tube_f, csv_row, EddyFlowProj%err_label, gain=6d4, offset=0d0)
-        if (gas == h2o) then
+        if (GasSlotIsWater(gas)) then
             call AddFloatDatumToDataline(lEx%gas_instr(gas)%kw, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(lEx%gas_instr(gas)%ko, csv_row, EddyFlowProj%err_label)
         end if

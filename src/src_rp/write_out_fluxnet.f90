@@ -414,7 +414,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> closed-paths (for WPL), with timelags of other gases
     !> Water flux inside the cell, for every gas but the water slot itself.
     do gas = co2, ts + nFluxnetLayoutSlots
-        if (gas == h2o) cycle
+        if (GasSlotIsWater(gas)) cycle
         call AddFloatDatumToDataline(Flux3%E_gas(gas), csv_row, EddyFlowProj%err_label)
     end do
     do gas = co2, ts + nFluxnetLayoutSlots
@@ -859,7 +859,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%tube_l, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%tube_d, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%tube_f, csv_row, EddyFlowProj%err_label, gain=6d4, offset=0d0)
-        if (gas == h2o) then
+        if (GasSlotIsWater(gas)) then
             call AddFloatDatumToDataline(E2Col(gas)%Instr%kw, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(E2Col(gas)%Instr%ko, csv_row, EddyFlowProj%err_label)
         end if

@@ -202,7 +202,7 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, 'W_PA_CELL_' // trim(FluxnetLayoutTags(j)) // '_COV', separator)
     end do
     do j = 1, nFluxnetLayoutSlots
-        if (FluxnetLayoutSlots(j) == h2o) cycle
+        if (GasSlotIsWater(FluxnetLayoutSlots(j))) cycle
         call AddDatum(csv_row, 'FH2O_CELL_' // trim(FluxnetLayoutTags(j)), separator)
     end do
     do j = 1, nFluxnetLayoutSlots
@@ -367,7 +367,7 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, 'BADM_INST_GA_CP_TUBE_FLOW_RATE_GA_' // trim(g4label), separator)
         !> The krypton coefficients belong to a hygrometer, so only the water
         !> slot carries them - as it always has.
-        if (FluxnetLayoutSlots(j) == h2o) then
+        if (GasSlotIsWater(FluxnetLayoutSlots(j))) then
             call AddDatum(csv_row, 'KRYPTON_HYDRO_KH2O_GA_' // trim(g4label), separator)
             call AddDatum(csv_row, 'KRYPTON_HYDRO_KO2_GA_' // trim(g4label), separator)
         end if
@@ -693,8 +693,9 @@ end subroutine AddVariableFamily
 function FluxnetNrwTag(layout_index) result(tag)
     integer, intent(in) :: layout_index
     character(32) :: tag
+    integer, external :: PrimaryWaterOutSlot
 
-    if (FluxnetLayoutSlots(layout_index) == h2o) then
+    if (FluxnetLayoutSlots(layout_index) == PrimaryWaterOutSlot()) then
         tag = 'LE'
     else
         tag = FluxnetFluxTag(layout_index)
