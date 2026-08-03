@@ -84,6 +84,7 @@ subroutine WriteVariablesRP()
     implicit none
     !> local variables
     integer :: i
+    integer :: j
     integer :: init_an_flags
     integer :: leap_an_flags
     integer :: init_an_wsect
@@ -935,10 +936,27 @@ subroutine WriteVariablesRP()
     DriftCorr%b = error
     DriftCorr%c = error
     !> read values
-    DriftCorr%dir_cal(0:6, co2) = SNTags(301:307)%value
-    DriftCorr%dir_cal(0:6, h2o) = SNTags(308:314)%value
-    DriftCorr%inv_cal(0:6, co2) = SNTags(329:335)%value
-    DriftCorr%inv_cal(0:6, h2o) = SNTags(336:342)%value
+    !>
+    !> The tag table carries seven direct and seven inverse coefficients for
+    !> each of the four legacy slots - drift_dir_co2_0..6 at 301, h2o at 308,
+    !> ch4 at 315, gas4 at 322, and the inverse set from 329 - but only the
+    !> first two of each were read. The CH4 and fourth-gas polynomials could
+    !> be written into a project and were then silently discarded, so those
+    !> gases were never drift-corrected however they were configured.
+    !>
+    !> Guarded, unlike the four slices this replaces. SearchLocalTags leaves a
+    !> tag it did not find untouched, so an unguarded read copied whatever the
+    !> table happened to hold over the `error` set two lines up - and `error`
+    !> is what marks a gas as having no calibration polynomial and thus no
+    !> drift correction.
+    do i = co2, gas4
+        do j = 0, 6
+            if (SNTagFound(301 + (i - co2) * 7 + j)) &
+                DriftCorr%dir_cal(j, i) = SNTags(301 + (i - co2) * 7 + j)%value
+            if (SNTagFound(329 + (i - co2) * 7 + j)) &
+                DriftCorr%inv_cal(j, i) = SNTags(329 + (i - co2) * 7 + j)%value
+        end do
+    end do
     DriftCorr%b = SNTags(370)%value
     DriftCorr%c = SNTags(371)%value
 
