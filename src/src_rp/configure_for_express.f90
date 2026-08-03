@@ -38,6 +38,10 @@
 subroutine ConfigureForExpress
     use m_rp_global_var
     implicit none
+    !> local variables
+    integer :: gas
+    character(32) :: species
+    include '../src_common/interfaces.inc'
 
 
     !> raw data processing methods
@@ -73,9 +77,22 @@ subroutine ConfigureForExpress
     sr%lim_u   = 3.5d0
     sr%hf_lim  = 1d0
     sr%lim_w   = 5.0d0
-    sr%lim_gas          = 3.5d0
-    sr%lim_gas(ch4)     = 8d0
-    sr%lim_gas(gas4)    = 8d0
+    !> Per-gas defaults, chosen by species rather than by slot. Written as
+    !> co2/h2o/ch4/gas4 they described positions: a fifth gas got whichever
+    !> value the blanket assignment left, and a project ordering its records
+    !> differently got CO2's plausibility band applied to something else.
+    !>
+    !> The fall-through is the fourth slot's old set - a wide band and the
+    !> looser spike limit - which is exactly what "any other trace gas" meant
+    !> when it was spelled gas4.
+    sr%lim_gas = 8d0
+    do gas = firstGas, lastGas
+        species = GasOutputLabel(gas)
+        call lowercase(species)
+        select case (trim(adjustl(species)))
+            case ('co2', 'h2o'); sr%lim_gas(gas) = 3.5d0
+        end select
+    end do
     ar%lim     = 7
     ar%bins    = 100
     ar%hf_lim  = 70
@@ -86,14 +103,26 @@ subroutine ConfigureForExpress
     al%w_max   = 5d0
     al%t_min   = -40d0
     al%t_max   = 50d0
-    al%gas_min(co2) = 200d0
-    al%gas_max(co2) = 900d0
-    al%gas_min(h2o) = 0d0
-    al%gas_max(h2o) = 40d0
-    al%gas_min(ch4) = 1.7d0 * 0.1d0  !< 1.7 ppm is minimum in unpolluted troposphere, 0.1 is safety factor
-    al%gas_max(ch4) = 1000d0    !< to be better assessed
-    al%gas_min(gas4) = 0d0  !< no default lower bound — gas4 can be any trace gas at any concentration
-    al%gas_max(gas4) = 1000d0    !< to be better assessed
+    do gas = firstGas, lastGas
+        species = GasOutputLabel(gas)
+        call lowercase(species)
+        select case (trim(adjustl(species)))
+            case ('co2')
+                al%gas_min(gas) = 200d0
+                al%gas_max(gas) = 900d0
+            case ('h2o')
+                al%gas_min(gas) = 0d0
+                al%gas_max(gas) = 40d0
+            case ('ch4')
+                !< 1.7 ppm is minimum in unpolluted troposphere, 0.1 is safety factor
+                al%gas_min(gas) = 1.7d0 * 0.1d0
+                al%gas_max(gas) = 1000d0    !< to be better assessed
+            case default
+                !< no default lower bound - any trace gas at any concentration
+                al%gas_min(gas) = 0d0
+                al%gas_max(gas) = 1000d0    !< to be better assessed
+        end select
+    end do
     sk%hf_skmin = -2d0
     sk%hf_skmax = 2d0
     sk%sf_skmin = -1d0

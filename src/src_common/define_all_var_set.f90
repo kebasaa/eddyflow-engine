@@ -433,6 +433,45 @@ end function IsHistoricGasVar
 
 !***************************************************************************
 !
+! \brief       Whether a metadata column names a gas this project measures.
+! \author      Jonathan Muller
+! \note        The metadata validator gated three of its checks on
+!              `case ('co2','h2o','ch4','n2o')`. A column naming any other
+!              species - COS, or a second N2O - fell to the default arm and
+!              was not checked at all: its measure type and its units went
+!              unvalidated, so a mis-declared column reached the processing
+!              chain and produced a plausible-looking wrong flux.
+!
+!              The four historic names stay true whatever the project holds,
+!              because a legacy file names its fourth gas 'n2o' regardless of
+!              what it is. Beyond them the question is answered from the
+!              records, which is where a project declares its species.
+!***************************************************************************
+logical function IsGasVar(var)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: var
+    character(32) :: want
+    character(32) :: species
+    integer :: i
+    logical, external :: IsHistoricGasVar
+
+    IsGasVar = .true.
+    if (IsHistoricGasVar(var)) return
+
+    want = var
+    call lowercase(want)
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        species = EddyFlowProj%gas(i)%var
+        call lowercase(species)
+        if (len_trim(species) == 0) cycle
+        if (trim(adjustl(species)) == trim(adjustl(want))) return
+    end do
+    IsGasVar = .false.
+end function IsGasVar
+
+!***************************************************************************
+!
 ! \brief       Gas slot behind one of the historically named gas columns.
 ! \author      Jonathan Muller
 ! \note        'n2o' maps to gas4: the fourth slot has always been N2O's by

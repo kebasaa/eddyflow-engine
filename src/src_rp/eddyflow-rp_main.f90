@@ -129,6 +129,8 @@ program EddyFlowRP
     character(128) ::  PeriodSkipMessage
 
     logical :: skip_period
+    !> Whether any configured gas needs the FCC-only spectral path.
+    logical :: has_fcc_only_gas
     logical :: passed(32)
     logical :: MetaIsNeeded = .true.
     logical :: EmbBiometDataExist = .false.
@@ -654,7 +656,8 @@ program EddyFlowRP
 
                 !> If H2O instrument path type is 'open', doesn't make sense
                 !> to use RH classes so set it to 1.
-                if (toInit .and. E2Col(h2o)%instr%path_type == 'open') then
+                if (toInit .and. &
+                    E2Col(PrimaryWaterOutSlot())%instr%path_type == 'open') then
                     TOSetup%h2o_nclass = 1
                     toInit = .false.
                 end if
@@ -2367,17 +2370,25 @@ program EddyFlowRP
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
 
-            if (E2Col(ch4)%Instr%model(1:len_trim(E2Col(ch4)%Instr%model) - 2) &
-                == 'li7700') then
+            !> LI-7700 spectroscopic correction. It applies to whichever gas
+            !> the LI-7700 measures, which is a question about the analyser -
+            !> asked of slot seven, it both missed a 7700 sitting on any other
+            !> record and, on a project whose seventh slot holds something
+            !> else, would have scaled the wrong gas. The multipliers depend
+            !> only on P, T and water, so they are computed once.
+            do j = firstGas, lastGas
+                if (E2Col(j)%Instr%model(1:max(1, &
+                    len_trim(E2Col(j)%Instr%model) - 2)) /= 'li7700') cycle
                 !> Calculate multipliers for LI-7700 spectroscopic correction
-                call Multipliers7700(Stats%Pr, Ambient%Ta, Stats%chi(h2o), &
+                call Multipliers7700(Stats%Pr, Ambient%Ta, &
+                    Stats%chi(PrimaryWaterOutSlot()), &
                     Mul7700%A, Mul7700%B, Mul7700%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual
                 !> Uses multiplies A, because this is equal to key.
-                Stats%chi(ch4) = Stats%chi(ch4) * Mul7700%A
-                Stats%r(ch4)   = Stats%r(ch4)   * Mul7700%A
-            end if
+                Stats%chi(j) = Stats%chi(j) * Mul7700%A
+                Stats%r(j)   = Stats%r(j)   * Mul7700%A
+            end do
 
             !> Calculate LI-7500 surface heating correction if requested
             call BurbaTerms()
@@ -2390,7 +2401,9 @@ program EddyFlowRP
             !> for using logger version from [Station], simply remove the
             !> following line.
 !            if (E2Col(co2)%instr%sw_ver /= errSwVer) then
-            Metadata%logger_swver = E2Col(co2)%instr%sw_ver
+            !> From the first configured gas's analyser. Was E2Col(co2) -
+            !> slot five - which is that analyser only when CO2 is record one.
+            Metadata%logger_swver = E2Col(FirstConfiguredGasSlot())%instr%sw_ver
 !            elseif (E2Col(h2o)%instr%sw_ver /= errSwVer) then
 !                Metadata%logger_swver = E2Col(h2o)%instr%sw_ver
 !            end if
@@ -2415,9 +2428,22 @@ program EddyFlowRP
                     Ambient%zL, Ambient%WS, Ambient%L, &
                     E2Col(u)%Instr%height, Metadata%d, Metadata%z0)
             else
-                if (OutVarPresent(gas4)) then
-                    !> Gas4 cannot use in-situ spectral corrections (FCC-only): compute
-                    !> with BPCF=1.0, then zero co2/h2o/ch4 so FCC corrects those later
+                !> Whether any gas needs the FCC-only path. That is a species
+                !> question - CO2, water and CH4 have in-situ spectral
+                !> corrections and nothing else does - so it is asked of the
+                !> records rather than of the fourth slot. A project with COS
+                !> on record five and nothing on record four used to take the
+                !> else arm and lose every flux for the period.
+                has_fcc_only_gas = .false.
+                do j = firstGas, lastGas
+                    if (.not. OutVarPresent(j)) cycle
+                    if (.not. HasInSituSpectralCorrection(j)) &
+                        has_fcc_only_gas = .true.
+                end do
+                if (has_fcc_only_gas) then
+                    !> Those gases cannot use in-situ spectral corrections
+                    !> (FCC-only): compute with BPCF=1.0, then zero the ones
+                    !> that can so FCC corrects those later.
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
                         Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
@@ -2425,9 +2451,12 @@ program EddyFlowRP
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
                     call Fluxes1_rp()
                     call Fluxes23_rp()
-                    Flux1%gas(co2) = error;  Flux2%gas(co2) = error;  Flux3%gas(co2) = error
-                    Flux1%gas(h2o) = error;  Flux2%gas(h2o) = error;  Flux3%gas(h2o) = error
-                    Flux1%gas(ch4) = error;  Flux2%gas(ch4) = error;  Flux3%gas(ch4) = error
+                    do j = firstGas, lastGas
+                        if (.not. HasInSituSpectralCorrection(j)) cycle
+                        Flux1%gas(j) = error
+                        Flux2%gas(j) = error
+                        Flux3%gas(j) = error
+                    end do
                 else
                     Flux1 = errFlux
                     Flux2 = errFlux

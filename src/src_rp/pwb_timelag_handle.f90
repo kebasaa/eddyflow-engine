@@ -78,7 +78,8 @@ end subroutine ResetPwbAggregateSummary
 subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
     integer, intent(in) :: nrow, n
     type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
-    integer :: gas, origin
+    integer :: gas, origin, wsl
+    integer, external :: PrimaryWaterOutSlot
 
     TimelagOpt(n)%tlag = error
     TimelagOpt(n)%RH = error
@@ -93,17 +94,21 @@ subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
                 PwbSummaryDonorCount(gas, origin) = PwbSummaryDonorCount(gas, origin) + 1
         end if
     end do
-    if (E2Col(h2o)%present .and. TimelagOpt(n)%tlag(h2o) /= error &
+    !> RH travels with the water record's own time-lag, so it is gated on the
+    !> site's water rather than on slot six.
+    wsl = PrimaryWaterOutSlot()
+    if (E2Col(wsl)%present .and. TimelagOpt(n)%tlag(wsl) /= error &
         .and. Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
         TimelagOpt(n)%RH = Stats%RH
     else
-        TimelagOpt(n)%tlag(h2o) = error
+        TimelagOpt(n)%tlag(wsl) = error
     end if
 end subroutine AddPwbTimelagSummaryDataset
 
 subroutine ResolvePwbAggregateSummary(actn)
     integer, intent(inout) :: actn(E2NumVar)
     integer :: gas, donor, best_count, candidate
+    logical, external :: GasSlotIsWater
 
     PwbSummarySource = 0
     PwbSummaryEvidence = 0
@@ -115,7 +120,15 @@ subroutine ResolvePwbAggregateSummary(actn)
         donor = 0
         best_count = 0
         do candidate = firstGas, lastGas
-            if (candidate == gas .or. candidate == h2o) cycle
+            !> Water is never a donor: its lag is RH-dependent in a way the
+            !> trace gases' are not, so borrowing from it is worse than not
+            !> borrowing. That is a property of the species, and it was
+            !> written as `candidate == h2o` - the historical sixth slot. On a
+            !> project whose water sits elsewhere that excluded whichever gas
+            !> occupied slot six from ever donating, and let the real
+            !> hygrometer donate to everything.
+            if (candidate == gas) cycle
+            if (GasSlotIsWater(candidate)) cycle
             if (PwbSummarySource(candidate) == 0) cycle
             if (PwbSummaryDonorCount(gas, candidate) > best_count) then
                 donor = candidate
@@ -260,7 +273,22 @@ subroutine LookupPwbTimelagCache(gas, stage, found, actual_lag, used_lag, row_la
     end do
 end subroutine LookupPwbTimelagCache
 
+!***************************************************************************
+!> Fingerprint the settings a cached time-lag depends on.
+!>
+!> Anything not in here is a setting a user can change without the cache
+!> noticing, so the next run reuses a lag computed under the old value.
+!>
+!> The four historical slots keep their exact place in the string, so a
+!> project with four gases fingerprints as it always has and its cache
+!> survives. Gases past the fourth are appended only when the project has
+!> them - their bounds were not covered at all, so a fifth gas's lag window
+!> could be edited and the stale lag reused indefinitely.
+!***************************************************************************
 character(256) function PwbCacheFingerprint()
+    integer :: gas
+    character(32) :: extra
+
     write(PwbCacheFingerprint, '(a,4(l1,":"),a,8(f10.4,":"),a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,i0,a,i0,a,l1,a,i0,a,l1)') &
         'provided=', PWBSetup%lag_bounds_provided(co2), PWBSetup%lag_bounds_provided(h2o), &
         PWBSetup%lag_bounds_provided(ch4), PWBSetup%lag_bounds_provided(gas4), 'bounds=', &
@@ -276,6 +304,15 @@ character(256) function PwbCacheFingerprint()
         '_hdi=', PWBSetup%hdi_thresh_s, '_dev=', PWBSetup%dev_thresh_s, '_prefilter=', PWBSetup%hdi_prefilter_s, &
         '_smooth=', PWBSetup%smoothing_width, '_seed=', PWBSetup%random_seed, '_approx=', PWBSetup%approx_ccf, &
         '_ar=', PWBSetup%max_ar_order, '_pre=', PWBSetup%detect_prewpl
+
+    do gas = gas4 + 1, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (.not. PWBSetup%lag_bounds_provided(gas)) cycle
+        write(extra, '(a,i0,a,f10.4,a,f10.4)') ':g', gas - firstGas + 1, &
+            '=', PWBSetup%min_lag(gas), ':', PWBSetup%max_lag(gas)
+        PwbCacheFingerprint = &
+            trim(PwbCacheFingerprint) // trim(adjustl(extra))
+    end do
 end function PwbCacheFingerprint
 
 subroutine ReadPwbTimelagCache(path, recognized, valid)

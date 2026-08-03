@@ -47,6 +47,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     integer, intent(out) :: h2o_n(MM)
     !> local variables
     integer :: gas
+    integer :: wsl
     integer :: cls
     integer :: i
     integer :: N
@@ -67,11 +68,15 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     real(kind = dbl) :: sdvec
     real(kind = dbl) :: tmpvec(nrow)
     real(kind = dbl) ,parameter :: min_range = 0.3d0
+    include '../src_common/interfaces_1.inc'
 
 !TO REFINE integer :: read_status
 !TO REFINE integer :: h2on
 
-    E2Col(h2o)%present = .true.
+    !> The site's water is forced present here so its RH-class treatment below
+    !> runs; slot six is water only when record two holds it.
+    wsl = PrimaryWaterOutSlot()
+    E2Col(wsl)%present = .true.
     do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             !> All gases, including H2O, are treated here
@@ -91,7 +96,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
             deallocate (tmpx, devx)
 
             !> If H2O was split in classes, now make H2O calculations
-            if (gas == h2o .and. MM > 1) then
+            if (gas == wsl .and. MM > 1) then
                 !> Water vapour, the same as above, but for RH classes
                 toH2O%def=error
                 toH2O%min=error
@@ -103,7 +108,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                         if(toSet(i)%RH >= dfloat(cls - 1) * cls_size &
                             .and. toSet(i)%RH <= dfloat(cls) * cls_size) then
                             h2o_n(cls) = h2o_n(cls) + 1
-                            tmpvec(h2o_n(cls)) = toSet(i)%tlag(h2o)
+                            tmpvec(h2o_n(cls)) = toSet(i)%tlag(wsl)
                         end if
                     end do
                     N = h2o_n(cls)

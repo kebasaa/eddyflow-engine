@@ -105,7 +105,12 @@ class TheAssessmentChainCoversEveryGas(unittest.TestCase):
         project made - so unset means the test is skipped.
         """
         source = code("src/src_fcc/cospectra_qaqc.f90")
-        self.assertEqual(source.count("do gas = firstGas, lastGas"), 2,
+        #> Scoped to the razor-blade section rather than counted over the whole
+        #> file: the Foken filter below it is now per-gas too, and a file-wide
+        #> count would fail on any unrelated loop that is added. Anchored on
+        #> code, since code() drops the comments that name the sections.
+        razor = source[: source.index("FCCsetup%SA%foken_lim")]
+        self.assertEqual(razor.count("do gas = firstGas, lastGas"), 2,
                          "one loop per stability case")
         self.assertIn("lo /= error .and. gas_flux < lo", source)
         self.assertIn("hi /= error .and. gas_flux > hi", source)

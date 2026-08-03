@@ -59,7 +59,10 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     character(FlagStrLen) :: hf_ds, sf_ds
     integer :: STFlg(GHGNumVar)
     integer :: DTFlg(GHGNumVar)
-    integer :: qc_tau, qc_H, qc_co2, qc_h2o, qc_ch4, qc_gas4
+    integer :: qc_tau, qc_H
+    !> Composite Foken flag per gas slot. Was four named scalars.
+    integer :: qc_gas(GHGNumVar)
+    logical :: all_gases_failed
     integer :: month
     integer :: gas
     integer :: sort
@@ -229,10 +232,13 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (FCCsetup%SA%foken_lim >= 0) then
         !> Partial flags
         !> Stationarity flags
-        call PartialFlagLF(nint(lEx%F_SS(co2)), STFlg(w_co2))
-        call PartialFlagLF(nint(lEx%F_SS(h2o)), STFlg(w_h2o))
-        call PartialFlagLF(nint(lEx%F_SS(ch4)), STFlg(w_ch4))
-        call PartialFlagLF(nint(lEx%F_SS(gas4)), STFlg(w_gas4))
+        !> One flag per configured gas. Four named slots meant a fifth gas's
+        !> cospectra were never rejected on their own Foken flag, however bad
+        !> it was, and never contributed to the all-gases-failed test below.
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            call PartialFlagLF(nint(lEx%F_SS(gas)), STFlg(gas))
+        end do
         call PartialFlagLF(nint(lEx%H_SS),  STFlg(w_ts))
         call PartialFlagLF(nint(lEx%TAU_SS),   STFlg(w_u))
         !> Developed turbulence flags
@@ -244,38 +250,31 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
         !> Composite flags
         call GTK2Flag(STFlg(w_u),   DTFlg(u), qc_tau)
         call GTK2Flag(STFlg(w_ts),  DTFlg(w), qc_H)
-        call GTK2Flag(STFlg(w_co2), DTFlg(w), qc_co2)
-        call GTK2Flag(STFlg(w_h2o), DTFlg(w), qc_h2o)
-        call GTK2Flag(STFlg(w_ch4), DTFlg(w), qc_ch4)
-        call GTK2Flag(STFlg(w_gas4), DTFlg(w), qc_gas4)
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            call GTK2Flag(STFlg(gas), DTFlg(w), qc_gas(gas))
+        end do
 
-        !> Actual (co)spectra elimination
+        !> Actual (co)spectra elimination.
+        !>
+        !> Present gases only. A slot the project does not configure carries
+        !> `error` in F_SS, which flags as failing - so counting those would
+        !> hold all_gases_failed true whatever the real gases did, and throw
+        !> the whole period away.
         if (qc_H < FCCsetup%SA%foken_lim &
             .and. qc_tau < FCCsetup%SA%foken_lim) then
-            if (qc_h2o >= FCCsetup%SA%foken_lim) then
-                SADiagRejectedFoken(h2o) = SADiagRejectedFoken(h2o) + 1
-                BinSpec%of(h2o) = error
-                BinCospForUnstable%of(h2o) = error
-            end if
-            if (qc_co2 >= FCCsetup%SA%foken_lim)  then
-                SADiagRejectedFoken(co2) = SADiagRejectedFoken(co2) + 1
-                BinSpec%of(co2) = error
-                BinCospForUnstable%of(co2) = error
-            end if
-            if (qc_ch4 >= FCCsetup%SA%foken_lim)  then
-                SADiagRejectedFoken(ch4) = SADiagRejectedFoken(ch4) + 1
-                BinSpec%of(ch4) = error
-                BinCospForUnstable%of(ch4) = error
-            end if
-            if (qc_gas4 >= FCCsetup%SA%foken_lim) then
-                SADiagRejectedFoken(gas4) = SADiagRejectedFoken(gas4) + 1
-                BinSpec%of(gas4) = error
-                BinCospForUnstable%of(gas4) = error
-            end if
-            if (qc_h2o >= FCCsetup%SA%foken_lim &
-                .and. qc_co2 >= FCCsetup%SA%foken_lim &
-                .and. qc_ch4 >= FCCsetup%SA%foken_lim &
-                .and. qc_gas4 >= FCCsetup%SA%foken_lim) then
+            all_gases_failed = .true.
+            do gas = firstGas, lastGas
+                if (.not. fcc_var_present(gas)) cycle
+                if (qc_gas(gas) >= FCCsetup%SA%foken_lim) then
+                    SADiagRejectedFoken(gas) = SADiagRejectedFoken(gas) + 1
+                    BinSpec%of(gas) = error
+                    BinCospForUnstable%of(gas) = error
+                else
+                    all_gases_failed = .false.
+                end if
+            end do
+            if (all_gases_failed) then
                 BinSpec = ErrSpec
                 BinCospForUnstable = ErrSpec
                 skip_spectra = .true.
@@ -285,14 +284,12 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             BinCospForUnstable = ErrSpec
             skip_spectra = .true.
         end if
-        foken_ok(h2o) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_h2o < FCCsetup%SA%foken_lim
-        foken_ok(co2) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_co2 < FCCsetup%SA%foken_lim
-        foken_ok(ch4) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_ch4 < FCCsetup%SA%foken_lim
-        foken_ok(gas4) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_gas4 < FCCsetup%SA%foken_lim
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            foken_ok(gas) = qc_H < FCCsetup%SA%foken_lim &
+                .and. qc_tau < FCCsetup%SA%foken_lim &
+                .and. qc_gas(gas) < FCCsetup%SA%foken_lim
+        end do
     end if
 
     !> Keep flux candidates that passed every non-flux quality requirement.

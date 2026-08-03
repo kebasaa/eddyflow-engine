@@ -102,6 +102,16 @@ subroutine DefaultVarsSelection(LocCol)
     h2or_col = 0
     h2of_col = 0
     h2od_col = 0
+    !> Express mode's automatic column guess, and deliberately still the
+    !> LI-COR trio: CO2 and H2O from a 7500 or 7200, CH4 from a 7700, with the
+    !> 7200's mixing-ratio > mole-fraction > molar-density priority. It writes
+    !> EddyFlowProj%col, the retired flat array, not the gas records.
+    !>
+    !> Not generalised, because "guess which column this site meant" has no
+    !> answer for an arbitrary species: there is no priority rule for COS and
+    !> no instrument convention to key one on. A project measuring anything
+    !> beyond the trio declares its gases as records and does not come here -
+    !> Express is reached only from run_mode == 'express'.
     do i = 1, NumCol
         !> Sonic diagnostics
         if (LocCol(i)%var == 'anemometer_diagnostic' .and. trim(adjustl(LocCol(i)%Instr%model)) == EddyFlowProj%master_sonic) &

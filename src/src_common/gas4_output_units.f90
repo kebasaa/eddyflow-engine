@@ -302,6 +302,60 @@ end subroutine FullOutputGasSlots
 
 !***************************************************************************
 !
+! \brief       Whether a gas slot has an in-situ spectral correction.
+! \author      Jonathan Muller
+! \note        The in-situ (Fratini/Ibrom) corrections are derived from the
+!              measured cospectra of CO2, water and CH4; there is no such
+!              derivation for an arbitrary trace gas, which is why those go
+!              through FCC with BPCF = 1 instead.
+!
+!              This was asked as OutVarPresent(gas4) - "is the fourth slot
+!              occupied" - which both missed a COS on record five when record
+!              four was empty, and mistook a second CO2 sitting in slot eight
+!              for a gas that needs the FCC-only path.
+!***************************************************************************
+!***************************************************************************
+!
+! \brief       First gas slot the project configures, or the historical fifth.
+! \author      Jonathan Muller
+! \note        For the handful of places that need "an" analyser rather than a
+!              particular one - the logger software version, say. They read
+!              E2Col(co2), which is the first record only when CO2 happens to
+!              be it.
+!***************************************************************************
+integer function FirstConfiguredGasSlot()
+    use m_common_global_var
+    implicit none
+    integer :: gas
+
+    FirstConfiguredGasSlot = co2
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
+        FirstConfiguredGasSlot = gas
+        return
+    end do
+end function FirstConfiguredGasSlot
+
+logical function HasInSituSpectralCorrection(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    character(32) :: species
+    character(32), external :: GasOutputLabel
+
+    HasInSituSpectralCorrection = .false.
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+
+    species = GasOutputLabel(gas_slot)
+    call lowercase(species)
+    select case (trim(adjustl(species)))
+        case ('co2', 'h2o', 'ch4'); HasInSituSpectralCorrection = .true.
+    end select
+end function HasInSituSpectralCorrection
+
+!***************************************************************************
+!
 ! \brief       Width and legend of the packed statistical-flag strings.
 ! \author      Jonathan Muller
 ! \note        Eight of the Vickers and Mahrt flags carry one digit per

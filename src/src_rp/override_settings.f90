@@ -37,12 +37,20 @@
 subroutine OverrideSettings()
     use m_rp_global_var
     implicit none
+    !> local variables
+    integer :: gas
+    logical :: has_li7500
 
     !> If biomet measurements are not to be used, they are also not to be output
     if (EddyFlowProj%biomet_data == 'none') EddyFlowProj%out_biomet = .false.
 
-    !> if there is no LI-7500 among the instruments, Burba terms should not be calculated
-    if (index(E2Col(co2)%Instr%model, 'li7500') == 0 &
-        .and. index(E2Col(h2o)%Instr%model,'li7500') == 0) &
-        RPsetup%bu_corr = 'none'
+    !> if there is no LI-7500 among the instruments, Burba terms should not be
+    !> calculated. "Among the instruments" means all of them: this asked slots
+    !> five and six, so a site carrying its LI-7500 on any other record had
+    !> the Burba correction silently switched off.
+    has_li7500 = .false.
+    do gas = firstGas, lastGas
+        if (index(E2Col(gas)%Instr%model, 'li7500') /= 0) has_li7500 = .true.
+    end do
+    if (.not. has_li7500) RPsetup%bu_corr = 'none'
 end subroutine OverrideSettings

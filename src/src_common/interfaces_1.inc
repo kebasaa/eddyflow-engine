@@ -114,6 +114,21 @@ interface
         character(*), intent(out) :: legend
     end subroutine TimelagFlagLegend
 
+    !> Whether a gas has an in-situ spectral correction, or must go through
+    !> FCC with BPCF = 1. A species question, not a slot one.
+    logical function HasInSituSpectralCorrection(gas_slot)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+    end function HasInSituSpectralCorrection
+
+    !> First gas slot the project configures, for the places that need "an"
+    !> analyser rather than a particular one.
+    integer function FirstConfiguredGasSlot()
+        use m_common_global_var
+        implicit none
+    end function FirstConfiguredGasSlot
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &

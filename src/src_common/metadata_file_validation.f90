@@ -192,11 +192,24 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
     type(InstrumentType), intent(in) :: LocInstr
     type(ColType), intent(in) :: LocCol
     logical, intent(out) :: passed(32)
+    !> local variables
+    character(32) :: sel_var
+    logical, external :: IsGasVar
 
     passed = .true.
 
+    !> Which arm of the select below a column takes. Every gas the project
+    !> declares takes the gas arm, not just the four historic names: a COS
+    !> column used to fall to `case default` and have its analyser's firm and
+    !> model go unchecked entirely. Standing in as 'co2' rather than being
+    !> listed keeps the arm's own tests untouched - they are about the
+    !> analyser, and the one test that is about the species, the hygrometer
+    !> check, reads LocCol%var directly and so still sees the real name.
+    sel_var = LocCol%var
+    if (IsGasVar(LocCol%var)) sel_var = 'co2'
+
     !> Check firm & model
-    select case (LocCol%var)
+    select case (trim(adjustl(sel_var)))
         !> Anemometric variables must come from a sonic anemometer
         case ('u', 'v', 'w', 'ts', 'sos')
             !> check firm
@@ -328,23 +341,23 @@ subroutine ColumnValidation(LocCol, passed)
     logical, intent(out) :: passed(32)
     !> local variables
     character(32) :: units
+    logical, external :: IsGasVar
 
     passed = .true.
 
-    !> Check measure type for gas concentrations
-    select case (LocCol%var)
-        case ('co2', 'h2o', 'ch4', 'n2o')
-            select case (LocCol%measure_type)
-                case ('molar_density', 'mole_fraction', 'mixing_ratio')
-                    continue
-                case default
-                    passed(1) = .false.
-                    passed(10) = .false.
-                    return
-            end select
-        case default
-            continue
-    end select
+    !> Check measure type for gas concentrations. Every gas the project
+    !> declares, not the four historic names - a COS or a second N2O column
+    !> used to fall through unchecked.
+    if (IsGasVar(LocCol%var)) then
+        select case (LocCol%measure_type)
+            case ('molar_density', 'mole_fraction', 'mixing_ratio')
+                continue
+            case default
+                passed(1) = .false.
+                passed(10) = .false.
+                return
+        end select
+    end if
 
     !> Check output units compatibility, in case conversion is performed or
     !> input units compatibility, in case conversion is not performed
@@ -354,16 +367,17 @@ subroutine ColumnValidation(LocCol, passed)
     else
         units = LocCol%unit_in
     end if
+    if (IsGasVar(LocCol%var)) then
+        select case (units)
+            case ('ppt', 'ppm', 'ppb', 'pmol_mol', 'mmol_m3', 'umol_m3', 'g_m3', 'mg_m3', 'ug_m3')
+                continue
+            case default
+                passed(1) = .false.
+                passed(11) = .false.
+                return
+        end select
+    end if
     select case (LocCol%var)
-        case ('co2', 'h2o', 'ch4', 'n2o')
-            select case (units)
-                case ('ppt', 'ppm', 'ppb', 'pmol_mol', 'mmol_m3', 'umol_m3', 'g_m3', 'mg_m3', 'ug_m3')
-                    continue
-                case default
-                    passed(1) = .false.
-                    passed(11) = .false.
-                    return
-            end select
         case ('u', 'v', 'w', 'sos')
             select case (units)
                 case ('m_sec', 'mm_sec', 'cm_sec')
