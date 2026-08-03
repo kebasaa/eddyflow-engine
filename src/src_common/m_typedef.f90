@@ -184,6 +184,12 @@ module m_typedef
     !> character labels. The gas slots beyond the four legacy ones carry no
     !> compile-time name: their species is read from the project file, so they
     !> are left blank here and filled in at run time.
+    !>
+    !> These four are slot *defaults* too. Output column names come from
+    !> GasOutputLabel and the tag helpers in gas4_output_units, which resolve
+    !> the record - so a project ordering its gases differently gets its
+    !> columns named for what it measured, not for what slot five is called
+    !> here.
     character(8) :: e2lab(E2NumVar)
     data e2lab(1:8) / 'u', 'v', 'w', 'ts', 'co2', 'h2o', 'ch4', 'n2o' /
     data e2lab(9:lastGas) / 60*'' /

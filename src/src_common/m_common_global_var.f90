@@ -176,6 +176,11 @@ module m_common_global_var
     !> physical params and other useful numbers
     integer :: mmm
     real(kind = dbl) :: Dc(E2NumVar) !< Diffus. coeff. of gases in air [m+2 s-1]
+    !> Slot *defaults*, not species constants. Superseded per record by
+    !> WriteProcessingProjectVariables, which writes each gas's own diffusivity
+    !> from the project - including for slots one to four. Nothing may read
+    !> Dc(co2) and mean "carbon dioxide": on a project that orders its records
+    !> differently, slot five holds something else.
     data (Dc(mmm), mmm = co2, gas4) / 0.00001381d0, 0.00002178d0, 0.00001952d0, 0.00001436d0/ !--> Massman (1998, Atm Env, Table 2)
     real(kind = sgl) :: MW(E2NumVar) !< Molecular weights
     !> Defaults keyed by legacy slot position, not by species. A record that
