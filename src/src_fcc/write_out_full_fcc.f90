@@ -47,6 +47,9 @@ subroutine WriteOutFullFcc(lEx)
     !> header from the same list.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
+    !> How many variables the packed statistical-flag strings describe.
+    integer :: n_flag_vars
+    character(LongOutstringLen) :: flag_legend
     character(DatumLen) :: field_val
     include '../src_common/interfaces_1.inc'
 
@@ -55,6 +58,9 @@ subroutine WriteOutFullFcc(lEx)
     !> arms below fire for slots holding no gas, so an unbounded loop wrote a
     !> block for every one of the sixty-four.
     call FullOutputGasSlots(fo_slots, n_fo_slots)
+
+    !> The flag cells are cut to the variables the units row names.
+    call StatisticalFlagVars(n_flag_vars, flag_legend)
 
     call clearstr(csv_row)
     !> Preliminary file and timestamp information
@@ -367,13 +373,13 @@ subroutine WriteOutFullFcc(lEx)
     !> Vickers and Mahrt 97 flags.
     !>
     !> Written straight out rather than through field_val, which is DatumLen
-    !> (64) and cannot hold a string one character per variable wide. RP's full
-    !> output has emitted the full FlagStrLen width since the flags stopped
-    !> being base-10 integers; FCC was still truncating to the first nine
-    !> characters, so in an fcc_follows run - where FCC writes the file - the
-    !> full output silently reported flags for only four gases.
+    !> (64) and cannot hold a string one character per variable wide.
+    !>
+    !> Cut to the variables the units row names, exactly as RP's writer is.
+    !> vm_flags carries the leading filler at position one and one digit per
+    !> variable after it, so the slice is the same shape both sides.
     do i = 1, 8
-        call AddDatum(csv_row, lEx%vm_flags(i), separator)
+        call AddDatum(csv_row, lEx%vm_flags(i)(1 : 1 + n_flag_vars), separator)
     end do
     call AddDatum(csv_row, lEx%vm_tlag_hf, separator)
     call AddDatum(csv_row, lEx%vm_tlag_sf, separator)

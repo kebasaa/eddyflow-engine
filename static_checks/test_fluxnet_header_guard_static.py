@@ -185,16 +185,45 @@ class Vm97IsPerConfiguredGas(unittest.TestCase):
         """RP and FCC write the same column; it cannot be two widths.
 
         Under fcc_follows the FCC copy is the one that survives, so a narrower
-        FCC write silently caps the full output at four gases.
+        FCC write silently caps the full output at four gases - and a wider
+        one carries filler digits for slots the project never configured.
+
+        Both now cut to StatisticalFlagVars, which is also what builds the
+        units row's legend, so the cell describes exactly the digits it holds.
         """
+        rp = read("src/src_rp/write_out_full.f90")
         fcc = read("src/src_fcc/write_out_full_fcc.f90")
-        self.assertIn("call AddDatum(csv_row, lEx%vm_flags(i), separator)", fcc)
+        for path, src in (("write_out_full.f90", rp),
+                          ("write_out_full_fcc.f90", fcc)):
+            self.assertIn("call StatisticalFlagVars(n_flag_vars", src,
+                          "%s must cut the flag cells to the variables the "
+                          "units row names" % path)
+        self.assertIn(
+            "lEx%vm_flags(i)(1 : 1 + n_flag_vars)", fcc,
+            "vm_flags carries the leading filler at position one, so the "
+            "slice is the same shape as RP's")
+        self.assertNotIn(
+            "CharHF%sr(2:FlagStrLen)", rp,
+            "FlagStrLen is the array width, not the variable count: slicing "
+            "to it emitted sixty-nine characters against a legend of eight")
         self.assertNotIn(
             "write(field_val, *) lEx%vm_flags(i)",
             fcc,
             "field_val is DatumLen and cannot hold a per-variable flag string; "
             "this aborts at runtime with 'End of record'",
         )
+
+    def test_the_flag_legend_is_generated_not_spelled_out(self):
+        """It was ten copies of a literal naming co2/h2o/ch4/gas4, in each of
+        the four header branches - forty chances for one to drift away from
+        what the row carries."""
+        for path in ("src/src_rp/init_outfiles_rp.f90",
+                     "src/src_fcc/init_out_files.f90"):
+            src = read(path)
+            self.assertNotIn("8u/v/w/ts/co2/h2o/ch4/", src,
+                             "%s still spells the legend out" % path)
+            self.assertIn("call StatisticalFlagVars(", src)
+            self.assertIn("call TimelagFlagLegend(", src)
 
 
 class Vm97ProducersCoverEveryGas(unittest.TestCase):

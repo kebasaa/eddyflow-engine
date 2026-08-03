@@ -302,6 +302,85 @@ end subroutine FullOutputGasSlots
 
 !***************************************************************************
 !
+! \brief       Width and legend of the packed statistical-flag strings.
+! \author      Jonathan Muller
+! \note        Eight of the Vickers and Mahrt flags carry one digit per
+!              variable, behind a leading filler digit. The full output's
+!              units row spells out which variable each digit stands for:
+!              `8u/v/w/ts/co2/h2o/ch4/<gas4>`, eight names.
+!
+!              The row emitted `'8' // CharHF%sr(2:FlagStrLen)`. FlagStrLen
+!              is 1 + GHGNumVar = 69, so the cell carried sixty-nine
+!              characters against a legend naming eight - the real flags
+!              followed by sixty '9's for gas slots the project does not
+!              configure. Readable by eye, unreadable by column.
+!
+!              Both sides now ask this. nvars is the anemometric block plus
+!              one per *configured* gas, so at four gases the cell is nine
+!              characters again, exactly as it was before the slot capacity
+!              grew, and the legend names exactly what the digits are.
+!
+!              The legend is built from the same tags the column names use,
+!              so a project measuring CO2 twice reads `co2` and `co2_2`
+!              rather than two identical entries.
+!***************************************************************************
+subroutine StatisticalFlagVars(nvars, legend)
+    use m_common_global_var
+    implicit none
+    integer, intent(out) :: nvars
+    character(*), intent(out) :: legend
+    character(64) :: tags(GHGNumVar)
+    integer :: gas
+
+    call SpectralVarTags(tags)
+
+    legend = 'u/v/w/ts'
+    nvars = ts - u + 1
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        nvars = nvars + 1
+        legend = trim(legend) // '/' // trim(tags(gas))
+    end do
+end subroutine StatisticalFlagVars
+
+!***************************************************************************
+!
+! \brief       Legend of the gas-only flag strings: time-lag hard and soft.
+! \author      Jonathan Muller
+! \note        These are still four digits wide. TestTimeLag packs its flags
+!              into a base-10 integer of exactly four gas digits and says so
+!              in a comment - generalising it needs that packing replaced by
+!              PackFlagString, as the other six tests already have been.
+!              Until then the legend names the first four gas records, from
+!              their own tags rather than from the literals co2/h2o/ch4, so
+!              at least it does not misname what is there.
+!***************************************************************************
+subroutine TimelagFlagLegend(nvars, legend)
+    use m_common_global_var
+    implicit none
+    integer, intent(out) :: nvars
+    character(*), intent(out) :: legend
+    character(64) :: tags(GHGNumVar)
+    integer :: gas
+
+    call SpectralVarTags(tags)
+
+    legend = ''
+    nvars = 0
+    do gas = co2, gas4
+        nvars = nvars + 1
+        if (len_trim(tags(gas)) > 0) then
+            if (nvars == 1) then
+                legend = trim(tags(gas))
+            else
+                legend = trim(legend) // '/' // trim(tags(gas))
+            end if
+        end if
+    end do
+end subroutine TimelagFlagLegend
+
+!***************************************************************************
+!
 ! \brief       Gas slot a `<stem><suffix>` column name refers to, or 0.
 ! \author      Jonathan Muller
 ! \note        The drift subsystem reads two kinds of per-gas column whose

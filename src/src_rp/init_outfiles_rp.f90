@@ -55,6 +55,12 @@ subroutine InitOutFiles_rp()
     !> row writer walks the same list, so the two cannot disagree.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
+    !> Statistical-flag legends, shared with WriteOutFull so the units row
+    !> names exactly the digits the data row carries.
+    character(LongOutstringLen) :: flag_legend
+    character(LongOutstringLen) :: tl_legend
+    integer :: n_flag_vars
+    integer :: n_tl_vars
     !> Statistics-file layout: the slots st1..st7 carry, and the name each
     !> one goes by in their header.
     integer :: st_slots(E2NumVar)
@@ -110,6 +116,9 @@ subroutine InitOutFiles_rp()
     !> The gas slots the full output carries a block for. WriteOutFull walks
     !> the same list; when the two were spelled out separately the fixed
     !> format's row ran sixty gas blocks past its own header.
+    call StatisticalFlagVars(n_flag_vars, flag_legend)
+    call TimelagFlagLegend(n_tl_vars, tl_legend)
+
     call FullOutputGasSlots(fo_slots, n_fo_slots)
     if (EddyFlowProj%fix_out_format &
         .and. min(EddyFlowProj%gas_num, MaxNumGases) > n_fo_slots) then
@@ -379,16 +388,17 @@ subroutine InitOutFiles_rp()
             call AddDatum(header2,'spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
                 &skewness_kurtosis_hf,skewness_kurtosis_sf,discontinuities_hf,discontinuities_sf,timelag_hf,&
                 &timelag_sf,attack_angle_hf,non_steady_wind_hf', separator)
-            call AddDatum(header3,'8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
+            !> Eight per-variable flags, then two gas-only time-lag flags,
+            !> then two single-variable ones. Built from the shared legend so
+            !> the units row names exactly the digits the data row carries -
+            !> it was ten copies of a literal naming eight variables while
+            !> the row emitted sixty-nine characters.
+            call AddDatum(header3, &
+                '8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(tl_legend) // ',8' // trim(tl_legend) &
                 // ',8aa,8U', separator)
 
             !> Add spikes for EddyFlow variables
@@ -580,16 +590,11 @@ subroutine InitOutFiles_rp()
                 &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
                 &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
                 &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],&
-                &8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
+                &8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(tl_legend) // ',8' // trim(tl_legend) &
                 // ',8aa,8U,[#],[#],[#],[#],[#],[#],[#],[#],&
                 &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
                 &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&

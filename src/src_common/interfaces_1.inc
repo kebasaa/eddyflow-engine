@@ -97,6 +97,23 @@ interface
         implicit none
     end function PrimaryCarbonOutSlot
 
+    !> Width and legend of the packed statistical-flag strings. The units row
+    !> names the variables and the data row emits their digits, so both sides
+    !> ask this or the cell describes a different set than it carries.
+    subroutine StatisticalFlagVars(nvars, legend)
+        use m_common_global_var
+        implicit none
+        integer, intent(out) :: nvars
+        character(*), intent(out) :: legend
+    end subroutine StatisticalFlagVars
+
+    subroutine TimelagFlagLegend(nvars, legend)
+        use m_common_global_var
+        implicit none
+        integer, intent(out) :: nvars
+        character(*), intent(out) :: legend
+    end subroutine TimelagFlagLegend
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &

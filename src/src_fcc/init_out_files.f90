@@ -52,6 +52,11 @@ subroutine InitOutFiles(lEx)
     !> WriteOutFullFcc walks the same list.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
+    !> Statistical-flag legends, shared with WriteOutFullFcc.
+    character(LongOutstringLen) :: flag_legend
+    character(LongOutstringLen) :: tl_legend
+    integer :: n_flag_vars
+    integer :: n_tl_vars
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
@@ -78,6 +83,9 @@ subroutine InitOutFiles(lEx)
     !> row writer also calls. The fixed format names four blocks and the row
     !> loop emitted sixty-four; RP's twin had the same split.
     call FullOutputGasSlots(fo_slots, n_fo_slots)
+
+    call StatisticalFlagVars(n_flag_vars, flag_legend)
+    call TimelagFlagLegend(n_tl_vars, tl_legend)
 
     !> Full output file
     if (EddyFlowProj%out_full) then
@@ -241,16 +249,12 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header2,'spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
                 &skewness_kurtosis_hf,skewness_kurtosis_sf,discontinuities_hf,discontinuities_sf,timelag_hf,&
                 &timelag_sf,attack_angle_hf,non_steady_wind_hf', separator)
-            call AddDatum(header3,'8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
+            call AddDatum(header3, &
+                '8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(tl_legend) // ',8' // trim(tl_legend) &
                 // ',8aa,8U', separator)
 
             !> Add spikes for EddyFlow variables
@@ -441,16 +445,11 @@ subroutine InitOutFiles(lEx)
                 &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
                 &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
                 &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],&
-                &8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
+                &8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+                // ',8' // trim(tl_legend) // ',8' // trim(tl_legend) &
                 // ',8aa,8U,[#],[#],[#],[#],[#],[#],[#],[#],&
                 &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
                 &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&

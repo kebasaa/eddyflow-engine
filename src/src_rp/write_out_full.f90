@@ -47,6 +47,10 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> sixty gas blocks whenever fix_out_format was set.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
+    !> How many variables the packed statistical-flag strings describe. The
+    !> header names exactly these, from the same helper.
+    integer :: n_flag_vars
+    character(LongOutstringLen) :: flag_legend
 !    integer :: prof
     real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
@@ -64,6 +68,9 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> firstGas..lastGas: the placeholder arms fire for slots with no gas at
     !> all, so an unbounded loop wrote a block for each of the sixty-four.
     call FullOutputGasSlots(fo_slots, n_fo_slots)
+
+    !> The flag cells are cut to the variables the units row names.
+    call StatisticalFlagVars(n_flag_vars, flag_legend)
 
     !> Preliminary file and timestamp information
     call clearstr(csv_row)
@@ -377,14 +384,20 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end do
 
     !> Vickers and Mahrt 97 hard flags
-    call AddDatum(csv_row, '8'//CharHF%sr(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharHF%ar(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharHF%do(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharHF%al(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharHF%sk(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharSF%sk(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharHF%ds(2:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharSF%ds(2:FlagStrLen), separator)
+    !> One digit per variable behind the leading filler, cut to the variables
+    !> the units row actually names. Slicing to FlagStrLen emitted sixty-nine
+    !> characters - the real flags followed by sixty '9's for gas slots the
+    !> project does not configure - against a legend naming eight. At four
+    !> gases this is nine characters again, as it was before the slot
+    !> capacity grew.
+    call AddDatum(csv_row, '8'//CharHF%sr(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharHF%ar(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharHF%do(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharHF%al(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharHF%sk(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharSF%sk(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharHF%ds(2:1 + n_flag_vars), separator)
+    call AddDatum(csv_row, '8'//CharSF%ds(2:1 + n_flag_vars), separator)
     call AddDatum(csv_row, '8'//CharHF%tl(FlagStrLen-3:FlagStrLen), separator)
     call AddDatum(csv_row, '8'//CharSF%tl(FlagStrLen-3:FlagStrLen), separator)
     call AddDatum(csv_row, '8'//CharHF%aa(FlagStrLen:FlagStrLen), separator)
