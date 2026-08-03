@@ -71,7 +71,16 @@ module m_common_global_var
     integer :: NumUserVar
     logical :: FileWithFlags
     integer :: n_cstm_biomet
-    integer :: Gas4CalRefCol
+    !> Raw column holding each gas's calibration reference, indexed by gas
+    !> slot; 0 where the project supplies none. Was a single scalar that could
+    !> only ever calibrate the fourth slot, so a site running a calibration
+    !> reference against any other gas had it silently ignored.
+    integer :: GasCalRefCol(GHGNumVar)
+    !> Gas slot each user column calibrates, or 0. The 'cal-ref' marker on
+    !> UserCol says only *that* a column is a calibration reference; which gas
+    !> it belongs to used to be implicit, because there could be only one and
+    !> it was always the fourth slot.
+    integer :: UserCalRefSlot(MaxUserVar)
 
     !> Platform management
     character(8) :: OS

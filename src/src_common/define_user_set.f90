@@ -48,6 +48,7 @@ subroutine DefineUserSet(LocCol, Raw, nrow, ncol, UserSet, unrow, uncol)
     !> local variables
     integer :: j
     integer :: jj
+    integer :: slot
     character(len(LocCol%label)), external :: replace
 
 
@@ -67,8 +68,14 @@ subroutine DefineUserSet(LocCol, Raw, nrow, ncol, UserSet, unrow, uncol)
         !> Replace spaces with underscores
         UserCol(jj)%label = replace(UserCol(jj)%label, &
             ' ', '_', len(UserCol(jj)%label))
-        !> Special case of 4th gas calibration reference
-        if (j == Gas4CalRefCol) UserCol(jj)%var = 'cal-ref'
+        !> Calibration reference columns, and the gas each one calibrates.
+        UserCalRefSlot(jj) = 0
+        do slot = firstGas, lastGas
+            if (GasCalRefCol(slot) /= j) cycle
+            UserCol(jj)%var = 'cal-ref'
+            UserCalRefSlot(jj) = slot
+            exit
+        end do
     end do
     NumUserVar = jj
 

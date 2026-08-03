@@ -32,6 +32,7 @@ subroutine DefineVars(LocCol, ncol, uncol)
     integer, intent(in) :: ncol, uncol
     type(ColType), intent(in) :: LocCol(MaxNumCol)
     integer :: idx, usr_cnt
+    integer :: slot
     character(len(LocCol%label)), external :: replace
 
     E2Col = NullCol
@@ -80,7 +81,13 @@ subroutine DefineVars(LocCol, ncol, uncol)
         UserCol(usr_cnt)%present = .true.
         UserCol(usr_cnt)%label = replace(UserCol(usr_cnt)%label, &
             ' ', '_', len(UserCol(usr_cnt)%label))
-        if (idx == Gas4CalRefCol) UserCol(usr_cnt)%var = 'cal-ref'
+        UserCalRefSlot(usr_cnt) = 0
+        do slot = firstGas, lastGas
+            if (GasCalRefCol(slot) /= idx) cycle
+            UserCol(usr_cnt)%var = 'cal-ref'
+            UserCalRefSlot(usr_cnt) = slot
+            exit
+        end do
     end do
     NumUserVar = usr_cnt
 

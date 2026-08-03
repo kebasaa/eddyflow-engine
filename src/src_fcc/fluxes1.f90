@@ -40,29 +40,43 @@ subroutine Fluxes1(lEx)
     type(ExType), intent(inout) :: lEx
     !> local variables
     real(kind = dbl)  :: Cox
+    integer :: gas
+    include '../src_common/interfaces_1.inc'
 
     Flux1 = errFlux
 
     !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
     !> according to van Dijk et al. (2003, JAOT, eq. 13b)
-    select case (lEx%instr(ih2o)%model(1:len_trim(lEx%instr(ih2o)%model) - 2))
-        case('open_path_krypton','closed_path_krypton', &
-                'open_path_lyman','closed_path_lyman')
-            if (lEx%instr(ih2o)%ko /= error .and. lEx%instr(ih2o)%kw /= 0d0 &
-                .and. lEx%Ta > 0d0 .and. lEx%Bowen /= error &
-                .and. lEx%lambda > 0d0) then
-                Cox = 1d0 + 0.23d0 * lEx%instr(ih2o)%ko / lEx%instr(ih2o)%kw &
-                    * lEx%Bowen * lEx%lambda / lEx%Ta
-                lEx%cov_w(h2o) = Cox * lEx%cov_w(h2o)
-                lEx%var(h2o) = Cox**2 * lEx%var(h2o)
-                !> Alternative formulation by T.W. Horst
-                !> http://www.eol.ucar.edu/instrumentation/&
-                !> &sounding/isfs/isff-support-center/how-tos/&
-                !> &corrections-to-sensible-and-latent-heat-flux-measurements
-                !lEx%cov_w(h2o) = lEx%cov_w(h2o) / (1 - 8d0 * 0.23d0 &
-                !* lEx%instr(ih2o)%ko / lEx%instr(ih2o)%kw * lEx%Bowen)
-            endif
-    end select
+    !>
+    !> Per hygrometer, not per slot. This asked lEx%instr(ih2o) - the water
+    !> role of a five-wide instrument numbering that ran alongside the gas
+    !> slots - and corrected lEx%cov_w(h2o). A site with two hygrometers had
+    !> only one of them corrected, and a site whose water is not record two
+    !> had the correction applied to whatever gas held slot six.
+    do gas = firstGas, lastGas
+        if (.not. GasSlotIsWater(gas)) cycle
+        select case (lEx%gas_instr(gas)%model(1:max(1, &
+            len_trim(lEx%gas_instr(gas)%model) - 2)))
+            case('open_path_krypton','closed_path_krypton', &
+                    'open_path_lyman','closed_path_lyman')
+                if (lEx%gas_instr(gas)%ko /= error &
+                    .and. lEx%gas_instr(gas)%kw /= 0d0 &
+                    .and. lEx%Ta > 0d0 .and. lEx%Bowen /= error &
+                    .and. lEx%lambda > 0d0) then
+                    Cox = 1d0 + 0.23d0 * lEx%gas_instr(gas)%ko &
+                        / lEx%gas_instr(gas)%kw &
+                        * lEx%Bowen * lEx%lambda / lEx%Ta
+                    lEx%cov_w(gas) = Cox * lEx%cov_w(gas)
+                    lEx%var(gas) = Cox**2 * lEx%var(gas)
+                    !> Alternative formulation by T.W. Horst
+                    !> http://www.eol.ucar.edu/instrumentation/&
+                    !> &sounding/isfs/isff-support-center/how-tos/&
+                    !> &corrections-to-sensible-and-latent-heat-flux-measurements
+                    !lEx%cov_w(gas) = lEx%cov_w(gas) / (1 - 8d0 * 0.23d0 &
+                    !* lEx%gas_instr(gas)%ko / lEx%gas_instr(gas)%kw * lEx%Bowen)
+                endif
+        end select
+    end do
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = lEx%Flux0%H

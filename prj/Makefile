@@ -601,8 +601,8 @@ adjust_timelag_opt_settings.o: \
 rename_tmp_files_rp.o: \
 	rename_tmp_files_rp.f90 \
 	m_rp_global_var.o
-calibrate_gas4.o: \
-	calibrate_gas4.f90 \
+calibrate_gas.o: \
+	calibrate_gas.f90 \
 	m_common_global_var.o
 rffti.o: \
 	rffti.F

@@ -42,8 +42,10 @@ subroutine DefineUsedVariables(LocCol)
     type(ColType), intent(inout) :: LocCol(MaxNumCol)
     !> local variables
     integer :: i
+    integer :: slot
     integer :: selected_ts_col
     logical :: ts_found
+    integer, external :: GasSlotFromDynMDTag
 
 
     NumUserVar = 0
@@ -136,7 +138,7 @@ subroutine DefineUsedVariables(LocCol)
 
     !> Loop on the actual number of columns and determine
     !> whether to use them or not
-    Gas4CalRefCol = 0
+    GasCalRefCol = 0
     do i = 1, NumCol
         !> Variables from the master_sonic are to be used
         if (LocCol(i)%instr%master_sonic) then
@@ -149,8 +151,17 @@ subroutine DefineUsedVariables(LocCol)
         if (IsCustomOutputColumn(LocCol(i)) .and. NumUserVar < MaxUserVar - 1) &
             NumUserVar = NumUserVar + 1
 
-        !> Detect whether an 4th gas calibration data column is available
-        if (index(LocCol(i)%var, 'cal-ref') /= 0) Gas4CalRefCol = i
+        !> Detect whether a gas calibration data column is available.
+        !>
+        !> `<gas>_cal-ref` names the gas it calibrates, resolved the same way
+        !> the drift subsystem resolves `<gas>_ref`. A bare `cal-ref` with no
+        !> prefix keeps calibrating the fourth slot, which is what every
+        !> metadata file written before this says and means.
+        if (index(LocCol(i)%var, 'cal-ref') /= 0) then
+            slot = GasSlotFromDynMDTag(LocCol(i)%var, '_cal-ref')
+            if (slot <= 0) slot = gas4
+            GasCalRefCol(slot) = i
+        end if
     end do
 
     !> If user selects a different temperature reading

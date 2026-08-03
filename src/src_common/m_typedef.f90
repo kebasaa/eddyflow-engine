@@ -165,11 +165,16 @@ module m_typedef
     integer, parameter :: te  = lastCell + 1
     integer, parameter :: pe  = lastCell + 2
 
+    !> The anemometer's slot in ExType%instr. There used to be four more -
+    !> ico2, ih2o, ich4, igas4 - a second, five-wide numbering of the *same*
+    !> analysers the gas slots already number, bridged by
+    !> `igas = ico2 + (gas - co2)` in read_ex_record and mirrored across
+    !> afterwards. Two numberings for one thing meant the ex record converted
+    !> the first four analysers' units under one and the rest under a
+    !> duplicate of that arithmetic, and it capped anything reached by role at
+    !> four gases. Analysers are addressed by gas slot now, through
+    !> ExType%gas_instr; the anemometer keeps this one because it is not a gas.
     integer, parameter :: sonic  = 1
-    integer, parameter :: ico2   = 2
-    integer, parameter :: ih2o   = 3
-    integer, parameter :: ich4   = 4
-    integer, parameter :: igas4  = 5
 
     !> character labels. The gas slots beyond the four legacy ones carry no
     !> compile-time name: their species is read from the project file, so they

@@ -70,7 +70,7 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
         if (LocCol(j)%var /= 'ignore' .and. LocCol(j)%var /= 'not_numeric') then
             jj = jj + 1
             TmpCol(jj) = LocCol(j)
-            if (Gas4CalRefCol == j) Gas4CalRefCol = jj
+            where (GasCalRefCol == j) GasCalRefCol = jj
         end if
     end do
 

@@ -85,7 +85,7 @@ program EddyFlowRP
     integer :: tlagn(E2NumVar)
     integer :: MaxNumFileRecords
     integer :: NextRawFileIndx
-    integer :: InitGas4CalRefCol
+    integer :: InitGasCalRefCol(GHGNumVar)
     integer :: nCalibEvents
     integer :: NumDynRecords
     integer :: clean
@@ -1582,10 +1582,10 @@ program EddyFlowRP
     InitializeStorage = .true.
     InitOutVarPresence = .true.
     DynamicMetadata = ErrDynamicMetadata
-    InitGas4CalRefCol = Gas4CalRefCol
+    InitGasCalRefCol = GasCalRefCol
 
     periods_loop: do
-        Gas4CalRefCol = InitGas4CalRefCol
+        GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
         call ResetCecDescriptor(CECDescriptor)
         call ResetCecFlux(CECFlux)
@@ -1989,7 +1989,7 @@ program EddyFlowRP
             !> column from UserCol) does so. Note that so far the calibration
             !> procedure is fully customized on the needs of a
             !> specific O3 analyzer
-            call CalibrateGas4(E2Set, size(E2Set, 1), size(E2Set, 2))
+            call CalibrateGases(E2Set, size(E2Set, 1), size(E2Set, 2))
 
             !> Output raw dataset second level
             if (RPsetup%out_raw(2)) call OutRawData(Stats%date, Stats%time, &

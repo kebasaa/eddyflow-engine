@@ -214,7 +214,10 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
 
             !> Acquisition frequency and gas analyser path type for H2O
             if (FCCMetadata%ac_freq <= 0) FCCMetadata%ac_freq = lEx%ac_freq
-            FCCMetadata%H2oPathType = lEx%instr(ih2o)%path_type
+            !> From the site's water record. Was lEx%instr(ih2o), the water
+            !> role of the retired five-wide instrument numbering.
+            FCCMetadata%H2oPathType = &
+                lEx%gas_instr(PrimaryWaterOutSlot())%path_type
         end if
 
         if (all(fcc_var_present) .and. Diag7200%present .and. Diag7500%present .and. Diag7700%present .and. &

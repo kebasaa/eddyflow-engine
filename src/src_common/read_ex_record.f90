@@ -503,9 +503,21 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     dataline = dataline(ix+1: len_trim(dataline))
 
     !> One analyser block per configured gas, in slot order, exactly as
-    !> InitFluxnetFile_rp writes them. The first four are also stored under
-    !> their instrument-role index, because the flux code still reaches the
-    !> historical analysers that way and a later pass mirrors them across.
+    !> InitFluxnetFile_rp writes them.
+    !>
+    !> All into gas_instr, converted to SI here and not later.
+    !>
+    !> The first four used to go through lEx%instr under an instrument-role
+    !> index, be converted by a separate loop far below, and be mirrored
+    !> across; gases past the fourth were converted inline here by a duplicate
+    !> of that arithmetic. Both paths are this one now.
+    !>
+    !> Converting HERE and not after is what makes it correct: the
+    !> self-describing analyser block further down carries the same fields
+    !> already in SI and overwrites whatever it lists. The old mirror happened
+    !> to run after that block and clobbered slots 5-8 back to converted
+    !> values; a conversion pass placed there instead would scale that block's
+    !> SI values a second time.
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         gas = firstGas + i - 1
         if (gas > lastGas) exit
@@ -526,61 +538,50 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             call InvalidateRecord()
             return
         end if
-        if (gas <= gas4) then
-            igas = ico2 + (gas - co2)
-            lEx%instr(igas)%firm = instr_firm
-            lEx%instr(igas)%model = instr_model
-            lEx%instr(igas)%nsep = instr_nsep
-            lEx%instr(igas)%esep = instr_esep
-            lEx%instr(igas)%vsep = instr_vsep
-            lEx%instr(igas)%tube_l = instr_tube_l
-            lEx%instr(igas)%tube_d = instr_tube_d
-            lEx%instr(igas)%tube_f = instr_tube_f
-            if (GasSlotIsWater(gas)) then
-                lEx%instr(igas)%kw = instr_kw
-                lEx%instr(igas)%ko = instr_ko
-            end if
-            lEx%instr(igas)%hpath_length = instr_hpath
-            lEx%instr(igas)%vpath_length = instr_vpath
-            lEx%instr(igas)%tau = instr_tau
-        else
-            !> Past the historical four there is no instrument role, so the
-            !> slot-indexed array is the only home. Units are converted here
-            !> to match what the mirror of the first four ends up holding.
-            lEx%gas_instr(gas)%firm = instr_firm
-            lEx%gas_instr(gas)%model = instr_model
-            lEx%gas_instr(gas)%category = 'irga'
-            if (instr_nsep /= error) lEx%gas_instr(gas)%nsep = instr_nsep * 1d-2
-            if (instr_esep /= error) lEx%gas_instr(gas)%esep = instr_esep * 1d-2
-            if (instr_vsep /= error) lEx%gas_instr(gas)%vsep = instr_vsep * 1d-2
-            if (instr_hpath /= error) &
-                lEx%gas_instr(gas)%hpath_length = instr_hpath * 1d-2
-            if (instr_vpath /= error) &
-                lEx%gas_instr(gas)%vpath_length = instr_vpath * 1d-2
-            lEx%gas_instr(gas)%tau = instr_tau
-            select case (IrgaPathTypeFromModel(lEx%gas_instr(gas)%model))
-                case ('open')
-                    lEx%gas_instr(gas)%path_type = 'open'
-                    lEx%gas_instr(gas)%tube_l = instr_tube_l
-                    lEx%gas_instr(gas)%tube_d = instr_tube_d
-                    lEx%gas_instr(gas)%tube_f = instr_tube_f
-                case default
-                    lEx%gas_instr(gas)%path_type = 'closed'
-                    if (instr_tube_l /= error) &
-                        lEx%gas_instr(gas)%tube_l = instr_tube_l * 1d-2
-                    if (instr_tube_d /= error) &
-                        lEx%gas_instr(gas)%tube_d = instr_tube_d * 1d-3
-                    if (instr_tube_f /= error) &
-                        lEx%gas_instr(gas)%tube_f = instr_tube_f / 6d4
-            end select
-            if (instr_nsep /= error .and. instr_esep /= error) then
-                lEx%gas_instr(gas)%hsep = &
-                    dsqrt(lEx%gas_instr(gas)%nsep**2 + lEx%gas_instr(gas)%esep**2)
-            elseif (instr_nsep /= error) then
-                lEx%gas_instr(gas)%hsep = lEx%gas_instr(gas)%nsep
-            elseif (instr_esep /= error) then
-                lEx%gas_instr(gas)%hsep = lEx%gas_instr(gas)%esep
-            end if
+        lEx%gas_instr(gas)%firm = instr_firm
+        lEx%gas_instr(gas)%model = instr_model
+        lEx%gas_instr(gas)%category = 'irga'
+        lEx%gas_instr(gas)%tau = instr_tau
+        if (GasSlotIsWater(gas)) then
+            lEx%gas_instr(gas)%kw = instr_kw
+            lEx%gas_instr(gas)%ko = instr_ko
+        end if
+        !> merge, not a guarded assignment: a gas with no analyser carries the
+        !> error code in every field, and that has to reach gas_instr. Guarding
+        !> the assignment leaves the field at its initialised zero instead, and
+        !> a zero separation reads as a real measurement.
+        lEx%gas_instr(gas)%nsep = &
+            merge(instr_nsep * 1d-2, instr_nsep, instr_nsep /= error)
+        lEx%gas_instr(gas)%esep = &
+            merge(instr_esep * 1d-2, instr_esep, instr_esep /= error)
+        lEx%gas_instr(gas)%vsep = &
+            merge(instr_vsep * 1d-2, instr_vsep, instr_vsep /= error)
+        lEx%gas_instr(gas)%hpath_length = &
+            merge(instr_hpath * 1d-2, instr_hpath, instr_hpath /= error)
+        lEx%gas_instr(gas)%vpath_length = &
+            merge(instr_vpath * 1d-2, instr_vpath, instr_vpath /= error)
+        select case (IrgaPathTypeFromModel(lEx%gas_instr(gas)%model))
+            case ('open')
+                lEx%gas_instr(gas)%path_type = 'open'
+                lEx%gas_instr(gas)%tube_l = instr_tube_l
+                lEx%gas_instr(gas)%tube_d = instr_tube_d
+                lEx%gas_instr(gas)%tube_f = instr_tube_f
+            case default
+                lEx%gas_instr(gas)%path_type = 'closed'
+                lEx%gas_instr(gas)%tube_l = &
+                    merge(instr_tube_l * 1d-2, instr_tube_l, instr_tube_l /= error)
+                lEx%gas_instr(gas)%tube_d = &
+                    merge(instr_tube_d * 1d-3, instr_tube_d, instr_tube_d /= error)
+                lEx%gas_instr(gas)%tube_f = &
+                    merge(instr_tube_f / 6d4, instr_tube_f, instr_tube_f /= error)
+        end select
+        if (instr_nsep /= error .and. instr_esep /= error) then
+            lEx%gas_instr(gas)%hsep = dsqrt(lEx%gas_instr(gas)%nsep**2 &
+                + lEx%gas_instr(gas)%esep**2)
+        elseif (instr_nsep /= error) then
+            lEx%gas_instr(gas)%hsep = lEx%gas_instr(gas)%nsep
+        elseif (instr_esep /= error) then
+            lEx%gas_instr(gas)%hsep = lEx%gas_instr(gas)%esep
         end if
         ix = strCharIndex(dataline, ',', n_meta_gas)
         if (ix <= 0) then
@@ -700,7 +701,15 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
                 call InvalidateRecord()
                 return
             end if
-            if (gas >= firstGas .and. gas <= lastGas) then
+            !> Past the fourth slot only. The GA_* block above owns co2..gas4
+            !> and is the authority for them, exactly as InitFluxnetFile_rp
+            !> describes when it writes these columns "for the remaining
+            !> gases". The old code enforced that by accident - it mirrored
+            !> the converted GA_* values over the top of whatever this block
+            !> had left - so with the mirror gone the precedence has to be
+            !> stated. Letting this block win for the first four would also
+            !> mix units: it is SI, the GA_* columns are metadata units.
+            if (gas > gas4 .and. gas >= firstGas .and. gas <= lastGas) then
                 lEx%gas_instr(gas)%firm = instr_firm
                 lEx%gas_instr(gas)%model = instr_model
                 lEx%gas_instr(gas)%nsep = instr_nsep
@@ -895,44 +904,13 @@ subroutine CompleteEssentials(lEx)
     end do
 
     lEx%instr(sonic)%category = 'sonic'
-    lEx%instr(ico2:igas4)%category = 'irga'
-    !> Determine whether igas analysers are open or closed path
-    do igas = ico2, igas4
-        select case (IrgaPathTypeFromModel(lEx%instr(igas)%model))
-            case ('open')
-                lEx%instr(igas)%path_type = 'open'
-            case default
-                lEx%instr(igas)%path_type = 'closed'
-                if (lEx%instr(igas)%tube_d /= error) &
-                    lEx%instr(igas)%tube_d = lEx%instr(igas)%tube_d * 1d-3
-                if (lEx%instr(igas)%tube_l /= error) &
-                    lEx%instr(igas)%tube_l = lEx%instr(igas)%tube_l * 1d-2
-                if (lEx%instr(igas)%tube_f /= error) &
-                    lEx%instr(igas)%tube_f = lEx%instr(igas)%tube_f / 6d4
-        end select
-        if (lEx%instr(igas)%vsep /= error) lEx%instr(igas)%vsep = lEx%instr(igas)%vsep * 1d-2
-        if (lEx%instr(igas)%nsep /= error) lEx%instr(igas)%nsep = lEx%instr(igas)%nsep * 1d-2
-        if (lEx%instr(igas)%esep /= error) lEx%instr(igas)%esep = lEx%instr(igas)%esep * 1d-2
-        if (lEx%instr(igas)%hpath_length /= error) lEx%instr(igas)%hpath_length = lEx%instr(igas)%hpath_length * 1d-2
-        if (lEx%instr(igas)%vpath_length /= error) lEx%instr(igas)%vpath_length = lEx%instr(igas)%vpath_length * 1d-2
 
-        if (lEx%instr(igas)%nsep /= error .and. lEx%instr(igas)%esep /= error) then
-            lEx%instr(igas)%hsep = dsqrt(lEx%instr(igas)%nsep**2 + lEx%instr(igas)%esep**2)
-        elseif (lEx%instr(igas)%nsep /= error) then
-            lEx%instr(igas)%hsep = lEx%instr(igas)%nsep
-        elseif (lEx%instr(igas)%esep /= error) then
-            lEx%instr(igas)%hsep = lEx%instr(igas)%esep
-        end if
-    end do
-
-    !> Mirror the four historical analysers into the slot-indexed array, after
-    !> the unit conversions above so both views agree. Gases past gas4 were
-    !> filled from their own block earlier, already in SI. With this, every
-    !> configured gas is addressable the same way and flux code no longer has
-    !> to know that instrument role and gas slot are different numberings.
-    do igas = ico2, igas4
-        lEx%gas_instr(igas - ico2 + firstGas) = lEx%instr(igas)
-    end do
+    !> Analyser units are converted at the read, per gas, and the
+    !> self-describing block that follows it carries SI already - so there is
+    !> nothing left to convert here. This used to be a loop over the
+    !> instrument-role indices ico2..igas4 plus a mirror into gas_instr, whose
+    !> only real job was to run *after* that block and undo it for the first
+    !> four slots.
 
     !> Understand software version (AGC (or RSSI) value is negative)
     !> LI-7200
