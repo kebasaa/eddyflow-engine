@@ -85,17 +85,30 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
     the reader would consume it as transfer-function parameters.
     """
 
-    def test_both_walk_the_same_range(self):
+    def test_both_skip_water_by_species(self):
+        """Both sides must leave out the same gases.
+
+        The skip used to be `gas == h2o`, the historical slot - so a second
+        hygrometer was written and read as a month-classed trace gas, while
+        spectra_sorting_and_averaging RH-sorts every hygrometer. Asked of the
+        record now, on both sides, so they still agree.
+
+        The reader no longer walks the gas list at all - it is driven by the
+        block headers in the file - so only the writer is checked for the
+        range; see test_spectral_assessment_blocks_static.py for the reader.
+        """
         for path in (WRITER, READER):
             source = read(path)
-            self.assertIn("do gas = firstGas, lastGas", source, path)
-            self.assertIn("if (gas == h2o) cycle", source,
+            self.assertNotIn("if (gas == h2o) cycle", source,
+                             f"{path} must skip water by species, not by slot")
+            self.assertIn("GasSlotIsWater(gas)", source,
                           f"{path} must skip water, whose cut-offs come from "
                           f"the RH class table, not from a gas block")
-            self.assertIn(
-                "min(EddyFlowProj%gas_num, MaxNumGases)", source,
-                f"{path} must stop at the declared gas count, or the two "
-                f"sides disagree on how many blocks the file has")
+        writer = read(WRITER)
+        self.assertIn("do gas = firstGas, lastGas", writer, WRITER)
+        self.assertIn(
+            "min(EddyFlowProj%gas_num, MaxNumGases)", writer,
+            "the writer must stop at the declared gas count")
 
     def test_the_reader_checks_the_block_header(self):
         source = read(READER)

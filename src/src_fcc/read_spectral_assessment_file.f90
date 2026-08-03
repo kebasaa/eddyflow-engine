@@ -36,6 +36,7 @@
 subroutine ReadSpectralAssessmentFile()
     use m_fx_global_var
     implicit none
+    logical, external :: GasSlotIsWater
     !> local variables
     integer :: gas
     integer :: cls
@@ -96,7 +97,7 @@ subroutine ReadSpectralAssessmentFile()
         !> the analytic method instead of inventing a correction for it.
         !> Water is left alone: its classes are the RH table read above.
         do gas = firstGas, lastGas
-            if (gas == h2o) cycle
+            if (GasSlotIsWater(gas)) cycle
             RegPar(gas, JAN:DEC)%Fn = error
             RegPar(gas, JAN:DEC)%fc = error
         end do
@@ -140,7 +141,7 @@ subroutine ReadSpectralAssessmentFile()
             call uppercase(blockname)
             slot = 0
             do gas = firstGas, lastGas
-                if (gas == h2o) cycle
+                if (GasSlotIsWater(gas)) cycle
                 if (len_trim(sa_tags(gas)) == 0) cycle
                 if (trim(adjustl(sa_tags(gas))) == trim(blockname)) then
                     slot = gas
@@ -168,7 +169,7 @@ subroutine ReadSpectralAssessmentFile()
         !> Short means a gas this project wants got no block, which is now
         !> answered by what was found rather than by how far the loop got.
         do gas = firstGas, lastGas
-            if (gas == h2o) cycle
+            if (GasSlotIsWater(gas)) cycle
             if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
             if (all(RegPar(gas, JAN:DEC)%fc == error)) short_file = .true.
         end do

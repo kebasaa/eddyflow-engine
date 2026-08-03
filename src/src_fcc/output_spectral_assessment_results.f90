@@ -159,7 +159,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             !> positionally over the same range, so the two must agree on the
             !> count; the header line names the gas so the file stays readable.
             do gas = firstGas, lastGas
-                if (gas == h2o) cycle
+                if (GasSlotIsWater(gas)) cycle
                 if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
                 sa_name = sa_tags(gas)
                 call uppercase(sa_name)
@@ -390,7 +390,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
                     do gas = firstGas, lastGas
                         if (gas - firstGas + 1 > &
                             min(EddyFlowProj%gas_num, MaxNumGases)) exit
-                        if (gas /= h2o) then
+                        if (.not. GasSlotIsWater(gas)) then
                             if (FCCsetup%SA%class(gas, month) /= 0) then
                                 call WriteDatumInt(MeanBinSpec(1, FCCsetup%SA%class(gas, month))%cnt(gas) &
                                     , datum, EddyFlowProj%err_label)
@@ -415,7 +415,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 do gas = firstGas, lastGas
                     if (gas - firstGas + 1 > &
                         min(EddyFlowProj%gas_num, MaxNumGases)) exit
-                    if (gas == h2o) cycle
+                    if (GasSlotIsWater(gas)) cycle
                     sa_name = sa_tags(gas)
                     dataline = trim(dataline) // ',avrg_sp(T),avrg_sp(' &
                         // trim(sa_name) // '),denoised_avrg_sp(' &
@@ -433,7 +433,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
                             do gas = firstGas, lastGas
                                 if (gas - firstGas + 1 > &
                                     min(EddyFlowProj%gas_num, MaxNumGases)) exit
-                                if (gas == h2o) cycle
+                                if (GasSlotIsWater(gas)) cycle
                                 if (FCCsetup%SA%class(gas, month) /= 0) then
                                     if (MeanBinSpecAvailable(FCCsetup%SA%class(gas, month), gas))then
                                         !> Natural frequency
