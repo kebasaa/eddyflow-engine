@@ -41,6 +41,12 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> local variables
     integer :: var
     integer :: gas
+    integer :: k
+    !> The gas slots this file carries a block for. InitOutFiles_rp builds the
+    !> header from the same list; spelled out separately, the two disagreed by
+    !> sixty gas blocks whenever fix_out_format was set.
+    integer :: fo_slots(GHGNumVar)
+    integer :: n_fo_slots
 !    integer :: prof
     real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
@@ -53,6 +59,11 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> The same call fills the header, so the two cannot disagree.
     call GasFullOutputUnitsAll(gas_flux_sc, gas_dens_sc, &
         gas_flux_label, gas_conc_label, gas_mixr_label, gas_dens_label)
+
+    !> The layout the header names. Every gas loop below walks this, not
+    !> firstGas..lastGas: the placeholder arms fire for slots with no gas at
+    !> all, so an unbounded loop wrote a block for each of the sixty-four.
+    call FullOutputGasSlots(fo_slots, n_fo_slots)
 
     !> Preliminary file and timestamp information
     call clearstr(csv_row)
@@ -113,7 +124,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> Gases. One block per configured gas rather than four unrolled ones;
     !> the scale is per gas, so it is applied unconditionally instead of only
     !> on the fourth slot's arm.
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(merge(Flux3%gas(gas) * gas_flux_sc(gas), error, &
                 Flux3%gas(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -143,7 +155,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     elseif(EddyFlowProj%fix_out_format) then
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(merge(Stor%of(gas) * gas_flux_sc(gas), error, &
                 Stor%of(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -159,7 +172,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> is water that is the exception, not the fourth slot: water's column is
     !> already on the mmol basis. Keyed on the species, so a second water
     !> record past the h2o slot is exempted too.
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(OutVarPresent(gas)) then
             if (Stats5%Mean(w) /= error .and. Stats%d(gas) >= 0d0) then
                 if (GasSlotIsWater(gas)) then
@@ -178,7 +192,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end do
 
     !> Gas concentrations, densities and timelags
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if (OutVarPresent(gas)) then
             call WriteDatumFloat(merge(Stats%d(gas) * gas_dens_sc(gas), error, &
                 Stats%d(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -334,7 +349,11 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if(OutVarPresent(PrimaryWaterOutSlot())) then
         call WriteDatumFloat(Flux0%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(BPCF%of(w_h2o), field_val, EddyFlowProj%err_label)
+        !> The column is gated on the resolved water slot two lines up, so its
+        !> correction factor has to come from the same slot. w_h2o is the
+        !> historical sixth, which is water only when record two happens to
+        !> hold it.
+        call WriteDatumFloat(BPCF%of(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     elseif(EddyFlowProj%fix_out_format) then
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -343,7 +362,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> Gases: uncorrected flux and its spectral correction factor. BPCF%of is
     !> indexed by the w_* covariance labels, which carry the same numbering as
     !> the gas slots, so the slot indexes it directly.
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(merge(Flux0%gas(gas) * gas_flux_sc(gas), error, &
                 Flux0%gas(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -379,7 +399,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call AddDatum(csv_row, field_val, separator)
     call WriteDatumInt(Essentials%e2spikes(ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    do var = firstGas, lastGas
+    do k = 1, n_fo_slots
+        var = fo_slots(k)
         if(OutVarPresent(var)) then
             call WriteDatumInt(Essentials%e2spikes(var), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -505,7 +526,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call WriteDatumFloat(Stats%Cov(var, var), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end do
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(Stats%Cov(gas, gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -516,7 +538,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> w-covariances
     call WriteDatumFloat(Stats%Cov(w, ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(Stats%Cov(w, gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)

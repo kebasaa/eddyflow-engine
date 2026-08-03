@@ -44,9 +44,14 @@ subroutine InitOutFiles(lEx)
     integer :: dot
     integer :: gas
     integer :: i
+    integer :: k
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
     character(64) :: gas_tag(GHGNumVar)
+    !> Full-output layout: the gas slots this file carries a block for.
+    !> WriteOutFullFcc walks the same list.
+    integer :: fo_slots(GHGNumVar)
+    integer :: n_fo_slots
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
@@ -68,6 +73,11 @@ subroutine InitOutFiles(lEx)
     do gas = firstGas, lastGas
         e2sg(gas) = gas_tag(gas)
     end do
+
+    !> The gas slots the full output carries a block for, from the helper the
+    !> row writer also calls. The fixed format names four blocks and the row
+    !> loop emitted sixty-four; RP's twin had the same split.
+    call FullOutputGasSlots(fo_slots, n_fo_slots)
 
     !> Full output file
     if (EddyFlowProj%out_full) then
@@ -127,7 +137,8 @@ subroutine InitOutFiles(lEx)
 
             !> Corrected co2 fluxes
             !> Corrected gas fluxes, one block per configured gas.
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(.not. fcc_var_present(gas)) cycle
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) &
@@ -147,7 +158,8 @@ subroutine InitOutFiles(lEx)
             if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header1, '', separator)
             if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header2,'LE_strg', separator)
             if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2]', separator)
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(.not. fcc_var_present(gas)) cycle
                 call AddDatum(header1, '', separator)
                 call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
@@ -156,7 +168,8 @@ subroutine InitOutFiles(lEx)
 
             !> Advection fluxes
             header1 = header1(1:len_trim(header1)) // 'vertical_advection_fluxes'
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(.not. fcc_var_present(gas)) cycle
                 call AddDatum(header1, '', separator)
                 call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
@@ -165,7 +178,8 @@ subroutine InitOutFiles(lEx)
 
             !> Average gas concentrations
             call AddDatum(header1,'gas_densities_concentrations_and_timelags', separator)
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(.not. fcc_var_present(gas)) cycle
                 call AddDatum(header1, ',,,,', separator)
                 call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'molar_density,' &
@@ -213,7 +227,8 @@ subroutine InitOutFiles(lEx)
             if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header2,'un_LE,LE_scf', separator)
             if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2],[#]', separator)
             !> Uncorrected gas fluxes (Level 0)
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(.not. fcc_var_present(gas)) cycle
                 call AddDatum(header1, ',', separator)
                 call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
@@ -242,7 +257,8 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header1,'spikes,,,', separator)
             call AddDatum(header2,'u_spikes,v_spikes,w_spikes,ts_spikes', separator)
             call AddDatum(header3,'[#],[#],[#],[#]', separator)
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(fcc_var_present(gas)) then
                     call AddDatum(header1, '', separator)
                     call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'spikes' , separator)
@@ -303,7 +319,8 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header1, 'variances,,,', separator)
             call AddDatum(header2, 'u_var,v_var,w_var,ts_var', separator)
             call AddDatum(header3, '[m+2s-2],[m+2s-2],[m+2s-2],[K+2]', separator)
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(fcc_var_present(gas)) call AddDatum(header1, '', separator)
                 if(fcc_var_present(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'var', separator)
                 if(fcc_var_present(gas)) call AddDatum(header3, '--', separator)
@@ -313,7 +330,8 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header2,'w/ts_cov', separator)
             call AddDatum(header3,'[m+1K+1s-1]', separator)
             !> w-gases covariances
-            do gas = firstGas, lastGas
+            do k = 1, n_fo_slots
+                gas = fo_slots(k)
                 if(fcc_var_present(gas)) call AddDatum(header1, '', separator)
                 if(fcc_var_present(gas)) call AddDatum(header2, 'w/' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'cov', separator)
                 if(fcc_var_present(gas)) call AddDatum(header3, '--', separator)

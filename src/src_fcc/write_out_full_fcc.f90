@@ -42,9 +42,19 @@ subroutine WriteOutFullFcc(lEx)
     integer :: var
     integer :: i
     integer :: gas
+    integer :: k
+    !> The gas slots this file carries a block for. InitOutFiles builds the
+    !> header from the same list.
+    integer :: fo_slots(GHGNumVar)
+    integer :: n_fo_slots
     character(DatumLen) :: field_val
     include '../src_common/interfaces_1.inc'
 
+
+    !> The layout the header names. Not firstGas..lastGas: the placeholder
+    !> arms below fire for slots holding no gas, so an unbounded loop wrote a
+    !> block for every one of the sixty-four.
+    call FullOutputGasSlots(fo_slots, n_fo_slots)
 
     call clearstr(csv_row)
     !> Preliminary file and timestamp information
@@ -102,7 +112,8 @@ subroutine WriteOutFullFcc(lEx)
     end if
 
     !> Gases, one block per configured gas.
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(fcc_var_present(gas)) then
             call WriteDatumFloat(merge(Flux3%gas(gas) * gas_full_flux_sc(gas), error, &
                 Flux3%gas(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -134,7 +145,8 @@ subroutine WriteOutFullFcc(lEx)
     !> exactly the gain the writer applied before the full output's own scale
     !> goes on. The literal 1d-3 this replaces was that inverse spelled out for
     !> whichever species happened to sit in slots 7 and 8.
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(fcc_var_present(gas)) then
             if (lEx%Stor%of(gas) /= error) then
                 call WriteDatumFloat(lEx%Stor%of(gas) / FluxnetGasScale(gas) &
@@ -149,7 +161,8 @@ subroutine WriteOutFullFcc(lEx)
     end do
 
     !> vertical advection fluxes
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(fcc_var_present(gas)) then
             if (lEx%rot_w /= error .and. lEx%d(gas) >= 0d0) then
                 if (GasSlotIsWater(gas)) then
@@ -168,7 +181,8 @@ subroutine WriteOutFullFcc(lEx)
     end do
 
     !> Gas concentrations, densities and timelags
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if (fcc_var_present(gas)) then
             call WriteDatumFloat(merge(lEx%d(gas) * gas_full_dens_sc(gas), error, &
                 lEx%d(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -324,7 +338,10 @@ subroutine WriteOutFullFcc(lEx)
     if(fcc_var_present(PrimaryWaterOutSlot())) then
         call WriteDatumFloat(lEx%Flux0%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(BPCF%of(w_h2o), field_val, EddyFlowProj%err_label)
+        !> The column is gated on the resolved water slot above, so its
+        !> correction factor has to come from the same slot. w_h2o is the
+        !> historical sixth, which is water only when record two holds it.
+        call WriteDatumFloat(BPCF%of(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     elseif(EddyFlowProj%fix_out_format) then
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -333,7 +350,8 @@ subroutine WriteOutFullFcc(lEx)
     !> Gases: uncorrected flux and its spectral correction factor. BPCF%of is
     !> indexed by the w_* covariance labels, which carry the same numbering as
     !> the gas slots, so the slot indexes it directly.
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(fcc_var_present(gas)) then
             call WriteDatumFloat(merge(lEx%Flux0%gas(gas) * gas_full_flux_sc(gas), error, &
                 lEx%Flux0%gas(gas) /= error), field_val, EddyFlowProj%err_label)
@@ -371,7 +389,8 @@ subroutine WriteOutFullFcc(lEx)
     call AddDatum(csv_row, field_val, separator)
     call WriteDatumInt(lEx%spikes(ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    do var = firstGas, lastGas
+    do k = 1, n_fo_slots
+        var = fo_slots(k)
         if(fcc_var_present(var)) then
             call WriteDatumInt(lEx%spikes(var), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -437,7 +456,8 @@ subroutine WriteOutFullFcc(lEx)
         call WriteDatumFloat(lEx%var(var), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end do
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(fcc_var_present(gas)) then
             call WriteDatumFloat(lEx%var(gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
@@ -448,7 +468,8 @@ subroutine WriteOutFullFcc(lEx)
     !> w-covariances
     call WriteDatumFloat(lEx%cov_w(ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    do gas = firstGas, lastGas
+    do k = 1, n_fo_slots
+        gas = fo_slots(k)
         if(fcc_var_present(gas)) then
             call WriteDatumFloat(lEx%cov_w(gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)

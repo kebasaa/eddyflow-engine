@@ -243,6 +243,63 @@ subroutine StatsLayoutSlots(slots, nslots)
     nslots = nslots + 1; slots(nslots) = pe
 end subroutine StatsLayoutSlots
 
+!***************************************************************************
+!
+! \brief       Ordered gas slots the full output is laid out on.
+! \author      Jonathan Muller
+! \note        Same failure as StatsLayoutSlots, in the other output file.
+!              The full output has two header branches. The dynamic one names
+!              one block per present gas; the fix_out_format one is a literal
+!              naming exactly co2, h2o, ch4 and the fourth slot. Both row
+!              writers, however, loop firstGas..lastGas and - this is the part
+!              that bites - their `elseif (fix_out_format)` arms emit
+!              placeholder fields for slots with *no* gas at all. While
+!              lastGas was 8 the two agreed. At 68 the row carries sixty
+!              phantom gas blocks: fifteen fields each, nine hundred fields
+!              past the end of a header that describes a hundred and ninety
+!              four. Everything after the gas block is shifted, and FCC parses
+!              the ex record by comma count, so it consumes the row without
+!              complaint. No fixture set fix_out_format, which is why it went
+!              unseen.
+!
+!              fix_out_format is a compatibility mode: it promises the fixed
+!              EddyPro 7.x column set, so it returns exactly the four
+!              historical slots whatever the project configures - present or
+!              not, since the row fills absent ones with the error label and
+!              the header names them unconditionally. A fifth gas cannot be
+!              represented in that format and is dropped from this file; the
+!              caller warns once. Widening it instead would break the
+!              compatibility the flag exists to provide.
+!
+!              Otherwise the whole gas block, which is what both sides walk
+!              today. The OutVarPresent guard at each of the eight use sites
+!              does the narrowing, and it is the *same* guard in the header
+!              and in the row, so they cannot disagree.
+!***************************************************************************
+subroutine FullOutputGasSlots(slots, nslots)
+    use m_common_global_var
+    implicit none
+    integer, intent(out) :: slots(GHGNumVar)
+    integer, intent(out) :: nslots
+    integer :: gas
+
+    slots = 0
+    nslots = 0
+
+    if (EddyFlowProj%fix_out_format) then
+        do gas = co2, gas4
+            nslots = nslots + 1
+            slots(nslots) = gas
+        end do
+        return
+    end if
+
+    do gas = firstGas, lastGas
+        nslots = nslots + 1
+        slots(nslots) = gas
+    end do
+end subroutine FullOutputGasSlots
+
 integer function PrimaryWaterOutSlot()
     use m_common_global_var
     implicit none
