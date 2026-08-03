@@ -40,28 +40,34 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
     !> In/out variables
     integer, intent(out) :: nCalibEvents
     !> local variables
-    integer, parameter :: cal_date  = 1
-    integer, parameter :: cal_time  = 2
-    integer, parameter :: cal_t     = 3
-    integer, parameter :: cleaning  = 4
-    integer, parameter :: co2_ref   = 9
-    integer, parameter :: h2o_ref   = 10
-    integer, parameter :: ch4_ref   = 11
-    integer, parameter :: gas4_ref  = 12
+    !> Four scalar columns, and two per-gas column families. The families
+    !> used to share one array with the gases packed at 5..8 and their
+    !> references at 9..12, read back through `Calib(i)%ref(j - 4)`. That
+    !> arithmetic is why there could be exactly four: the two index spaces are
+    !> separate now, so no offset relates them and none is needed.
+    integer :: cal_date
+    integer :: cal_time
+    integer :: cal_t
+    integer :: cleaning
+    integer :: offcol(GHGNumVar)  !< header column of <gas>_offset, 0 = absent
+    integer :: refcol(GHGNumVar)  !< header column of <gas>_ref,    0 = absent
     integer :: open_status
     integer :: read_status
     integer :: cnt
     integer :: i
-    integer :: j
-    integer :: mdcol(GHGNumVar * 2)
+    integer :: gas
+    integer :: slot
     integer :: var_num
     integer :: sepa
     real(kind = dbl) :: biased_abs
     real(kind = dbl) :: unbiased_abs
+    real(kind = dbl) :: abs_scale
     character(32) :: text_vars(128)
+    character(64) :: field
     character(LongInstringLen) :: dataline
-    logical :: co2_bias_is_negative
-    logical :: h2o_bias_is_negative
+    logical :: bias_is_negative
+    integer, external :: GasSlotFromDynMDTag
+    logical, external :: GasSlotIsWater
 
 
     !> Open dynamic metadata file
@@ -74,9 +80,17 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
         error, error, error, error, error, error)
 
     nCalibEvents = 0
-    mdcol = 0
+    cal_date = 0
+    cal_time = 0
+    cal_t    = 0
+    cleaning = 0
+    offcol = 0
+    refcol = 0
     if (open_status == 0) then
-        !> Look in the header for CO2/H2O calibration information
+        !> Look in the header for calibration information. Every configured
+        !> gas is offered its own pair of columns, named as the record names
+        !> it; the four historical spellings stay valid as aliases for the
+        !> first four slots, since that is what files in the wild carry.
         read(udf, '(a)', iostat = read_status) dataline
         cnt = 0
         do
@@ -84,30 +98,24 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
             if (sepa == 0) sepa = len_trim(dataline) + 1
             if (len_trim(dataline) == 0) exit
             cnt = cnt + 1
+            field = dataline(1:sepa - 1)
             !> Date and time
-            if (dataline(1:sepa - 1) &
-                == trim(adjustl(StdDynMDVars(dynmd_date)))) &
-                mdcol(cal_date) = cnt
-            if (dataline(1:sepa - 1) &
-                == trim(adjustl(StdDynMDVars(dynmd_time)))) &
-                mdcol(cal_time) = cnt
+            if (trim(field) &
+                == trim(adjustl(StdDynMDVars(dynmd_date)))) cal_date = cnt
+            if (trim(field) &
+                == trim(adjustl(StdDynMDVars(dynmd_time)))) cal_time = cnt
             !> calibration data columns
-            if (dataline(1:sepa - 1) == 'co2_offset')  mdcol(co2)   = cnt
-            if (dataline(1:sepa - 1) == 'h2o_offset')  mdcol(h2o)   = cnt
-            if (dataline(1:sepa - 1) == 'ch4_offset')  mdcol(ch4)   = cnt
-            if (dataline(1:sepa - 1) == 'gas4_offset') mdcol(gas4)  = cnt
-            if (dataline(1:sepa - 1) == 'co2_ref')  mdcol(co2_ref)  = cnt
-            if (dataline(1:sepa - 1) == 'h2o_ref')  mdcol(h2o_ref)  = cnt
-            if (dataline(1:sepa - 1) == 'ch4_ref')  mdcol(ch4_ref)  = cnt
-            if (dataline(1:sepa - 1) == 'gas4_ref') mdcol(gas4_ref) = cnt
-            if (dataline(1:sepa - 1) == 'calibration_temperature') &
-                mdcol(cal_t) = cnt
-            if (dataline(1:sepa - 1) == 'cleaning') mdcol(cleaning) = cnt
+            slot = GasSlotFromDynMDTag(field, '_offset')
+            if (slot > 0) offcol(slot) = cnt
+            slot = GasSlotFromDynMDTag(field, '_ref')
+            if (slot > 0) refcol(slot) = cnt
+            if (trim(field) == 'calibration_temperature') cal_t = cnt
+            if (trim(field) == 'cleaning') cleaning = cnt
 
             dataline = dataline(sepa + 1: len_trim(dataline))
         end do
 
-        if (sum(mdcol(co2:gas4)) == 0) then
+        if (all(offcol == 0)) then
             close(udf)
             return
         end if
@@ -132,25 +140,20 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
             end do
 
             !> Associate stored data to relevant variables, for current dataline
-            if (mdcol(cleaning) /= 0 .and. text_vars(mdcol(cleaning)) == '1') &
+            if (cleaning /= 0 .and. text_vars(cleaning) == '1') &
                 Calib(i)%cleaning = .true.
-            if (mdcol(cal_date) /= 0) read(text_vars(mdcol(cal_date)), *) &
-                Calib(i)%date
-            if (mdcol(cal_time) /= 0) read(text_vars(mdcol(cal_time)), *) &
-                Calib(i)%time
-            if (mdcol(cal_date) /= 0 .and. mdcol(cal_time) /= 0) &
+            if (cal_date /= 0) read(text_vars(cal_date), *) Calib(i)%date
+            if (cal_time /= 0) read(text_vars(cal_time), *) Calib(i)%time
+            if (cal_date /= 0 .and. cal_time /= 0) &
                 call DateTimeToDateType(Calib(i)%date, &
                     Calib(i)%time, Calib(i)%ts)
 
-            if (mdcol(cal_t)    /= 0) &
-                read(text_vars(mdcol(cal_t)), *) Calib(i)%Tcell
-            do j = co2, gas4
-                if (mdcol(j) /= 0) &
-                read(text_vars(mdcol(j)), *) Calib(i)%offset(j)
-            end do
-            do j = co2_ref, gas4_ref
-                if (mdcol(j) /= 0) &
-                read(text_vars(mdcol(j)), *) Calib(i)%ref(j - 4)
+            if (cal_t /= 0) read(text_vars(cal_t), *) Calib(i)%Tcell
+            do gas = firstGas, lastGas
+                if (offcol(gas) /= 0) &
+                    read(text_vars(offcol(gas)), *) Calib(i)%offset(gas)
+                if (refcol(gas) /= 0) &
+                    read(text_vars(refcol(gas)), *) Calib(i)%ref(gas)
             end do
         end do
         nCalibEvents = i
@@ -161,45 +164,40 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
     !> Convert offsets into absorptance offsets, considering the error as a
     !> span error thus, evaluating the abs_offset on the cal curve starting
     !> from the reference concentration indicated by the user
+    !> Two unrolled blocks before, co2 and h2o, differing only in the 1d3 that
+    !> puts water on the mmol basis. That is a property of the species, so it
+    !> is asked of the record; every other gas takes the umol arm, which is
+    !> what the co2 block was.
+    !>
+    !> A gas with no inverse calibration polynomial is left alone. The
+    !> coefficients are per-channel instrument calibrations - there is no
+    !> general form for an arbitrary species on an arbitrary analyser - so
+    !> drift is opt-in per gas, and `error` is the opt-out DriftCorr is
+    !> initialised to.
     do i = 1, nCalibEvents
-        co2_bias_is_negative = .false.
-        h2o_bias_is_negative = .false.
+        do gas = firstGas, lastGas
+            if (offcol(gas) == 0 .or. refcol(gas) == 0) cycle
+            if (DriftCorr%inv_cal(0, gas) == error) cycle
+            if (Calib(i)%Tcell == error .or. Calib(i)%Tcell <= 0d0) cycle
 
-        !> co2
-        if (Calib(i)%ref(co2) + Calib(i)%offset(co2) < 0d0) &
-            co2_bias_is_negative = .true.
+            abs_scale = 1d0
+            if (GasSlotIsWater(gas)) abs_scale = 1d3
 
-        if (mdcol(co2) /= 0 .and. mdcol(co2_ref) /= 0) &
-            call PolyVal(DriftCorr%inv_cal(0:6, co2), 6, &
-                dabs(Calib(i)%ref(co2) + Calib(i)%offset(co2)) &
-                / Calib(i)%Tcell / Ru, &
+            bias_is_negative = &
+                Calib(i)%ref(gas) + Calib(i)%offset(gas) < 0d0
+
+            call PolyVal(DriftCorr%inv_cal(0:6, gas), 6, &
+                dabs(Calib(i)%ref(gas) + Calib(i)%offset(gas)) &
+                / Calib(i)%Tcell / Ru * abs_scale, &
                 1, biased_abs)
-        if (co2_bias_is_negative) biased_abs = - biased_abs
+            if (bias_is_negative) biased_abs = - biased_abs
 
-        if (mdcol(co2) /= 0 .and. mdcol(co2_ref) /= 0) &
-            call PolyVal(DriftCorr%inv_cal(0:6, co2), 6, &
-                Calib(i)%ref(co2) / Calib(i)%Tcell / Ru, &
+            call PolyVal(DriftCorr%inv_cal(0:6, gas), 6, &
+                Calib(i)%ref(gas) / Calib(i)%Tcell / Ru * abs_scale, &
                 1, unbiased_abs)
 
-        Calib(i)%offset(co2) = biased_abs - unbiased_abs
-
-        !> h2o
-        if (Calib(i)%ref(h2o) + Calib(i)%offset(h2o) < 0d0) &
-            h2o_bias_is_negative = .true.
-
-        if (mdcol(h2o) /= 0 .and. mdcol(h2o_ref) /= 0) &
-            call PolyVal(DriftCorr%inv_cal(0:6, h2o), &
-            6, dabs(Calib(i)%ref(h2o) + Calib(i)%offset(h2o)) &
-            / Calib(i)%Tcell / Ru * 1d3, &
-            1, biased_abs)
-        if (h2o_bias_is_negative) biased_abs = - biased_abs
-
-        if (mdcol(h2o) /= 0 .and. mdcol(h2o_ref) /= 0) &
-            call PolyVal(DriftCorr%inv_cal(0:6, h2o), &
-            6, Calib(i)%ref(h2o) / Calib(i)%Tcell / Ru * 1d3, &
-            1, unbiased_abs)
-
-        Calib(i)%offset(h2o) = biased_abs - unbiased_abs
+            Calib(i)%offset(gas) = biased_abs - unbiased_abs
+        end do
     end do
     write(*,'(a)') ' Done.'
 end subroutine driftRetrieveCalibrationEvents

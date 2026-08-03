@@ -61,10 +61,23 @@ DIAG_NUMERIC = ["col"]
 DIAG_TEXT = ["var", "instr"]
 
 # Per-gas processing settings, replacing the single *_gas4 key of each family.
+#> Append only. Every name here is a slot at a fixed offset from the record
+#> origin, and read_ini_rp.f90 addresses them by that offset, so inserting in
+#> the middle silently repoints every setting after it.
+#>
+#> drift_dir_0..6 and drift_inv_0..6 are the direct and inverse
+#> absorptance<->density calibration polynomials. They exist per gas because
+#> they are per-channel instrument calibrations: the legacy tag table carries
+#> a set for each of the four historical slots and nothing beyond, so a fifth
+#> gas had no way to be drift-corrected. A gas that supplies none keeps
+#> DriftCorr's `error` and is skipped - drift stays opt-in per gas, since
+#> there is no general polynomial for an arbitrary species on an arbitrary
+#> analyser.
 RP_GAS_NUMERIC = [
     "sr_lim", "al_min", "al_max", "ds_hf", "ds_sf", "tl_def",
     "to_min_flux", "to_min_lag", "to_max_lag", "pwb_min_lag", "pwb_max_lag",
-]
+] + [f"drift_dir_{k}" for k in range(7)] \
+  + [f"drift_inv_{k}" for k in range(7)]
 RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
 FCC_GAS_NUMERIC = [
     "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",

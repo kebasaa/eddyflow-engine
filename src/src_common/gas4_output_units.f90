@@ -300,6 +300,75 @@ subroutine FullOutputGasSlots(slots, nslots)
     end do
 end subroutine FullOutputGasSlots
 
+!***************************************************************************
+!
+! \brief       Gas slot a `<stem><suffix>` column name refers to, or 0.
+! \author      Jonathan Muller
+! \note        The drift subsystem reads two kinds of per-gas column whose
+!              names are authored by the user: `<gas>_offset` and `<gas>_ref`
+!              in the dynamic metadata file, and `<gas>_ref` again as a raw
+!              data column holding reference counts.
+!
+!              Both sides used to spell the four names out - co2_ref = 9,
+!              h2o_ref = 10, ch4_ref = 11, gas4_ref = 12, packed into the same
+!              array as the offsets at 5..8 and read back through a `- 4`.
+!              A fifth gas had no name it could be given.
+!
+!              Resolution order, and both halves matter:
+!
+!              1. The record's own label, as GasOutputLabel spells it,
+!                 including the `_2` a second record of the same species
+!                 gets. That is what lets a project name `n2o_ref` or
+!                 `co2_2_ref` and be understood.
+!              2. The legacy aliases co2/h2o/ch4/gas4, through
+!                 HistoricGasSlot. Dynamic metadata files in the wild spell
+!                 those, and renaming them would break every one - so they
+!                 are accepted as *aliases for the first four slots*, exactly
+!                 as LegacySpectralVarTag widens the (co)spectra reader.
+!
+!              One helper, because the dynamic metadata file and the raw
+!              column scan must agree about what `n2o_ref` means. Spelled out
+!              twice, they would not have to.
+!***************************************************************************
+integer function GasSlotFromDynMDTag(field, suffix)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: field
+    character(*), intent(in) :: suffix
+    character(64) :: stem
+    character(64) :: tags(GHGNumVar)
+    integer :: gas
+    integer :: cut
+    integer, external :: HistoricGasSlot
+    logical, external :: IsHistoricGasVar
+
+    GasSlotFromDynMDTag = 0
+
+    cut = len_trim(field) - len_trim(suffix)
+    if (cut <= 0) return
+    if (field(cut + 1 : len_trim(field)) /= trim(suffix)) return
+    stem = field(1:cut)
+    call lowercase(stem)
+
+    !> The record's own name first, so a project that measures two of a
+    !> species can address the second one.
+    call SpectralVarTags(tags)
+    do gas = firstGas, lastGas
+        if (len_trim(tags(gas)) == 0) cycle
+        if (trim(tags(gas)) /= trim(stem)) cycle
+        GasSlotFromDynMDTag = gas
+        return
+    end do
+
+    !> Then the four legacy names, for files written before records existed.
+    !> 'gas4' is not a species, so IsHistoricGasVar does not know it.
+    if (trim(stem) == 'gas4') then
+        GasSlotFromDynMDTag = gas4
+        return
+    end if
+    if (IsHistoricGasVar(stem)) GasSlotFromDynMDTag = HistoricGasSlot(stem)
+end function GasSlotFromDynMDTag
+
 integer function PrimaryWaterOutSlot()
     use m_common_global_var
     implicit none

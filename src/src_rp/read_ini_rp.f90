@@ -957,6 +957,21 @@ subroutine WriteVariablesRP()
                 DriftCorr%inv_cal(j, i) = SNTags(329 + (i - co2) * 7 + j)%value
         end do
     end do
+
+    !> Per-gas records override the legacy slots (offsets 11..17 and 18..24
+    !> from the record origin: drift_dir_0..6, drift_inv_0..6). This is what
+    !> lets a fifth gas be drift-corrected at all - the legacy tags above name
+    !> only the four historical slots.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        do j = 0, 6
+            if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 11 + j)) &
+                DriftCorr%dir_cal(j, firstGas + i - 1) = &
+                    SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 11 + j)%value
+            if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 18 + j)) &
+                DriftCorr%inv_cal(j, firstGas + i - 1) = &
+                    SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 18 + j)%value
+        end do
+    end do
     DriftCorr%b = SNTags(370)%value
     DriftCorr%c = SNTags(371)%value
 
