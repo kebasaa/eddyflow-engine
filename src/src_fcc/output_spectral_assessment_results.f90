@@ -377,8 +377,14 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 size(MeanBinSpec, 1), size(MeanBinSpec, 2), goodj, pick)
 
             !> Write output file if valid goodj and pick were found
+            !>
+            !> `pick < gas4` rejected the fourth slot even though the search
+            !> above could return it, so a project whose only usable frequency
+            !> vector was the fourth gas's wrote no passive-gas file at all.
+            !> Now that the search covers the whole gas block the bound is the
+            !> variable range itself.
             if (goodj > 0 .and. goodj < MaxGasClasses &
-                .and. pick > 0 .and. pick < gas4) then
+                .and. pick >= u .and. pick <= lastGas) then
                 Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // PASGAS_Avrg_FilePadding  &
                     // Timestamp_FilePadding // CsvExt
                 FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
@@ -568,8 +574,14 @@ subroutine OutputSpectralAssessmentResults(nbins)
         !> =====================================================================
         !> Stability-sorted cospectra and models,
         !> only if at least one fit succeed
+        !> Any variable that fitted, not just sonic temperature and the first
+        !> gas. `w_ts, w_co2` is slots four and five, so a run in which only a
+        !> later gas fitted reported "no fit succeeded" and raised
+        !> ExceptionHandler(45) with the fits sitting there unused.
         proceed = .false.
-        do gas = w_ts, w_co2
+        do gas = w_ts, w_lastGas
+            if (gas > w_firstGas .and. &
+                gas - w_firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
             if ((MassPar(gas, unstable)%a0   /= error .or. &
                 MassPar(gas, unstable)%fpeak /= error .or. &
                 MassPar(gas, unstable)%mu    /= error) .and. &
@@ -776,8 +788,17 @@ subroutine GetFnIndex(LocSpec, nrow, ncol, goodj, pick)
     !> local variables
     integer :: i
     integer :: cls
+    integer :: gas
 
 
+    !> Sonic temperature first, then every configured gas in record order.
+    !>
+    !> `pick` names nothing but a frequency axis - every use of it is
+    !> %fn(pick) - so any slot carrying a positive natural frequency serves.
+    !> This was ts followed by three unrolled blocks naming co2, ch4 and the
+    !> fourth slot, which both skipped water entirely and gave up at the
+    !> fourth: a project whose only usable vector belongs to a later gas found
+    !> none, and wrote no passive-gas file at all.
     goodj = ierror
     pick = ierror
 
@@ -790,37 +811,18 @@ subroutine GetFnIndex(LocSpec, nrow, ncol, goodj, pick)
                 end if
         end do il
     end do ol
-    if (goodj == ierror) then
-        ol1: do cls = 1, ncol
-            il1: do i = 1, nrow - 1
-                    if (LocSpec(i, cls)%fn(co2) > 0d0) then
-                        goodj = cls
-                        pick = co2
-                        exit ol1
-                    end if
-            end do il1
-        end do ol1
-    end if
-    if (goodj == ierror) then
-        ol2: do cls = 1, ncol
-            il2: do i = 1, nrow - 1
-                    if (LocSpec(i, cls)%fn(ch4) > 0d0) then
-                        goodj = cls
-                        pick = ch4
-                        exit ol2
-                    end if
-            end do il2
-        end do ol2
-    end if
-    if (goodj == ierror) then
-        ol3: do cls = 1, ncol
-            il3: do i = 1, nrow - 1
-                    if (LocSpec(i, cls)%fn(gas4) > 0d0) then
-                        goodj = cls
-                        pick = gas4
-                        exit ol3
-                    end if
-            end do il3
-        end do ol3
-    end if
+    if (goodj /= ierror) return
+
+    olg: do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        do cls = 1, ncol
+            do i = 1, nrow - 1
+                if (LocSpec(i, cls)%fn(gas) > 0d0) then
+                    goodj = cls
+                    pick = gas
+                    exit olg
+                end if
+            end do
+        end do
+    end do olg
 end subroutine GetFnIndex

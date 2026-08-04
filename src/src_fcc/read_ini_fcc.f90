@@ -85,6 +85,7 @@ subroutine WriteVariablesFCC()
     integer :: skipped_classes
     integer :: start
     logical :: dirExists
+    logical, external :: GasSlotIsWater
 
 
     !> Spectra analysis time period
@@ -347,6 +348,13 @@ subroutine WriteVariablesFCC()
                 dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)%value)
     end do
 
+    !> Cleared before the three tables fill their slots, so "this gas has no
+    !> class of its own" below is a fact rather than a bet on the loader
+    !> having zeroed .bss. Nothing set these; the inheritance loop that reads
+    !> them is new.
+    FCCsetup%SA%class  = 0
+    FCCsetup%SA%nclass = 0
+
     !> Assign each month the relevant CO2 class. Max number of groups is 12.
     skipped_classes = 0
     start = 19
@@ -390,20 +398,29 @@ subroutine WriteVariablesFCC()
     end do
     FCCsetup%SA%nclass(gas4) = 12 - skipped_classes
 
-    !> Gases past the fourth have no class tags of their own - the interface
-    !> exposes three month-grouping tables, one each for CO2, CH4 and the
-    !> fourth gas - so they inherit CO2's grouping. The grouping is a binning
-    !> of the *calendar*, not a property of the species: it says which months
-    !> are pooled before a transfer function is fitted, and seasons do not
-    !> differ per analyte.
+    !> Every configured gas without a table of its own inherits CO2's grouping.
+    !> The interface exposes three month-grouping tables - CO2, CH4 and the
+    !> fourth gas - and the grouping is a binning of the *calendar*, not a
+    !> property of the species: it says which months are pooled before a
+    !> transfer function is fitted, and seasons do not differ per analyte.
     !>
-    !> Without this they keep class 0, which is not a valid RegPar index. That
-    !> was inert only while the correction loops stopped at the fourth gas;
-    !> now that they run the full range, an unclassified gas would index
-    !> RegPar(gas, 0). It also means the assessment could never fit them:
-    !> every month would be written as `error` and read back as no fit.
-    do gas = gas4 + 1, lastGas
+    !> Without this a gas keeps class 0, which is not a valid RegPar index.
+    !> That was inert only while the correction loops stopped at the fourth
+    !> gas; now that they run the full range, an unclassified gas would index
+    !> RegPar(gas, 0). It also means the assessment could never fit it: every
+    !> month would be written as `error` and read back as no fit.
+    !>
+    !> Starting at gas4 + 1 left a hole at the sixth slot, which none of the
+    !> three tables fills. That was invisible while slot six held water - water
+    !> is classed by relative humidity instead - and wrong the moment it did
+    !> not, which is exactly base_h2o_late: a trace gas there was left
+    !> unclassified, so it fell back to the analytic correction with nothing
+    !> saying so. The loop spans the whole block now and skips water on the
+    !> species, which is the condition that was meant all along.
+    do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (GasSlotIsWater(gas)) cycle
+        if (FCCsetup%SA%nclass(gas) > 0) cycle
         FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(co2, JAN:DEC)
         FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(co2)
     end do
