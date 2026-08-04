@@ -57,13 +57,24 @@ class TheCospectralRangeHasATerminator(unittest.TestCase):
             "w_lastGas must be derived from lastGas, so the two index spaces "
             "cannot drift apart")
 
-    def test_the_four_historical_w_names_are_kept(self):
-        """They still name real things - w_u..w_ts are anemometer channels,
-        and w_co2..w_gas4 are read by the legacy out_full_cosp_* tags."""
+    def test_the_anemometric_w_names_are_kept(self):
+        """w_u..w_ts name real anemometer channels and stay.
+
+        w_co2..w_gas4 do not. They were a second spelling of the gas slot
+        constants over the same numbers, so a cospectrum could be addressed as
+        w_h2o in one file and h2o in another and read as two different things.
+        The cospectral index space *is* the variable index space - which is
+        what w_firstGas and w_lastGas say - so a gas cospectrum is addressed
+        by its gas slot.
+        """
         src = code(TYPEDEF)
-        for name in ("w_u", "w_v", "w_w", "w_ts", "w_gas4"):
+        for name in ("w_u", "w_v", "w_w", "w_ts", "w_firstGas", "w_lastGas"):
             self.assertRegex(src, r"\b%s\s*=" % name,
                              "%s must keep its definition" % name)
+        for name in ("w_co2", "w_h2o", "w_ch4", "w_gas4"):
+            self.assertNotRegex(
+                src, r"\b%s\s*=" % name,
+                "%s is back as a second name for a gas slot" % name)
 
 
 class NothingInTheSpectralChainStopsAtTheFourthGas(unittest.TestCase):

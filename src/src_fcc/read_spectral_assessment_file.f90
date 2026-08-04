@@ -71,7 +71,7 @@ subroutine ReadSpectralAssessmentFile()
         do cls = RH10, RH90
             read(udf, '(a)') dataline
             dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
-            read(dataline, *)  RegPar(h2o, cls)%Fn, RegPar(h2o, cls)%fc
+            read(dataline, *)  RegPar(histH2O, cls)%Fn, RegPar(histH2O, cls)%fc
         end do
 
         !> One block per configured gas but water, matching what

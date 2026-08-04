@@ -99,7 +99,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 !> skipped the check entirely and then used unfitted
                 !> coefficients.
                 wsl = PrimaryWaterSlot()
-                if (wsl < firstGas) wsl = h2o
+                if (wsl < firstGas) wsl = histH2O
                 if(lEx%var_present(wsl) .and. (RegPar(dum, dum)%e1 == error &
                     .or. RegPar(dum, dum)%e2 == error &
                     .or. RegPar(dum, dum)%e3 == error)) then

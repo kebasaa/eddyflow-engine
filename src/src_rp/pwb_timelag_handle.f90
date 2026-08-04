@@ -1262,10 +1262,10 @@ character(32) function TimelagOptGasLabel(gas)
     integer, intent(in) :: gas
 
     select case (gas)
-        case (co2);  TimelagOptGasLabel = 'co2'
-        case (h2o);  TimelagOptGasLabel = 'h2o'
-        case (ch4);  TimelagOptGasLabel = 'ch4'
-        case (gas4); TimelagOptGasLabel = '4th_gas'
+        case (histCO2);  TimelagOptGasLabel = 'co2'
+        case (histH2O);  TimelagOptGasLabel = 'h2o'
+        case (histCH4);  TimelagOptGasLabel = 'ch4'
+        case (histGas4); TimelagOptGasLabel = '4th_gas'
         case default
             TimelagOptGasLabel = GasLabel(gas)
     end select

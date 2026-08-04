@@ -60,7 +60,7 @@ class TheRoleNumberingIsGone(unittest.TestCase):
 
     def test_the_bridge_and_the_mirror_are_gone(self):
         src = code(EXREAD)
-        self.assertNotIn("ico2 + (gas - co2)", src,
+        self.assertNotIn("ico2 + (gas - histCO2)", src,
                          "the two numberings no longer need bridging")
         self.assertNotIn("lEx%gas_instr(igas - ico2 + firstGas)", src,
                          "nothing to mirror when there is one array")
@@ -87,8 +87,9 @@ class TheTwoMetadataBlocksHaveAnOwner(unittest.TestCase):
 
     def test_the_si_block_does_not_claim_the_first_four_slots(self):
         src = code(EXREAD)
-        self.assertIn("gas > gas4 .and. gas >= firstGas", src,
-                      "the GA_* columns are the authority for co2..gas4")
+        self.assertIn("gas > histGas4 .and. gas >= firstGas", src,
+                      "the GA_* columns are the authority for the four "
+                      "historical slots")
 
 
 class CalibrationReferencesArePerGas(unittest.TestCase):

@@ -161,7 +161,7 @@ subroutine DefineUsedVariables(LocCol)
         !> metadata file written before this says and means.
         if (index(LocCol(i)%var, 'cal-ref') /= 0) then
             slot = GasSlotFromDynMDTag(LocCol(i)%var, '_cal-ref')
-            if (slot <= 0) slot = gas4
+            if (slot <= 0) slot = histGas4
             GasCalRefCol(slot) = i
         end if
     end do

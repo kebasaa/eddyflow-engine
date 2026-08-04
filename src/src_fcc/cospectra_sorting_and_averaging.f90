@@ -72,7 +72,7 @@ subroutine CospectraSortingAndAveraging(BinCosp, nrow, time, nbins)
     !> cospectra a gas past it contributed were read from the binned file and
     !> then discarded here, so its assessment could never accumulate a class.
     do gas = w_ts, lastGas
-        if (gas > gas4 .and. &
+        if (gas > histGas4 .and. &
             gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         do i = 1, nbins
             if (BinCosp(i)%fnum /= 0 .and. BinCosp(i)%of(gas) /= error) then

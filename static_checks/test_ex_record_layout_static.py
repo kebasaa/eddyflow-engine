@@ -87,7 +87,7 @@ GAS_DEPENDENT = (
 
 #: Slot numbers from m_typedef.f90. Read rather than hard-coded so that a
 #: change to the gas enumeration shows up here as a failure, not a surprise.
-SLOT_NAMES = ("u", "ts", "co2", "gas4")
+SLOT_NAMES = ("u", "ts", "histCO2", "histGas4")
 
 
 def _read_slots():

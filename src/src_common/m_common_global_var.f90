@@ -181,13 +181,13 @@ module m_common_global_var
     !> from the project - including for slots one to four. Nothing may read
     !> Dc(co2) and mean "carbon dioxide": on a project that orders its records
     !> differently, slot five holds something else.
-    data (Dc(mmm), mmm = co2, gas4) / 0.00001381d0, 0.00002178d0, 0.00001952d0, 0.00001436d0/ !--> Massman (1998, Atm Env, Table 2)
+    data (Dc(mmm), mmm = histCO2, histGas4) / 0.00001381d0, 0.00002178d0, 0.00001952d0, 0.00001436d0/ !--> Massman (1998, Atm Env, Table 2)
     real(kind = sgl) :: MW(E2NumVar) !< Molecular weights
     !> Defaults keyed by legacy slot position, not by species. A record that
     !> carries its own mw supersedes the entry for its slot - including slots
     !> one to four - so nothing may read MW(co2) and mean "carbon dioxide" or
     !> MW(h2o) and mean "water". Use MW_H2O for the latter.
-    data (MW(mmm), mmm = co2, gas4) / 44.01e-3, 18.02e-3, 16.04e-3, 44.01e-3/
+    data (MW(mmm), mmm = histCO2, histGas4) / 44.01e-3, 18.02e-3, 16.04e-3, 44.01e-3/
     !> The molecular weight of water as a physical constant, for the latent
     !> heat, evapotranspiration and vapour-density terms - all of which are
     !> about water itself and not about whatever gas occupies a slot. These

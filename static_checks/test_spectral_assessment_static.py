@@ -66,7 +66,7 @@ def strip_comments(source):
 class TheChainIsNotBoundedAtTheFourthGas(unittest.TestCase):
     def test_no_gas_loop_stops_at_gas4(self):
         # `co2, gas4` and `co2:gas4` as a loop bound or an array section.
-        pattern = re.compile(r"\b(co2|u)\s*[,:]\s*gas4\b")
+        pattern = re.compile(r"\b(histCO2|u)\s*[,:]\s*histGas4\b")
         for path in CHAIN:
             hit = pattern.search(read(path))
             self.assertIsNone(
@@ -189,7 +189,7 @@ class EveryConfiguredGasCanBeClassified(unittest.TestCase):
     def test_gases_past_the_fourth_inherit_a_grouping(self):
         source = read("src/src_fcc/read_ini_fcc.f90")
         self.assertIn(
-            "FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(co2, JAN:DEC)",
+            "FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(histCO2, JAN:DEC)",
             source,
             "gases past the fourth must inherit CO2's month grouping; the "
             "grouping bins the calendar, not the species",

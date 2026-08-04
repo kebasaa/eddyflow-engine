@@ -144,15 +144,25 @@ module m_typedef
     !> coincidence - the two were separately maintained literals before.
     integer, parameter :: firstGas = NumAnemVar + 1
     integer, parameter :: lastGas  = GHGNumVar
-    !> Legacy fixed gas slots. These name only the first four gas slots and are
-    !> retained while the code migrates to runtime species identity. New code
-    !> should iterate firstGas..lastGas and resolve the species, not assume a
-    !> gas lives at a fixed index.
-    integer, parameter :: co2 = 5
-    integer, parameter :: h2o = 6
-    integer, parameter :: ch4 = 7
-    integer, parameter :: n2o = 8
-    integer, parameter :: gas4 = 8
+    !> The four historical gas slots, named for what EddyPro put in them.
+    !>
+    !> They were called co2, h2o, ch4, n2o and gas4, which read as species and
+    !> meant positions - and every defect this migration fixed began with that
+    !> reading. `E2Col(co2)` looks like "the carbon dioxide column" and is "the
+    !> fifth variable", which is carbon dioxide only when a project happens to
+    !> declare it first. The hist prefix makes each remaining use say so.
+    !>
+    !> What legitimately remains: the fixed EddyPro 7.x output format, which
+    !> promises four gas blocks whatever the project holds; the readers that
+    !> accept the four historical spellings in files written before the
+    !> records; and the no-water and no-CO2 fallbacks. Nothing that decides a
+    !> number for a gas should be here - iterate firstGas..lastGas and resolve
+    !> the species from its record.
+    integer, parameter :: histCO2 = 5
+    integer, parameter :: histH2O = 6
+    integer, parameter :: histCH4 = 7
+    integer, parameter :: histN2O = 8
+    integer, parameter :: histGas4 = 8
     !> Bounds of the per-instrument cell block. Instrument k (1-based) owns
     !> firstCell + (k-1)*NumCellPerInstr + {0,1,2,3}, in the order
     !> cell_t, int_t_1, int_t_2, int_p. Use CellSlot() rather than arithmetic
@@ -204,15 +214,15 @@ module m_typedef
     integer, parameter :: w_v   = 2
     integer, parameter :: w_w   = 3
     integer, parameter :: w_ts  = 4
-    integer, parameter :: w_co2 = 5
-    integer, parameter :: w_h2o = 6
-    integer, parameter :: w_ch4 = 7
-    integer, parameter :: w_gas4 = 8
-
     !> The cospectral index space is the *same* space as u..lastGas - w_u = 1
-    !> is u = 1 and w_co2 = 5 is co2 = 5 - so a cospectrum is addressed by the
-    !> gas slot it belongs to. The four names above stop at the historical
-    !> fourth slot; a loop that must cover every configured gas ends here.
+    !> is u = 1 - so a cospectrum is addressed by the gas slot it belongs to,
+    !> and these bounds are the gas bounds.
+    !>
+    !> w_co2, w_h2o, w_ch4 and w_gas4 used to sit here as a second set of names
+    !> for slots five to eight. They were a duplicate of the gas slot constants
+    !> in a different spelling, so a cospectrum could be addressed as w_h2o in
+    !> one file and h2o in another and read as two different things. Nothing
+    !> refers to them now.
     integer, parameter :: w_firstGas = firstGas
     integer, parameter :: w_lastGas  = lastGas
 

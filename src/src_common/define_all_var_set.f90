@@ -484,11 +484,11 @@ integer function HistoricGasSlot(var)
     character(*), intent(in) :: var
 
     select case (trim(adjustl(var)))
-        case ('co2'); HistoricGasSlot = co2
-        case ('h2o'); HistoricGasSlot = h2o
-        case ('ch4'); HistoricGasSlot = ch4
-        case ('n2o'); HistoricGasSlot = gas4
-        case default; HistoricGasSlot = gas4
+        case ('co2'); HistoricGasSlot = histCO2
+        case ('h2o'); HistoricGasSlot = histH2O
+        case ('ch4'); HistoricGasSlot = histCH4
+        case ('n2o'); HistoricGasSlot = histGas4
+        case default; HistoricGasSlot = histGas4
     end select
 end function HistoricGasSlot
 
@@ -636,7 +636,7 @@ function GasOutputLabel(gas_slot) result(label)
         label = trim(E2Col(gas_slot)%label)
         return
     end if
-    if (gas_slot == gas4) then
+    if (gas_slot == histGas4) then
         label = 'gas4'
     else
         write(label, '(a,i0)') 'gas', gas_slot - firstGas + 1

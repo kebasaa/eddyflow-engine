@@ -85,11 +85,11 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
         loc_var_present, BPTF)
     call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), ts, ac_frequency, &
         loc_var_present, BPTF)
-    if (loc_var_present(co2)) &
-        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), co2, ac_frequency, &
+    if (loc_var_present(histCO2)) &
+        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), histCO2, ac_frequency, &
             loc_var_present, BPTF)
-    if (loc_var_present(h2o)) &
-        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), h2o, ac_frequency, &
+    if (loc_var_present(histH2O)) &
+        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), histH2O, ac_frequency, &
             loc_var_present, BPTF)
 
     !> reset to 1 BA and ZOH low-pass transfer functions if the case

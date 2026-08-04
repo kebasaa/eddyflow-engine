@@ -479,9 +479,9 @@ character(32) function SpectralLimitTag(gas_slot)
     integer, intent(in) :: gas_slot
 
     select case (gas_slot)
-        case (co2);  SpectralLimitTag = 'co2'
-        case (ch4);  SpectralLimitTag = 'ch4'
-        case (gas4); SpectralLimitTag = 'gas4'
+        case (histCO2);  SpectralLimitTag = 'co2'
+        case (histCH4);  SpectralLimitTag = 'ch4'
+        case (histGas4); SpectralLimitTag = 'gas4'
         case default
             write(SpectralLimitTag, '(a,i0,a)') &
                 'gas_', gas_slot - firstGas + 1, '_record'

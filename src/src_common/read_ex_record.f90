@@ -717,7 +717,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             !> had left - so with the mirror gone the precedence has to be
             !> stated. Letting this block win for the first four would also
             !> mix units: it is SI, the GA_* columns are metadata units.
-            if (gas > gas4 .and. gas >= firstGas .and. gas <= lastGas) then
+            if (gas > histGas4 .and. gas >= firstGas .and. gas <= lastGas) then
                 lEx%gas_instr(gas)%firm = instr_firm
                 lEx%gas_instr(gas)%model = instr_model
                 lEx%gas_instr(gas)%nsep = instr_nsep

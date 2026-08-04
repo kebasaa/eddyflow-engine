@@ -48,6 +48,15 @@ subroutine InitOutFiles(lEx)
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
     character(64) :: gas_tag(GHGNumVar)
+    !> The fourth gas's column-name stem, held once.
+    !>
+    !> Only the fixed EddyPro 7.x header below uses it: that format
+    !> promises four gas blocks whatever the project holds, so its
+    !> fourth is addressed by position on purpose. Spelled out inline it
+    !> was e2sg(histGas4)(1:len_trim(e2sg(histGas4))) at every one of
+    !> fourteen concatenations, which pushed the continued string past
+    !> Fortran's line limit.
+    character(64) :: g4stem
     !> Full-output layout: the gas slots this file carries a block for.
     !> WriteOutFullFcc walks the same list.
     integer :: fo_slots(GHGNumVar)
@@ -78,6 +87,7 @@ subroutine InitOutFiles(lEx)
     do gas = firstGas, lastGas
         e2sg(gas) = gas_tag(gas)
     end do
+    g4stem = e2sg(histGas4)
 
     !> The gas slots the full output carries a block for, from the helper the
     !> row writer also calls. The fixed format names four blocks and the row
@@ -392,30 +402,30 @@ subroutine InitOutFiles(lEx)
                 &H,qc_H,rand_err_H,LE,qc_LE,rand_err_LE,&
                 &co2_flux,qc_co2_flux,rand_err_co2_flux,h2o_flux,qc_h2o_flux,rand_err_h2o_flux,ch4_flux,qc_ch4_flux,&
                 &rand_err_ch4_flux,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,qc_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,rand_err_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,H_strg,LE_strg,co2_strg,h2o_strg,ch4_strg,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'strg,co2_v-adv,h2o_v-adv,ch4_v-adv,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'v-adv,co2_molar_density,co2_mole_fraction,&
+                // trim(g4stem) // 'flux,qc_' &
+                // trim(g4stem) // 'flux,rand_err_' &
+                // trim(g4stem) // 'flux,H_strg,LE_strg,co2_strg,h2o_strg,ch4_strg,' &
+                // trim(g4stem) // 'strg,co2_v-adv,h2o_v-adv,ch4_v-adv,' &
+                // trim(g4stem) // 'v-adv,co2_molar_density,co2_mole_fraction,&
                 &co2_mixing_ratio,co2_time_lag,co2_def_timelag,&
                 &h2o_molar_density,h2o_mole_fraction,h2o_mixing_ratio,h2o_time_lag,h2o_def_timelag,&
                 &ch4_molar_density,ch4_mole_fraction,ch4_mixing_ratio,ch4_time_lag,ch4_def_timelag,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'molar_density,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'mole_fraction,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'mixing_ratio,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'time_lag,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'def_timelag,&
+                // trim(g4stem) // 'molar_density,' &
+                // trim(g4stem) // 'mole_fraction,' &
+                // trim(g4stem) // 'mixing_ratio,' &
+                // trim(g4stem) // 'time_lag,' &
+                // trim(g4stem) // 'def_timelag,&
                 &sonic_temperature,air_temperature,air_pressure,air_density,air_heat_capacity,air_molar_volume,&
                 &ET,water_vapor_density,e,es,specific_humidity,RH,VPD,Tdew&
                 &,u_unrot,v_unrot,w_unrot,u_rot,v_rot,w_rot,wind_speed,max_wind_speed,wind_dir,yaw,pitch,roll,&
                 &u*,TKE,L,(z-d)/L,bowen_ratio,T*,model,x_peak,x_offset,x_10%,x_30%,x_50%,x_70%,x_90%,&
                 &un_Tau,Tau_scf,un_H,H_scf,un_LE,LE_scf,un_co2_flux,co2_scf,un_h2o_flux,h2o_scf,un_ch4_flux,ch4_scf,un_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,un_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'scf,spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
+                // trim(g4stem) // 'flux,un_' &
+                // trim(g4stem) // 'scf,spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
                 &skewness_kurtosis_hf,skewness_kurtosis_sf,discontinuities_hf,discontinuities_sf,timelag_hf,&
                 &timelag_sf,attack_angle_hf,non_steady_wind_hf,u_spikes,v_spikes,&
                 &w_spikes,ts_spikes,co2_spikes,h2o_spikes,ch4_spikes,' &
-                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'spikes,&
+                 // trim(g4stem) // 'spikes,&
                 &head_detect_LI-7200,t_out_LI-7200,t_in_LI-7200,aux_in_LI-7200,delta_p_LI-7200,&
                 &chopper_LI-7200,detector_LI-7200,pll_LI-7200,sync_LI-7200,&
                 &chopper_LI-7500,detector_LI-7500,pll_LI-7500,sync_LI-7500,&
@@ -424,9 +434,9 @@ subroutine InitOutFiles(lEx)
                 &bottom_heater_on_LI-7700,calibrating_LI-7700,&
                 &motor_failure_LI-7700,bad_aux_tc1_LI-7700,bad_aux_tc2_LI-7700,bad_aux_tc3_LI-7700,box_connected_LI-7700,&
                 &mean_value_RSSI_LI-7200,mean_value_LI-7500,&
-                &u_var,v_var,w_var,ts_var,co2_var,h2o_var,ch4_var,' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'var,&
+                &u_var,v_var,w_var,ts_var,co2_var,h2o_var,ch4_var,' // trim(g4stem) // 'var,&
                 &w/ts_cov,w/co2_cov,w/h2o_cov,w/ch4_cov,w/' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'cov,'
+                // trim(g4stem) // 'cov,'
             header3 = ',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#],[kg+1m-1s-2],[#],[kg+1m-1s-2],&
                 &[W+1m-2],[#],[W+1m-2],[W+1m-2],[#],[W+1m-2],&
                 &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&

@@ -349,42 +349,42 @@ subroutine WriteVariablesFCC()
     do i = 1, MaxGasClasses
         if (SNTags(start + 2*i - 1)%value > 0d0) then
             do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(co2, j) = i
+            FCCsetup%SA%class(histCO2, j) = i
             end do
         else
             skipped_classes = skipped_classes + 1
             cycle
         end if
     end do
-    FCCsetup%SA%nclass(co2) = 12 - skipped_classes
+    FCCsetup%SA%nclass(histCO2) = 12 - skipped_classes
     !> Assign each month the relevant CH4 class. Max number of groups is 12.
     skipped_classes = 0
     start = 19 + 24
     do i = 1, MaxGasClasses
         if (SNTags(start + 2*i - 1)%value > 0d0) then
             do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(ch4, j) = i
+            FCCsetup%SA%class(histCH4, j) = i
             end do
         else
             skipped_classes = skipped_classes + 1
             cycle
         end if
     end do
-    FCCsetup%SA%nclass(ch4) = 12 - skipped_classes
+    FCCsetup%SA%nclass(histCH4) = 12 - skipped_classes
     !> Assign each month the relevant GAS4 class. Max number of groups is 12.
     skipped_classes = 0
     start = 19 + 48
     do i = 1, MaxGasClasses
         if (SNTags(start + 2*i - 1)%value > 0d0) then
             do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(gas4, j) = i
+            FCCsetup%SA%class(histGas4, j) = i
             end do
         else
             skipped_classes = skipped_classes + 1
             cycle
         end if
     end do
-    FCCsetup%SA%nclass(gas4) = 12 - skipped_classes
+    FCCsetup%SA%nclass(histGas4) = 12 - skipped_classes
 
     !> Every configured gas without a table of its own inherits CO2's grouping.
     !> The interface exposes three month-grouping tables - CO2, CH4 and the
@@ -409,8 +409,8 @@ subroutine WriteVariablesFCC()
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (GasSlotIsWater(gas)) cycle
         if (FCCsetup%SA%nclass(gas) > 0) cycle
-        FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(co2, JAN:DEC)
-        FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(co2)
+        FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(histCO2, JAN:DEC)
+        FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(histCO2)
     end do
 
     !> Whether to keep or delete parent fluxnet file
