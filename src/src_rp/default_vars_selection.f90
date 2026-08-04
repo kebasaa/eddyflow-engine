@@ -170,6 +170,28 @@ subroutine DefaultVarsSelection(LocCol)
     if (h2of_col /= 0) EddyFlowProj%col(h2o) = h2of_col
     if (h2or_col /= 0) EddyFlowProj%col(h2o) = h2or_col
 
+    !> The guess picks columns; the engine processes records.
+    !>
+    !> Everything above writes EddyFlowProj%col, which now marks a column
+    !> usable and nothing more - ApplyGasRecords drives the gas slots from
+    !> EddyFlowProj%gas. Without records gas_num stays zero and the run is
+    !> refused outright, so the automatic path has to produce the same shape
+    !> of project a GUI-saved one has. Emitting them here rather than
+    !> generalising the guess keeps the guess itself honestly LI-COR-specific:
+    !> "which column did this site mean" has no answer for an arbitrary
+    !> species, and a site measuring one declares its gases instead of coming
+    !> here.
+    !>
+    !> Guarded on the project bringing none of its own, so a SmartFlux project
+    !> that already describes its gases is not appended to. Slot order follows
+    !> the historical one - CO2, H2O, CH4 - so an express run lays its columns
+    !> out as it always did.
+    if (EddyFlowProj%gas_num <= 0) then
+        call AddExpressGasRecord('co2', EddyFlowProj%col(co2))
+        call AddExpressGasRecord('h2o', EddyFlowProj%col(h2o))
+        call AddExpressGasRecord('ch4', EddyFlowProj%col(ch4))
+    end if
+
     !> Check if internal temperatures and pressure are available
     do i = 1, NumCol
         !> In/out and average cell temperatures
@@ -219,4 +241,32 @@ subroutine DefaultVarsSelection(LocCol)
         if (LocCol(i)%var == 'anemometer_diagnostic' .and. trim(adjustl(LocCol(i)%Instr%model)) == EddyFlowProj%master_sonic) &
             EddyFlowProj%col(E2NumVar + diagAnem) = i
     end do
+
+contains
+
+!> Append one gas record for a column the guess resolved.
+!>
+!> %col is a .metadata column number, which is what LocCol is indexed by at
+!> this point and what ApplyGasRecords later resolves through LocColByOrigCol.
+!> The analyser is named so that a gas can find water on its own instrument;
+!> moisture, cell, molecular weight and diffusivity are left to resolve from
+!> the species, as they do for a project that states no override.
+subroutine AddExpressGasRecord(species, col)
+    character(*), intent(in) :: species
+    integer, intent(in) :: col
+    integer :: n
+
+    if (col <= 0) return
+    if (EddyFlowProj%gas_num >= MaxNumGases) return
+    n = EddyFlowProj%gas_num + 1
+    EddyFlowProj%gas_num = n
+    EddyFlowProj%gas(n)%var   = species
+    EddyFlowProj%gas(n)%col   = col
+    EddyFlowProj%gas(n)%instr = LocCol(col)%Instr%model
+    EddyFlowProj%gas(n)%moist = 0
+    EddyFlowProj%gas(n)%cell  = 0
+    EddyFlowProj%gas(n)%mw    = error
+    EddyFlowProj%gas(n)%diff  = error
+end subroutine AddExpressGasRecord
+
 end subroutine DefaultVarsSelection

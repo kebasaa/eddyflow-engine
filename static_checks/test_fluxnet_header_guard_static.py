@@ -538,10 +538,21 @@ class TrailingBlocksArePerConfiguredGas(unittest.TestCase):
         Deriving the prefix from the species tag alone would silently rename
         FC_SS to FCO2_SS and every other CO2 flux column with it.
         """
-        source = read(self.HEADER)
-        body = source[source.index("function FluxnetFluxTag") :]
+        #> Comment lines dropped: the note explaining the removed `== co2`
+        #> quotes it, and would otherwise read as the construct itself.
+        source = "\n".join(ln for ln in read(self.HEADER).splitlines()
+                           if not ln.lstrip().startswith("!"))
+        for name in ("FluxnetFluxTag", "FluxnetStorTag"):
+            body = source[source.index("function %s" % name):]
+            body = body[: body.index("end function %s" % name)]
+            self.assertNotIn(
+                "== co2", body,
+                "%s asks which record is fifth, not which holds the carbon "
+                "dioxide - a project whose first gas is methane then emits "
+                "FC and SC for methane" % name)
+            self.assertIn("== PrimaryCarbonOutSlot()", body)
+        body = source[source.index("function FluxnetFluxTag"):]
         body = body[: body.index("end function FluxnetFluxTag")]
-        self.assertIn("== co2", body)
         self.assertIn("tag = 'FC'", body)
         self.assertIn("tag = 'F' // trim(FluxnetLayoutTags(layout_index))", body)
 

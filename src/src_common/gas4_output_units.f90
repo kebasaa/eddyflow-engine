@@ -689,28 +689,45 @@ subroutine FullOutputGasTags(tags)
     character(32) :: label
     character(32) :: seen(MaxNumGases)
     integer :: nseen
-    integer :: gas, k, repeat
+    integer :: gas, j, k, repeat, occurrence
     character(32), external :: GasOutputLabel
 
+    !> Two passes. A species measured once keeps its bare name - cos_, n2o_ -
+    !> and one measured more than once has *every* occurrence numbered:
+    !> h2o_1_ and h2o_2_, not h2o_ and h2o_2_. Whether a name needs a number
+    !> depends on the total count, which the first occurrence cannot know, so
+    !> the labels are collected before any of them is written.
+    !>
+    !> Leaving the first occurrence bare made the pair asymmetric: h2o_flux
+    !> read as the site's water flux when it was one of two, and a reader
+    !> keying on it silently got whichever happened to be recorded first.
     tags = ''
     nseen = 0
     do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         label = GasOutputLabel(gas)
         call lowercase(label)
-        if (len_trim(label) == 0) cycle
-
-        repeat = 1
-        do k = 1, nseen
-            if (trim(seen(k)) == trim(label)) repeat = repeat + 1
-        end do
         nseen = nseen + 1
         seen(nseen) = label
+    end do
+
+    do k = 1, nseen
+        gas = firstGas + k - 1
+        if (len_trim(seen(k)) == 0) cycle
+
+        !> How many records name this species, and which of them this is.
+        repeat = 0
+        occurrence = 0
+        do j = 1, nseen
+            if (trim(seen(j)) /= trim(seen(k))) cycle
+            repeat = repeat + 1
+            if (j <= k) occurrence = occurrence + 1
+        end do
 
         if (repeat == 1) then
-            tags(gas) = trim(label) // '_'
+            tags(gas) = trim(seen(k)) // '_'
         else
-            write(tags(gas), '(a,i0,a)') trim(label) // '_', repeat, '_'
+            write(tags(gas), '(a,i0,a)') trim(seen(k)) // '_', occurrence, '_'
         end if
     end do
 end subroutine FullOutputGasTags

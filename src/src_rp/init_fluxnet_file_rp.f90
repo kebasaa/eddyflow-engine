@@ -45,31 +45,16 @@ subroutine InitFluxnetFile_rp()
     integer :: k
     character(PathLen) :: Test_Path
     character(32) :: g4label
-    character(64) :: e2sg(E2NumVar)
     character(64) :: usg(NumUserVar)
     character(LongOutstringLen) :: csv_row
     include '../src_common/interfaces.inc'
 
 
-    !> Convenient strings
-    e2sg(u)   = 'u_'
-    e2sg(v)   = 'v_'
-    e2sg(w)   = 'w_'
-    e2sg(ts)  = 'ts_'
-    e2sg(co2) = 'co2_'
-    e2sg(h2o) = 'h2o_'
-    e2sg(ch4) = 'ch4_'
-    g4label = GasOutputLabel(gas4)
-    e2sg(gas4) = g4label(1:len_trim(g4label)) // '_'
-    e2sg(tc)  = 'cell_t_'
-    e2sg(ti1) = 'inlet_t_'
-    e2sg(ti2) = 'outlet_t_'
-    e2sg(pi)  = 'cell_p_'
-    e2sg(te)  = 'air_t_'
-    e2sg(pe)  = 'air_p_'
+    !> e2sg used to be built here - four anemometric stems, three literal gas
+    !> stems and a fourth resolved through GasOutputLabel - and then read by
+    !> nothing. Every column name in this file comes from FluxnetLayoutTags,
+    !> which SelectFluxnetGasSlots derives per record.
 
-    call lowercase(e2sg(gas4))
-    
     do j = 1, NumUserVar
         usg(j) = SafeFluxnetCustomLabel(j)
         call lowercase(usg(j))
@@ -478,8 +463,12 @@ subroutine InitFluxnetFile_rp()
         end do
     end if
 
-    call uppercase(e2sg(gas4))
-    csv_row = replace2(csv_row, 'GS4', e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1))
+    !> The header used to be built with a GS4 placeholder for the fourth gas
+    !> and have its real name substituted in here, over the whole finished
+    !> row. FluxnetGasTag names every gas for its species from the start, so
+    !> there is nothing to substitute - and a blind replace over the row was a
+    !> hazard in its own right, rewriting the literal GS4 wherever it appeared,
+    !> including inside a biomet column name that happened to contain it.
 
     !> CEC partitioning ratios (always present; error when do_cec=0)
     call AddDatum(csv_row, 'r_ET_cec', separator)
@@ -580,8 +569,14 @@ subroutine SelectFluxnetGasSlots()
     integer :: slot
     integer :: dup
     integer :: n
+    integer :: m
+    integer :: ordinal
     character(32) :: tag
     character(8) :: ord
+    !> Species names before numbering. Held apart from FluxnetLayoutTags
+    !> because the second pass counts occurrences and would otherwise be
+    !> comparing names it had already rewritten.
+    character(32) :: bareTag(GHGNumVar)
 
     nFluxnetGasSlots = 0
     nFluxnetInstrSlots = 0
@@ -592,26 +587,40 @@ subroutine SelectFluxnetGasSlots()
     !> without data still gets its column set and the fields after it stay put.
     !> Names are assigned here, once, and the present-gas list borrows them -
     !> deriving them twice is how two lists of the same gases end up disagreeing.
+    !> Two passes, because whether a species needs a number depends on how many
+    !> times it appears in total and the first occurrence cannot know that yet.
+    !>
+    !> A species measured once keeps its bare name - COS, N2O. One measured
+    !> more than once has *every* occurrence numbered: H2O_1 and H2O_2, not
+    !> H2O and H2O_2. Numbering only the later ones leaves the first column
+    !> reading as the site's single measurement of that gas, which is precisely
+    !> what it is not, and makes the pair impossible to treat symmetrically.
     if (EddyFlowProj%gas_num > 0) then
         do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
             slot = firstGas + k - 1
             if (slot > lastGas) exit
+            nFluxnetLayoutSlots = nFluxnetLayoutSlots + 1
+            FluxnetLayoutSlots(nFluxnetLayoutSlots) = slot
             tag = EddyFlowProj%gas(k)%var
             call uppercase(tag)
             if (len_trim(tag) == 0) tag = 'GAS'
+            bareTag(nFluxnetLayoutSlots) = tag
+        end do
+
+        do n = 1, nFluxnetLayoutSlots
             dup = 0
-            do n = 1, nFluxnetLayoutSlots
-                if (trim(FluxnetLayoutTags(n)) == trim(tag) .or. &
-                    index(trim(FluxnetLayoutTags(n)), trim(tag) // '_') == 1) &
-                    dup = dup + 1
+            ordinal = 0
+            do m = 1, nFluxnetLayoutSlots
+                if (trim(bareTag(m)) /= trim(bareTag(n))) cycle
+                dup = dup + 1
+                if (m <= n) ordinal = ordinal + 1
             end do
-            if (dup > 0) then
-                write(ord, '(i0)') dup + 1
-                tag = trim(tag) // '_' // trim(ord)
+            if (dup > 1) then
+                write(ord, '(i0)') ordinal
+                FluxnetLayoutTags(n) = trim(bareTag(n)) // '_' // trim(ord)
+            else
+                FluxnetLayoutTags(n) = bareTag(n)
             end if
-            nFluxnetLayoutSlots = nFluxnetLayoutSlots + 1
-            FluxnetLayoutSlots(nFluxnetLayoutSlots) = slot
-            FluxnetLayoutTags(nFluxnetLayoutSlots) = tag
         end do
     end if
 
@@ -646,22 +655,19 @@ subroutine SelectFluxnetGasSlots()
             end do
             if (len_trim(tag) == 0) tag = 'GAS'
             FluxnetGasTags(nFluxnetGasSlots) = tag
-            !> Only gases past the four historical slots need an analyser
-            !> block; CO2/H2O/CH4/GS4 already have their GA_* columns.
-            if (slot > gas4) then
+            !> The self-describing SI analyser block covers the records past
+            !> the fourth. Every gas has a GA_* block of its own, but those
+            !> carry metadata units and are converted on read; this one is
+            !> written in SI and read back unchanged, and FCC lets it overwrite
+            !> what it lists. Four is the count of historical GA_ blocks FCC
+            !> converts, not a limit on gases - phrased on the record index so
+            !> it stops reading as one.
+            if (k > 4) then
                 nFluxnetInstrSlots = nFluxnetInstrSlots + 1
                 FluxnetInstrSlots(nFluxnetInstrSlots) = slot
                 FluxnetInstrTags(nFluxnetInstrSlots) = &
                     FluxnetGasTags(nFluxnetGasSlots)
             end if
-        end do
-    else
-        !> Legacy projects name their gases by fixed slot.
-        do slot = co2, gas4
-            if (EddyFlowProj%Col(slot) <= 0) cycle
-            nFluxnetGasSlots = nFluxnetGasSlots + 1
-            FluxnetGasSlots(nFluxnetGasSlots) = slot
-            FluxnetGasTags(nFluxnetGasSlots) = HistoricGasTag(slot)
         end do
     end if
 end subroutine SelectFluxnetGasSlots
@@ -709,8 +715,12 @@ end function FluxnetNrwTag
 function FluxnetStorTag(layout_index) result(tag)
     integer, intent(in) :: layout_index
     character(32) :: tag
+    integer, external :: PrimaryCarbonOutSlot
 
-    if (FluxnetLayoutSlots(layout_index) == co2) then
+    !> Which record holds the CO2, not which record is fifth. Asked as
+    !> `== co2` this named slot five, so a project whose first gas is methane
+    !> emitted SC for methane and SCO2 for its carbon dioxide.
+    if (FluxnetLayoutSlots(layout_index) == PrimaryCarbonOutSlot()) then
         tag = 'SC'
     else
         tag = 'S' // trim(FluxnetLayoutTags(layout_index))
@@ -752,46 +762,35 @@ end subroutine AddStatFamily
 !>
 !> These columns are named for the flux rather than for the species, and carbon
 !> dioxide's flux is FC, not FCO2 - so the tag alone does not answer this. Every
-!> other gas takes F followed by its tag, which is what the third and fourth
-!> slots already spelled out as FCH4 and FGS4.
+!> other gas takes F followed by its tag: FCH4, FCOS, FN2O.
 function FluxnetFluxTag(layout_index) result(tag)
     integer, intent(in) :: layout_index
     character(32) :: tag
+    integer, external :: PrimaryCarbonOutSlot
 
-    if (FluxnetLayoutSlots(layout_index) == co2) then
+    !> Which record holds the CO2, not which record is fifth. The mirror of
+    !> FluxnetNrwTag just above, which already resolves its water this way.
+    if (FluxnetLayoutSlots(layout_index) == PrimaryCarbonOutSlot()) then
         tag = 'FC'
     else
         tag = 'F' // trim(FluxnetLayoutTags(layout_index))
     end if
 end function FluxnetFluxTag
 
-function HistoricGasTag(gas_slot) result(tag)
-    integer, intent(in) :: gas_slot
-    character(32) :: tag
-
-    call clearstr(tag)
-    select case (gas_slot)
-        case (co2);  tag = 'CO2'
-        case (h2o);  tag = 'H2O'
-        case (ch4);  tag = 'CH4'
-        case default; tag = 'GS4'
-    end select
-end function HistoricGasTag
-
+!> Every gas is named for the species it measures.
+!>
+!> There is no fourth-gas placeholder. This had four arms - CO2, H2O, CH4 and
+!> GS4 for the fourth slot - so a project's fourth gas was called GS4 whatever
+!> it measured, and its real name was substituted into the finished header far
+!> later by a string replace. CO2, H2O and CH4 sanitise to exactly the tokens
+!> FP-In defines for them, so those names survive by derivation rather than by
+!> literal, and COS, N2O or CO get theirs the same way.
 function FluxnetGasTag(gas_slot) result(tag)
     integer, intent(in) :: gas_slot
     character(32) :: tag
 
-    call clearstr(tag)
-    select case (gas_slot)
-        case (co2);  tag = 'CO2'
-        case (h2o);  tag = 'H2O'
-        case (ch4);  tag = 'CH4'
-        case (gas4); tag = 'GS4'
-        case default
-            tag = SanitizeFluxnetToken(E2Col(gas_slot)%var)
-            call uppercase(tag)
-    end select
+    tag = SanitizeFluxnetToken(E2Col(gas_slot)%var)
+    call uppercase(tag)
 end function FluxnetGasTag
 
 function SanitizeFluxnetToken(raw_token) result(clean_token)

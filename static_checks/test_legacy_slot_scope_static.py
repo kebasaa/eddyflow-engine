@@ -18,6 +18,14 @@ of uses are correct by design:
                         holds. Widening it would break the compatibility the
                         flag exists to provide.
 
+  the express guess    DefaultVarsSelection picks columns automatically in
+                        embedded express mode, and is specified in terms of
+                        the LI-COR trio: CO2 and H2O from a 7500 or 7200, CH4
+                        from a 7700. "Which column did this site mean" has no
+                        answer for an arbitrary species, so the guess names
+                        those three and emits records for them; a site
+                        measuring anything else declares its gases instead.
+
   fallbacks             PrimaryWaterOutSlot and PrimaryCarbonOutSlot fall back
                         to the historical slot when a project describes no
                         water or no CO2 - which is what the gates they replace
@@ -72,9 +80,9 @@ ALLOWED = {
     "src/src_fcc/write_out_fluxnet_fcc.f90": 20,
     "src/src_rp/add_to_timelag_opt_dataset.f90": 1,
     "src/src_rp/configure_for_express.f90": 5,
-    "src/src_rp/default_vars_selection.f90": 15,
+    "src/src_rp/default_vars_selection.f90": 21,
     "src/src_rp/drift_correction.f90": 1,
-    "src/src_rp/init_fluxnet_file_rp.f90": 29,
+    "src/src_rp/init_fluxnet_file_rp.f90": 8,
     "src/src_rp/init_outfiles_rp.f90": 42,
     "src/src_rp/out_raw_data.f90": 3,
     "src/src_rp/pwb_timelag_handle.f90": 28,

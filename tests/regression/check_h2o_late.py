@@ -26,8 +26,12 @@ import sys
 
 #> Quantities that are one-per-site and water-derived. If the engine resolves
 #> its water rather than assuming slot 6, every one of these is unchanged.
+#> FH2O is deliberately absent: with two hygrometers the water flux is not
+#> one-per-site, and every occurrence of a repeated species is numbered now, so
+#> it appears as FH2O_1 and FH2O_2 in PER_GAS_PREFIXES below. LE and ET stay
+#> here - those really are one per site, resolved through PrimaryWaterOutSlot.
 SCALARS = (
-    'TAU', 'H', 'LE', 'ET', 'FH2O',
+    'TAU', 'H', 'LE', 'ET',
     'MO_LENGTH', 'ZL', 'BOWEN', 'TSTAR',
     'TA_EP', 'RH_EP', 'VPD_EP', 'TDEW',
     'AIR_DENSITY', 'AIR_RHO_CP', 'AIR_CP',
@@ -36,7 +40,12 @@ SCALARS = (
     'DRYAIR_PARTIAL_PRESSURE', 'DRYAIR_DENSITY', 'DRYAIR_MV',
 )
 
-PER_GAS_PREFIXES = ('FC', 'FCOS', 'FN2O', 'FCO2_2', 'FH2O_2', 'FN2O_2')
+#> A species measured once is bare - FCOS; one measured more than once has
+#> every occurrence numbered - FH2O_1 and FH2O_2, not FH2O and FH2O_2. FC is
+#> the exception the FLUXNET format itself makes: carbon dioxide's flux column
+#> is named for the flux, so the first CO2 record is FC and the second FCO2_2.
+PER_GAS_PREFIXES = ('FC', 'FCOS', 'FN2O_1', 'FCO2_2', 'FH2O_1', 'FH2O_2',
+                    'FN2O_2')
 MIXING = '_MIXING_RATIO'
 
 
