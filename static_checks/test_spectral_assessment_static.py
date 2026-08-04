@@ -179,21 +179,59 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
 
 
 class EveryConfiguredGasCanBeClassified(unittest.TestCase):
-    """Gases past the fourth have no month-grouping tags of their own.
+    """A gas left at class 0 is not merely unfitted.
 
-    Left at class 0 they are not merely unfitted: 0 is not a valid RegPar
-    index, and the assessment could never fit them either, because every
-    month would be written as `error`.
+    0 is not a valid RegPar index, and the assessment could never fit such a
+    gas either, because every month would be written as `error`. So every
+    configured non-water gas must come out of the project reader with a
+    grouping, whether or not it states one.
     """
 
-    def test_gases_past_the_fourth_inherit_a_grouping(self):
-        source = read("src/src_fcc/read_ini_fcc.f90")
-        self.assertIn(
-            "FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(histGas1, JAN:DEC)",
-            source,
-            "gases past the fourth must inherit CO2's month grouping; the "
-            "grouping bins the calendar, not the species",
-        )
+    def test_a_gas_that_states_nothing_gets_the_whole_calendar(self):
+        """One group over twelve months, not a copy of another record's.
+
+        Inheriting the first record - which is what the three flat tables
+        forced, since only CO2, CH4 and the fourth gas had one - made a gas's
+        spectral correction depend on which gas the project listed first, and
+        had no answer at all when record one held water: water is classed by
+        relative humidity and never gets a table, so every trace gas inherited
+        class 0 and fell silently back to the analytic model.
+        """
+        source = strip_comments(read("src/src_fcc/read_ini_fcc.f90"))
+        self.assertIn("FCCsetup%SA%class(gas, JAN:DEC) = 1", source,
+                      "a gas with no grouping of its own must get one group "
+                      "spanning the calendar")
+        self.assertIn("FCCsetup%SA%nclass(gas) = 1", source)
+        self.assertNotIn(
+            "FCCsetup%SA%class(histGas1", source,
+            "the default is inheriting record one's grouping again, which is "
+            "the order dependence this replaced")
+
+    def test_the_grouping_is_read_per_gas_from_its_record(self):
+        source = strip_comments(read("src/src_fcc/read_ini_fcc.f90"))
+        self.assertIn("call ParseMonthGrouping(", source)
+        self.assertIn("fccGasOriginC + (gas - 1) * fccGasLeapC", source,
+                      "the key must be addressed by record origin and leap, "
+                      "never by a literal tag index")
+        for gone in ("ReadMonthGrouping", "sa_co2_g", "sa_ch4_g", "sa_gas4_g"):
+            self.assertNotIn(
+                gone, source,
+                "%s is back; a gas states its own months now" % gone)
+
+    def test_a_grouping_that_cannot_be_read_is_treated_as_absent(self):
+        """Not as a reason to stop.
+
+        One malformed string must not end a run that would otherwise produce
+        every other gas correctly, and it must not half-apply either - a
+        partly classed gas reads downstream as "no fitted cutoff for those
+        months", which is indistinguishable from a real result.
+        """
+        source = strip_comments(read("src/src_fcc/read_ini_fcc.f90"))
+        self.assertIn("call ExceptionHandler(102)", source)
+        parser = strip_comments(read("src/src_fcc/parse_month_grouping.f90"))
+        self.assertIn("ok = .false.", parser)
+        self.assertIn("cls = 0", parser,
+                      "a refused list must leave no month classed")
 
     def test_the_lookup_rejects_an_invalid_class(self):
         source = read("src/src_common/bpcf_bandpass_spectral_corrections.f90")

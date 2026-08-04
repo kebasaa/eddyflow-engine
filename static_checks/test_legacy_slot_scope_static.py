@@ -21,10 +21,6 @@ Where they legitimately remain:
                         records keep being readable. These only ever *widen*
                         what a reader accepts.
 
-  the interface's own   read_ini_fcc reads three month-grouping tables the
-                        tables                interface exposes, for CO2, CH4
-                        and the fourth gas; every other gas inherits CO2's.
-
   fallbacks             PrimaryWaterOutSlot and PrimaryCarbonOutSlot fall back
                         to the historical slot when a project describes no
                         water or no CO2 - which is what the gates they replace
@@ -38,6 +34,10 @@ The flat ini layer used to be on this list. It is gone: read_ini_rp and
 read_ini_fcc read every per-gas setting from its record, and a project without
 records is refused rather than half-processed. That alone took read_ini_rp
 from 76 occurrences to none.
+
+So were the interface's three month-grouping tables, for CO2, CH4 and the
+fourth gas, which every other gas had to inherit. A gas states its own months
+now, as gas_<i>_sa_months, and read_ini_fcc went from 5 occurrences to none.
 
 What must not happen is a *new* `Set(:, histGas1)` or `E2Col(histGas2)` in a
 processing path. So this pins the count per file: a number going up fails, a
@@ -74,7 +74,6 @@ ALLOWED = {
     "src/src_common/m_typedef.f90": 4,
     "src/src_fcc/cospectra_sorting_and_averaging.f90": 1,
     "src/src_fcc/init_out_files.f90": 1,
-    "src/src_fcc/read_ini_fcc.f90": 5,
     "src/src_fcc/spectral_assessment_diagnostics.f90": 3,
     "src/src_rp/init_outfiles_rp.f90": 1,
     "src/src_rp/pwb_timelag_handle.f90": 4,

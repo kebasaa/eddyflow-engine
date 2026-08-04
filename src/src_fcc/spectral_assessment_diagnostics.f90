@@ -198,7 +198,8 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
             call EmitReportLine(report_unit, open_status, trim(GasName(gas)) // ': accepted periods=' // &
                 trim(IntToText(SADiagAccepted(gas))) // ', flux=' // trim(IntToText(SADiagRejectedFlux(gas))) // &
                 ', VM=' // trim(IntToText(SADiagRejectedVM(gas))) // ', Foken=' // &
-                trim(IntToText(SADiagRejectedFoken(gas))) // ', valid classes=' // &
+                trim(IntToText(SADiagRejectedFoken(gas))) // ', groups=' // &
+                trim(IntToText(FCCsetup%SA%nclass(gas))) // ', valid classes=' // &
                 trim(IntToText(gas_classes)) // '... ' // &
                 trim(StatusLabel(gas_classes > 0, 'FAIL')))
             if (gas_classes == 0 .and. SADiagRejectedFlux(gas) > 0) &

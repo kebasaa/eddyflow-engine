@@ -94,20 +94,29 @@ FCC_GAS_NUMERIC = [
 FCC_GAS_TEXT = ["sa_months"]
 
 
+TYPEDEF = (ROOT / "src" / "src_common" / "m_typedef.f90").read_text(
+    encoding="utf-8", errors="surrogateescape")
+
+
+def const(name):
+    """A capacity constant, read from m_typedef.f90 so it cannot drift."""
+    m = re.search(rf"integer, parameter :: {name} = (\d+)", TYPEDEF)
+    if not m:
+        raise SystemExit(f"could not read {name} from m_typedef.f90")
+    return int(m.group(1))
+
+
+#: The most groups a gas can pool its months into - twelve, because there are
+#: twelve months. Read rather than written here so the retired-tag set below
+#: cannot fall out of step with the engine's own bound.
+MAX_GAS_CLASSES = const("MaxGasClasses")
+
+
 def limits():
-    """Capacity constants, read from m_typedef.f90 so they cannot drift."""
-    src = (ROOT / "src" / "src_common" / "m_typedef.f90").read_text(
-        encoding="utf-8", errors="surrogateescape")
-
-    def const(name):
-        m = re.search(rf"integer, parameter :: {name} = (\d+)", src)
-        if not m:
-            raise SystemExit(f"could not read {name} from m_typedef.f90")
-        return int(m.group(1))
-
     def derived(name, factor_of):
         """MaxNumCellCols / MaxNumDiagCols are declared as multiples."""
-        m = re.search(rf"integer, parameter :: {name} = {factor_of} \* (\d+)", src)
+        m = re.search(rf"integer, parameter :: {name} = {factor_of} \* (\d+)",
+                      TYPEDEF)
         if not m:
             raise SystemExit(f"could not read {name} from m_typedef.f90")
         return const(factor_of) * int(m.group(1))
@@ -220,6 +229,18 @@ RETIRED_FCC_NUMERIC = _flat_per_gas([
 ])
 RETIRED_FCC_NUMERIC |= _flat_per_gas(
     ["sa_min_st_{s}", "sa_min_un_{s}", "sa_max_{s}"], ("co2", "ch4", "gas4"))
+#: The month grouping, twelve start/stop pairs for each of three slots. A gas
+#: states its own now, as the single string gas_<i>_sa_months, so these 72
+#: tags describe nothing: water never had a table, and every gas past the
+#: fourth could only inherit CO2's.
+#:
+#: Built rather than typed, for the same reason as the sets above.
+RETIRED_FCC_NUMERIC |= {
+    "sa_%s_g%d_%s" % (s, k, e)
+    for s in ("co2", "ch4", "gas4")
+    for k in range(1, MAX_GAS_CLASSES + 1)
+    for e in ("start", "stop")
+}
 
 #: The biomet gas profile, retired with the storage block that was its only
 #: reader. prof_t_z1..z7 and one set per gas fed bSetup%zT/zCO2/... and the dz

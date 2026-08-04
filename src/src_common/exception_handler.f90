@@ -399,5 +399,13 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(101)> the project.'
             write(*,*) ' Warning(101)> Turn the fixed format off to get a column set that covers'
             write(*,*) ' Warning(101)> every gas.'
+        case(102)
+            write(*,*) ' Warning(102)> A gas states a spectral-assessment month grouping that'
+            write(*,*) ' Warning(102)> cannot be read. It must be a list of month ranges, such as'
+            write(*,*) ' Warning(102)> 1-12 for one group over the calendar or 1-6,7-12 for two,'
+            write(*,*) ' Warning(102)> with every bound between 1 and 12 and no month in more'
+            write(*,*) ' Warning(102)> than one group.'
+            write(*,*) ' Warning(102)> That gas was given one group spanning the calendar, which'
+            write(*,*) ' Warning(102)> is what it would have had if it stated nothing at all.'
     end select
 end subroutine ExceptionHandler

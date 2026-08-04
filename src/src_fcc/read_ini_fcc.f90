@@ -80,6 +80,10 @@ subroutine WriteVariablesFCC()
     implicit none
     !> local variables
     integer :: gas
+    integer :: slot
+    integer :: month_class(12)
+    integer :: month_nclass
+    logical :: month_ok
     logical :: dirExists
     logical, external :: GasSlotIsWater
 
@@ -332,51 +336,50 @@ subroutine WriteVariablesFCC()
                 dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)%value)
     end do
 
-    !> Cleared before the three tables fill their slots, so "this gas has no
-    !> class of its own" below is a fact rather than a bet on the loader
-    !> having zeroed .bss. Nothing set these; the inheritance loop that reads
-    !> them is new.
+    !> Which months a gas pools before a transfer function is fitted.
+    !>
+    !> Cleared first, so "this gas has no group" is a fact rather than a bet on
+    !> the loader having zeroed .bss.
     FCCsetup%SA%class  = 0
     FCCsetup%SA%nclass = 0
 
-    !> The interface exposes three month-grouping tables, and they land on the
-    !> first, third and fourth records - the positions CO2, CH4 and the fourth
-    !> gas held in EddyPro, which is what the tables are labelled for. Every
-    !> other gas inherits the first below.
+    !> A gas that says nothing gets one group spanning the calendar.
     !>
-    !> Three near-identical twelve-line blocks before this, differing only in
-    !> where the table starts and which slot it lands on. Reading them through
-    !> one routine means a change to the grouping rule cannot be applied to two
-    !> of the three.
-    call ReadMonthGrouping(19,      histGas1)
-    call ReadMonthGrouping(19 + 24, histGas3)
-    call ReadMonthGrouping(19 + 48, histGas4)
-
-    !> Every configured gas without a table of its own inherits CO2's grouping.
-    !> The interface exposes three month-grouping tables - CO2, CH4 and the
-    !> fourth gas - and the grouping is a binning of the *calendar*, not a
-    !> property of the species: it says which months are pooled before a
-    !> transfer function is fitted, and seasons do not differ per analyte.
+    !> Not "inherit the first record", which is what the three flat tables
+    !> forced: they were labelled for CO2, CH4 and the fourth gas, so a fifth
+    !> gas could only copy CO2's. That made a gas's spectral correction depend
+    !> on which gas the project happened to list first, and it had a case with
+    !> no answer at all - a project whose first record is water, which never
+    !> gets a table because water is classed by relative humidity, left every
+    !> trace gas at class 0 and silently falling back to the analytic model.
     !>
-    !> Without this a gas keeps class 0, which is not a valid RegPar index.
-    !> That was inert only while the correction loops stopped at the fourth
-    !> gas; now that they run the full range, an unclassified gas would index
-    !> RegPar(gas, 0). It also means the assessment could never fit it: every
-    !> month would be written as `error` and read back as no fit.
-    !>
-    !> Starting at gas4 + 1 left a hole at the sixth slot, which none of the
-    !> three tables fills. That was invisible while slot six held water - water
-    !> is classed by relative humidity instead - and wrong the moment it did
-    !> not, which is exactly base_h2o_late: a trace gas there was left
-    !> unclassified, so it fell back to the analytic correction with nothing
-    !> saying so. The loop spans the whole block now and skips water on the
-    !> species, which is the condition that was meant all along.
+    !> One group over twelve months is what "the project said nothing about
+    !> seasons" means, and it is what every existing project declares.
     do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (GasSlotIsWater(gas)) cycle
-        if (FCCsetup%SA%nclass(gas) > 0) cycle
-        FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(histGas1, JAN:DEC)
-        FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(histGas1)
+        FCCsetup%SA%class(gas, JAN:DEC) = 1
+        FCCsetup%SA%nclass(gas) = 1
+    end do
+
+    !> Per-gas records (the sole FCC text field: sa_months).
+    !>
+    !> A list the parser refuses is treated exactly as an absent key - the gas
+    !> keeps the default above - and reported. One malformed grouping must not
+    !> end a run that would otherwise produce every other gas correctly.
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        slot = firstGas + gas - 1
+        if (GasSlotIsWater(slot)) cycle
+        if (.not. SCTagFound(fccGasOriginC + (gas - 1) * fccGasLeapC)) cycle
+        call ParseMonthGrouping( &
+            SCTags(fccGasOriginC + (gas - 1) * fccGasLeapC)%value, &
+            month_class, month_nclass, month_ok)
+        if (.not. month_ok) then
+            call ExceptionHandler(102)
+            cycle
+        end if
+        FCCsetup%SA%class(slot, JAN:DEC) = month_class
+        FCCsetup%SA%nclass(slot) = month_nclass
     end do
 
     !> Whether to keep or delete parent fluxnet file
@@ -388,32 +391,6 @@ subroutine WriteVariablesFCC()
     call AdjFilePath(AuxFile%ex, slash)
     call AdjFilePath(AuxFile%sa, slash)
     call InitializeGas4FullOutputUnitsFcc()
-contains
-
-!> Read one of the interface's month-grouping tables into a gas slot.
-!>
-!> `start` is where the table's twelve start/stop pairs begin in SNTags; a
-!> pair whose start is not positive is a group the project left empty, and
-!> nclass counts what remains. Months outside every group keep class 0, which
-!> the inheritance loop above treats as "this gas has no table of its own".
-subroutine ReadMonthGrouping(start, slot)
-    integer, intent(in) :: start
-    integer, intent(in) :: slot
-    integer :: grp, month, skipped
-
-    skipped = 0
-    do grp = 1, MaxGasClasses
-        if (SNTags(start + 2*grp - 1)%value > 0d0) then
-            do month = nint(SNTags(start + 2*grp - 1)%value), &
-                       nint(SNTags(start + 2*grp)%value)
-                FCCsetup%SA%class(slot, month) = grp
-            end do
-        else
-            skipped = skipped + 1
-        end if
-    end do
-    FCCsetup%SA%nclass(slot) = MaxGasClasses - skipped
-end subroutine ReadMonthGrouping
 
 end subroutine WriteVariablesFCC
 
