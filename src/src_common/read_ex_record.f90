@@ -870,7 +870,7 @@ subroutine CompleteEssentials(lEx)
     !> those slots hold trace gases: a project with CO2 in slot four was
     !> divided by a thousand it had never been multiplied by. CO2 and H2O
     !> scale by 1, so covering every slot changes nothing for them.
-    do gas = co2, ts + min(EddyFlowProj%gas_num, MaxNumGases)
+    do gas = firstGas, ts + min(EddyFlowProj%gas_num, MaxNumGases)
         if (gas > lastGas) exit
         if (lEx%Flux0%gas(gas) /= error) &
             lEx%Flux0%gas(gas) = lEx%Flux0%gas(gas) / FluxnetGasScale(gas)

@@ -285,27 +285,32 @@ end subroutine LookupPwbTimelagCache
 !> them - their bounds were not covered at all, so a fifth gas's lag window
 !> could be edited and the stale lag reused indefinitely.
 !***************************************************************************
-character(256) function PwbCacheFingerprint()
+!> Wide enough for every gas the engine can hold.
+!>
+!> At character(256) a project past roughly the eighth gas ran out of
+!> room, and Fortran truncates a character assignment silently - so two
+!> different lag-window configurations could produce the same string and
+!> a stale cache would be accepted as current. MaxNumGases terms of
+!> about thirty characters, plus the whole-run settings.
+character(2048) function PwbCacheFingerprint()
     integer :: gas
-    character(32) :: extra
+    character(64) :: extra
 
-    write(PwbCacheFingerprint, '(a,4(l1,":"),a,8(f10.4,":"),a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,i0,a,i0,a,l1,a,i0,a,l1)') &
-        'provided=', PWBSetup%lag_bounds_provided(co2), PWBSetup%lag_bounds_provided(h2o), &
-        PWBSetup%lag_bounds_provided(ch4), PWBSetup%lag_bounds_provided(gas4), 'bounds=', &
-        merge(PWBSetup%min_lag(co2), 0d0, PWBSetup%lag_bounds_provided(co2)), &
-        merge(PWBSetup%max_lag(co2), 0d0, PWBSetup%lag_bounds_provided(co2)), &
-        merge(PWBSetup%min_lag(h2o), 0d0, PWBSetup%lag_bounds_provided(h2o)), &
-        merge(PWBSetup%max_lag(h2o), 0d0, PWBSetup%lag_bounds_provided(h2o)), &
-        merge(PWBSetup%min_lag(ch4), 0d0, PWBSetup%lag_bounds_provided(ch4)), &
-        merge(PWBSetup%max_lag(ch4), 0d0, PWBSetup%lag_bounds_provided(ch4)), &
-        merge(PWBSetup%min_lag(gas4), 0d0, PWBSetup%lag_bounds_provided(gas4)), &
-        merge(PWBSetup%max_lag(gas4), 0d0, PWBSetup%lag_bounds_provided(gas4)), &
+    !> The whole-run settings first, then one term per configured gas.
+    !>
+    !> The four legacy gases used to be spelled out in a fixed 4(l1)/8(f10.4)
+    !> block with the rest appended after it, so the fingerprint's shape
+    !> depended on how many gases a project had relative to four - and a
+    !> project with fewer than four still emitted their four slots. One loop
+    !> over the records covers both.
+    write(PwbCacheFingerprint, &
+        '(a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,i0,a,i0,a,l1,a,i0,a,l1)') &
         'n=', PWBSetup%n_bootstrap, '_block=', PWBSetup%block_length_s, '_valid=', PWBSetup%min_valid_frac, &
         '_hdi=', PWBSetup%hdi_thresh_s, '_dev=', PWBSetup%dev_thresh_s, '_prefilter=', PWBSetup%hdi_prefilter_s, &
         '_smooth=', PWBSetup%smoothing_width, '_seed=', PWBSetup%random_seed, '_approx=', PWBSetup%approx_ccf, &
         '_ar=', PWBSetup%max_ar_order, '_pre=', PWBSetup%detect_prewpl
 
-    do gas = gas4 + 1, lastGas
+    do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (.not. PWBSetup%lag_bounds_provided(gas)) cycle
         write(extra, '(a,i0,a,f10.4,a,f10.4)') ':g', gas - firstGas + 1, &
@@ -320,7 +325,7 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     logical, intent(out) :: recognized, valid
     integer :: u, ios, gas, row_lag, period_seconds, cache_version, origin_gas
     character(1024) :: line
-    character(256) :: fingerprint
+    character(2048) :: fingerprint
     character(10) :: date
     character(5) :: time
     character(8) :: stage

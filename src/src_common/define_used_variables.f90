@@ -69,8 +69,8 @@ subroutine DefineUsedVariables(LocCol)
     LocCol%useit = .false.
     !> Information in EddyFlow project file (user explicitly selects which
     !> variables are to be used)
-    where (EddyFlowProj%Col(co2:E2NumVar) > 0)
-        LocCol(EddyFlowProj%Col(co2:E2NumVar))%useit = .true.
+    where (EddyFlowProj%Col(firstGas:E2NumVar) > 0)
+        LocCol(EddyFlowProj%Col(firstGas:E2NumVar))%useit = .true.
     endwhere
 
     where (EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem) > 0)
@@ -98,10 +98,12 @@ subroutine DefineUsedVariables(LocCol)
             LocCol(EddyFlowProj%diag(i)%col)%useit = .true.
     end do
 
-    !> If gas4 column was selected, change its name to 'n2o', to be treated
-    !> as such. The column label still holds the actual variable name
-    !> as selected/entered in the Metadat File Editor
-    if (EddyFlowProj%Col(gas4) > 0) LocCol(EddyFlowProj%Col(gas4))%var = 'n2o'
+    !> The fourth gas's column used to be renamed to 'n2o' here so the rest of
+    !> the engine would treat it as that species. It was gated on col_gas4,
+    !> which is retired, so the rename could never fire - and a record names
+    !> its own species, which is what ApplyGasRecords resolves. Renaming a
+    !> column to n2o regardless of what it measured is the assumption this
+    !> whole effort removes.
 
     !> Diagnostic flags
     NumDiag = 0

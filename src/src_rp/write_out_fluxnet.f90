@@ -340,7 +340,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         end do
     !> Gases covariance matrix: the upper triangle over configured gases, in
     !> the same order the header pairs them.
-    do gas1 = co2, ts + nFluxnetLayoutSlots - 1
+    do gas1 = firstGas, ts + nFluxnetLayoutSlots - 1
         do gas2 = gas1 + 1, ts + nFluxnetLayoutSlots
             call AddFloatDatumToDataline(Stats7%Cov(gas1, gas2), csv_row, EddyFlowProj%err_label)
         end do

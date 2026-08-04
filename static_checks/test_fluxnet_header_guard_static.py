@@ -444,7 +444,7 @@ class FluxnetGasScalesAreBySpecies(unittest.TestCase):
         # ...over every configured gas, not the historical four. Stopping at
         # gas4 left slot 5+ un-inverted, so FCC scaled it a second time and
         # N2O came out at 339273 nmol/mol instead of 339.
-        self.assertIn("do gas = co2, ts + min(EddyFlowProj%gas_num", block)
+        self.assertIn("do gas = firstGas, ts + min(EddyFlowProj%gas_num", block)
         self.assertEqual(
             block.count("/ FluxnetGasScale(gas)"),
             4,

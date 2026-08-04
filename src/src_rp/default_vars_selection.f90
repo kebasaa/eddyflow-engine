@@ -47,7 +47,16 @@ subroutine DefaultVarsSelection(LocCol)
     integer :: co2r_col, co2f_col, co2d_col
     integer :: h2or_col, h2of_col, h2od_col
     integer :: tmp
+    !> The guess's own working columns. These were EddyFlowProj%col(co2),
+    !> (h2o) and (ch4) - the flat array, whose gas slots now mark nothing:
+    !> ApplyGasRecords drives the slots from EddyFlowProj%gas, and the
+    !> records emitted below are what make the columns usable.
+    integer :: sel_co2, sel_h2o, sel_ch4
 
+
+    sel_co2 = -1
+    sel_h2o = -1
+    sel_ch4 = -1
 
     !> Define master anemometer
     nsonics   = 0
@@ -104,8 +113,8 @@ subroutine DefaultVarsSelection(LocCol)
     h2od_col = 0
     !> Express mode's automatic column guess, and deliberately still the
     !> LI-COR trio: CO2 and H2O from a 7500 or 7200, CH4 from a 7700, with the
-    !> 7200's mixing-ratio > mole-fraction > molar-density priority. It writes
-    !> EddyFlowProj%col, the retired flat array, not the gas records.
+    !> 7200's mixing-ratio > mole-fraction > molar-density priority. What it
+    !> resolves becomes gas records at the end of this routine.
     !>
     !> Not generalised, because "guess which column this site meant" has no
     !> answer for an arbitrary species: there is no priority rule for COS and
@@ -118,12 +127,12 @@ subroutine DefaultVarsSelection(LocCol)
             EddyFlowProj%col(E2NumVar + diagAnem) = i
 
         !> co2
-        if (EddyFlowProj%col(co2) < 0 .and. LocCol(i)%var == 'co2') then
+        if (sel_co2 < 0 .and. LocCol(i)%var == 'co2') then
             !> A co2 reading was detected, see if it comes from the right instrument
             if (LocCol(i)%Instr%model == Instr(co2_instr_indx)%model) then
                 !> If it's from a LI-7500(A), must be a molar density, otherwise nothing
                 if (index(Instr(co2_instr_indx)%model, 'li75') /= 0 .and. LocCol(i)%measure_type == 'molar_density') &
-                    EddyFlowProj%col(co2) = i
+                    sel_co2 = i
                 if (index(Instr(co2_instr_indx)%model, 'li72') /= 0 .and. LocCol(i)%measure_type == 'mixing_ratio') &
                     co2r_col = i
                 if (index(Instr(co2_instr_indx)%model, 'li72') /= 0 .and. LocCol(i)%measure_type == 'mole_fraction') &
@@ -134,12 +143,12 @@ subroutine DefaultVarsSelection(LocCol)
         end if
 
         !> h2o (note: co2_instr_indx is valid also for h2o!)
-        if (EddyFlowProj%col(h2o) < 0 .and. LocCol(i)%var == 'h2o') then
+        if (sel_h2o < 0 .and. LocCol(i)%var == 'h2o') then
             !> An h2o reading was detected, see if it comes from the right instrument
             if (LocCol(i)%Instr%model == Instr(co2_instr_indx)%model) then
                 !> If it's from a LI-7500(A), must be a molar density, otherwise nothing
                 if (index(Instr(co2_instr_indx)%model, 'li75') /= 0 .and. LocCol(i)%measure_type == 'molar_density') &
-                    EddyFlowProj%col(h2o) = i
+                    sel_h2o = i
                 !> If it's from a LI-7200, order is (1) mixing ratio (2) mole fraction and (3) molar density
                 if (index(Instr(co2_instr_indx)%model, 'li72') /= 0 .and. LocCol(i)%measure_type == 'mixing_ratio') &
                     h2or_col = i
@@ -151,24 +160,24 @@ subroutine DefaultVarsSelection(LocCol)
         end if
 
         !> ch4
-        if (EddyFlowProj%col(ch4) < 0 .and. LocCol(i)%var == 'ch4') then
+        if (sel_ch4 < 0 .and. LocCol(i)%var == 'ch4') then
             !> An ch4 reading was detected, see if it comes from the right instrument
             if (LocCol(i)%Instr%model == Instr(ch4_instr_indx)%model) then
                 !> If it's from a LI-7500(A), must be a molar density, otherwise nothing
                 if (index(Instr(ch4_instr_indx)%model, 'li77') /= 0 .and. LocCol(i)%measure_type == 'molar_density') &
-                    EddyFlowProj%col(ch4) = i
+                    sel_ch4 = i
             end if
         end if
     end do
 
     !> In case of LI-7200, need to select the most appropriate column according to the priority list
     !> Order is (1) mixing ratio (2) mole fraction and (3) molar density
-    if (co2d_col /= 0) EddyFlowProj%col(co2) = co2d_col
-    if (co2f_col /= 0) EddyFlowProj%col(co2) = co2f_col
-    if (co2r_col /= 0) EddyFlowProj%col(co2) = co2r_col
-    if (h2od_col /= 0) EddyFlowProj%col(h2o) = h2od_col
-    if (h2of_col /= 0) EddyFlowProj%col(h2o) = h2of_col
-    if (h2or_col /= 0) EddyFlowProj%col(h2o) = h2or_col
+    if (co2d_col /= 0) sel_co2 = co2d_col
+    if (co2f_col /= 0) sel_co2 = co2f_col
+    if (co2r_col /= 0) sel_co2 = co2r_col
+    if (h2od_col /= 0) sel_h2o = h2od_col
+    if (h2of_col /= 0) sel_h2o = h2of_col
+    if (h2or_col /= 0) sel_h2o = h2or_col
 
     !> The guess picks columns; the engine processes records.
     !>
@@ -187,9 +196,9 @@ subroutine DefaultVarsSelection(LocCol)
     !> the historical one - CO2, H2O, CH4 - so an express run lays its columns
     !> out as it always did.
     if (EddyFlowProj%gas_num <= 0) then
-        call AddExpressGasRecord('co2', EddyFlowProj%col(co2))
-        call AddExpressGasRecord('h2o', EddyFlowProj%col(h2o))
-        call AddExpressGasRecord('ch4', EddyFlowProj%col(ch4))
+        call AddExpressGasRecord('co2', sel_co2)
+        call AddExpressGasRecord('h2o', sel_h2o)
+        call AddExpressGasRecord('ch4', sel_ch4)
     end if
 
     !> Check if internal temperatures and pressure are available

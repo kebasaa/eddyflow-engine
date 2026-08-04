@@ -209,14 +209,11 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%col(E2NumVar + diagStaA) = nint(EPPrjNTags(21)%value)
     EddyFlowProj%col(E2NumVar + diagStaD) = nint(EPPrjNTags(22)%value)
 
-    !> if a column was selected for gas4, read diffusivity. If diffusivity is
-    !> below zero, defaults to gas4 diffusivity
-    if (EddyFlowProj%col(gas4) > 0) then
-        Dc(gas4) = EPPrjNTags(17)%value * 1d-4 !< takes from cm+2s-1 to m+2s-1
-        if (Dc(gas4) <= 0) Dc(gas4) = 0.00001436d0  !< default for N2O from Massman (1998, J. Atm. Env) Table 2.
-        MW(gas4) = sngl(EPPrjNTags(18)%value) * 1e-3 !< takes from g+1mol-1 to kg+1mol-1
-        if (MW(gas4) <= 0) MW(gas4) = 44.01e-3  !< default for N2O
-    end if
+    !> The fourth gas's diffusivity and molecular weight used to be read here
+    !> from gas_diff and gas_mw, gated on col_gas4. All three tags are retired,
+    !> so the gate could never open - and a gas states its own overrides in its
+    !> record now, applied per slot a few dozen lines below with a species
+    !> default when it states none. That reaches every gas, not the fourth.
 
     !> biomet measurements info
     select case (EPPrjCTags(17)%value(1:1))
