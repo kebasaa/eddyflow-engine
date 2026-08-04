@@ -48,6 +48,8 @@ subroutine ReadSpectralAssessmentFile()
     integer :: slot
     logical :: short_file
     real(kind = dbl) :: skipFn, skipfc
+    !> One block's rows as they sit in the file: indexed by MONTH.
+    real(kind = dbl) :: monthFn(12), monthfc(12)
     character(64) :: sa_tags(GHGNumVar)
     character(64) :: blockname
     character(ShortInstringLen) :: dataline
@@ -107,10 +109,14 @@ subroutine ReadSpectralAssessmentFile()
         !> writing the sentinel here is what makes an absent gas fall back to
         !> the analytic method instead of inventing a correction for it.
         !> Water is left alone: its classes are the RH table read above.
+        !>
+        !> This range is CLASSES, not months. The two are both 1..12 and were
+        !> both spelled JAN:DEC, which is how a month index came to be stored
+        !> where a class index belongs.
         do gas = firstGas, lastGas
             if (GasSlotIsWater(gas)) cycle
-            RegPar(gas, JAN:DEC)%Fn = error
-            RegPar(gas, JAN:DEC)%fc = error
+            RegPar(gas, 1:MaxGasClasses)%Fn = error
+            RegPar(gas, 1:MaxGasClasses)%fc = error
         end do
 
         !> Blocks are matched by the name in their own header, not by their
@@ -160,13 +166,19 @@ subroutine ReadSpectralAssessmentFile()
                 end if
             end do
 
+            !> Read the twelve months, then map them onto this project's
+            !> classes. The file is keyed by month and RegPar by class; storing
+            !> a row straight into RegPar(slot, cls) conflated the two, which
+            !> is right only for a single all-months group.
+            monthFn = error
+            monthfc = error
             do cls = JAN, DEC
                 read(udf, '(a)', iostat = read_status) dataline
                 if (read_status /= 0) exit
                 dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
                 if (slot > 0) then
                     read(dataline, *, iostat = read_status) &
-                        RegPar(slot, cls)%Fn, RegPar(slot, cls)%fc
+                        monthFn(cls), monthfc(cls)
                 else
                     !> A gas this project does not carry. Consume the block so
                     !> the file stays aligned rather than skipping it.
@@ -175,6 +187,7 @@ subroutine ReadSpectralAssessmentFile()
                 if (read_status /= 0) exit
             end do
             if (read_status /= 0) exit
+            if (slot > 0) call MonthlyRegParToClasses(slot, monthFn, monthfc)
         end do
 
         !> Short means a gas this project wants got no block, which is now
@@ -182,7 +195,8 @@ subroutine ReadSpectralAssessmentFile()
         do gas = firstGas, lastGas
             if (GasSlotIsWater(gas)) cycle
             if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
-            if (all(RegPar(gas, JAN:DEC)%fc == error)) short_file = .true.
+            !> Classes again, not months - "no class of this gas got a fit".
+            if (all(RegPar(gas, 1:MaxGasClasses)%fc == error)) short_file = .true.
         end do
 
         !> A truncated block is a malformed file, not an older one: the

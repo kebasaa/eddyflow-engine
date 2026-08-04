@@ -407,5 +407,12 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(102)> than one group.'
             write(*,*) ' Warning(102)> That gas was given one group spanning the calendar, which'
             write(*,*) ' Warning(102)> is what it would have had if it stated nothing at all.'
+        case(103)
+            write(*,*) ' Warning(103)> The spectral assessment file gives different transfer'
+            write(*,*) ' Warning(103)> function parameters to months this project pools into one'
+            write(*,*) ' Warning(103)> group, so it was fitted under a different month grouping'
+            write(*,*) ' Warning(103)> than the project now declares.'
+            write(*,*) ' Warning(103)> Each group took the parameters of its first month. Re-run'
+            write(*,*) ' Warning(103)> the assessment if the grouping was meant to change.'
     end select
 end subroutine ExceptionHandler

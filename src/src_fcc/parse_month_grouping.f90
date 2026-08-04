@@ -58,7 +58,7 @@
 ! \todo
 !***************************************************************************
 subroutine ParseMonthGrouping(spec, cls, ncls, ok)
-    use m_common_global_var
+    use m_fx_global_var
     implicit none
     !> in/out variables
     character(*), intent(in) :: spec
@@ -134,3 +134,113 @@ subroutine ParseMonthGrouping(spec, cls, ncls, ok)
     if (ncls == 0) return
     ok = .true.
 end subroutine ParseMonthGrouping
+
+!***************************************************************************
+!
+! \brief       A gas's month grouping, spelled the way the project states it.
+! \author      Jonathan Muller
+! \note        The inverse of ParseMonthGrouping, for the assessment file's
+!              block headers. A reader that knows which months the file pooled
+!              can say so precisely instead of inferring it from values that
+!              happen to repeat.
+!
+!              Written past the header's `fc` column, which every reader of
+!              this format slices away at the word TFP - so this is additive
+!              and an older build ignores it.
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+character(64) function MonthGroupingText(slot)
+    use m_fx_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: slot
+    !> local variables
+    integer :: cls
+    integer :: month
+    integer :: first_month
+    integer :: last_month
+    character(8) :: piece
+
+    MonthGroupingText = ''
+    do cls = 1, MaxGasClasses
+        first_month = 0
+        last_month = 0
+        do month = 1, 12
+            if (FCCsetup%SA%class(slot, month) /= cls) cycle
+            if (first_month == 0) first_month = month
+            last_month = month
+        end do
+        if (first_month == 0) cycle
+        write(piece, '(i0,a,i0)') first_month, '-', last_month
+        if (len_trim(MonthGroupingText) == 0) then
+            MonthGroupingText = trim(piece)
+        else
+            MonthGroupingText = trim(MonthGroupingText) // ',' // trim(piece)
+        end if
+    end do
+    if (len_trim(MonthGroupingText) == 0) MonthGroupingText = 'none'
+end function MonthGroupingText
+
+!***************************************************************************
+!
+! \brief       Store a gas block's twelve monthly rows as class parameters.
+! \author      Jonathan Muller
+! \note        RegPar's second index is a *class*. Everything that reads it
+!              says RegPar(gas, class(gas, month)) - the fit produces it that
+!              way, and the correction consumes it that way.
+!
+!              The assessment file is keyed by month, because it is a report
+!              a person reads as well as an input: OutputSpectralAssessmentResults
+!              expands class to month, writing each group's parameters into
+!              every month that group covers. Reading the rows straight back
+!              into RegPar(gas, cls) put months where classes belong, and the
+!              two only coincide when there is one group - which is every file
+!              written so far, and why nothing caught it. With `1-6,7-12`,
+!              August has class 2 and read February's row.
+!
+!              This inverts the writer's expansion instead, so the file keeps
+!              its twelve named months and RegPar keeps meaning classes.
+! \sa
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine MonthlyRegParToClasses(slot, mFn, mfc)
+    use m_fx_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: slot
+    real(kind = dbl), intent(in) :: mFn(12)
+    real(kind = dbl), intent(in) :: mfc(12)
+    !> local variables
+    integer :: month
+    integer :: cls
+    logical :: disagreed
+
+    disagreed = .false.
+    RegPar(slot, 1:MaxGasClasses)%Fn = error
+    RegPar(slot, 1:MaxGasClasses)%fc = error
+
+    do month = 1, 12
+        cls = FCCsetup%SA%class(slot, month)
+        if (cls < 1 .or. cls > MaxGasClasses) cycle
+        if (mfc(month) == error) cycle
+        !> Months this project pools carrying different parameters means the
+        !> file was fitted under a different grouping. Take the first and say
+        !> so: the file is still usable, and silently averaging two fits would
+        !> invent a third that was never fitted at all.
+        if (RegPar(slot, cls)%fc /= error) then
+            if (RegPar(slot, cls)%fc /= mfc(month)) disagreed = .true.
+            cycle
+        end if
+        RegPar(slot, cls)%Fn = mFn(month)
+        RegPar(slot, cls)%fc = mfc(month)
+    end do
+
+    if (disagreed) call ExceptionHandler(103)
+end subroutine MonthlyRegParToClasses

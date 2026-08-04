@@ -49,6 +49,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
     integer :: mkdir_status
     real(kind = dbl), external :: func
     real(kind = dbl), external :: kaimal
+    character(64), external :: MonthGroupingText
     character(128) :: Filename
     character(64) :: sa_tags(GHGNumVar)
     character(64) :: sa_name
@@ -131,8 +132,11 @@ subroutine OutputSpectralAssessmentResults(nbins)
             write(udf,'(a)') 'fc:_IIR_cut-off_frequency'
             write(udf,'(a)') 'Fn:_normalization_parameter'
             write(udf,'(a)') 'Water_vapour_TFP_are_calculated_for_9_RH_classes.'
-            write(udf,'(a)') 'Other_gases_TFP_are_calculated_on_a_monthly_base_&
-                &(currently_all_months_together_).'
+            !> One line, because the reader skips exactly seven. It used to
+            !> say "currently all months together", which stopped being true
+            !> the moment a gas could state its own grouping - each block
+            !> header carries that gas's groups now.
+            write(udf,'(a)') 'Other_gases_TFP_are_calculated_on_a_monthly_base.'
             write(udf,'(a)') '-----------------------------------------------------&
                 &-----------------------------'
             write(udf,'(a)') 'Water vapour TFP              Fn          fc    numerosity'
@@ -159,8 +163,13 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
                 sa_name = sa_tags(gas)
                 call uppercase(sa_name)
+                !> The grouping goes past `fc`, where every reader of this
+                !> format has always stopped - the block name is sliced at the
+                !> word TFP. So a file written here still parses in an older
+                !> build, and a newer one can check the file's grouping against
+                !> the project's instead of guessing from repeated values.
                 write(udf,'(a)') trim(sa_name) // '            TFP            &
-                    &Fn          fc'
+                    &Fn          fc   groups=' // trim(MonthGroupingText(gas))
 
                 if (FCCsetup%SA%class(gas, JAN) /= 0) then
                     write(udf,'(a, 2(f11.5,1x))') 'January            = ', &

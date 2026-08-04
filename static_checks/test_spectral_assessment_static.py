@@ -128,8 +128,24 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
         correction factor of 2.6 for gases a short file did not carry.
         """
         source = read(READER)
-        self.assertIn("RegPar(gas, JAN:DEC)%fc = error", source)
-        self.assertIn("RegPar(gas, JAN:DEC)%Fn = error", source)
+        self.assertIn("RegPar(gas, 1:MaxGasClasses)%fc = error", source)
+        self.assertIn("RegPar(gas, 1:MaxGasClasses)%Fn = error", source)
+
+    def test_the_file_is_keyed_by_month_and_RegPar_by_class(self):
+        """The two are both 1..12, which is what hid the defect.
+
+        The writer expands class to month - each group's parameters into every
+        month it covers - so reading a row straight back into RegPar(slot, cls)
+        stored a month where a class belongs. That is right only when there is
+        one group, which is every file written before per-gas groupings
+        existed. With `1-2,3-12`, June has class 2 and read February's row.
+        """
+        source = strip_comments(read(READER))
+        self.assertNotIn(
+            "RegPar(slot, cls)%Fn, RegPar(slot, cls)%fc", source,
+            "a month row is being stored straight into a class index again")
+        self.assertIn("call MonthlyRegParToClasses(slot, monthFn, monthfc)",
+                      source)
 
     def test_the_headers_name_the_species(self):
         """Every slot, named from its own record - no slot is a species.

@@ -73,7 +73,11 @@ class BlocksAreResolvedByName(unittest.TestCase):
         """It used to mean 'the loop stopped early', which a file-driven loop
         no longer expresses. It now means a wanted gas got no block."""
         src = code(READER)
-        self.assertRegex(src, r"all\(RegPar\(gas, JAN:DEC\)%fc == error\)")
+        #: Classes, not months. Both ranges are 1..12 and both used to be
+        #: spelled JAN:DEC, which is how a month index came to be stored where
+        #: a class index belongs. The spelling is pinned so the two spaces
+        #: cannot quietly merge again.
+        self.assertRegex(src, r"all\(RegPar\(gas, 1:MaxGasClasses\)%fc == error\)")
         self.assertIn("short_file = .true.", src)
 
 
