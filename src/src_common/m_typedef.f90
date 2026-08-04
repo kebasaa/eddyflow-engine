@@ -865,13 +865,10 @@ module m_typedef
         logical :: outliers
     end type FPFlagType
 
-    type H2OCovType
-        character(10) :: date
-        character(5) :: time
-        real(kind = dbl) :: tl_co2
-        real(kind = dbl) :: tl_ch4
-        real(kind = dbl) :: tl_gas4
-    end type H2OCovType
+    !> H2OCovType held water covariances at three named gases' time lags -
+    !> tl_co2, tl_ch4, tl_gas4 - and was never declared, passed or read
+    !> anywhere. The quantity it described is carried per slot by
+    !> FluxType%E_gas(GHGNumVar), which reaches every gas.
 
     type HeaderType
         character(64) :: var
@@ -931,14 +928,17 @@ module m_typedef
         real(kind = dbl) :: ts(GHGNumVar)
     end type LongSpectraType
 
+    !> Only the biomet column selection survives. The profile heights - zT and
+    !> one array per gas, plus the five-row dz built from them - were read
+    !> from the project and consumed by nothing: their only reader was the
+    !> profile-storage block in storage.f90, commented out for as long as the
+    !> fork has existed.
+    !>
+    !> They are not widened to N gases, because a fixed dz(5, ...) is the
+    !> shape of the feature rather than an oversight in it. If profile storage
+    !> is revived it wants a height per gas record, which is a different type.
     type :: BiometSetupType
         integer :: sel(6)
-        real(kind = dbl) :: zT(MaxProfNodes)
-        real(kind = dbl) :: zCO2(MaxProfNodes)
-        real(kind = dbl) :: zH2O(MaxProfNodes)
-        real(kind = dbl) :: zCH4(MaxProfNodes)
-        real(kind = dbl) :: zGAS4(MaxProfNodes)
-        real(kind = dbl) :: dz(5, MaxProfNodes-1)
     end type BiometSetupType
 
     type :: SpecMethType

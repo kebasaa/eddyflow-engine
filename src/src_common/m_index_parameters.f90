@@ -112,62 +112,15 @@ module m_index_parameters
     integer, parameter :: master_sonic_hpath_length         = 17
     integer, parameter :: master_sonic_vpath_length         = 18
     integer, parameter :: master_sonic_tau                  = 19
-    integer, parameter :: co2_irga_manufacturer             = 20
-    integer, parameter :: co2_irga_model                    = 21
-    integer, parameter :: co2_measure_type                  = 22
-    integer, parameter :: co2_irga_northward_separation     = 23
-    integer, parameter :: co2_irga_eastward_separation      = 24
-    integer, parameter :: co2_irga_vertical_separation      = 25
-    integer, parameter :: co2_irga_tube_length              = 26
-    integer, parameter :: co2_irga_tube_diameter            = 27
-    integer, parameter :: co2_irga_tube_flowrate            = 28
-    integer, parameter :: co2_irga_kw                       = 29
-    integer, parameter :: co2_irga_ko                       = 30
-    integer, parameter :: co2_irga_hpath_length             = 31
-    integer, parameter :: co2_irga_vpath_length             = 32
-    integer, parameter :: co2_irga_tau                      = 33
-    integer, parameter :: h2o_irga_manufacturer             = 34
-    integer, parameter :: h2o_irga_model                    = 35
-    integer, parameter :: h2o_measure_type                  = 36
-    integer, parameter :: h2o_irga_northward_separation     = 37
-    integer, parameter :: h2o_irga_eastward_separation      = 38
-    integer, parameter :: h2o_irga_vertical_separation      = 39
-    integer, parameter :: h2o_irga_tube_length              = 40
-    integer, parameter :: h2o_irga_tube_diameter            = 41
-    integer, parameter :: h2o_irga_tube_flowrate            = 42
-    integer, parameter :: h2o_irga_kw                       = 43
-    integer, parameter :: h2o_irga_ko                       = 44
-    integer, parameter :: h2o_irga_hpath_length             = 45
-    integer, parameter :: h2o_irga_vpath_length             = 46
-    integer, parameter :: h2o_irga_tau                      = 47
-    integer, parameter :: ch4_irga_manufacturer             = 48
-    integer, parameter :: ch4_irga_model                    = 49
-    integer, parameter :: ch4_measure_type                  = 50
-    integer, parameter :: ch4_irga_northward_separation     = 51
-    integer, parameter :: ch4_irga_eastward_separation      = 52
-    integer, parameter :: ch4_irga_vertical_separation      = 53
-    integer, parameter :: ch4_irga_tube_length              = 54
-    integer, parameter :: ch4_irga_tube_diameter            = 55
-    integer, parameter :: ch4_irga_tube_flowrate            = 56
-    integer, parameter :: ch4_irga_kw                       = 57
-    integer, parameter :: ch4_irga_ko                       = 58
-    integer, parameter :: ch4_irga_hpath_length             = 59
-    integer, parameter :: ch4_irga_vpath_length             = 60
-    integer, parameter :: ch4_irga_tau                      = 61
-    integer, parameter :: gas4_irga_manufacturer            = 62
-    integer, parameter :: gas4_irga_model                   = 63
-    integer, parameter :: gas4_measure_type                 = 64
-    integer, parameter :: gas4_irga_northward_separation    = 65
-    integer, parameter :: gas4_irga_eastward_separation     = 66
-    integer, parameter :: gas4_irga_vertical_separation     = 67
-    integer, parameter :: gas4_irga_tube_length             = 68
-    integer, parameter :: gas4_irga_tube_diameter           = 69
-    integer, parameter :: gas4_irga_tube_flowrate           = 70
-    integer, parameter :: gas4_irga_kw                      = 71
-    integer, parameter :: gas4_irga_ko                      = 72
-    integer, parameter :: gas4_irga_hpath_length            = 73
-    integer, parameter :: gas4_irga_vpath_length            = 74
-    integer, parameter :: gas4_irga_tau                     = 75
+
+    !> Fifty-six per-analyser indices used to follow - fourteen each for co2,
+    !> h2o, ch4 and the fourth gas, running to gas4_irga_tau = 75. Not one of
+    !> them was ever read: RetrieveDynamicMetadata resolves a gas field through
+    !> DynMDGasOrder, which GasSlotFromDynMDTag fills per record and which
+    !> therefore reaches every analyser rather than the first four.
+    !>
+    !> Keeping them would have been an invitation to index StdDynMDVars by a
+    !> fixed gas again, which is the shape of this whole effort's defects.
 
 
     !> Biomet measurements

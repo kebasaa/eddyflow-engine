@@ -85,7 +85,14 @@ subroutine ReadDynamicMetadataHeader(unt)
     integer, intent(in) :: unt
     !> local variables
     character(LongInstringLen) :: dataline
-    character(64) :: Headerlabels(NumStdDynMDVars)
+    !> One entry per column in the file, not per name the engine knows.
+    !>
+    !> This was NumStdDynMDVars - 75, the length of the fixed label list - while
+    !> the scan below counts columns with no bound at all. A dynamic metadata
+    !> file for eight gases carries 8 * nDynMDGasFields + 2 = 114 of them, so it
+    !> wrote past the end of a stack array. Sized to match DynamicMetadataOrder,
+    !> which is what the first pass indexes.
+    character(64) :: Headerlabels(256)
     integer :: read_status
     integer :: sepa
     integer :: cnt
@@ -103,6 +110,7 @@ subroutine ReadDynamicMetadataHeader(unt)
         sepa = index(dataline, ',')
         if (sepa == 0) sepa = len_trim(dataline) + 1
         if (len_trim(dataline) == 0) exit
+        if (cnt >= size(Headerlabels)) exit
         cnt = cnt + 1
         Headerlabels(cnt) = dataline(1:sepa - 1)
         dataline = dataline(sepa + 1: len_trim(dataline))

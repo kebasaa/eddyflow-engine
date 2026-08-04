@@ -326,57 +326,57 @@ module m_rp_global_var
          SNTags(102)%Label / 'flag10_upper' / &
          SNTags(103)%Label / 'prof_swc' / &
          SNTags(104)%Label / 'prof_shf' / &
-         SNTags(105)%Label / 'prof_ts' / &
-         SNTags(106)%Label / 'prof_ta' / &
-         SNTags(107)%Label / 'prof_co2' / &
-         SNTags(108)%Label / 'prof_h2o' / &
-         SNTags(109)%Label / 'prof_ch4' / &
-         SNTags(110)%Label / 'prof_gas4' / &
+         SNTags(105)%Label / '' / &
+         SNTags(106)%Label / '' / &
+         SNTags(107)%Label / '' / &
+         SNTags(108)%Label / '' / &
+         SNTags(109)%Label / '' / &
+         SNTags(110)%Label / '' / &
          SNTags(111)%Label / 'biom_ta' / &
          SNTags(112)%Label / 'biom_pa' / &
          SNTags(113)%Label / 'biom_rh' / &
          SNTags(114)%Label / 'biom_ppfd' / &
          SNTags(115)%Label / 'biom_lwin' / &
          SNTags(116)%Label / 'biom_rg' / &
-         SNTags(117)%Label / 'biom_co2' / &
-         SNTags(118)%Label / 'biom_h2o' / &
-         SNTags(119)%Label / 'biom_ch4' / &
-         SNTags(120)%Label / 'biom_gas4' / &
-         SNTags(121)%Label / 'prof_t_z1' / &
-         SNTags(122)%Label / 'prof_t_z2' / &
-         SNTags(123)%Label / 'prof_t_z3' / &
-         SNTags(124)%Label / 'prof_t_z4' / &
-         SNTags(125)%Label / 'prof_t_z5' / &
-         SNTags(126)%Label / 'prof_t_z6' / &
-         SNTags(127)%Label / 'prof_t_z7' / &
-         SNTags(128)%Label / 'prof_co2_z1' / &
-         SNTags(129)%Label / 'prof_co2_z2' / &
-         SNTags(130)%Label / 'prof_co2_z3' / &
-         SNTags(131)%Label / 'prof_co2_z4' / &
-         SNTags(132)%Label / 'prof_co2_z5' / &
-         SNTags(133)%Label / 'prof_co2_z6' / &
-         SNTags(134)%Label / 'prof_co2_z7' / &
-         SNTags(135)%Label / 'prof_h2o_z1' / &
-         SNTags(136)%Label / 'prof_h2o_z2' / &
-         SNTags(137)%Label / 'prof_h2o_z3' / &
-         SNTags(138)%Label / 'prof_h2o_z4' / &
-         SNTags(139)%Label / 'prof_h2o_z5' / &
-         SNTags(140)%Label / 'prof_h2o_z6' / &
-         SNTags(141)%Label / 'prof_h2o_z7' / &
-         SNTags(142)%Label / 'prof_ch4_z1' / &
-         SNTags(143)%Label / 'prof_ch4_z2' / &
-         SNTags(144)%Label / 'prof_ch4_z3' / &
-         SNTags(145)%Label / 'prof_ch4_z4' / &
-         SNTags(146)%Label / 'prof_ch4_z5' / &
-         SNTags(147)%Label / 'prof_ch4_z6' / &
-         SNTags(148)%Label / 'prof_ch4_z7' / &
-         SNTags(149)%Label / 'prof_gas4_z1' / &
-         SNTags(150)%Label / 'prof_gas4_z2' / &
-         SNTags(151)%Label / 'prof_gas4_z3' / &
-         SNTags(152)%Label / 'prof_gas4_z4' / &
-         SNTags(153)%Label / 'prof_gas4_z5' / &
-         SNTags(154)%Label / 'prof_gas4_z6' / &
-         SNTags(155)%Label / 'prof_gas4_z7' / &
+         SNTags(117)%Label / '' / &
+         SNTags(118)%Label / '' / &
+         SNTags(119)%Label / '' / &
+         SNTags(120)%Label / '' / &
+         SNTags(121)%Label / '' / &
+         SNTags(122)%Label / '' / &
+         SNTags(123)%Label / '' / &
+         SNTags(124)%Label / '' / &
+         SNTags(125)%Label / '' / &
+         SNTags(126)%Label / '' / &
+         SNTags(127)%Label / '' / &
+         SNTags(128)%Label / '' / &
+         SNTags(129)%Label / '' / &
+         SNTags(130)%Label / '' / &
+         SNTags(131)%Label / '' / &
+         SNTags(132)%Label / '' / &
+         SNTags(133)%Label / '' / &
+         SNTags(134)%Label / '' / &
+         SNTags(135)%Label / '' / &
+         SNTags(136)%Label / '' / &
+         SNTags(137)%Label / '' / &
+         SNTags(138)%Label / '' / &
+         SNTags(139)%Label / '' / &
+         SNTags(140)%Label / '' / &
+         SNTags(141)%Label / '' / &
+         SNTags(142)%Label / '' / &
+         SNTags(143)%Label / '' / &
+         SNTags(144)%Label / '' / &
+         SNTags(145)%Label / '' / &
+         SNTags(146)%Label / '' / &
+         SNTags(147)%Label / '' / &
+         SNTags(148)%Label / '' / &
+         SNTags(149)%Label / '' / &
+         SNTags(150)%Label / '' / &
+         SNTags(151)%Label / '' / &
+         SNTags(152)%Label / '' / &
+         SNTags(153)%Label / '' / &
+         SNTags(154)%Label / '' / &
+         SNTags(155)%Label / '' / &
          SNTags(156)%Label / 'm_day_bot1' / &
          SNTags(157)%Label / 'm_day_bot2' / &
          SNTags(158)%Label / 'm_day_bot3' / &

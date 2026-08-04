@@ -259,25 +259,11 @@ module m_common_global_var
 
     integer, parameter :: ErrLab1 = 2
 
-    !> labels for standard global set
-    integer, parameter :: gU   = 1
-    integer, parameter :: gV   = 2
-    integer, parameter :: gW   = 3
-    integer, parameter :: gTs  = 4
-    integer, parameter :: gSoS = 5
-    integer, parameter :: gIntC= 6
-    integer, parameter :: gTa  = 7
-
-    integer, parameter :: gCO2 = 8
-    integer, parameter :: gH2O = 9
-    integer, parameter :: gCH4 = 10
-    integer, parameter :: gN2O = 11
-    integer, parameter :: gTc  = 12
-    integer, parameter :: gTi1 = 13
-    integer, parameter :: gTi2 = 14
-    integer, parameter :: gPi  = 15
-    integer, parameter :: gTe  = 16
-    integer, parameter :: gPe  = 17
+    !> gU..gPe were a second, seventeen-wide numbering of the same variables
+    !> the E2Col slots already number, with four gases wired in at 8..11.
+    !> Nothing read any of the seventeen. A duplicate numbering is how the
+    !> instrument-role index came to cap analysers at four, so this one goes
+    !> rather than waiting to be picked up.
 
     type(DateType), parameter :: &
         nullTimestamp = DateType(0, 0, 0, 0, 0)
@@ -294,30 +280,20 @@ module m_common_global_var
     data (StdFco(mmm), mmm = 1, 9) / 0.004d0, 0.008d0, 0.016d0, 0.032d0, 0.065d0, 0.133d0, &
                                 0.277d0, 0.614d0, 1.626d0 /
 
-    integer, parameter :: NumStdDynMDVars = 75
+    !> The site and sonic fields only. Fifty-six per-analyser entries used to
+    !> follow - fourteen each for co2, h2o, ch4 and the fourth gas - and every
+    !> one of the index constants naming them was unread: the gas fields are
+    !> matched per record through DynMDGasFieldNames and GasSlotFromDynMDTag,
+    !> which reach every analyser rather than the first four. A header column
+    !> such as co2_irga_model still resolves; it just resolves on that pass.
+    integer, parameter :: NumStdDynMDVars = 19
     character(64) :: StdDynMDVars(NumStdDynMDVars)
     data (StdDynMDVars(mmm), mmm = 1, NumStdDynMDVars) /'date', 'time', 'latitude', 'longitude', 'altitude',&
                 'file_length', 'acquisition_frequency', &
                 'canopy_height', 'displacement_height', 'roughness_length', &
                 'master_sonic_manufacturer', 'master_sonic_model', 'master_sonic_height', &
                 'master_sonic_wformat', 'master_sonic_wref', 'master_sonic_north_offset', &
-                'master_sonic_hpath_length', 'master_sonic_vpath_length', 'master_sonic_tau', &
-                'co2_irga_manufacturer', 'co2_irga_model', 'co2_measure_type', &
-                'co2_irga_northward_separation', 'co2_irga_eastward_separation', 'co2_irga_vertical_separation', &
-                'co2_irga_tube_length', 'co2_irga_tube_diameter', 'co2_irga_tube_flowrate',  &
-                'co2_irga_kw', 'co2_irga_ko', 'co2_irga_hpath_length', 'co2_irga_vpath_length', 'co2_irga_tau',  &
-                'h2o_irga_manufacturer', 'h2o_irga_model', 'h2o_measure_type', &
-                'h2o_irga_northward_separation', 'h2o_irga_eastward_separation', 'h2o_irga_vertical_separation', &
-                'h2o_irga_tube_length', 'h2o_irga_tube_diameter', 'h2o_irga_tube_flowrate',  &
-                'h2o_irga_kw', 'h2o_irga_ko', 'h2o_irga_hpath_length', 'h2o_irga_vpath_length', 'h2o_irga_tau',  &
-                'ch4_irga_manufacturer', 'ch4_irga_model', 'ch4_measure_type', &
-                'ch4_irga_northward_separation', 'ch4_irga_eastward_separation', 'ch4_irga_vertical_separation', &
-                'ch4_irga_tube_length', 'ch4_irga_tube_diameter', 'ch4_irga_tube_flowrate',  &
-                'ch4_irga_kw', 'ch4_irga_ko', 'ch4_irga_hpath_length', 'ch4_irga_vpath_length', 'ch4_irga_tau',  &
-                'gas4_irga_manufacturer', 'gas4_irga_model', 'gas4_measure_type', &
-                'gas4_irga_northward_separation', 'gas4_irga_eastward_separation', 'gas4_irga_vertical_separation', &
-                'gas4_irga_tube_length', 'gas4_irga_tube_diameter', 'gas4_irga_tube_flowrate',  &
-                'gas4_irga_kw', 'gas4_irga_ko', 'gas4_irga_hpath_length', 'gas4_irga_vpath_length', 'gas4_irga_tau' /
+                'master_sonic_hpath_length', 'master_sonic_vpath_length', 'master_sonic_tau' /
 
 
 !    integer, parameter :: NumStdUnits = 107

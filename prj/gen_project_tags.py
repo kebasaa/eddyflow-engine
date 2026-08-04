@@ -209,9 +209,23 @@ RETIRED_FCC_NUMERIC = _flat_per_gas([
 RETIRED_FCC_NUMERIC |= _flat_per_gas(
     ["sa_min_st_{s}", "sa_min_un_{s}", "sa_max_{s}"], ("co2", "ch4", "gas4"))
 
+#: The biomet gas profile, retired with the storage block that was its only
+#: reader. prof_t_z1..z7 and one set per gas fed bSetup%zT/zCO2/... and the dz
+#: built from them; that block has been commented out throughout this fork's
+#: history, so the settings were parsed and consumed by nothing.
+#:
+#: biom_ta..biom_rg are NOT here - bSetup%sel reads those and they are live.
+RETIRED_PROFILE = (
+    {"prof_ts", "prof_ta"}
+    | {"prof_%s" % s for s in _SLOTS}
+    | {"biom_%s" % s for s in _SLOTS}
+    | {"prof_t_z%d" % k for k in range(1, 8)}
+    | {"prof_%s_z%d" % (s, k) for s in _SLOTS for k in range(1, 8)}
+)
+
 RETIRED_LABELS_BY_TABLE = {
     "RP.SNTags": {"ru_meth", "ru_its_meth", "ru_its_sec_factor",
-                  "ru_tlag_max"} | RETIRED_RP_NUMERIC,
+                  "ru_tlag_max"} | RETIRED_RP_NUMERIC | RETIRED_PROFILE,
     "RP.SCTags": RETIRED_RP_TEXT,
     "FCC.SNTags": RETIRED_FCC_NUMERIC,
 }

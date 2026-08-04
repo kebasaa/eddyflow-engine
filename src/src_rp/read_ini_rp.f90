@@ -821,35 +821,11 @@ subroutine WriteVariablesRP()
     bSetup%sel(bLWin) = nint(SNTags(115)%value)
     bSetup%sel(bRg)   = nint(SNTags(116)%value)
 
-    init_prof_z = 120
-    bSetup%zT    = error
-    bSetup%zCO2  = error
-    bSetup%zH2O  = error
-    bSetup%zCH4  = error
-    bSetup%zGAS4 = error
-    do i = 1, MaxProfNodes
-        if (nint(SNTags(init_prof_z + i)%value) >= 0) &
-            bSetup%zT(i) = nint(SNTags(init_prof_z + i)%value)
-        if (nint(SNTags(init_prof_z + MaxProfNodes + i)%value) >= 0) &
-            bSetup%zCO2(i) = nint(SNTags(init_prof_z + MaxProfNodes + i)%value)
-        if (nint(SNTags(init_prof_z + 2 * MaxProfNodes + i)%value) >= 0) &
-            bSetup%zH2O(i)  = nint(SNTags(init_prof_z + 2 * MaxProfNodes + i)%value)
-        if (nint(SNTags(init_prof_z + 3 * MaxProfNodes + i)%value) >= 0) &
-            bSetup%zCH4(i)  = nint(SNTags(init_prof_z + 3 * MaxProfNodes + i)%value)
-        if (nint(SNTags(init_prof_z + 4 * MaxProfNodes + i)%value) >= 0) &
-            bSetup%zGAS4(i) = nint(SNTags(init_prof_z + 4 * MaxProfNodes + i)%value)
-    end do
-    do i = 1, MaxProfNodes - 1
-        if (bSetup%zT(i + 1) /= error .and. bSetup%zT(i) /= error) then
-            bSetup%dz(1, i) = bSetup%zT(i + 1) - bSetup%zT(i)
-        else
-            bSetup%dz(1, i) = error
-        end if
-        bSetup%dz(2, i) = bSetup%zCO2(i + 1)  - bSetup%zCO2(i)
-        bSetup%dz(3, i) = bSetup%zH2O(i + 1)  - bSetup%zH2O(i)
-        bSetup%dz(4, i) = bSetup%zCH4(i + 1)  - bSetup%zCH4(i)
-        bSetup%dz(5, i) = bSetup%zGAS4(i + 1) - bSetup%zGAS4(i)
-    end do
+    !> The profile heights that used to be read here - prof_t_z1..z7 and a set
+    !> per gas - fed bSetup%zT/zCO2/zH2O/zCH4/zGAS4 and the dz built from them,
+    !> and nothing consumed any of it: the only reader was the profile-storage
+    !> block in storage.f90, commented out throughout this fork's history. The
+    !> tags are retired with the fields.
 
     !> Parameters for Burba correction
     !> Multiple linear regressions
