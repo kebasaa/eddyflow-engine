@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 READER = "src/src_rp/retrieve_dynamic_metadata.f90"
 HEADER = "src/src_rp/init_dynamic_medata.f90"
-HELPER = "src/src_common/gas4_output_units.f90"
+HELPER = "src/src_common/gas_slot_resolution.f90"
 
 FIXTURES = ("tests/regression/base_dynmd.eddyflow",
             "tests/regression/base_dynmd_n_gas.eddyflow")

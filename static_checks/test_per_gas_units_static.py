@@ -21,7 +21,7 @@ def read(path):
 
 class GasFullOutputUnitStaticTests(unittest.TestCase):
     def test_shared_helper_defines_pmol_and_nmol_scales(self):
-        source = read("src/src_common/gas4_output_units.f90")
+        source = read("src/src_common/gas_slot_resolution.f90")
         self.assertIn("subroutine GasFullOutputUnits", source)
         self.assertIn("case ('ppb', 'nmol_mol', 'nmol/mol')", source)
         self.assertIn("flux_scale = 1d3", source)
@@ -33,7 +33,7 @@ class GasFullOutputUnitStaticTests(unittest.TestCase):
         self.assertIn("dens_scale = 1d0", source)
 
     def test_helper_resolves_every_configured_gas(self):
-        source = read("src/src_common/gas4_output_units.f90")
+        source = read("src/src_common/gas_slot_resolution.f90")
         self.assertIn("subroutine GasFullOutputUnitsAll", source)
         self.assertIn("do gas = firstGas, lastGas", source)
         # Water is on the mmol basis internally, so it must not fall through to
@@ -43,7 +43,7 @@ class GasFullOutputUnitStaticTests(unittest.TestCase):
         self.assertIn("call GasFullOutputUnits(GasUnitIn(gas)", source)
 
     def test_species_predicate_and_tags_come_from_the_record(self):
-        source = read("src/src_common/gas4_output_units.f90")
+        source = read("src/src_common/gas_slot_resolution.f90")
         # Answered from the gas record, not from the slot number: a second
         # water record sits well past the historical h2o slot.
         self.assertIn("logical function GasSlotIsWater(gas_slot)", source)

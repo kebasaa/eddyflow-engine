@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 EVENTS = "src/src_rp/drift_retrieve_calibration_events.f90"
 CORRECT = "src/src_rp/drift_correction.f90"
-HELPER = "src/src_common/gas4_output_units.f90"
+HELPER = "src/src_common/gas_slot_resolution.f90"
 READINI = "src/src_rp/read_ini_rp.f90"
 GENERATOR = "prj/gen_project_tags.py"
 

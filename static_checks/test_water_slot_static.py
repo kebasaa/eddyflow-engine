@@ -64,7 +64,7 @@ class WaterIsResolvedNotAssumed(unittest.TestCase):
                 "reference (E2Col(gas)%%moist_ref)" % path)
 
     def test_the_resolver_is_record_derived(self):
-        source = read("src/src_common/gas4_output_units.f90")
+        source = read("src/src_common/gas_slot_resolution.f90")
         body = source[source.index("integer function PrimaryWaterSlot"):]
         body = body[:body.index("end function PrimaryWaterSlot")]
         self.assertIn("GasSlotIsWater(gas)", body)

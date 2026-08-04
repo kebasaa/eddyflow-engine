@@ -143,7 +143,7 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
         self.assertIn("call SpectralGasNames",
                       read("src/src_fcc/spectral_assessment_diagnostics.f90"))
 
-        source = read("src/src_common/gas4_output_units.f90")
+        source = read("src/src_common/gas_slot_resolution.f90")
         body = source[source.index("subroutine SpectralGasNames"):]
         body = body[:body.index("end subroutine SpectralGasNames")]
         self.assertIn("do gas = firstGas, lastGas", body,

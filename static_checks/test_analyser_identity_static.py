@@ -36,7 +36,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-HELPERS = "src/src_common/gas4_output_units.f90"
+HELPERS = "src/src_common/gas_slot_resolution.f90"
 
 #> Every file that decides something from a named analyser's identity.
 CALLERS = (

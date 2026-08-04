@@ -1,5 +1,5 @@
 !***************************************************************************
-! gas4_output_units.f90
+! gas_slot_resolution.f90
 ! ---------------------
 ! Copyright © 2026, ETH Zurich, Jonathan Muller
 !
@@ -22,11 +22,20 @@
 !
 !***************************************************************************
 !
-! \brief       Per-gas output scales, labels and column-name stems.
+! \brief       Resolving a gas slot: which species holds it, what it is called
+!              and how its columns are scaled.
 ! \author      Jonathan Muller
-! \note        The file name is historical: none of this is specific to the
-!              fourth slot any more. Every routine here answers for whichever
-!              gas slot it is asked about, from the gas record.
+! \note        Every routine here answers for whichever gas slot it is asked
+!              about, from that slot's record. This is the layer the rest of
+!              the engine goes through instead of assuming a species sits at a
+!              fixed index.
+!
+!              Was gas4_output_units.f90, from when it held the fourth slot's
+!              unit handling alone. It has not been that for a long time -
+!              PrimaryWaterSlot, StatsLayoutSlots, SpectralVarTags and
+!              GasSlotFromDynMDTag are none of them about a fourth gas or
+!              about units - and a file whose name describes a fixed slot is
+!              an odd place to keep the code that removes fixed slots.
 ! \sa
 ! \bug
 ! \deprecated

@@ -196,7 +196,7 @@ module m_typedef
     !> are left blank here and filled in at run time.
     !>
     !> These four are slot *defaults* too. Output column names come from
-    !> GasOutputLabel and the tag helpers in gas4_output_units, which resolve
+    !> GasOutputLabel and the tag helpers in gas_slot_resolution, which resolve
     !> the record - so a project ordering its gases differently gets its
     !> columns named for what it measured, not for what slot five is called
     !> here.

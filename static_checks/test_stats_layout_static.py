@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 WRITER = "src/src_common/write_out_stats.f90"
 HEADER = "src/src_rp/init_outfiles_rp.f90"
-HELPER = "src/src_common/gas4_output_units.f90"
+HELPER = "src/src_common/gas_slot_resolution.f90"
 TYPEDEF = "src/src_common/m_typedef.f90"
 FIXTURE = "tests/regression/base_n_gas_st.eddyflow"
 

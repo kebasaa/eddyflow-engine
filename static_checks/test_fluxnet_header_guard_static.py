@@ -463,7 +463,7 @@ class FluxnetGasScalesAreBySpecies(unittest.TestCase):
 
     def test_the_species_rule_matches_the_fluxnet_bases(self):
         """CO2 umol, H2O mmol, everything else nmol - and nothing by slot."""
-        source = read("src/src_common/gas4_output_units.f90")
+        source = read("src/src_common/gas_slot_resolution.f90")
         body = source[source.index("function FluxnetGasScale") :]
         body = body[: body.index("end function FluxnetGasScale")]
         self.assertIn("EddyFlowProj%gas(rec)%var", body)

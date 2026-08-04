@@ -70,7 +70,7 @@ ALLOWED = {
     "src/src_common/bpcf_li7550_analog_filters.f90": 4,
     "src/src_common/define_all_var_set.f90": 6,
     "src/src_common/define_used_variables.f90": 1,
-    "src/src_common/gas4_output_units.f90": 10,
+    "src/src_common/gas_slot_resolution.f90": 10,
     "src/src_common/m_common_global_var.f90": 4,
     "src/src_common/m_typedef.f90": 5,
     "src/src_common/read_ex_record.f90": 1,

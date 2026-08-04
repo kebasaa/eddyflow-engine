@@ -29,7 +29,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-HELPER = "src/src_common/gas4_output_units.f90"
+HELPER = "src/src_common/gas_slot_resolution.f90"
 RP_HEADER = "src/src_rp/init_outfiles_rp.f90"
 RP_WRITER = "src/src_rp/write_out_full.f90"
 FCC_HEADER = "src/src_fcc/init_out_files.f90"

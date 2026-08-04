@@ -199,7 +199,7 @@ class SpectralCorrectionsReachEveryGas(unittest.TestCase):
         A name they disagree on is simply not imported, and the gas silently
         gets no correction factor.
         """
-        helper = read("src/src_common/gas4_output_units.f90")
+        helper = read("src/src_common/gas_slot_resolution.f90")
         self.assertIn("subroutine SpectralVarTags(tags)", helper)
         # The historical eight are the shipped file format and must not move.
         for name in ("'u'", "'v'", "'w'", "'ts'", "'co2'", "'h2o'", "'ch4'", "'gas4'"):
