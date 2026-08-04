@@ -235,10 +235,10 @@ module m_rp_global_var
          SNTags(11)%Label  / 'al_w_max' / &
          SNTags(12)%Label  / 'al_tson_min' / &
          SNTags(13)%Label  / 'al_tson_max' / &
-         SNTags(14)%Label  / 'al_co2_min' / &
-         SNTags(15)%Label  / 'al_co2_max' / &
-         SNTags(16)%Label  / 'al_h2o_min' / &
-         SNTags(17)%Label  / 'al_h2o_max' / &
+         SNTags(14)%Label  / '' / &
+         SNTags(15)%Label  / '' / &
+         SNTags(16)%Label  / '' / &
+         SNTags(17)%Label  / '' / &
          SNTags(18)%Label  / 'sk_hf_skmin' / &
          SNTags(19)%Label  / 'sk_hf_skmax' / &
          SNTags(20)%Label  / 'sk_sf_skmin' / &
@@ -250,19 +250,19 @@ module m_rp_global_var
          SNTags(26)%Label  / 'ds_hf_uv' / &
          SNTags(27)%Label  / 'ds_hf_w' / &
          SNTags(28)%Label  / 'ds_hf_t' / &
-         SNTags(29)%Label  / 'ds_hf_co2' / &
-         SNTags(30)%Label  / 'ds_hf_h2o' / &
+         SNTags(29)%Label  / '' / &
+         SNTags(30)%Label  / '' / &
          SNTags(31)%Label  / 'ds_hf_var' / &
          SNTags(32)%Label  / 'ds_sf_uv' / &
          SNTags(33)%Label  / 'ds_sf_w' / &
          SNTags(34)%Label  / 'ds_sf_t' / &
-         SNTags(35)%Label  / 'ds_sf_co2' / &
-         SNTags(36)%Label  / 'ds_sf_h2o' / &
+         SNTags(35)%Label  / '' / &
+         SNTags(36)%Label  / '' / &
          SNTags(37)%Label  / 'ds_sf_var' / &
          SNTags(38)%Label  / 'tl_hf_lim' / &
          SNTags(39)%Label  / 'tl_sf_lim' / &
-         SNTags(40)%Label  / 'tl_def_co2' / &
-         SNTags(41)%Label  / 'tl_def_h2o' / &
+         SNTags(40)%Label  / '' / &
+         SNTags(41)%Label  / '' / &
          SNTags(42)%Label  / 'aa_min' / &
          SNTags(43)%Label  / 'aa_max' / &
          SNTags(44)%Label  / 'aa_lim' / &
@@ -276,20 +276,20 @@ module m_rp_global_var
          SNTags(52)%Label  / 'v_offset' / &
          SNTags(53)%Label  / 'w_offset' / &
          SNTags(54)%Label  / 'sr_lim_w' / &
-         SNTags(55)%Label  / 'sr_lim_co2' / &
-         SNTags(56)%Label  / 'sr_lim_h2o' / &
-         SNTags(57)%Label  / 'sr_lim_ch4' / &
-         SNTags(58)%Label  / 'sr_lim_gas4' / &
-         SNTags(59)%Label  / 'al_ch4_min' / &
-         SNTags(60)%Label  / 'al_ch4_max' / &
-         SNTags(61)%Label  / 'al_gas4_min' / &
-         SNTags(62)%Label  / 'al_gas4_max' / &
-         SNTags(63)%Label  / 'ds_hf_ch4' / &
-         SNTags(64)%Label  / 'ds_hf_gas4' / &
-         SNTags(65)%Label  / 'ds_sf_ch4' / &
-         SNTags(66)%Label  / 'ds_sf_gas4' / &
-         SNTags(67)%Label  / 'tl_def_ch4' / &
-         SNTags(68)%Label  / 'tl_def_gas4' / &
+         SNTags(55)%Label  / '' / &
+         SNTags(56)%Label  / '' / &
+         SNTags(57)%Label  / '' / &
+         SNTags(58)%Label  / '' / &
+         SNTags(59)%Label  / '' / &
+         SNTags(60)%Label  / '' / &
+         SNTags(61)%Label  / '' / &
+         SNTags(62)%Label  / '' / &
+         SNTags(63)%Label  / '' / &
+         SNTags(64)%Label  / '' / &
+         SNTags(65)%Label  / '' / &
+         SNTags(66)%Label  / '' / &
+         SNTags(67)%Label  / '' / &
+         SNTags(68)%Label  / '' / &
          SNTags(69)%Label  / 'pf_num_sec' / &
          SNTags(70)%Label  / 'pf_min_num_per_sec' / &
          SNTags(71)%Label  / 'pf_w_max' / &
@@ -415,19 +415,19 @@ module m_rp_global_var
          SNTags(191)%Label / 'l_night_spar_offset' / &
          SNTags(192)%Label / 'biom_hlines' / &
          SNTags(193)%Label / 'mag_dec' / &
-         SNTags(194)%Label / 'to_co2_min_flux' / &
-         SNTags(195)%Label / 'to_ch4_min_flux' / &
-         SNTags(196)%Label / 'to_gas4_min_flux' / &
+         SNTags(194)%Label / '' / &
+         SNTags(195)%Label / '' / &
+         SNTags(196)%Label / '' / &
          SNTags(197)%Label / 'to_le_min_flux' / &
          SNTags(198)%Label / 'to_pg_range' / &
-         SNTags(199)%Label / 'to_co2_min_lag' / &
-         SNTags(200)%Label / 'to_co2_max_lag' /
-    data SNTags(201)%Label / 'to_h2o_min_lag' / &
-         SNTags(202)%Label / 'to_h2o_max_lag' / &
-         SNTags(203)%Label / 'to_ch4_min_lag' / &
-         SNTags(204)%Label / 'to_ch4_max_lag' / &
-         SNTags(205)%Label / 'to_gas4_min_lag' / &
-         SNTags(206)%Label / 'to_gas4_max_lag' / &
+         SNTags(199)%Label / '' / &
+         SNTags(200)%Label / '' /
+    data SNTags(201)%Label / '' / &
+         SNTags(202)%Label / '' / &
+         SNTags(203)%Label / '' / &
+         SNTags(204)%Label / '' / &
+         SNTags(205)%Label / '' / &
+         SNTags(206)%Label / '' / &
          SNTags(207)%Label / 'to_h2o_nclass' / &
          SNTags(208)%Label / 'pf_north_offset' / &
          SNTags(209)%Label / 'pf_sect_1_width' / &
@@ -508,62 +508,62 @@ module m_rp_global_var
          SNTags(284)%Label / '' / &
          SNTags(290)%Label / 'flow_distortion' / &
          SNTags(300)%Label / 'drift_method' / &
-         SNTags(301)%Label / 'drift_dir_co2_0' / &
-         SNTags(302)%Label / 'drift_dir_co2_1' / &
-         SNTags(303)%Label / 'drift_dir_co2_2' / &
-         SNTags(304)%Label / 'drift_dir_co2_3' / &
-         SNTags(305)%Label / 'drift_dir_co2_4' / &
-         SNTags(306)%Label / 'drift_dir_co2_5' / &
-         SNTags(307)%Label / 'drift_dir_co2_6' / &
-         SNTags(308)%Label / 'drift_dir_h2o_0' / &
-         SNTags(309)%Label / 'drift_dir_h2o_1' / &
-         SNTags(310)%Label / 'drift_dir_h2o_2' / &
-         SNTags(311)%Label / 'drift_dir_h2o_3' / &
-         SNTags(312)%Label / 'drift_dir_h2o_4' / &
-         SNTags(313)%Label / 'drift_dir_h2o_5' / &
-         SNTags(314)%Label / 'drift_dir_h2o_6' / &
-         SNTags(315)%Label / 'drift_dir_ch4_0' / &
-         SNTags(316)%Label / 'drift_dir_ch4_1' / &
-         SNTags(317)%Label / 'drift_dir_ch4_2' / &
-         SNTags(318)%Label / 'drift_dir_ch4_3' / &
-         SNTags(319)%Label / 'drift_dir_ch4_4' / &
-         SNTags(320)%Label / 'drift_dir_ch4_5' / &
-         SNTags(321)%Label / 'drift_dir_ch4_6' / &
-         SNTags(322)%Label / 'drift_dir_gas4_0' / &
-         SNTags(323)%Label / 'drift_dir_gas4_1' / &
-         SNTags(324)%Label / 'drift_dir_gas4_2' / &
-         SNTags(325)%Label / 'drift_dir_gas4_3' / &
-         SNTags(326)%Label / 'drift_dir_gas4_4' / &
-         SNTags(327)%Label / 'drift_dir_gas4_5' / &
-         SNTags(328)%Label / 'drift_dir_gas4_6' / &
-         SNTags(329)%Label / 'drift_inv_co2_0' / &
-         SNTags(330)%Label / 'drift_inv_co2_1' / &
-         SNTags(331)%Label / 'drift_inv_co2_2' / &
-         SNTags(332)%Label / 'drift_inv_co2_3' / &
-         SNTags(333)%Label / 'drift_inv_co2_4' / &
-         SNTags(334)%Label / 'drift_inv_co2_5' / &
-         SNTags(335)%Label / 'drift_inv_co2_6' / &
-         SNTags(336)%Label / 'drift_inv_h2o_0' / &
-         SNTags(337)%Label / 'drift_inv_h2o_1' / &
-         SNTags(338)%Label / 'drift_inv_h2o_2' / &
-         SNTags(339)%Label / 'drift_inv_h2o_3' / &
-         SNTags(340)%Label / 'drift_inv_h2o_4' / &
-         SNTags(341)%Label / 'drift_inv_h2o_5' / &
-         SNTags(342)%Label / 'drift_inv_h2o_6' / &
-         SNTags(343)%Label / 'drift_inv_ch4_0' / &
-         SNTags(344)%Label / 'drift_inv_ch4_1' / &
-         SNTags(345)%Label / 'drift_inv_ch4_2' / &
-         SNTags(346)%Label / 'drift_inv_ch4_3' / &
-         SNTags(347)%Label / 'drift_inv_ch4_4' / &
-         SNTags(348)%Label / 'drift_inv_ch4_5' / &
-         SNTags(349)%Label / 'drift_inv_ch4_6' / &
-         SNTags(350)%Label / 'drift_inv_gas4_0' / &
-         SNTags(351)%Label / 'drift_inv_gas4_1' / &
-         SNTags(352)%Label / 'drift_inv_gas4_2' / &
-         SNTags(353)%Label / 'drift_inv_gas4_3' / &
-         SNTags(354)%Label / 'drift_inv_gas4_4' / &
-         SNTags(355)%Label / 'drift_inv_gas4_5' / &
-         SNTags(356)%Label / 'drift_inv_gas4_6' / &
+         SNTags(301)%Label / '' / &
+         SNTags(302)%Label / '' / &
+         SNTags(303)%Label / '' / &
+         SNTags(304)%Label / '' / &
+         SNTags(305)%Label / '' / &
+         SNTags(306)%Label / '' / &
+         SNTags(307)%Label / '' / &
+         SNTags(308)%Label / '' / &
+         SNTags(309)%Label / '' / &
+         SNTags(310)%Label / '' / &
+         SNTags(311)%Label / '' / &
+         SNTags(312)%Label / '' / &
+         SNTags(313)%Label / '' / &
+         SNTags(314)%Label / '' / &
+         SNTags(315)%Label / '' / &
+         SNTags(316)%Label / '' / &
+         SNTags(317)%Label / '' / &
+         SNTags(318)%Label / '' / &
+         SNTags(319)%Label / '' / &
+         SNTags(320)%Label / '' / &
+         SNTags(321)%Label / '' / &
+         SNTags(322)%Label / '' / &
+         SNTags(323)%Label / '' / &
+         SNTags(324)%Label / '' / &
+         SNTags(325)%Label / '' / &
+         SNTags(326)%Label / '' / &
+         SNTags(327)%Label / '' / &
+         SNTags(328)%Label / '' / &
+         SNTags(329)%Label / '' / &
+         SNTags(330)%Label / '' / &
+         SNTags(331)%Label / '' / &
+         SNTags(332)%Label / '' / &
+         SNTags(333)%Label / '' / &
+         SNTags(334)%Label / '' / &
+         SNTags(335)%Label / '' / &
+         SNTags(336)%Label / '' / &
+         SNTags(337)%Label / '' / &
+         SNTags(338)%Label / '' / &
+         SNTags(339)%Label / '' / &
+         SNTags(340)%Label / '' / &
+         SNTags(341)%Label / '' / &
+         SNTags(342)%Label / '' / &
+         SNTags(343)%Label / '' / &
+         SNTags(344)%Label / '' / &
+         SNTags(345)%Label / '' / &
+         SNTags(346)%Label / '' / &
+         SNTags(347)%Label / '' / &
+         SNTags(348)%Label / '' / &
+         SNTags(349)%Label / '' / &
+         SNTags(350)%Label / '' / &
+         SNTags(351)%Label / '' / &
+         SNTags(352)%Label / '' / &
+         SNTags(353)%Label / '' / &
+         SNTags(354)%Label / '' / &
+         SNTags(355)%Label / '' / &
+         SNTags(356)%Label / '' / &
          SNTags(370)%Label / 'drift_tempsens_b' / &
          SNTags(371)%Label / 'drift_tempsens_c' / &
          SNTags(372)%Label / 'tcell_filter_tconst' / &
@@ -600,14 +600,14 @@ module m_rp_global_var
          SNTags(403)%Label / 'wdf_sect_16_start' / &
          SNTags(404)%Label / 'wdf_sect_16_end' / &
          SNTags(405)%Label / 'wdf_apply' / &
-         SNTags(406)%Label / 'pwb_co2_min_lag' / &
-         SNTags(407)%Label / 'pwb_co2_max_lag' / &
-         SNTags(408)%Label / 'pwb_h2o_min_lag' / &
-         SNTags(409)%Label / 'pwb_h2o_max_lag' / &
-         SNTags(410)%Label / 'pwb_ch4_min_lag' / &
-         SNTags(411)%Label / 'pwb_ch4_max_lag' / &
-         SNTags(412)%Label / 'pwb_gas4_min_lag' / &
-         SNTags(413)%Label / 'pwb_gas4_max_lag' / &
+         SNTags(406)%Label / '' / &
+         SNTags(407)%Label / '' / &
+         SNTags(408)%Label / '' / &
+         SNTags(409)%Label / '' / &
+         SNTags(410)%Label / '' / &
+         SNTags(411)%Label / '' / &
+         SNTags(412)%Label / '' / &
+         SNTags(413)%Label / '' / &
          SNTags(414)%Label / 'pwb_n_bootstrap' / &
          SNTags(415)%Label / 'pwb_block_length_s' / &
          SNTags(416)%Label / 'pwb_min_valid_frac' / &
@@ -2250,17 +2250,17 @@ module m_rp_global_var
          SCTags(28)%Label  / 'out_full_sp_v' / &
          SCTags(29)%Label  / 'out_full_sp_w' / &
          SCTags(30)%Label  / 'out_full_sp_ts' / &
-         SCTags(31)%Label  / 'out_full_sp_co2' / &
-         SCTags(32)%Label  / 'out_full_sp_h2o' / &
-         SCTags(33)%Label  / 'out_full_sp_ch4' / &
-         SCTags(34)%Label  / 'out_full_sp_gas4' / &
+         SCTags(31)%Label  / '' / &
+         SCTags(32)%Label  / '' / &
+         SCTags(33)%Label  / '' / &
+         SCTags(34)%Label  / '' / &
          SCTags(35)%Label  / 'out_full_cosp_w_u' / &
          SCTags(36)%Label  / 'out_full_cosp_w_v' / &
          SCTags(37)%Label  / 'out_full_cosp_w_ts' / &
-         SCTags(38)%Label  / 'out_full_cosp_w_co2' / &
-         SCTags(39)%Label  / 'out_full_cosp_w_h2o' / &
-         SCTags(40)%Label  / 'out_full_cosp_w_ch4' / &
-         SCTags(41)%Label  / 'out_full_cosp_w_gas4' / &
+         SCTags(38)%Label  / '' / &
+         SCTags(39)%Label  / '' / &
+         SCTags(40)%Label  / '' / &
+         SCTags(41)%Label  / '' / &
          SCTags(42)%Label  / 'out_st_1' / &
          SCTags(43)%Label  / 'out_st_2' / &
          SCTags(44)%Label  / 'out_st_3' / &
@@ -2294,10 +2294,10 @@ module m_rp_global_var
          SCTags(76)%Label  / 'out_raw_v' / &
          SCTags(77)%Label  / 'out_raw_w' / &
          SCTags(78)%Label  / 'out_raw_ts' / &
-         SCTags(79)%Label  / 'out_raw_co2' / &
-         SCTags(80)%Label  / 'out_raw_h2o' / &
-         SCTags(81)%Label  / 'out_raw_ch4' / &
-         SCTags(82)%Label  / 'out_raw_gas4' / &
+         SCTags(79)%Label  / '' / &
+         SCTags(80)%Label  / '' / &
+         SCTags(81)%Label  / '' / &
+         SCTags(82)%Label  / '' / &
          SCTags(83)%Label  / 'out_raw_t_air' / &
          SCTags(84)%Label  / 'out_raw_p_air' / &
          SCTags(85)%Label  / 'out_qc_details' / &

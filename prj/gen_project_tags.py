@@ -168,8 +168,52 @@ RETIRED_LABELS = {
 #: which is where the interface wrote them, and so where the engine never
 #: looked. Scoped per table, because blanking them everywhere would delete the
 #: live ones.
+#: The flat per-gas settings, retired with the 5.0.0 record format.
+#:
+#: Each of these named one of the four legacy slots - co2, h2o, ch4, gas4 -
+#: and the engine read it into that slot before letting a record override it.
+#: Nothing reads them now: a gas states its own thresholds through
+#: gas_<i>_<setting>, which reaches every gas rather than the first four.
+#:
+#: Built rather than typed, because the list is a hundred labels and a typo
+#: would blank a live one. Note what is deliberately absent: sa_max_h,
+#: sa_max_le and sa_max_ustar are whole-run thresholds that merely share the
+#: sa_max_ prefix, and out_full_cosp_w_u/v/ts are anemometric.
+_SLOTS = ("co2", "h2o", "ch4", "gas4")
+
+
+def _flat_per_gas(templates, slots=_SLOTS):
+    return {t.format(s=s) for t in templates for s in slots}
+
+
+RETIRED_RP_NUMERIC = _flat_per_gas([
+    "sr_lim_{s}",
+    "al_{s}_min", "al_{s}_max",
+    "ds_hf_{s}", "ds_sf_{s}",
+    "tl_def_{s}",
+    "to_{s}_min_lag", "to_{s}_max_lag",
+    "pwb_{s}_min_lag", "pwb_{s}_max_lag",
+] + ["drift_dir_{s}_%d" % k for k in range(7)]
+  + ["drift_inv_{s}_%d" % k for k in range(7)])
+#: Water is judged by LE, so these three never had an h2o member.
+RETIRED_RP_NUMERIC |= _flat_per_gas(["to_{s}_min_flux"],
+                                    ("co2", "ch4", "gas4"))
+
+RETIRED_RP_TEXT = _flat_per_gas([
+    "out_full_sp_{s}", "out_full_cosp_w_{s}", "out_raw_{s}",
+])
+
+RETIRED_FCC_NUMERIC = _flat_per_gas([
+    "sa_fmin_{s}", "sa_fmax_{s}", "sa_hfn_{s}_fmin",
+])
+RETIRED_FCC_NUMERIC |= _flat_per_gas(
+    ["sa_min_st_{s}", "sa_min_un_{s}", "sa_max_{s}"], ("co2", "ch4", "gas4"))
+
 RETIRED_LABELS_BY_TABLE = {
-    "RP.SNTags": {"ru_meth", "ru_its_meth", "ru_its_sec_factor", "ru_tlag_max"},
+    "RP.SNTags": {"ru_meth", "ru_its_meth", "ru_its_sec_factor",
+                  "ru_tlag_max"} | RETIRED_RP_NUMERIC,
+    "RP.SCTags": RETIRED_RP_TEXT,
+    "FCC.SNTags": RETIRED_FCC_NUMERIC,
 }
 
 

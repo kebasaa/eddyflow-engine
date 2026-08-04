@@ -205,16 +205,26 @@ class IniTagCollisionStaticTests(unittest.TestCase):
         assert f"ACTags({data_label})%value" in src
 
 
-    def test_full_spectra_gas4_tag_matches_the_key_the_gui_writes(self):
-        """The GUI writes 'out_full_sp_gas4'; the engine used to look for
-        'out_full_sp_n2o', so the setting was silently dropped and the flag always
-        read false. Every other 4th-gas tag already uses the '_gas4' spelling."""
+    def test_full_spectra_gas4_tag_keeps_the_spelling_the_gui_wrote(self):
+        """The GUI writes 'out_full_sp_gas4'; the engine once looked for
+        'out_full_sp_n2o', so the setting was silently dropped and the flag
+        always read false.
+
+        The tag is retired now - the flag comes from gas_<i>_out_full_sp - but
+        the label stays in the table under its original spelling, because the
+        tables are positional and a retired key is blanked rather than
+        removed. Reintroducing the n2o spelling would put a live key at a
+        retired index.
+        """
         source = read("src/src_rp/m_rp_global_var.f90")
-        assert "'out_full_sp_gas4'" in source
         assert "'out_full_sp_n2o'" not in source
-        # still consumed from the same slot
-        assert "RPsetup%out_full_sp(gas4) = SCTags(34)%value(1:1) == '1'" in read(
-            "src/src_rp/read_ini_rp.f90"
+        reader = read("src/src_rp/read_ini_rp.f90")
+        assert "RPsetup%out_full_sp(gas4)" not in reader, (
+            "the flat per-gas spectra flags are read again; they come from "
+            "the records now"
+        )
+        assert "SCTagFound(rpGasOriginC + (i - 1) * rpGasLeapC)" in reader, (
+            "the per-record spectra flag must be the one that is read"
         )
 
 

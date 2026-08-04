@@ -162,17 +162,14 @@ subroutine WriteVariablesRP()
     ar%bins = idint(SNTags(5)%value)
     ar%hf_lim = SNTags(6)%value
     sr%lim_w   = SNTags(54)%value
-    !> Legacy per-gas spike limits fill the four legacy slots; per-gas records
-    !> override them below when the project uses the record format.
-    sr%lim_gas       = SNTags(55)%value
-    sr%lim_gas(co2)  = SNTags(55)%value
-    sr%lim_gas(h2o)  = SNTags(56)%value
-    sr%lim_gas(ch4)  = SNTags(57)%value
-    sr%lim_gas(gas4) = SNTags(58)%value
-
-    !> Per-gas records override the legacy slots. Reading them here, rather
-    !> than in place of the above, keeps a legacy project working untouched:
-    !> with no records the loop does nothing.
+    !> Per-gas spike limits, from the records.
+    !>
+    !> The default stands in for a record that names no limit. It was the CO2
+    !> tag's value, assigned to the whole array before the four legacy slots
+    !> were named, so every gas past the fourth silently inherited whatever
+    !> CO2 was set to. A stated literal says what a project gets when it says
+    !> nothing, instead of making that depend on another gas's setting.
+    sr%lim_gas = 3.5d0
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN)) &
             sr%lim_gas(firstGas + i - 1) = &
@@ -189,17 +186,16 @@ subroutine WriteVariablesRP()
     al%w_max = SNTags(11)%value
     al%t_min = SNTags(12)%value
     al%t_max = SNTags(13)%value
-    al%gas_min(co2) = SNTags(14)%value
-    al%gas_max(co2) = SNTags(15)%value
-    al%gas_min(h2o) = SNTags(16)%value
-    al%gas_max(h2o) = SNTags(17)%value
-    al%gas_min(ch4) = SNTags(59)%value
-    al%gas_max(ch4) = SNTags(60)%value
-    al%gas_min(gas4) = SNTags(61)%value
-    al%gas_max(gas4) = SNTags(62)%value
-
-    !> Per-gas records override the legacy slots (offsets 1 and 2 from the
-    !> record origin: sr_lim, al_min, al_max, ...).
+    !> Per-gas plausibility bounds, from the records.
+    !>
+    !> Zero is not a bound, it is the absence of one: max <= min is the
+    !> condition on which both TestAbsoluteLimits and
+    !> FilterDatasetForPhysicalThresholds decline, reporting the test as not
+    !> performed rather than rejecting every value. Gases past the fourth
+    !> already relied on that, but on the loader having zeroed the array
+    !> rather than on anything saying so.
+    al%gas_min = 0d0
+    al%gas_max = 0d0
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 1)) &
             al%gas_min(firstGas + i - 1) = &
@@ -223,20 +219,16 @@ subroutine WriteVariablesRP()
     ds%hf_uv = SNTags(26)%value
     ds%hf_w = SNTags(27)%value
     ds%hf_t = SNTags(28)%value
-    ds%hf_gas(co2) = SNTags(29)%value
-    ds%hf_gas(h2o) = SNTags(30)%value
-    ds%hf_gas(ch4) = SNTags(63)%value
-    ds%hf_gas(gas4) = SNTags(64)%value
+    !> Per-gas discontinuity limits, from the records. Zero for a gas the
+    !> project does not describe, as it was for gases past the fourth.
+    ds%hf_gas = 0d0
+    ds%sf_gas = 0d0
     ds%hf_var = SNTags(31)%value
     ds%sf_uv = SNTags(32)%value
     ds%sf_w = SNTags(33)%value
     ds%sf_t = SNTags(34)%value
-    ds%sf_gas(co2) = SNTags(35)%value
-    ds%sf_gas(h2o) = SNTags(36)%value
-    ds%sf_gas(ch4) = SNTags(65)%value
-    ds%sf_gas(gas4) = SNTags(66)%value
 
-    !> Per-gas records override the legacy slots (offsets 3 and 4: sr_lim,
+    !> Per-gas records (offsets 3 and 4 from the record origin: sr_lim,
     !> al_min, al_max, ds_hf, ds_sf, ...).
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 3)) &
@@ -251,13 +243,12 @@ subroutine WriteVariablesRP()
     !> Timelag
     tl%hf_lim = SNTags(38)%value
     tl%sf_lim = SNTags(39)%value
-    tl%def_gas(co2) = SNTags(40)%value
-    tl%def_gas(h2o) = SNTags(41)%value
-    tl%def_gas(ch4) = SNTags(67)%value
-    tl%def_gas(gas4) = SNTags(68)%value
+    !> Per-gas nominal time lags, from the records. Zero - no declared lag -
+    !> for a gas the project does not describe, as it was past the fourth.
+    tl%def_gas = 0d0
 
-    !> Per-gas records override the legacy slots (offset 5: sr_lim, al_min,
-    !> al_max, ds_hf, ds_sf, tl_def, ...).
+    !> Per-gas records (offset 5: sr_lim, al_min, al_max, ds_hf, ds_sf,
+    !> tl_def, ...).
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 5)) &
             tl%def_gas(firstGas + i - 1) = &
@@ -316,18 +307,10 @@ subroutine WriteVariablesRP()
     RPsetup%out_full_sp(v)   = SCTags(28)%value(1:1) == '1'
     RPsetup%out_full_sp(w)   = SCTags(29)%value(1:1) == '1'
     RPsetup%out_full_sp(ts)  = SCTags(30)%value(1:1) == '1'
-    RPsetup%out_full_sp(co2) = SCTags(31)%value(1:1) == '1'
-    RPsetup%out_full_sp(h2o) = SCTags(32)%value(1:1) == '1'
-    RPsetup%out_full_sp(ch4) = SCTags(33)%value(1:1) == '1'
-    RPsetup%out_full_sp(gas4) = SCTags(34)%value(1:1) == '1'
 
     RPsetup%out_full_cosp(w_u)   = SCTags(35)%value(1:1) == '1'
     RPsetup%out_full_cosp(w_v)   = SCTags(36)%value(1:1) == '1'
     RPsetup%out_full_cosp(w_ts)  = SCTags(37)%value(1:1) == '1'
-    RPsetup%out_full_cosp(w_co2) = SCTags(38)%value(1:1) == '1'
-    RPsetup%out_full_cosp(w_h2o) = SCTags(39)%value(1:1) == '1'
-    RPsetup%out_full_cosp(w_ch4) = SCTags(40)%value(1:1) == '1'
-    RPsetup%out_full_cosp(w_gas4) = SCTags(41)%value(1:1) == '1'
 
     RPsetup%out_st(1) = SCTags(42)%value(1:1) == '1'
     RPsetup%out_st(2) = SCTags(43)%value(1:1) == '1'
@@ -345,14 +328,15 @@ subroutine WriteVariablesRP()
     RPsetup%out_raw(6) = SCTags(73)%value(1:1) == '1'
     RPsetup%out_raw(7) = SCTags(74)%value(1:1) == '1'
 
+    !> Cleared for the same reason out_full_sp is: only the anemometric and
+    !> ambient slots are named here, the gases come from the records below,
+    !> and OutRawData scans the whole range. This was never cleared - the four
+    !> legacy gas slots happened to cover what the loop read.
+    RPsetup%out_raw_var = .false.
     RPsetup%out_raw_var(u)   = SCTags(75)%value(1:1) == '1'
     RPsetup%out_raw_var(v)   = SCTags(76)%value(1:1) == '1'
     RPsetup%out_raw_var(w)   = SCTags(77)%value(1:1) == '1'
     RPsetup%out_raw_var(ts)  = SCTags(78)%value(1:1) == '1'
-    RPsetup%out_raw_var(co2) = SCTags(79)%value(1:1) == '1'
-    RPsetup%out_raw_var(h2o) = SCTags(80)%value(1:1) == '1'
-    RPsetup%out_raw_var(ch4) = SCTags(81)%value(1:1) == '1'
-    RPsetup%out_raw_var(gas4) = SCTags(82)%value(1:1) == '1'
     RPsetup%out_raw_var(te)  = SCTags(83)%value(1:1) == '1'
     RPsetup%out_raw_var(pe)  = SCTags(84)%value(1:1) == '1'
 
@@ -454,14 +438,11 @@ subroutine WriteVariablesRP()
             raw_out_header = raw_out_header(1:hlen) &
                 // trim(EddyFlowProj%gas(i)%var)
         else
-            select case (gasslot)
-                case (co2);  raw_out_header = raw_out_header(1:hlen) // 'co2'
-                case (h2o);  raw_out_header = raw_out_header(1:hlen) // 'h2o'
-                case (ch4);  raw_out_header = raw_out_header(1:hlen) // 'ch4'
-                case (gas4); raw_out_header = raw_out_header(1:hlen) // '4th gas'
-                case default
-                    raw_out_header = raw_out_header(1:hlen) // 'gas'
-            end select
+            !> Neither a tag nor a species name. The four slot literals this
+            !> replaces named a position, so a record that resolved to nothing
+            !> was still called 'co2' if it sat fifth; numbering it says which
+            !> record it is without claiming to know what it measures.
+            write(raw_out_header(hlen + 1:), '(a,i0)') 'gas', i
         end if
         hlen = hlen + 25
     end do
@@ -564,22 +545,10 @@ subroutine WriteVariablesRP()
     PWBSetup%hdi_prefilter_s = 1.0d0
     PWBSetup%smoothing_width = 5
     PWBSetup%random_seed = 2024
-    if (SNTagFound(406)) PWBSetup%min_lag(co2) = SNTags(406)%value
-    if (SNTagFound(407)) PWBSetup%max_lag(co2) = SNTags(407)%value
-    if (SNTagFound(406) .or. SNTagFound(407)) PWBSetup%lag_bounds_provided(co2) = .true.
-    if (SNTagFound(408)) PWBSetup%min_lag(h2o) = SNTags(408)%value
-    if (SNTagFound(409)) PWBSetup%max_lag(h2o) = SNTags(409)%value
-    if (SNTagFound(408) .or. SNTagFound(409)) PWBSetup%lag_bounds_provided(h2o) = .true.
-    if (SNTagFound(410)) PWBSetup%min_lag(ch4) = SNTags(410)%value
-    if (SNTagFound(411)) PWBSetup%max_lag(ch4) = SNTags(411)%value
-    if (SNTagFound(410) .or. SNTagFound(411)) PWBSetup%lag_bounds_provided(ch4) = .true.
-    if (SNTagFound(412)) PWBSetup%min_lag(gas4) = SNTags(412)%value
-    if (SNTagFound(413)) PWBSetup%max_lag(gas4) = SNTags(413)%value
-    if (SNTagFound(412) .or. SNTagFound(413)) PWBSetup%lag_bounds_provided(gas4) = .true.
-    !> Per-gas records override the legacy slots (offsets 9 and 10:
-    !> pwb_min_lag, pwb_max_lag). lag_bounds_provided is set the same way the
-    !> legacy pairs above set it, so a record-supplied window counts as
-    !> user-provided rather than falling back to the default range.
+    !> Per-gas search windows, from the records (offsets 9 and 10: pwb_min_lag,
+    !> pwb_max_lag). lag_bounds_provided distinguishes a window the project
+    !> stated from the default range above, so the detector knows whether it
+    !> was given one.
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (firstGas + i - 1 > lastGas) exit
         if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 9)) then
@@ -753,9 +722,10 @@ subroutine WriteVariablesRP()
         TOSetup%end_date      = SCTags(94)%value(1:len_trim(SCTags(94)%value))
         TOSetup%start_time    = SCTags(24)%value(1:len_trim(SCTags(24)%value))
         TOSetup%end_time      = SCTags(25)%value(1:len_trim(SCTags(25)%value))
-        TOSetup%gas_min_flux(co2)  = SNTags(194)%value
-        TOSetup%gas_min_flux(ch4)  = SNTags(195)%value
-        TOSetup%gas_min_flux(gas4) = SNTags(196)%value
+        !> Per-gas minimum fluxes, from the records. Water is judged by LE
+        !> instead, which is why the flat set this replaces had no h2o member
+        !> and record two falls to this default.
+        TOSetup%gas_min_flux  = 0d0
         TOSetup%le_min_flux   = SNTags(197)%value
 
         !> Per-gas records override the legacy slots (offset 6: sr_lim,
@@ -766,14 +736,17 @@ subroutine WriteVariablesRP()
                     SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 6)%value
         end do
         TOSetup%pg_range      = SNTags(198)%value
-        TOSetup%min_lag(co2)   = SNTags(199)%value
-        TOSetup%max_lag(co2)   = SNTags(200)%value
-        TOSetup%min_lag(h2o)   = SNTags(201)%value
-        TOSetup%max_lag(h2o)   = SNTags(202)%value
-        TOSetup%min_lag(ch4)   = SNTags(203)%value
-        TOSetup%max_lag(ch4)   = SNTags(204)%value
-        TOSetup%min_lag(gas4)  = SNTags(205)%value
-        TOSetup%max_lag(gas4)  = SNTags(206)%value
+        !> Per-gas search windows, from the records.
+        !>
+        !> Zero is a window here, not the absence of one: AdjustTimelagOptSettings
+        !> treats anything at or above -1000 as user-declared, so a gas left at
+        !> zero searches [0, 0] rather than falling back to the window derived
+        !> from tube geometry. Gases past the fourth have always done that -
+        !> this states it rather than inheriting it from the loader, and a
+        !> project that means "derive it" writes the -1000.1 sentinel, which
+        !> is what the four flat tags this replaces carried.
+        TOSetup%min_lag       = 0d0
+        TOSetup%max_lag       = 0d0
         TOSetup%h2o_nclass    = nint(SNTags(207)%value)
         if (TOSetup%h2o_nclass > 1) then
             TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)
@@ -947,19 +920,11 @@ subroutine WriteVariablesRP()
     !> table happened to hold over the `error` set two lines up - and `error`
     !> is what marks a gas as having no calibration polynomial and thus no
     !> drift correction.
-    do i = co2, gas4
-        do j = 0, 6
-            if (SNTagFound(301 + (i - co2) * 7 + j)) &
-                DriftCorr%dir_cal(j, i) = SNTags(301 + (i - co2) * 7 + j)%value
-            if (SNTagFound(329 + (i - co2) * 7 + j)) &
-                DriftCorr%inv_cal(j, i) = SNTags(329 + (i - co2) * 7 + j)%value
-        end do
-    end do
-
-    !> Per-gas records override the legacy slots (offsets 11..17 and 18..24
-    !> from the record origin: drift_dir_0..6, drift_inv_0..6). This is what
-    !> lets a fifth gas be drift-corrected at all - the legacy tags above name
-    !> only the four historical slots.
+    !> Per-gas calibration polynomials, from the records (offsets 11..17 and
+    !> 18..24: drift_dir_0..6, drift_inv_0..6). Guarded, because
+    !> SearchLocalTags leaves a tag it did not find untouched, and `error` -
+    !> set two lines up - is what marks a gas as having no polynomial and so
+    !> no drift correction at all.
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         do j = 0, 6
             if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 11 + j)) &

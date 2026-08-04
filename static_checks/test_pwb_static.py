@@ -30,7 +30,19 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         reader = read("src/src_rp/read_ini_rp.f90")
         self.assertIn("type :: PWBSetupType", typedefs)
         self.assertIn("type :: PWBResultType", typedefs)
-        for tag in range(406, 422):
+        #> 406..413 are the flat per-gas lag bounds - co2, h2o, ch4 and the
+        #> fourth gas, min and max. They are retired with the rest of the flat
+        #> layer: the window comes from gas_<i>_pwb_min_lag now. The labels
+        #> stay in the table because it is positional and a retired key is
+        #> blanked, not removed, but nothing reads them.
+        for tag in range(406, 414):
+            self.assertIn(f"SNTags({tag})", globals_)
+            self.assertNotIn(
+                f"SNTags({tag})", reader,
+                f"SNTags({tag}) is a flat per-gas lag bound; the record "
+                "carries it now")
+        #> 414..421 are whole-run scalars, not per-gas, and stay.
+        for tag in range(414, 422):
             self.assertIn(f"SNTags({tag})", globals_)
             self.assertIn(f"SNTags({tag})", reader)
         for default in (

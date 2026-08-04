@@ -66,7 +66,7 @@ ALLOWED = {
     "src/src_fcc/cospectra_sorting_and_averaging.f90": 1,
     "src/src_fcc/init_out_files.f90": 30,
     "src/src_fcc/output_spectral_assessment_results.f90": 1,
-    "src/src_fcc/read_ini_fcc.f90": 23,
+    "src/src_fcc/read_ini_fcc.f90": 8,
     "src/src_fcc/read_spectral_assessment_file.f90": 2,
     "src/src_fcc/spectral_assessment_diagnostics.f90": 6,
     "src/src_fcc/write_out_fluxnet_fcc.f90": 20,
@@ -79,7 +79,6 @@ ALLOWED = {
     "src/src_rp/init_outfiles_rp.f90": 42,
     "src/src_rp/out_raw_data.f90": 3,
     "src/src_rp/pwb_timelag_handle.f90": 28,
-    "src/src_rp/read_ini_rp.f90": 68,
     "src/src_rp/write_out_fluxnet.f90": 1,
 }
 

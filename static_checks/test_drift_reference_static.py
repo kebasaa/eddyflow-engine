@@ -152,12 +152,24 @@ class TheCoefficientsArePerRecord(unittest.TestCase):
                       "at the four historical slots")
         self.assertIn("DriftCorr%inv_cal(j, firstGas + i - 1)", src)
 
-    def test_the_legacy_ch4_and_fourth_gas_tags_are_read(self):
-        """They were declared at 315 and 343 and never read, so those two
-        gases were silently never drift-corrected."""
+    def test_the_polynomials_come_only_from_the_records(self):
+        """The flat drift_dir_<species>_<k> block is gone with the rest of the
+        legacy tag layer; a 5.0.0 project states its coefficients per record.
+
+        This used to assert the opposite - that the flat tables at 301 and 329
+        *were* read - because CH4's and the fourth gas's had been declared and
+        then never consulted, so those two gases were silently never
+        drift-corrected. The records cover every gas, so the fix outlived the
+        tags it was made in.
+        """
         src = code(READINI)
-        self.assertIn("301 + (i - co2) * 7", src)
-        self.assertIn("329 + (i - co2) * 7", src)
+        self.assertNotIn("301 + (i - co2) * 7", src)
+        self.assertNotIn("329 + (i - co2) * 7", src)
+        self.assertIn("rpGasOriginN + (i - 1) * rpGasLeapN + 11 + j", src)
+        self.assertIn("rpGasOriginN + (i - 1) * rpGasLeapN + 18 + j", src)
+        self.assertIn("DriftCorr%dir_cal = error", src,
+                      "a gas with no polynomial must stay at error, which is "
+                      "what excludes it from the correction")
 
 
 class FixturesExerciseBothDirections(unittest.TestCase):

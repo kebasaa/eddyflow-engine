@@ -258,15 +258,13 @@ subroutine WriteVariablesFCC()
     FCCsetup%SA%min_smpl = idint(dble(SNTags(2)%value))
 
     !> Minimum and maximum frequencies for transfer functions regression
-    i = 3
-    do gas = co2, gas4
-        FCCsetup%SA%fmin(gas) = dble(SNTags(i)%value)
-        FCCsetup%SA%fmax(gas) = dble(SNTags(i+1)%value)
-        i = i + 2
-    end do
+    !> Per-gas regression bounds, from the records. Zero for a gas the project
+    !> does not describe, as it was for gases past the fourth.
+    FCCsetup%SA%fmin = 0d0
+    FCCsetup%SA%fmax = 0d0
 
-    !> Per-gas records override the legacy slots (offsets 0 and 1 from the
-    !> record origin: sa_fmin, sa_fmax, sa_hfn_fmin, ...).
+    !> Per-gas records (offsets 0 and 1 from the record origin: sa_fmin,
+    !> sa_fmax, sa_hfn_fmin, ...).
     do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN)) &
             FCCsetup%SA%fmin(firstGas + gas - 1) = &
@@ -289,27 +287,20 @@ subroutine WriteVariablesFCC()
     FCCsetup%SA%min_st_gas = error
     FCCsetup%SA%max_gas    = error
     FCCsetup%SA%min_un_ustar = dble(SNTags(92)%value)
-    FCCsetup%SA%min_un_gas(co2)   = dble(SNTags(93)%value)
-    FCCsetup%SA%min_un_gas(ch4)   = dble(SNTags(94)%value)
-    FCCsetup%SA%min_un_gas(gas4)  = dble(SNTags(95)%value)
     FCCsetup%SA%min_un_LE    = dble(SNTags(96)%value)
     FCCsetup%SA%min_un_H     = dble(SNTags(97)%value)
     FCCsetup%SA%min_st_ustar = dble(SNTags(98)%value)
-    FCCsetup%SA%min_st_gas(co2)   = dble(SNTags(99)%value)
-    FCCsetup%SA%min_st_gas(ch4)   = dble(SNTags(100)%value)
-    FCCsetup%SA%min_st_gas(gas4)  = dble(SNTags(101)%value)
     FCCsetup%SA%min_st_LE    = dble(SNTags(102)%value)
     FCCsetup%SA%min_st_H     = dble(SNTags(103)%value)
     FCCsetup%SA%max_ustar    = dble(SNTags(104)%value)
-    FCCsetup%SA%max_gas(co2)      = dble(SNTags(105)%value)
-    FCCsetup%SA%max_gas(ch4)      = dble(SNTags(106)%value)
-    FCCsetup%SA%max_gas(gas4)     = dble(SNTags(107)%value)
     FCCsetup%SA%max_LE       = dble(SNTags(108)%value)
     FCCsetup%SA%max_H        = dble(SNTags(109)%value)
 
-    !> Per-gas records override the legacy slots. FCC record fields, in order
-    !> from fccGasOriginN: sa_fmin, sa_fmax, sa_hfn_fmin, sa_min_st,
-    !> sa_min_un, sa_max. With no records the loop does nothing.
+    !> Per-gas thresholds, from the records. FCC record fields, in order from
+    !> fccGasOriginN: sa_fmin, sa_fmax, sa_hfn_fmin, sa_min_st, sa_min_un,
+    !> sa_max. The three flat sets this replaces named CO2, CH4 and the fourth
+    !> gas only - water is judged by LE - so record two keeps the `error`
+    !> default above, which is what it had before.
     do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 3)) &
             FCCsetup%SA%min_st_gas(firstGas + gas - 1) = &
@@ -336,12 +327,9 @@ subroutine WriteVariablesFCC()
     if (SCTagFound(27)) FCCsetup%SA%automatic_config = SCTags(27)%value(1:1) == '1'
 
     !> Minimum frequency for high-frequency noise detection and elimination
-    FCCsetup%SA%hfn_fmin(co2)  = dble(SNTags(16)%value)
-    FCCsetup%SA%hfn_fmin(h2o)  = dble(SNTags(17)%value)
-    FCCsetup%SA%hfn_fmin(ch4)  = dble(SNTags(18)%value)
-    FCCsetup%SA%hfn_fmin(gas4) = dble(SNTags(19)%value)
+    FCCsetup%SA%hfn_fmin = 0d0
 
-    !> Per-gas records override the legacy slots (offset 2: sa_hfn_fmin).
+    !> Per-gas records (offset 2: sa_hfn_fmin).
     do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
         if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)) &
             FCCsetup%SA%hfn_fmin(firstGas + gas - 1) = &
