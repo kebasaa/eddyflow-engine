@@ -149,14 +149,35 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("PwbTimelagN > PwbTimelagOptSize", main_source)
         self.assertIn("ton > TimelagOptSize", main_source)
 
-    def test_pwb_provenance_source_buffer_holds_inferred_labels(self):
+    def test_pwb_provenance_names_its_donor_from_the_record(self):
+        """The donor is whichever gas lent the summary, not one of three.
+
+        This was a `select case` over co2/h2o/ch4 with every other donor
+        falling to a bare 'inferred', so a summary borrowed from a COS or from
+        a second CO2 did not say where it came from - which is the one thing
+        a provenance line exists to record.
+
+        The buffer has to grow with the label. 'inferred_from_' is fourteen
+        characters and TimelagOptGasLabel returns up to thirty-two, so
+        character(32) would truncate a record-derived donor name, and a
+        truncated provenance string still parses as a valid one.
+        """
         writer_source = read("src/src_rp/writeout_timelag_optimization.f90")
 
-        self.assertIn("character(32) :: source", writer_source)
+        self.assertIn("character(64) :: source", writer_source)
         self.assertNotIn("character(16) :: source", writer_source)
+        self.assertIn(
+            "source = 'inferred_from_' // trim(TimelagOptGasLabel(PwbSummarySource(gas)))",
+            writer_source,
+            "the donor must be named from its own record",
+        )
         for label in ("inferred_from_co2", "inferred_from_h2o", "inferred_from_ch4"):
-            self.assertLessEqual(len(label), 32)
-            self.assertIn(f"source = '{label}'", writer_source)
+            self.assertNotIn(
+                f"source = '{label}'",
+                writer_source,
+                f"{label} is back as a literal; the three-case chain cannot "
+                "name a donor outside it",
+            )
 
 
 if __name__ == "__main__":

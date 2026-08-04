@@ -549,14 +549,12 @@ subroutine WriteVariablesRP()
     end select
 
     !> Pre-whitening block-bootstrap (Vitale et al. 2024) defaults.
-    PWBSetup%min_lag(co2) = -10d0
-    PWBSetup%max_lag(co2) =  10d0
-    PWBSetup%min_lag(h2o) = -10d0
-    PWBSetup%max_lag(h2o) =  10d0
-    PWBSetup%min_lag(ch4) = -10d0
-    PWBSetup%max_lag(ch4) =  10d0
-    PWBSetup%min_lag(gas4) = -10d0
-    PWBSetup%max_lag(gas4) =  10d0
+    !> Whole-array, not four slots. Spelled out per legacy gas, every slot past
+    !> the fourth kept whatever the loader left there - so a fifth gas entered
+    !> the block-bootstrap search with a zero-width window and could only ever
+    !> return the default lag.
+    PWBSetup%min_lag = -10d0
+    PWBSetup%max_lag =  10d0
     PWBSetup%lag_bounds_provided = .false.
     PWBSetup%n_bootstrap = 99
     PWBSetup%block_length_s = 20d0

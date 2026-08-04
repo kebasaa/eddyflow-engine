@@ -1516,25 +1516,37 @@ program EddyFlowRP
             !> Calculate reference counts
             call ReferenceCounts(dble(Raw), size(Raw, 1), size(Raw, 2))
 
+            !> The whole gas block, not the first two slots.
+            !>
+            !> Every other step of the drift chain spans firstGas:lastGas -
+            !> DriftRetrieveCalibrationEvents fills %offset and %ref over it,
+            !> DriftCorrection consumes it - and only these three assignments
+            !> were (co2:h2o). Calib is initialised to error, so a third gas's
+            !> %ri and %rf stayed error, the correction masked it out, and a
+            !> gas given its own reference and offset columns was silently
+            !> never drift-corrected at all.
+            !>
             !> Special case of first file in the dataset: used to initialize
             !> drift history assuming cleaned instrument at the beginning
             if (pcount == rpStartTimestampIndx) then
                 Calib(0)%ts = MasterTimeSeries(rpStartTimestampIndx)
                 call DateTypeToDateTime(Calib(0)%ts, Calib(0)%date, Calib(0)%time)
-                Calib(0)%ri(co2:h2o) = refCounts(co2:h2o)
+                Calib(0)%ri(firstGas:lastGas) = refCounts(firstGas:lastGas)
                 cycle drift_loop
             end if
 
             !> Case of cleaning event
             !> Assign relevant ri to current Calib dataset
             if (clean > 0) then
-                Calib(latestCleaning + clean)%ri(co2:h2o) = refCounts(co2:h2o)
+                Calib(latestCleaning + clean)%ri(firstGas:lastGas) = &
+                    refCounts(firstGas:lastGas)
                 latestCleaning = latestCleaning + clean
             end if
             !> Case of most dirty file (right before next cleaning event)
             !> Calculate and assign relevant quantities to current Calib dataset
             if (dirty > 0) then
-                Calib(latestCleaning)%rf(co2:h2o) = refCounts(co2:h2o)
+                Calib(latestCleaning)%rf(firstGas:lastGas) = &
+                    refCounts(firstGas:lastGas)
             end if
         end do drift_loop
 

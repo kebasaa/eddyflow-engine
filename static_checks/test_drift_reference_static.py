@@ -114,6 +114,30 @@ class TheCorrectionIsPerGas(unittest.TestCase):
     def test_the_debug_unit_is_gone(self):
         self.assertNotIn("write(987", code(CORRECT))
 
+    def test_the_reference_counts_span_the_whole_gas_block(self):
+        """%ri and %rf are filled in the main loop, not here, and they were
+        the last (co2:h2o) slices in the drift chain.
+
+        Everything either side spans firstGas:lastGas -
+        DriftRetrieveCalibrationEvents fills %offset and %ref over it, and the
+        `where` mask in drift_correction reads all four arrays over it. Calib
+        is initialised to error, so a third gas's %ri and %rf stayed error,
+        the mask excluded it, and a gas given its own reference and offset
+        columns was silently never corrected.
+
+        Only the signal_strength method reads %ri and %rf; the linear method
+        uses %offset alone. Every drift fixture is linear, so no fixture
+        covers this and the check is the only guard.
+        """
+        src = code("src/src_rp/eddyflow-rp_main.f90")
+        for field in ("ri", "rf"):
+            self.assertNotIn(
+                "%%%s(co2:h2o)" % field, src,
+                "Calib%%%s is assigned over two slots; the correction reads "
+                "it over firstGas:lastGas" % field)
+        self.assertIn("Calib(0)%ri(firstGas:lastGas)", src)
+        self.assertNotIn("refCounts(co2:h2o)", src)
+
 
 class TheCoefficientsArePerRecord(unittest.TestCase):
     def test_the_generator_emits_them(self):

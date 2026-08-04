@@ -47,6 +47,7 @@ subroutine Fluxes23_rp()
     real(kind = dbl) :: sigma_g, rhow_g
     integer :: msl
     integer :: wsl
+    integer :: gas
     include '../src_common/interfaces_1.inc'
 
     !> Water's own slot, resolved from the records. The terms below are about
@@ -356,10 +357,15 @@ subroutine Fluxes23_rp()
     Flux3%ustar = Flux1%ustar
 
     !> If fluxes are error, set also time-lags to error, just for clarity
-    if (Flux2%gas(co2)  == error) Essentials%used_timelag(co2)  = error
-    if (Flux2%gas(wsl)  == error) Essentials%used_timelag(wsl)  = error
-    if (Flux2%gas(ch4)  == error) Essentials%used_timelag(ch4)  = error
-    if (Flux2%gas(gas4) == error) Essentials%used_timelag(gas4) = error
+    !>
+    !> Every configured gas. Four named slots left a fifth gas reporting a
+    !> plausible time-lag beside an errored flux, and the column is written per
+    !> configured gas at both ends. The water entry also read Flux2%gas(wsl)
+    !> unguarded, so a project with no water at all indexed element zero.
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (Flux2%gas(gas) == error) Essentials%used_timelag(gas) = error
+    end do
 
     write(*,'(a)')   ' Done.'
 

@@ -75,17 +75,13 @@ ALLOWED = {
     "src/src_rp/default_vars_selection.f90": 15,
     "src/src_rp/define_vars.f90": 12,
     "src/src_rp/drift_correction.f90": 1,
-    "src/src_rp/eddyflow-rp_main.f90": 12,
-    "src/src_rp/fix_timelag_opt_dataset.f90": 4,
-    "src/src_rp/fluxes23_rp.f90": 6,
     "src/src_rp/init_fluxnet_file_rp.f90": 29,
     "src/src_rp/init_outfiles_rp.f90": 45,
     "src/src_rp/out_raw_data.f90": 3,
     "src/src_rp/pwb_timelag_handle.f90": 28,
-    "src/src_rp/read_ini_rp.f90": 76,
+    "src/src_rp/read_ini_rp.f90": 68,
     "src/src_rp/test_timelag.f90": 11,
     "src/src_rp/write_out_fluxnet.f90": 5,
-    "src/src_rp/writeout_timelag_optimization.f90": 5,
 }
 
 

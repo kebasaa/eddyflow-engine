@@ -49,7 +49,9 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     integer :: open_status = 1
     real(kind = dbl) :: tl_def, tl_min, tl_max
     character(32) :: gname
+    integer :: wsl
     logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
     character(4) :: min
     character(4) :: max
     character(9) :: txt
@@ -110,8 +112,13 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
         write(uto, '(a)')
     end do
 
-    if (E2Col(h2o)%present .and. ncls > 1) then
-        if (PwbAggregateSummary) call WritePwbProvenance(uto, h2o)
+    !> The RH-class table belongs to the site's water record, not to slot six.
+    !> The loop above already skips that record; asked as E2Col(h2o) this
+    !> printed the table only when record two happened to be the hygrometer,
+    !> and headed it with slot six's provenance either way.
+    wsl = PrimaryWaterSlot()
+    if (wsl >= firstGas .and. ncls > 1) then
+        if (PwbAggregateSummary) call WritePwbProvenance(uto, wsl)
         write(uto, '(a, i4)') 'H2O_timelag_determinations_as_a_function_of_relative_humidity'
         write(uto, '(a, i4)') 'Classes with numerosity < 30 are inferred (see software documentation)'
         write(uto,'(a)')             'class     RH-range       med_h2o       min_h2o       max_h2o     class_num'
@@ -131,7 +138,11 @@ contains
 
 subroutine WritePwbProvenance(unit, gas)
     integer, intent(in) :: unit, gas
-    character(32) :: source
+    !> 'inferred_from_' is fourteen characters and a label is up to thirty-two,
+    !> so this has to hold forty-six. At character(32) a donor named by its
+    !> record rather than by one of three literals would have been truncated -
+    !> and a truncated provenance string still reads as a valid one.
+    character(64) :: source
     character(32) :: name
 
     !> Had no default arm, so a gas past the fourth printed whatever `name`
@@ -140,16 +151,10 @@ subroutine WritePwbProvenance(unit, gas)
     if (PwbSummarySource(gas) == gas) then
         source = 'native'
     elseif (PwbSummarySource(gas) > 0) then
-        select case (PwbSummarySource(gas))
-            case (co2)
-                source = 'inferred_from_co2'
-            case (h2o)
-                source = 'inferred_from_h2o'
-            case (ch4)
-                source = 'inferred_from_ch4'
-            case default
-                source = 'inferred'
-        end select
+        !> Name the donor from its own record. The three cases spelled out
+        !> co2/h2o/ch4 and sent every other donor to a bare 'inferred', so a
+        !> summary borrowed from a COS or a second CO2 did not say which.
+        source = 'inferred_from_' // trim(TimelagOptGasLabel(PwbSummarySource(gas)))
     else
         source = 'unavailable'
     end if

@@ -63,6 +63,23 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertIn("PwbTimelagDiag_FilePadding = '_pwb_diagnostics'", globals_)
         self.assertNotIn("import scipy", source.lower())
 
+    def test_the_default_lag_window_covers_every_gas(self):
+        """A gas with no window searches nothing and returns the default lag.
+
+        Written as four scalar assignments to co2/h2o/ch4/gas4, every slot
+        past the fourth kept whatever the loader left in PWBSetup, so a fifth
+        gas entered the block-bootstrap with a zero-width bound. It is a
+        whole-array assignment now, which also makes it independent of how
+        many slots the legacy names happen to cover.
+        """
+        source = read("src/src_rp/read_ini_rp.f90")
+        self.assertIn("PWBSetup%min_lag = -10d0", source)
+        self.assertIn("PWBSetup%max_lag =  10d0", source)
+        for slot in ("co2", "h2o", "ch4", "gas4"):
+            self.assertNotIn(
+                "PWBSetup%%min_lag(%s) = -10d0" % slot, source,
+                "the default window is back to naming slots")
+
     def test_bounds_sensitive_loops_do_not_rely_on_short_circuiting(self):
         source = read("src/src_rp/pwb_timelag_handle.f90")
         self.assertNotIn("j >= 1 .and. x(j)", source)
