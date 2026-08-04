@@ -709,15 +709,21 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
                 call InvalidateRecord()
                 return
             end if
-            !> Past the fourth slot only. The GA_* block above owns co2..gas4
-            !> and is the authority for them, exactly as InitFluxnetFile_rp
-            !> describes when it writes these columns "for the remaining
-            !> gases". The old code enforced that by accident - it mirrored
-            !> the converted GA_* values over the top of whatever this block
-            !> had left - so with the mirror gone the precedence has to be
-            !> stated. Letting this block win for the first four would also
-            !> mix units: it is SI, the GA_* columns are metadata units.
-            if (gas > histGas4 .and. gas >= firstGas .and. gas <= lastGas) then
+            !> Every slot this block names, not just those past the fourth.
+            !>
+            !> It used to defer to the GA_* block for the first four, which was
+            !> right while GA_* was four fixed blocks and this one existed only
+            !> to carry the rest. GA_* is per gas now and both paths end in SI
+            !> - the GA_* values are converted inline a few hundred lines above,
+            !> before this block is parsed - so there is nothing left for the
+            !> boundary to protect, and a block that carries its own slot
+            !> should be believed about it.
+            !>
+            !> The writer's gate went with this one. They have to: FCC re-emits
+            !> lEx%n_gas_instr, the count of entries it *accepted*, so a reader
+            !> that discarded the first four against a writer that emits eight
+            !> would make FCC's own header over-declare by four blocks.
+            if (gas >= firstGas .and. gas <= lastGas) then
                 lEx%gas_instr(gas)%firm = instr_firm
                 lEx%gas_instr(gas)%model = instr_model
                 lEx%gas_instr(gas)%nsep = instr_nsep

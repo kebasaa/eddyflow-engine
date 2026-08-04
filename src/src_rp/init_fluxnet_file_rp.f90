@@ -655,19 +655,19 @@ subroutine SelectFluxnetGasSlots()
             end do
             if (len_trim(tag) == 0) tag = 'GAS'
             FluxnetGasTags(nFluxnetGasSlots) = tag
-            !> The self-describing SI analyser block covers the records past
-            !> the fourth. Every gas has a GA_* block of its own, but those
-            !> carry metadata units and are converted on read; this one is
-            !> written in SI and read back unchanged, and FCC lets it overwrite
-            !> what it lists. Four is the count of historical GA_ blocks FCC
-            !> converts, not a limit on gases - phrased on the record index so
-            !> it stops reading as one.
-            if (k > 4) then
-                nFluxnetInstrSlots = nFluxnetInstrSlots + 1
-                FluxnetInstrSlots(nFluxnetInstrSlots) = slot
-                FluxnetInstrTags(nFluxnetInstrSlots) = &
-                    FluxnetGasTags(nFluxnetGasSlots)
-            end if
+            !> Every gas gets the self-describing SI analyser block.
+            !>
+            !> It used to start at the fifth record, because the first four
+            !> were the only ones with GA_* columns and this block existed to
+            !> give the rest somewhere to live. GA_* is generated per gas now,
+            !> so that boundary described nothing: the block carries an
+            !> explicit slot and SI units, and applying it uniformly is what
+            !> makes it self-describing rather than a supplement to a fixed
+            !> four. The reader's matching precedence moves with it.
+            nFluxnetInstrSlots = nFluxnetInstrSlots + 1
+            FluxnetInstrSlots(nFluxnetInstrSlots) = slot
+            FluxnetInstrTags(nFluxnetInstrSlots) = &
+                FluxnetGasTags(nFluxnetGasSlots)
         end do
     end if
 end subroutine SelectFluxnetGasSlots

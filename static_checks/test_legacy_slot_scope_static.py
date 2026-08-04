@@ -73,7 +73,6 @@ ALLOWED = {
     "src/src_common/gas_slot_resolution.f90": 10,
     "src/src_common/m_common_global_var.f90": 4,
     "src/src_common/m_typedef.f90": 5,
-    "src/src_common/read_ex_record.f90": 1,
     "src/src_fcc/cospectra_sorting_and_averaging.f90": 1,
     "src/src_fcc/init_out_files.f90": 1,
     "src/src_fcc/read_ini_fcc.f90": 8,

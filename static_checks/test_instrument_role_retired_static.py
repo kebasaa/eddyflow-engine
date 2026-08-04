@@ -85,11 +85,25 @@ class TheTwoMetadataBlocksHaveAnOwner(unittest.TestCase):
         self.assertIn("instr_nsep /= error)", src)
         self.assertNotIn("if (instr_nsep /= error) lEx%gas_instr", src)
 
-    def test_the_si_block_does_not_claim_the_first_four_slots(self):
+    def test_the_si_block_covers_every_slot_it_names(self):
+        """The self-describing analyser block carries its own slot number.
+
+        It used to defer to the GA_* columns for the first four, which was
+        right while GA_* was four fixed blocks and this one existed to carry
+        the rest. GA_* is per gas now and both end in SI, so the boundary
+        protected nothing.
+
+        The writer's gate and this one must agree, because FCC re-emits the
+        count of entries it *accepted*: a reader discarding four of eight
+        would make FCC's header over-declare by four blocks.
+        """
         src = code(EXREAD)
-        self.assertIn("gas > histGas4 .and. gas >= firstGas", src,
-                      "the GA_* columns are the authority for the four "
-                      "historical slots")
+        self.assertNotIn("gas > histGas4 .and. gas >= firstGas", src)
+        self.assertIn("if (gas >= firstGas .and. gas <= lastGas) then", src)
+        writer = code("src/src_rp/init_fluxnet_file_rp.f90")
+        self.assertNotIn("if (k > 4) then", writer,
+                         "the writer still starts the block at the fifth "
+                         "record; the reader now accepts all of them")
 
 
 class CalibrationReferencesArePerGas(unittest.TestCase):
