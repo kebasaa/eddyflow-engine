@@ -56,6 +56,9 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     character(32) :: char_doy
     character(14) :: tsIso
     character(9) :: vm97flags(GHGNumVar)
+    !> One packed flag cell: a leading filler digit and one digit per variable
+    !> the cell's legend names, so FlagStrLen + 1 covers the widest of them.
+    character(FlagStrLen + 1) :: flag_cell
     !> How many gases the time-lag flag string describes, from the helper the
     !> header uses, so the cell and its legend cannot disagree.
     integer :: n_tl_vars
@@ -587,11 +590,23 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> The time-lag pair names gases only, so it starts at the first gas.
     !> Slicing from the end of the string was an artefact of the base-10
     !> packing, which right-aligned four digits there.
+    !> Built into a named cell first, one per header name.
+    !>
+    !> These were concatenations passed straight to AddDatum, whose `datum`
+    !> dummy is intent(inout) and is rewritten by stripstr. An expression
+    !> cannot be an intent(inout) actual argument, so the compiler bound a
+    !> temporary and the result depended on its length - which is how widening
+    !> the time-lag slice from four characters to one per gas turned four
+    !> fields into six and shifted every column after them.
     call TimelagFlagLegend(n_tl_vars, tl_legend)
-    call AddDatum(csv_row, '8'//CharHF%tl(firstGas + 1:firstGas + n_tl_vars), separator)
-    call AddDatum(csv_row, '8'//CharSF%tl(firstGas + 1:firstGas + n_tl_vars), separator)
-    call AddDatum(csv_row, '8'//CharHF%aa(FlagStrLen:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharHF%ns(FlagStrLen:FlagStrLen), separator)
+    flag_cell = '8' // CharHF%tl(firstGas + 1:firstGas + n_tl_vars)
+    call AddDatum(csv_row, flag_cell, separator)
+    flag_cell = '8' // CharSF%tl(firstGas + 1:firstGas + n_tl_vars)
+    call AddDatum(csv_row, flag_cell, separator)
+    flag_cell = '8' // CharHF%aa(FlagStrLen:FlagStrLen)
+    call AddDatum(csv_row, flag_cell, separator)
+    flag_cell = '8' // CharHF%ns(FlagStrLen:FlagStrLen)
+    call AddDatum(csv_row, flag_cell, separator)
 
     !> Quality test results. Three variable-shaped families - the wind
     !> components and sonic temperature, then one field per configured gas,

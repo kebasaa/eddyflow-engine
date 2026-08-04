@@ -390,10 +390,20 @@ subroutine WriteOutFluxnetFcc(lEx)
     end if
 
     !> Uncomment to reintroduce flags for last 3 tests
-    call AddCharDatumToDataline(lEx%vm_tlag_hf, csv_row, separator)
-    call AddCharDatumToDataline(lEx%vm_tlag_sf, csv_row, separator)
-    call AddCharDatumToDataline(lEx%vm_aoa_hf, csv_row, separator)
-    call AddCharDatumToDataline(lEx%vm_nshw_hf, csv_row, separator)
+    !> The third argument is the error label, not the separator.
+    !>
+    !> These four passed `separator`, so whenever WriteDatumChar decided a cell
+    !> was missing it substituted a comma - which is a field boundary, not a
+    !> value, so the row gained a column and every field after it shifted. It
+    !> stayed hidden because WriteDatumChar's "missing" test is the literal
+    !> '899999999', and the time-lag cell only reaches that exact string at
+    !> eight gases: one filler digit plus one per gas, all nines for a test
+    !> that was not performed. Four and five gases produced a shorter cell and
+    !> never tripped it.
+    call AddCharDatumToDataline(lEx%vm_tlag_hf, csv_row, EddyFlowProj%err_label)
+    call AddCharDatumToDataline(lEx%vm_tlag_sf, csv_row, EddyFlowProj%err_label)
+    call AddCharDatumToDataline(lEx%vm_aoa_hf, csv_row, EddyFlowProj%err_label)
+    call AddCharDatumToDataline(lEx%vm_nshw_hf, csv_row, EddyFlowProj%err_label)
 
     !> Write second string from Chunks
     call AddDatum(csv_row, fluxnetChunks%s(2), separator)
