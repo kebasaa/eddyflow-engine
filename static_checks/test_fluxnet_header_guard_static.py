@@ -297,6 +297,41 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
                 "%s must cut the cell to the gases the legend names" % path)
             self.assertIn("TimelagFlagLegend(n_tl_vars", writer)
 
+    def test_an_empty_flag_cell_is_recognised_by_shape_not_by_width(self):
+        """A cell reporting nothing must render as the error label at any width.
+
+        WriteDatumChar tested the literal '899999999' - the nine-character VM97
+        cell, one filler digit plus eight tests. Nothing else matched it, so
+        the same "no test was performed" cell rendered as the error label at
+        one width and as raw nines at another: a four-gas project's time-lag
+        cell is 89999 and went out as data.
+
+        It also collided. The time-lag cell carries one digit per gas, so at
+        exactly eight gases it becomes that very string - which is what routed
+        it into the missing-value arm and, with the separator passed in place
+        of the error label, put a comma in the row and shifted every column
+        after it.
+        """
+        #> Comment lines dropped: the note explaining the removed literal
+        #> quotes it, and would otherwise read as the literal itself. This is
+        #> the third check in this suite to need it - a plain `in` against
+        #> Fortran source almost always wants the comments gone first.
+        source = "\n".join(
+            ln for ln in read("src/src_common/string_sub.f90").splitlines()
+            if not ln.lstrip().startswith("!"))
+        self.assertNotIn("'899999999'", source,
+                         "the missing-cell test is back to a fixed width")
+        self.assertIn("function AllFlagsNotPerformed", source)
+        self.assertIn("AllFlagsNotPerformed(char_in)", source)
+
+        body = source[source.index("logical function AllFlagsNotPerformed"):]
+        body = body[:body.index("end function AllFlagsNotPerformed")]
+        self.assertIn("if (body(k:k) /= '9') return", body,
+                      "the rule is every digit behind the filler being 9")
+        self.assertIn("if (body(1:1) < '0' .or. body(1:1) > '9') return", body,
+                      "an instrument model or file name must not be mistaken "
+                      "for a flag cell")
+
     def test_the_spike_tests_evaluate_every_slot(self):
         for path in self.PRODUCERS[:2]:
             with self.subTest(producer=path):

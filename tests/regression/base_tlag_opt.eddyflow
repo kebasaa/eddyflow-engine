@@ -517,9 +517,9 @@ pf_sect_12_exclude=0
 
 [RawProcess_TimelagOptimization_Settings]
 to_start_date=2025-06-01
-to_end_date=2025-06-14
+to_end_date=2025-06-01
 to_start_time=00:00
-to_end_time=00:00
+to_end_time=03:00
 to_mode=1
 to_file=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF-Testing/eddyflow_CH-LAE_COS25_pwb_timelag_opt_2026-07-24T085153_adv.txt
 to_h2o_nclass=10

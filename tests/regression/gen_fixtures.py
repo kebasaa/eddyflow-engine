@@ -132,16 +132,48 @@ def build_tlag_opt(src_lines):
     one to four and none for five to eight, so one run exercises both arms -
     the declared window is taken verbatim, and the undeclared one is derived
     rather than read as a request for [0, 0].
+
+    The optimisation period is the processing window, not the fortnight
+    inherited from base_n_gas. That fortnight had the prepass walk 672
+    half-hours to inform a run covering six of them, which took minutes against
+    the seconds every other fixture takes - enough to keep a fixture out of the
+    loop anyone actually runs. This is 38 seconds; a day is 113 and buys
+    nothing.
+
+    What that costs, stated plainly: six periods leave the optimiser too few
+    determinations to fit a window, so toPasGas stays at the error value and
+    SetTimelags falls back on the declared one. The fixture therefore covers
+    the derivation path and the empty-optimiser guard - every gas takes it -
+    but not the optimiser's own statistics, which need the fortnight. It still
+    separates the defect from the fix: before, a gas declaring no window got
+    the garbage +-0.222387 range built from a median of nothing; now it gets
+    its declared window back.
     """
+    period = {
+        'to_start_date': _value(src_lines, 'pr_start_date'),
+        'to_start_time': _value(src_lines, 'pr_start_time'),
+        'to_end_date': _value(src_lines, 'pr_end_date'),
+        'to_end_time': _value(src_lines, 'pr_end_time'),
+    }
     out = []
     for ln in src_lines:
-        if ln.startswith('tlag_meth='):
+        key = ln.split('=', 1)[0]
+        if key == 'tlag_meth':
             out.append('tlag_meth=4')
-        elif ln.startswith('to_mode='):
+        elif key == 'to_mode':
             out.append('to_mode=1')
+        elif key in period:
+            out.append('%s=%s' % (key, period[key]))
         else:
             out.append(ln)
     return out
+
+
+def _value(lines, key):
+    for ln in lines:
+        if ln.startswith(key + '='):
+            return ln.split('=', 1)[1]
+    raise SystemExit('no %s in the source fixture' % key)
 
 
 TARGETS = {

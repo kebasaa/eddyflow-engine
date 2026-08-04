@@ -494,14 +494,53 @@ subroutine WriteDatumChar(char_in, char_datum, err_label)
     character(*), intent(in) :: char_in
     character(*), intent(out) :: char_datum
     character(*), intent(in) :: err_label
+    logical, external :: AllFlagsNotPerformed
 
     if (trim(adjustl(char_in)) /= 'none' .and. trim(adjustl(char_in)) /= 'None' &
-        .and. trim(adjustl(char_in)) /= '899999999') then
+        .and. .not. AllFlagsNotPerformed(char_in)) then
         char_datum = trim(adjustl(char_in))
     else
         char_datum = trim(adjustl(err_label))
     end if
 end subroutine WriteDatumChar
+
+!***************************************************************************
+!
+! \brief       Whether a packed flag cell reports no outcome at all.
+! \author      Jonathan Muller
+! \note        A cell is a filler digit followed by one digit per variable, and
+!              9 is what PackFlagString writes for a test that did not run or a
+!              variable that is not there. A cell that is all nines behind its
+!              filler therefore carries nothing, and the row is better off with
+!              the project's error label than with an opaque run of nines.
+!
+!              This is the rule the literal '899999999' was reaching for. That
+!              literal is the nine-character VM97 cell - one filler plus eight
+!              tests - and matched nothing else, so the same "nothing was
+!              performed" cell rendered as the error label at one width and as
+!              raw nines at another: a four-gas project's time-lag cell is
+!              89999 and passed straight through. It also collided by
+!              coincidence, because the time-lag cell carries one digit per gas
+!              and at exactly eight gases becomes that very string.
+!
+!              The first character is required to be a digit so that an
+!              instrument model or a file name cannot be mistaken for a cell.
+!***************************************************************************
+logical function AllFlagsNotPerformed(cell)
+    implicit none
+    character(*), intent(in) :: cell
+    character(len(cell)) :: body
+    integer :: k
+
+    AllFlagsNotPerformed = .false.
+    body = trim(adjustl(cell))
+    if (len_trim(body) < 2) return
+    if (body(1:1) < '0' .or. body(1:1) > '9') return
+    do k = 2, len_trim(body)
+        if (body(k:k) /= '9') return
+    end do
+    AllFlagsNotPerformed = .true.
+end function AllFlagsNotPerformed
 
 !***************************************************************************
 !
