@@ -85,12 +85,25 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
         loc_var_present, BPTF)
     call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), ts, ac_frequency, &
         loc_var_present, BPTF)
-    if (loc_var_present(histGas1)) &
-        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), histGas1, ac_frequency, &
+    !> Every gas measured through an LI-7550, whichever slots those are.
+    !>
+    !> The LI-7550 is the interface box of the LI-7500 and LI-7200, and the
+    !> block-averaging term describes what it does to the analog signals it
+    !> digitises - so it belongs to the gases on such an analyser and to no
+    !> others. This asked for slots five and six, which is those gases only on
+    !> a single-analyser project that happens to declare CO2 and H2O first: on
+    !> a site with a QCL first, the term went to the QCL's channels and the
+    !> LI-7200's were left uncorrected.
+    !>
+    !> The model string carries a trailing revision, so it is matched by
+    !> substring, as every other instrument test in the engine does.
+    do gas = firstGas, lastGas
+        if (.not. loc_var_present(gas)) cycle
+        if (index(E2Col(gas)%instr%model, 'li7500') == 0 .and. &
+            index(E2Col(gas)%instr%model, 'li7200') == 0) cycle
+        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), gas, ac_frequency, &
             loc_var_present, BPTF)
-    if (loc_var_present(histGas2)) &
-        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), histGas2, ac_frequency, &
-            loc_var_present, BPTF)
+    end do
 
     !> reset to 1 BA and ZOH low-pass transfer functions if the case
     if (.not. EddyFlowProj%hf_correct_ghg_ba) then

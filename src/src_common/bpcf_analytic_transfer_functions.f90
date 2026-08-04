@@ -260,24 +260,24 @@ subroutine LI7550_AnalogSignalsTransferFunctions(nf, N, var, ac_frequency, &
                 !> ZOH
                 BPTF(1:N)%LP(var)%zoh_sonic = &
                     dsqrt(dabs(sinc(nf(1:N)/EddyFlowProj%sonic_output_rate/2d0, N)))
-            !> DORMANT, and deliberately left slot-bound. Both
-            !> hf_correct_ghg_ba and hf_correct_ghg_zoh are hard-set .false.
-            !> in write_processing_project_variables, so BPCF_LI7550AnalogFilters
-            !> - the only caller that passes a gas - never runs, and this arm
-            !> is unreachable. Widening it would be a change no fixture can
-            !> observe, which is how a wrong correction gets shipped.
+            !> Any gas the caller selected.
             !>
-            !> It is NOT simply "the first two gas slots". The LI-7550 is the
-            !> interface box of the LI-7500/7200, which measure CO2 and H2O
-            !> and nothing else, so the term belongs to the gases on such an
-            !> analyser - not to every gas, and not to slots 5 and 6, which on
-            !> a two-analyser site may be a QCL's. Re-enabling the flags means
-            !> selecting by instrument model in the caller, which passes only
-            !> co2 and h2o today.
+            !> This was `case(histGas1, histGas2)` - slots five and six, on the
+            !> reasoning that an LI-7550 fronts an LI-7500 or LI-7200 and those
+            !> measure CO2 and H2O. But the slot is not the analyser: on a
+            !> two-analyser site slots five and six may be a QCL's channels,
+            !> and a second LI-7200's CO2 sits well past them, so read as slot
+            !> numbers the arm was wrong in both directions.
             !>
-            !> test_li7550_dormant_static.py fails if the flags come back
-            !> without this being addressed.
-            case(histGas1, histGas2)
+            !> Which gases sit behind an LI-7550 is a question about
+            !> instruments, and BPCF_LI7550AnalogFilters now answers it there,
+            !> from each gas's own record. This arm takes what it is given.
+            !>
+            !> Still dormant: hf_correct_ghg_ba and hf_correct_ghg_zoh are
+            !> hard-set .false. in write_processing_project_variables, so
+            !> nothing reaches here. The selection is correct for the day the
+            !> flags come back rather than waiting to be noticed then.
+            case(firstGas:lastGas)
                 BPTF(1:N)%LP(var)%ba_irga = dsqrt(dabs(sinc(nf(1:N)*Tba, N)))
         end select
     end if

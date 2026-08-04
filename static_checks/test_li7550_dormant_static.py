@@ -1,30 +1,31 @@
-"""The LI-7550 analog-filter correction is dormant, and must not wake up
-slot-bound.
+"""The LI-7550 analog-filter correction is dormant, and correct if it wakes.
 
-`LI7550_AnalogSignalsTransferFunctions` has an arm `case(co2, h2o)` that gives
-the block-averaging term to slots 5 and 6 only. On a two-analyser site those
-slots need not be an LI-7500/7200's channels at all, and a second LI-7200's
-CO2 sits well past them - so read as slot numbers the arm is wrong twice over.
+The block-averaging term describes what the LI-7550 does to the analog signals
+it digitises. It is the interface box of the LI-7500 and LI-7200, so the term
+belongs to the gases measured on such an analyser and to no others.
 
-It is currently unreachable. `write_processing_project_variables` hard-sets
-both `hf_correct_ghg_ba` and `hf_correct_ghg_zoh` to `.false.`, with the
-assignments that would read them from the project file commented out, and
-`BPCF_LI7550AnalogFilters` - the only caller that ever passes a gas - is
-guarded on those two flags. The other three call sites pass u, w and ts.
+It used to be given to slots 5 and 6, on the reasoning that those analysers
+measure CO2 and H2O. But a slot is not an analyser: on a site whose first
+records are a QCL's, the term went to the QCL's channels and the LI-7200's
+were left uncorrected, and a second LI-7200's CO2 sits well past slot 6
+either way. The selection is made in BPCF_LI7550AnalogFilters now, from each
+gas's own instrument record, and the arm in the transfer function takes what
+it is given.
 
-So it was left alone: widening it would be a change no fixture can observe,
-and this repository has already paid for one correction that looked right and
-was shipped without a perturbation that reached it.
+It is still unreachable. write_processing_project_variables hard-sets both
+hf_correct_ghg_ba and hf_correct_ghg_zoh to .false., with the assignments that
+would read them from the project file commented out, and
+BPCF_LI7550AnalogFilters - the only caller that passes a gas - is guarded on
+those two flags. The other three call sites pass u, w and ts.
 
-What this check defends is the *next* person. If the flags become live again,
-the arm has to be revisited at the same time - and the fix is to select by
-instrument model in the caller, since the LI-7550 is the interface box of the
-LI-7500/7200 and the term belongs to the gases on such an analyser rather
-than to a slot range.
+So no fixture can observe any of this, which is exactly why it is pinned here:
+the selection was fixed while it was cheap to reason about rather than left
+for whoever re-enables the flags to discover. This check fails if the arm
+returns to naming slots, and it fails if the flags come back without the
+instrument test still being in place.
 """
 
 from pathlib import Path
-import re
 import unittest
 
 
@@ -32,6 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 PROJVARS = "src/src_common/write_processing_project_variables.f90"
 TF = "src/src_common/bpcf_analytic_transfer_functions.f90"
+CALLER = "src/src_common/bpcf_li7550_analog_filters.f90"
 
 
 def code(path):
@@ -40,34 +42,52 @@ def code(path):
 
 
 class TheCorrectionIsStillDormant(unittest.TestCase):
-    """If either assertion fails the feature has been re-enabled, and the
-    slot-bound arm in bpcf_analytic_transfer_functions.f90 must be converted
-    to an instrument-model test in the same change."""
-
     def test_both_flags_are_forced_false(self):
         src = code(PROJVARS)
         for flag in ("hf_correct_ghg_ba", "hf_correct_ghg_zoh"):
             self.assertRegex(
                 src, r"EddyFlowProj%%%s\s*=\s*\.false\." % flag,
-                "%s is no longer forced false - the LI-7550 arm is reachable "
-                "again and is still bound to slots 5 and 6" % flag)
+                "%s is no longer forced false. That is allowed, but the "
+                "correction becomes observable, so the instrument selection "
+                "below now needs a fixture behind it" % flag)
 
     def test_neither_flag_is_read_from_the_project_file(self):
         src = code(PROJVARS)
         for tag in ("EPPrjCTags(46)", "EPPrjCTags(47)"):
             self.assertNotIn(
                 tag, src,
-                "%s is being read again, so the correction is live; convert "
-                "the case(co2, h2o) arm to select by instrument model" % tag)
+                "%s is being read again, so the correction is live and wants "
+                "a fixture that reaches it" % tag)
 
 
-class TheArmSaysWhyItIsLeftAlone(unittest.TestCase):
+class TheSelectionIsByInstrumentNotBySlot(unittest.TestCase):
+    def test_the_caller_selects_on_the_analyser_model(self):
+        """Which gases sit behind an LI-7550 is a question about instruments."""
+        src = code(CALLER)
+        self.assertIn("do gas = firstGas, lastGas", src)
+        for model in ("li7500", "li7200"):
+            self.assertIn("index(E2Col(gas)%%instr%%model, '%s')" % model, src,
+                          "the term must follow the analyser, not the slot")
+        for slot in ("histGas1", "histGas2", "histGas3", "histGas4"):
+            self.assertNotIn(
+                "size(nf), %s," % slot, src,
+                "%s is back as the thing passed to the transfer function; "
+                "a slot is not an analyser" % slot)
+
+    def test_the_arm_takes_whatever_gas_it_is_given(self):
+        src = code(TF)
+        self.assertIn("case(firstGas:lastGas)", src)
+        self.assertNotIn(
+            "case(histGas1, histGas2)", src,
+            "the arm names slots again; the caller decides which gases are "
+            "on an LI-7550")
+
     def test_the_dormancy_is_documented_where_the_arm_is(self):
-        """A reader who finds case(co2, h2o) must not have to discover the
-        dormancy for themselves before deciding whether it is a defect."""
+        """A reader who finds the arm must not have to discover for
+        themselves that nothing reaches it."""
         text = (ROOT / TF).read_text(encoding="utf-8")
-        arm = text.split("case(co2, h2o)")[0][-2000:]
-        self.assertIn("DORMANT", arm)
+        arm = text.split("case(firstGas:lastGas)")[0][-2000:]
+        self.assertIn("dormant", arm.lower())
         self.assertIn("hf_correct_ghg_ba", arm)
 
 

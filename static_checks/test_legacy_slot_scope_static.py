@@ -67,8 +67,6 @@ RETIRED_SPELLINGS = ("co2", "h2o", "ch4", "n2o", "gas4",
 #: Occurrences outside comments, per file. Generated from the tree; see the
 #: module docstring for why each file still has any.
 ALLOWED = {
-    "src/src_common/bpcf_analytic_transfer_functions.f90": 2,
-    "src/src_common/bpcf_li7550_analog_filters.f90": 4,
     "src/src_common/define_all_var_set.f90": 6,
     "src/src_common/define_used_variables.f90": 1,
     "src/src_common/gas_slot_resolution.f90": 9,
