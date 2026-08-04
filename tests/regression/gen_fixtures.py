@@ -176,7 +176,27 @@ def _value(lines, key):
     raise SystemExit('no %s in the source fixture' % key)
 
 
+def build_cell_ref(src_lines):
+    """base_n_gas_cell with one gas pointed at the other analyser's cell.
+
+    gas_<i>_cell names the cell record whose analyser holds a gas. It was
+    parsed and discarded for as long as the cell slots were a single global
+    set, and every fixture leaves it at 0 - so the field has only ever been
+    exercised on its "auto" arm, where the instrument name is matched instead.
+
+    base_n_gas_cell carries two analysers: cell records 1 and 2 are the MIRO's,
+    3 and 4 the LI-7200's. Record one's gas is on the MIRO, so pointing it at
+    cell record 3 makes the explicit reference and the name match disagree,
+    which is the only way to tell whether the field is read at all. Its cell
+    temperature and pressure - and every quantity computed from them - then
+    come from the LI-7200's block.
+    """
+    return [('gas_1_cell=3' if ln.startswith('gas_1_cell=') else ln)
+            for ln in src_lines]
+
+
 TARGETS = {
+    'base_cell_ref.eddyflow': ('base_n_gas_cell.eddyflow', build_cell_ref),
     'base_tlag_opt.eddyflow': ('base_n_gas.eddyflow', build_tlag_opt),
     'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),
     'base_n_gas_bin.eddyflow': ('base_n_gas.eddyflow', build_own_binned),

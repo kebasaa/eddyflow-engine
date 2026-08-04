@@ -53,6 +53,10 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     integer :: nCellInstr
     integer :: i
     integer :: wsl
+    !> A gas record's index and the cell record it names, for resolving an
+    !> explicit gas_<i>_cell.
+    integer :: gasrec
+    integer :: cellrec
     character(32) :: cellInstr(MaxNumInstruments)
     integer, external :: PrimaryWaterSlot
     !> Declared in the host so the internal procedures inherit it. The lookup
@@ -206,9 +210,32 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     !> quantities are cell_ref + 0..3 in the order cell_t, int_t_1, int_t_2,
     !> int_p. Gases whose instrument has no cell record fall back to the first
     !> block, which is where a single-analyser project's data has always been.
+    !>
+    !> A record's own gas_<i>_cell wins. It names the cell record whose
+    !> analyser holds this gas, and it exists for the cases the instrument
+    !> name cannot express: two analysers reported under one model string, or
+    !> a gas plumbed through a cell that is not its own instrument's. It was
+    !> parsed and then discarded - ApplyGasRecords set cell_ref to zero and
+    !> this loop overwrote it from the name match - because the cell slots
+    !> were one global set and there was nothing for an index to select. They
+    !> have been per-instrument since, so the field can mean what it says.
     do j = firstGas, lastGas
         if (.not. E2Col(j)%present) cycle
         E2Col(j)%cell_ref = firstCell
+
+        gasrec = j - firstGas + 1
+        cellrec = 0
+        if (gasrec >= 1 .and. gasrec <= min(EddyFlowProj%gas_num, MaxNumGases)) &
+            cellrec = EddyFlowProj%gas(gasrec)%cell
+        if (cellrec >= 1 .and. &
+            cellrec <= min(EddyFlowProj%cell_num, MaxNumCellCols)) then
+            i = CellInstrIndex(trim(EddyFlowProj%cell(cellrec)%instr))
+            if (i >= 1) then
+                E2Col(j)%cell_ref = firstCell + (i - 1) * NumCellPerInstr
+                cycle
+            end if
+        end if
+
         if (nCellInstr <= 0) cycle
         do i = 1, nCellInstr
             if (trim(cellInstr(i)) == trim(E2Col(j)%instr%model) .or. &
@@ -270,12 +297,13 @@ end function CellInstrIndex
 !***************************************************************************
 !> Fill the cell temperature/pressure and diagnostic slots from records.
 !>
-!> LIMITATION: E2Col has one slot each for cell_t / int_t_1 / int_t_2 / int_p,
-!> so only one instrument's cell measurements can be held at a time - a second
-!> record naming the same quantity overwrites the first. Genuine per-instrument
-!> cell T/P needs the cell slots widened the way the gas slots were, and until
-!> then GasRecordType%cell stays unresolved (cell_ref = 0) and the historical
-!> global slots apply.
+!> Each instrument owns a block of four slots - cell_t, int_t_1, int_t_2,
+!> int_p - keyed on the record's instrument rather than on arrival order, so a
+!> site with two analysers keeps both. This carried a LIMITATION note saying
+!> the slots were one global set and a second record overwrote the first, and
+!> that GasRecordType%cell therefore stayed unresolved; the slots were widened
+!> and the note outlived the limitation it described. DefineE2Set honours
+!> gas_<i>_cell now.
 !***************************************************************************
 subroutine ApplyCellDiagRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, &
                                 DiagSet, dnrow, dncol)
@@ -382,6 +410,10 @@ subroutine ApplyGasRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol)
         slot = firstGas + i - 1
         if (.not. E2Col(slot)%present) cycle
         E2Col(slot)%moist_ref = ResolveGasRef(i, EddyFlowProj%gas(i)%moist, 'h2o')
+        !> Cleared, not resolved: the cell blocks are not filled until
+        !> ApplyCellDiagRecords has run, so DefineE2Set resolves this once both
+        !> are populated - honouring gas_<i>_cell first and falling back on the
+        !> instrument name.
         E2Col(slot)%cell_ref = 0
     end do
 end subroutine ApplyGasRecords
