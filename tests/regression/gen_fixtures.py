@@ -119,7 +119,33 @@ def build_own_binned(src_lines):
             for ln in src_lines]
 
 
+def build_tlag_opt(src_lines):
+    """base_n_gas running the time-lag optimiser on the fly.
+
+    Every other fixture sets tlag_meth=5 (block-bootstrap) and to_mode=0, which
+    together mean AdjustTimelagOptSettings is never called - so the whole
+    "derive a search window from the instrument geometry" path had no coverage
+    at all, in a project format where a gas states its own window per record.
+
+    tlag_meth=4 selects the optimiser and to_mode=1 runs it on the fly. The gas
+    records are left alone deliberately: base_n_gas states a window for records
+    one to four and none for five to eight, so one run exercises both arms -
+    the declared window is taken verbatim, and the undeclared one is derived
+    rather than read as a request for [0, 0].
+    """
+    out = []
+    for ln in src_lines:
+        if ln.startswith('tlag_meth='):
+            out.append('tlag_meth=4')
+        elif ln.startswith('to_mode='):
+            out.append('to_mode=1')
+        else:
+            out.append(ln)
+    return out
+
+
 TARGETS = {
+    'base_tlag_opt.eddyflow': ('base_n_gas.eddyflow', build_tlag_opt),
     'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),
     'base_n_gas_bin.eddyflow': ('base_n_gas.eddyflow', build_own_binned),
     'base_mw_ref.eddyflow': ('base_n_gas.eddyflow',

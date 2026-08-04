@@ -84,6 +84,16 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
             toPasGas(gas)%min = error
             toPasGas(gas)%max = error
             N = actn(gas)
+            !> A gas the optimiser accepted nothing for keeps the error window
+            !> set above, which SetTimelags reads as "no optimised window" and
+            !> falls back on the declared one.
+            !>
+            !> Without this the median of a zero-length array left medx
+            !> undefined and the window was built from it. It still passed the
+            !> `max > min` guard downstream, because MAD is floored at 0.1, so
+            !> a gas with no determinations at all reached the production pass
+            !> carrying whatever had been on the stack.
+            if (N <= 0) cycle
             allocate (tmpx(N), devx(N))
             tmpx(1:N) = toSet(1:N)%tlag(gas)
             call median(tmpx, N, medx)

@@ -715,6 +715,14 @@ subroutine WriteVariablesRP()
     TOSetup%start_time = EddyFlowProj%start_time
     TOSetup%end_time   = EddyFlowProj%end_time
 
+    !> Every gas asks for its window to be derived until a record says
+    !> otherwise. Outside the to_onthefly block on purpose: these were only
+    !> assigned when the optimiser ran on the fly, so on any other path they
+    !> held whatever the loader left, and the sole reader being gated the same
+    !> way was all that kept it from mattering.
+    TOSetup%min_lag = TlagDeriveWindow
+    TOSetup%max_lag = TlagDeriveWindow
+
     if (RPsetup%to_onthefly) then
         TOSetup%h2o_nclass    = 0
         TOSetup%subperiod     = SCTags(98)%value(1:1) == '1'
@@ -741,12 +749,6 @@ subroutine WriteVariablesRP()
         !> Zero is a window here, not the absence of one: AdjustTimelagOptSettings
         !> treats anything at or above -1000 as user-declared, so a gas left at
         !> zero searches [0, 0] rather than falling back to the window derived
-        !> from tube geometry. Gases past the fourth have always done that -
-        !> this states it rather than inheriting it from the loader, and a
-        !> project that means "derive it" writes the -1000.1 sentinel, which
-        !> is what the four flat tags this replaces carried.
-        TOSetup%min_lag       = 0d0
-        TOSetup%max_lag       = 0d0
         TOSetup%h2o_nclass    = nint(SNTags(207)%value)
         if (TOSetup%h2o_nclass > 1) then
             TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)

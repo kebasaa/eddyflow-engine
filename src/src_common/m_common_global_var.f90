@@ -215,6 +215,22 @@ module m_common_global_var
     real(kind = dbl), parameter :: kj_zL_max = 1d0 !< minimum zL for Kljun model
     real(kind = dbl), parameter :: error = -9999.d0 !< main error label float
     integer, parameter :: ierror = -9999 !< main error label int
+
+    !> "Derive this time-lag search window from the instrument geometry."
+    !>
+    !> AdjustTimelagOptSettings derives a window from tube transit time or from
+    !> the sensor separations when a gas declares none, and takes the declared
+    !> one otherwise. The two cases were told apart by a bare -1000 written out
+    !> in one place and a project-file value of -1000.1 written in another, with
+    !> nothing tying them together - so a gas left at the zero default read as
+    !> "the user asked for [0, 0]" and searched nothing at all.
+    !>
+    !> The test is `< TlagDeriveThreshold`, so the default sits strictly below
+    !> it. Real windows cannot reach here: the widest an open-path gas derives
+    !> is twice its sensor separation, and a separation would have to exceed
+    !> about five hundred metres.
+    real(kind = dbl), parameter :: TlagDeriveThreshold = -1000d0
+    real(kind = dbl), parameter :: TlagDeriveWindow = -1000.1d0
     real(kind = dbl), parameter :: aflx_error = -6999.d0 !< ameriflux error label
     real(kind = dbl), parameter :: MaxNormSpecValue = 1d4 !< maximum plausible value for a normalized spectral value
     real(kind = dbl), parameter :: MaxSpecValue = 1d4 !< maximum plausible value for an un-normalized spectral value

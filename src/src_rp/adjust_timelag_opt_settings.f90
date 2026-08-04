@@ -39,7 +39,6 @@ subroutine AdjustTimelagOptSettings()
     integer :: gas
     real(kind = dbl) :: nominal
     real(kind = dbl) :: mult(GHGNumVar)
-    real(kind = dbl) :: gui_tlag_threshold = -1000d0
     real(kind = dbl) :: tube_time(GHGNumVar)
     real(kind = dbl) :: tube_volume(GHGNumVar)
     real(kind = dbl) :: cell_time(GHGNumVar)
@@ -90,8 +89,8 @@ subroutine AdjustTimelagOptSettings()
     !> and distances for open path
     do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
-            if (TOSetup%min_lag(gas) < gui_tlag_threshold &
-                .or. TOSetup%max_lag(gas) < gui_tlag_threshold) then
+            if (TOSetup%min_lag(gas) < TlagDeriveThreshold &
+                .or. TOSetup%max_lag(gas) < TlagDeriveThreshold) then
                 if (E2Col(gas)%instr%path_type == 'closed') then
                     !> Closed path
                     nominal = tube_time(gas) + cell_time(gas)
