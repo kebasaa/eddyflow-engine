@@ -45,6 +45,7 @@ subroutine AdjustTimelagOptSettings()
     real(kind = dbl) :: cell_time(GHGNumVar)
     real(kind = dbl) :: cell_volume(GHGNumVar)
     real(kind = dbl) :: safety
+    logical, external :: GasSlotIsWater
 
 
     !> Initialization to zero of all timelags
@@ -53,8 +54,18 @@ subroutine AdjustTimelagOptSettings()
     E2Col(:)%max_tl = 0d0
 
     !> Initialize multiplier
+    !>
+    !> Water is the active gas - it adsorbs on the tube wall, so its lag can run
+    !> far past the transit time and the search window has to be widened for it.
+    !> That is a property of the species, so it is asked of the record. Keyed on
+    !> slot six it widened whatever record two held and left a hygrometer
+    !> declared anywhere else with the passive window, roughly a third as wide,
+    !> so the true water lag could fall outside the range ever searched - and a
+    !> lag that is never searched is silently reported as the default one.
     mult(:) = 2d0     !< For passive gases
-    mult(h2o) = 10d0  !< For active gases
+    do gas = firstGas, lastGas
+        if (GasSlotIsWater(gas)) mult(gas) = 10d0  !< For active gases
+    end do
     safety = 0.3d0    !< Safety margin for min/max setting
 
     !> Transit time in cell and sampling lines of closed path instruments

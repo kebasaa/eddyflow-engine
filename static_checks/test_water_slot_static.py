@@ -32,6 +32,13 @@ def code(path):
 
 
 #> Every file that computes a water-derived quantity.
+#>
+#> fluxes1.f90 was missing from this list, and that omission is the whole
+#> reason it kept the defect: it corrected LE, E and ET with BPCF%of(w_h2o)
+#> and invalidated them on Flux0%gas(h2o) while its own comment claimed to
+#> use "the primary H2O slot". The list is the check - a file absent from it
+#> is not being checked at all, so adding a water-derived computation
+#> anywhere means adding its file here.
 FLUX_FILES = (
     "src/src_rp/flux_params.f90",
     "src/src_rp/fluxes0_rp.f90",
@@ -40,6 +47,7 @@ FLUX_FILES = (
     "src/src_rp/storage.f90",
     "src/src_rp/molefractions_and_mixingratios.f90",
     "src/src_common/point_by_point_to_mixing_ratio.f90",
+    "src/src_fcc/fluxes1.f90",
     "src/src_fcc/fluxes23.f90",
 )
 
@@ -207,6 +215,24 @@ class EveryHygrometerIsTreatedAsWater(unittest.TestCase):
         self.assertIn("wsl = PrimaryWaterSlot()", source)
         self.assertIn("if (wsl < firstGas) return", source,
                       "with no water there is nothing to fit")
+
+    def test_the_active_gas_search_window_follows_the_species(self):
+        """Water's time-lag window is ten times the transit time, not two.
+
+        It adsorbs on the tube wall, so its lag runs long - a property of the
+        molecule. Written as mult(h2o) it widened whatever record two held,
+        and a hygrometer declared elsewhere got the passive window instead.
+        The lag it was looking for could then sit outside the range searched,
+        and an unfound lag is reported as the default one, so the flux moves
+        without anything reporting a failure.
+
+        No fixture carries a hygrometer outside record two *and* runs the
+        time-lag optimiser, so this is pinned here and nowhere else.
+        """
+        source = code("src/src_rp/adjust_timelag_opt_settings.f90")
+        self.assertNotIn("mult(h2o)", source)
+        self.assertIn("GasSlotIsWater(gas)", source,
+                      "the active-gas window must be chosen by species")
 
     def test_the_oxygen_correction_covers_every_hygrometer(self):
         """Krypton and Lyman-alpha instruments, each with its own ko/kw.

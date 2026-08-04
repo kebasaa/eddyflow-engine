@@ -41,6 +41,7 @@ subroutine Fluxes1(lEx)
     !> local variables
     real(kind = dbl)  :: Cox
     integer :: gas
+    integer :: wsl
     include '../src_common/interfaces_1.inc'
 
     Flux1 = errFlux
@@ -105,21 +106,38 @@ subroutine Fluxes1(lEx)
     !> Evapotranspiration and latent heat travel with the water flux and are
     !> scalars, taken from the primary H2O slot. The ex file carries LE, not
     !> E, so E is derived here before the correction is applied.
+    !>
+    !> The slot is resolved, not assumed. This said gas_instr(h2o), BPCF%of(w_h2o)
+    !> and Flux0%gas(h2o) - slot six - so a project whose water is not record two
+    !> corrected the latent heat with another species' transfer function, and
+    !> invalidated it on that species' flux rather than on water's. The comment
+    !> above already said "the primary H2O slot"; the code did not.
+    !>
+    !> With no water configured PrimaryWaterSlot returns 0, and the fluxes pass
+    !> through uncorrected - which is what the path_type test evaluated to when
+    !> the slot held nothing.
+    wsl = PrimaryWaterSlot()
     lEx%Flux0%E = lEx%Flux0%LE / lEx%lambda
-    if (lEx%gas_instr(h2o)%path_type /= 'closed' .and. BPCF%of(w_h2o) /= error) then
-        Flux1%E   = lEx%Flux0%E   * BPCF%of(w_h2o)
-        Flux1%ET  = lEx%Flux0%ET  * BPCF%of(w_h2o)
-        Flux1%LE  = lEx%Flux0%LE  * BPCF%of(w_h2o)
+    if (wsl >= firstGas) then
+        if (lEx%gas_instr(wsl)%path_type /= 'closed' .and. BPCF%of(wsl) /= error) then
+            Flux1%E   = lEx%Flux0%E   * BPCF%of(wsl)
+            Flux1%ET  = lEx%Flux0%ET  * BPCF%of(wsl)
+            Flux1%LE  = lEx%Flux0%LE  * BPCF%of(wsl)
+        else
+            Flux1%E   = lEx%Flux0%E
+            Flux1%ET  = lEx%Flux0%ET
+            Flux1%LE  = lEx%Flux0%LE
+        end if
+        if (lEx%Flux0%gas(wsl) == error) then
+            lEx%Flux0%E = error
+            Flux1%E     = error
+            Flux1%ET    = error
+            Flux1%LE    = error
+        end if
     else
         Flux1%E   = lEx%Flux0%E
         Flux1%ET  = lEx%Flux0%ET
         Flux1%LE  = lEx%Flux0%LE
-    end if
-    if (lEx%Flux0%gas(h2o) == error) then
-        lEx%Flux0%E = error
-        Flux1%E     = error
-        Flux1%ET    = error
-        Flux1%LE    = error
     end if
 
 
