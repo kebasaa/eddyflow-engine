@@ -79,11 +79,7 @@ subroutine WriteVariablesFCC()
     use m_fx_global_var
     implicit none
     !> local variables
-    integer :: i
-    integer :: j
     integer :: gas
-    integer :: skipped_classes
-    integer :: start
     logical :: dirExists
     logical, external :: GasSlotIsWater
 
@@ -343,48 +339,18 @@ subroutine WriteVariablesFCC()
     FCCsetup%SA%class  = 0
     FCCsetup%SA%nclass = 0
 
-    !> Assign each month the relevant CO2 class. Max number of groups is 12.
-    skipped_classes = 0
-    start = 19
-    do i = 1, MaxGasClasses
-        if (SNTags(start + 2*i - 1)%value > 0d0) then
-            do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(histCO2, j) = i
-            end do
-        else
-            skipped_classes = skipped_classes + 1
-            cycle
-        end if
-    end do
-    FCCsetup%SA%nclass(histCO2) = 12 - skipped_classes
-    !> Assign each month the relevant CH4 class. Max number of groups is 12.
-    skipped_classes = 0
-    start = 19 + 24
-    do i = 1, MaxGasClasses
-        if (SNTags(start + 2*i - 1)%value > 0d0) then
-            do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(histCH4, j) = i
-            end do
-        else
-            skipped_classes = skipped_classes + 1
-            cycle
-        end if
-    end do
-    FCCsetup%SA%nclass(histCH4) = 12 - skipped_classes
-    !> Assign each month the relevant GAS4 class. Max number of groups is 12.
-    skipped_classes = 0
-    start = 19 + 48
-    do i = 1, MaxGasClasses
-        if (SNTags(start + 2*i - 1)%value > 0d0) then
-            do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(histGas4, j) = i
-            end do
-        else
-            skipped_classes = skipped_classes + 1
-            cycle
-        end if
-    end do
-    FCCsetup%SA%nclass(histGas4) = 12 - skipped_classes
+    !> The interface exposes three month-grouping tables, and they land on the
+    !> first, third and fourth records - the positions CO2, CH4 and the fourth
+    !> gas held in EddyPro, which is what the tables are labelled for. Every
+    !> other gas inherits the first below.
+    !>
+    !> Three near-identical twelve-line blocks before this, differing only in
+    !> where the table starts and which slot it lands on. Reading them through
+    !> one routine means a change to the grouping rule cannot be applied to two
+    !> of the three.
+    call ReadMonthGrouping(19,      histGas1)
+    call ReadMonthGrouping(19 + 24, histGas3)
+    call ReadMonthGrouping(19 + 48, histGas4)
 
     !> Every configured gas without a table of its own inherits CO2's grouping.
     !> The interface exposes three month-grouping tables - CO2, CH4 and the
@@ -409,8 +375,8 @@ subroutine WriteVariablesFCC()
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (GasSlotIsWater(gas)) cycle
         if (FCCsetup%SA%nclass(gas) > 0) cycle
-        FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(histCO2, JAN:DEC)
-        FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(histCO2)
+        FCCsetup%SA%class(gas, JAN:DEC) = FCCsetup%SA%class(histGas1, JAN:DEC)
+        FCCsetup%SA%nclass(gas) = FCCsetup%SA%nclass(histGas1)
     end do
 
     !> Whether to keep or delete parent fluxnet file
@@ -422,6 +388,33 @@ subroutine WriteVariablesFCC()
     call AdjFilePath(AuxFile%ex, slash)
     call AdjFilePath(AuxFile%sa, slash)
     call InitializeGas4FullOutputUnitsFcc()
+contains
+
+!> Read one of the interface's month-grouping tables into a gas slot.
+!>
+!> `start` is where the table's twelve start/stop pairs begin in SNTags; a
+!> pair whose start is not positive is a group the project left empty, and
+!> nclass counts what remains. Months outside every group keep class 0, which
+!> the inheritance loop above treats as "this gas has no table of its own".
+subroutine ReadMonthGrouping(start, slot)
+    integer, intent(in) :: start
+    integer, intent(in) :: slot
+    integer :: grp, month, skipped
+
+    skipped = 0
+    do grp = 1, MaxGasClasses
+        if (SNTags(start + 2*grp - 1)%value > 0d0) then
+            do month = nint(SNTags(start + 2*grp - 1)%value), &
+                       nint(SNTags(start + 2*grp)%value)
+                FCCsetup%SA%class(slot, month) = grp
+            end do
+        else
+            skipped = skipped + 1
+        end if
+    end do
+    FCCsetup%SA%nclass(slot) = MaxGasClasses - skipped
+end subroutine ReadMonthGrouping
+
 end subroutine WriteVariablesFCC
 
 !***************************************************************************

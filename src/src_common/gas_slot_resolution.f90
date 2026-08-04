@@ -296,7 +296,7 @@ subroutine FullOutputGasSlots(slots, nslots)
     nslots = 0
 
     if (EddyFlowProj%fix_out_format) then
-        do gas = histCO2, histGas4
+        do gas = histGas1, histGas4
             nslots = nslots + 1
             slots(nslots) = gas
         end do
@@ -337,7 +337,10 @@ integer function FirstConfiguredGasSlot()
     implicit none
     integer :: gas
 
-    FirstConfiguredGasSlot = histCO2
+    !> Unreachable as a result: the loop below assigns before returning for
+    !> any project with a configured gas, and a project with none is refused
+    !> by ApplyGasRecords. It is the first slot, said as the first slot.
+    FirstConfiguredGasSlot = firstGas
     do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
@@ -665,7 +668,7 @@ integer function PrimaryCarbonOutSlot()
     integer, external :: PrimaryCarbonSlot
 
     PrimaryCarbonOutSlot = PrimaryCarbonSlot()
-    if (PrimaryCarbonOutSlot < firstGas) PrimaryCarbonOutSlot = histCO2
+    if (PrimaryCarbonOutSlot < firstGas) PrimaryCarbonOutSlot = histGas1
 end function PrimaryCarbonOutSlot
 
 integer function PrimaryWaterOutSlot()
@@ -674,7 +677,7 @@ integer function PrimaryWaterOutSlot()
     integer, external :: PrimaryWaterSlot
 
     PrimaryWaterOutSlot = PrimaryWaterSlot()
-    if (PrimaryWaterOutSlot < firstGas) PrimaryWaterOutSlot = histH2O
+    if (PrimaryWaterOutSlot < firstGas) PrimaryWaterOutSlot = histGas2
 end function PrimaryWaterOutSlot
 
 !***************************************************************************
@@ -806,9 +809,9 @@ character(32) function LegacySpectralVarTag(gas_slot)
     integer, intent(in) :: gas_slot
 
     select case (gas_slot)
-        case (histCO2);  LegacySpectralVarTag = 'co2'
-        case (histH2O);  LegacySpectralVarTag = 'h2o'
-        case (histCH4);  LegacySpectralVarTag = 'ch4'
+        case (histGas1);  LegacySpectralVarTag = 'co2'
+        case (histGas2);  LegacySpectralVarTag = 'h2o'
+        case (histGas3);  LegacySpectralVarTag = 'ch4'
         case (histGas4); LegacySpectralVarTag = 'gas4'
         case default; LegacySpectralVarTag = ''
     end select

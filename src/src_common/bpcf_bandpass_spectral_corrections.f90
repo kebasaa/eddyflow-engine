@@ -98,8 +98,9 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 !> never fitted", and a project declaring its water elsewhere
                 !> skipped the check entirely and then used unfitted
                 !> coefficients.
-                wsl = PrimaryWaterSlot()
-                if (wsl < firstGas) wsl = histH2O
+                !> PrimaryWaterOutSlot is PrimaryWaterSlot with exactly this
+                !> fallback; the two lines it replaces were a copy of it.
+                wsl = PrimaryWaterOutSlot()
                 if(lEx%var_present(wsl) .and. (RegPar(dum, dum)%e1 == error &
                     .or. RegPar(dum, dum)%e2 == error &
                     .or. RegPar(dum, dum)%e3 == error)) then

@@ -484,9 +484,9 @@ integer function HistoricGasSlot(var)
     character(*), intent(in) :: var
 
     select case (trim(adjustl(var)))
-        case ('co2'); HistoricGasSlot = histCO2
-        case ('h2o'); HistoricGasSlot = histH2O
-        case ('ch4'); HistoricGasSlot = histCH4
+        case ('co2'); HistoricGasSlot = histGas1
+        case ('h2o'); HistoricGasSlot = histGas2
+        case ('ch4'); HistoricGasSlot = histGas3
         case ('n2o'); HistoricGasSlot = histGas4
         case default; HistoricGasSlot = histGas4
     end select

@@ -277,7 +277,7 @@ subroutine LI7550_AnalogSignalsTransferFunctions(nf, N, var, ac_frequency, &
             !>
             !> test_li7550_dormant_static.py fails if the flags come back
             !> without this being addressed.
-            case(histCO2, histH2O)
+            case(histGas1, histGas2)
                 BPTF(1:N)%LP(var)%ba_irga = dsqrt(dabs(sinc(nf(1:N)*Tba, N)))
         end select
     end if

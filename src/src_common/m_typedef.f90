@@ -144,25 +144,30 @@ module m_typedef
     !> coincidence - the two were separately maintained literals before.
     integer, parameter :: firstGas = NumAnemVar + 1
     integer, parameter :: lastGas  = GHGNumVar
-    !> The four historical gas slots, named for what EddyPro put in them.
+    !> The four gas slots EddyPro had, by position.
     !>
-    !> They were called co2, h2o, ch4, n2o and gas4, which read as species and
-    !> meant positions - and every defect this migration fixed began with that
-    !> reading. `E2Col(co2)` looks like "the carbon dioxide column" and is "the
-    !> fifth variable", which is carbon dioxide only when a project happens to
-    !> declare it first. The hist prefix makes each remaining use say so.
+    !> They were co2, h2o, ch4, n2o and gas4 - names that read as species and
+    !> meant positions, which is where every defect this migration fixed began.
+    !> `E2Col(co2)` looks like "the carbon dioxide column" and is "the fifth
+    !> variable", which is carbon dioxide only when a project happens to
+    !> declare it first. Renaming them histGas1 and so on made each use honest
+    !> but kept the species in the name; expressing them as offsets from
+    !> firstGas removes it, and the count is what any of them ever meant.
     !>
-    !> What legitimately remains: the fixed EddyPro 7.x output format, which
-    !> promises four gas blocks whatever the project holds; the readers that
-    !> accept the four historical spellings in files written before the
-    !> records; and the no-water and no-CO2 fallbacks. Nothing that decides a
-    !> number for a gas should be here - iterate firstGas..lastGas and resolve
-    !> the species from its record.
-    integer, parameter :: histCO2 = 5
-    integer, parameter :: histH2O = 6
-    integer, parameter :: histCH4 = 7
-    integer, parameter :: histN2O = 8
-    integer, parameter :: histGas4 = 8
+    !> nHistoricGasSlots is the number EddyPro's format has, not a capacity:
+    !> MaxNumGases is the capacity. It survives because three things still
+    !> need it - the fixed EddyPro 7.x output format, which promises four gas
+    !> blocks whatever the project holds; the readers that accept the four
+    !> historical spellings in files written before the records; and the three
+    !> month-grouping tables the FCC interface exposes.
+    !>
+    !> Nothing that decides a number for a gas belongs here. Iterate
+    !> firstGas..lastGas and resolve the species from its record.
+    integer, parameter :: nHistoricGasSlots = 4
+    integer, parameter :: histGas1 = firstGas
+    integer, parameter :: histGas2 = firstGas + 1
+    integer, parameter :: histGas3 = firstGas + 2
+    integer, parameter :: histGas4 = firstGas + 3
     !> Bounds of the per-instrument cell block. Instrument k (1-based) owns
     !> firstCell + (k-1)*NumCellPerInstr + {0,1,2,3}, in the order
     !> cell_t, int_t_1, int_t_2, int_p. Use CellSlot() rather than arithmetic
@@ -191,23 +196,13 @@ module m_typedef
     !> ExType%gas_instr; the anemometer keeps this one because it is not a gas.
     integer, parameter :: sonic  = 1
 
-    !> character labels. The gas slots beyond the four legacy ones carry no
-    !> compile-time name: their species is read from the project file, so they
-    !> are left blank here and filled in at run time.
-    !>
-    !> These four are slot *defaults* too. Output column names come from
-    !> GasOutputLabel and the tag helpers in gas_slot_resolution, which resolve
-    !> the record - so a project ordering its gases differently gets its
-    !> columns named for what it measured, not for what slot five is called
-    !> here.
-    character(8) :: e2lab(E2NumVar)
-    data e2lab(1:8) / 'u', 'v', 'w', 'ts', 'co2', 'h2o', 'ch4', 'n2o' /
-    data e2lab(9:lastGas) / 60*'' /
-    !> Instrument 1's cell slots are named; the rest are filled in at run time
-    !> from the project's cell records, like the gas slots above.
-    data e2lab(tc:pi) / 'cell_t', 'int_t_1', 'int_t_2', 'int_p' /
-    data e2lab(pi+1:lastCell) / 28*'' /
-    data e2lab(te:pe) / 'air_t', 'air_p' /
+    !> e2lab stood here: a per-slot label array whose first eight entries were
+    !> 'u','v','w','ts','co2','h2o','ch4','n2o'. Nothing read it - not one
+    !> reference in the tree outside its own declaration - and it was the last
+    !> place a species name was pinned to a slot number by position. Column
+    !> names come from GasOutputLabel and the tag helpers in
+    !> gas_slot_resolution, which resolve the record, so a project ordering its
+    !> gases differently gets its columns named for what it measured.
 
     !> labels for cospectra
     integer, parameter :: w_u   = 1

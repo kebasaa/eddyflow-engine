@@ -37,9 +37,11 @@ subroutine ReadSpectralAssessmentFile()
     use m_fx_global_var
     implicit none
     logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterOutSlot
     !> local variables
     integer :: gas
     integer :: cls
+    integer :: wsl
     integer :: i
     integer :: open_status
     integer :: read_status
@@ -67,11 +69,20 @@ subroutine ReadSpectralAssessmentFile()
         do i = 1, 7
             read(udf, *)
         end do
-        !> Read H2O transfer functions for IIR filter
+        !> Read H2O transfer functions for IIR filter.
+        !>
+        !> Into the slot the writer put them in. OutputSpectralAssessmentResults
+        !> resolves PrimaryWaterOutSlot and writes RegPar(wsl, cls); this read
+        !> them back from the second slot unconditionally, so a project whose
+        !> water is record three wrote its RH regression into slot seven and
+        !> read it into slot six - the water block landing on whatever gas
+        !> record two happened to hold, and the real hygrometer left with no
+        !> RH-dependent cutoff at all.
+        wsl = PrimaryWaterOutSlot()
         do cls = RH10, RH90
             read(udf, '(a)') dataline
             dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
-            read(dataline, *)  RegPar(histH2O, cls)%Fn, RegPar(histH2O, cls)%fc
+            read(dataline, *)  RegPar(wsl, cls)%Fn, RegPar(wsl, cls)%fc
         end do
 
         !> One block per configured gas but water, matching what

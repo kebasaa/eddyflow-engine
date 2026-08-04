@@ -87,23 +87,40 @@ GAS_DEPENDENT = (
 
 #: Slot numbers from m_typedef.f90. Read rather than hard-coded so that a
 #: change to the gas enumeration shows up here as a failure, not a surprise.
-SLOT_NAMES = ("u", "ts", "histCO2", "histGas4")
+SLOT_NAMES = ("u", "ts", "histGas1", "histGas4")
 
 
 def _read_slots():
+    """Resolve each slot constant, following names to their definitions.
+
+    These used to be plain integers and are arithmetic now - histGas4 is
+    `firstGas + 3`, firstGas is `NumAnemVar + 1`. Evaluating the expression
+    keeps the check reading the source rather than restating it, which is the
+    whole point of not hard-coding the numbers here.
+    """
     text = (SRC / "src_common" / "m_typedef.f90").read_text(
         encoding="utf-8", errors="replace"
     )
-    slots = {}
-    for name in SLOT_NAMES:
-        m = re.search(
-            r"^\s*integer,\s*parameter\s*::\s*%s\s*=\s*(\d+)" % name,
+    defs = dict(
+        re.findall(
+            r"^\s*integer,\s*parameter\s*::\s*(\w+)\s*=\s*([^!\n]+)",
             text,
-            re.MULTILINE | re.IGNORECASE,
+            re.MULTILINE,
         )
-        assert m, "could not find slot constant '%s' in m_typedef.f90" % name
-        slots[name] = int(m.group(1))
-    return slots
+    )
+
+    def value(name, seen=()):
+        assert name in defs, "no constant '%s' in m_typedef.f90" % name
+        assert name not in seen, "cycle resolving '%s'" % name
+        expr = defs[name].strip()
+        resolved = re.sub(
+            r"\b([A-Za-z]\w*)\b",
+            lambda m: str(value(m.group(1), seen + (name,))),
+            expr,
+        )
+        return int(eval(resolved, {"__builtins__": {}}, {}))
+
+    return {name: value(name) for name in SLOT_NAMES}
 
 
 def _reader_text():

@@ -59,7 +59,7 @@ class OneListServesBothSides(unittest.TestCase):
         src = code(HELPER)
         body = src.split("subroutine FullOutputGasSlots")[1].split("end subroutine")[0]
         fixed = body.split("fix_out_format")[1].split("return")[0]
-        self.assertIn("do gas = histCO2, histGas4", fixed,
+        self.assertIn("do gas = histGas1, histGas4", fixed,
                       "the fixed format names co2, h2o, ch4 and the fourth "
                       "slot, present or not - the row fills absent ones with "
                       "the error label")
