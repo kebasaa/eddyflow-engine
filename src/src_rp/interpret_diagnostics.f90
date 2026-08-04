@@ -124,8 +124,8 @@ subroutine InterpretLicorDiagnostics(DiagSet, nrow, ncol)
     !> one analyser. With an LI-7200 and an LI-7500 the two share whichever
     !> version slot five reported, and a project whose first record sits on a
     !> third instrument had both decided by something unrelated.
-    old72 = .not. CompareSwVer(InstrSwVer('li7200'), SwVerFromString('5.3.0'))
-    old75 = .not. CompareSwVer(InstrSwVer('li7500'), SwVerFromString('5.3.0'))
+    old72 = .not. CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('5.3.0'))
+    old75 = .not. CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('5.3.0'))
     do i = 1, nrow
         !> LI-7200
         if (DiagSet(i, diag72) /= error) then
@@ -170,24 +170,4 @@ subroutine InterpretLicorDiagnostics(DiagSet, nrow, ncol)
         Diag7500%sync        = n75 - Diag7500%sync
         Diag7500%AGC = Diag7500%AGC / dfloat(n75)
     end if
-contains
-
-!> Software version reported by the first analyser whose model matches.
-!>
-!> Returns a zero version when the site carries no such analyser, which
-!> compares as older than any threshold - the same arm E2Col(co2) took when
-!> its instrument was unset.
-function InstrSwVer(model) result(ver)
-    character(*), intent(in) :: model
-    type(SwVerType) :: ver
-    integer :: gas
-
-    ver = SwVerType(0, 0, 0)
-    do gas = firstGas, lastGas
-        if (index(E2Col(gas)%instr%model, model) == 0) cycle
-        ver = E2Col(gas)%instr%sw_ver
-        return
-    end do
-end function InstrSwVer
-
 end subroutine InterpretLicorDiagnostics

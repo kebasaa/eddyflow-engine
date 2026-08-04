@@ -433,8 +433,13 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     !> LI-7700 multipliers
-    if (E2Col(ch4)%Instr%model(1:len_trim(E2Col(ch4)%Instr%model) - 2) &
-        == 'li7700') then
+    !>
+    !> Asked of the analyser, not of slot seven. Mul7700 is computed in the
+    !> main loop by scanning every slot for an li7700, so keying the column on
+    !> E2Col(ch4) let the two disagree: a 7700 on any other record produced
+    !> multipliers this suppressed, and a non-7700 methane record on slot seven
+    !> would have emitted multipliers nothing computed.
+    if (GasSlotByInstrModel('li7700') > 0) then
         call AddFloatDatumToDataline(Mul7700%A, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Mul7700%B, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Mul7700%C, csv_row, EddyFlowProj%err_label)
@@ -699,13 +704,23 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         end do
     end if
     !> AGC/RSSI. Header may need to adapt to AGC/RSSI for 7200/7500.
-    if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
+    !>
+    !> Each column follows the firmware of the analyser its own heading names.
+    !> Both asked E2Col(co2), so a site carrying a 7200 and a 7500 of different
+    !> vintage had both signs decided by whichever one held slot five, and a
+    !> site whose first record sits on a third instrument had both decided by
+    !> something that is neither.
+    !>
+    !> A slot of 0 - no such analyser - leaves the version unset, which
+    !> compares older than 6.0.0 and takes the AGC arm. That is what an
+    !> unpopulated E2Col(co2)%instr%sw_ver did.
+    if(CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('6.0.0'))) then
         call AddIntDatumToDataline(nint(Essentials%AGC72), csv_row, EddyFlowProj%err_label)
     else
         call AddIntDatumToDataline(-nint(Essentials%AGC72), csv_row, EddyFlowProj%err_label)
     end if
     !> LI-7500
-    if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
+    if(CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('6.0.0'))) then
         call AddIntDatumToDataline(nint(Essentials%AGC75), csv_row, EddyFlowProj%err_label)
     else
         call AddIntDatumToDataline(-nint(Essentials%AGC75), csv_row, EddyFlowProj%err_label)

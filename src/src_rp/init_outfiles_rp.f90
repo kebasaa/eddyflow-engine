@@ -440,8 +440,14 @@ subroutine InitOutFiles_rp()
             end if
 
             !> AGCs and RSSIs for LI-7200 and LI-7500
+            !>
+            !> The word each column is headed with follows the firmware of the
+            !> analyser that column names. Both branches read E2Col(co2), so a
+            !> site with a 7200 and a 7500 of different vintage had both headed
+            !> from whichever held slot five - and the row writer, now asking
+            !> each analyser separately, would have disagreed with this header.
             if (Diag7200%present) then
-                if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
+                if(CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('6.0.0'))) then
                     call AddDatum(header1,'RSSI_LI-7200', separator)
                     call AddDatum(header2,'mean_value_RSSI_LI-7200', separator)
                     call AddDatum(header3,'[#]', separator)
@@ -452,7 +458,7 @@ subroutine InitOutFiles_rp()
                 end if
             end if
             if (Diag7500%present) then
-                if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
+                if(CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('6.0.0'))) then
                     call AddDatum(header1,'RSSI_LI-7500', separator)
                     call AddDatum(header2,'mean_value_RSSI_LI-7500', separator)
                     call AddDatum(header3,'[#]', separator)
@@ -528,10 +534,20 @@ subroutine InitOutFiles_rp()
                 &statistical_flags,,,,,,,,,,,,spikes,,,,,,,,&
                 &diagnostic_flags_LI-7200,,,,,,,,,&
                 &diagnostic_flags_LI-7500,,,,diagnostic_flags_LI-7700,,,,,,,,,,,,,,,,'
-                if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
-                    header1 = trim(header1) // 'RSSI_LI-7200,RSSI_LI-7500,variances,,,,,,,,covariances,,,,,'
+                !> One test each. This is a label, not a layout - the fixed
+                !> format still promises exactly these two columns - but a
+                !> single test on E2Col(co2) headed both of them from one
+                !> analyser's firmware, so a site running a 7200 and a 7500 of
+                !> different vintage had one of the two named wrongly.
+                if(CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('6.0.0'))) then
+                    header1 = trim(header1) // 'RSSI_LI-7200,'
                 else
-                    header1 = trim(header1) // 'AGC_LI-7200,AGC_LI-7500,variances,,,,,,,,covariances,,,,,'
+                    header1 = trim(header1) // 'AGC_LI-7200,'
+                end if
+                if(CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('6.0.0'))) then
+                    header1 = trim(header1) // 'RSSI_LI-7500,variances,,,,,,,,covariances,,,,,'
+                else
+                    header1 = trim(header1) // 'AGC_LI-7500,variances,,,,,,,,covariances,,,,,'
                 end if
             header2 = 'filename,date,time,DOY,daytime,file_records,used_records,Tau,qc_Tau,rand_err_Tau,&
                 &H,qc_H,rand_err_H,LE,qc_LE,rand_err_LE,&

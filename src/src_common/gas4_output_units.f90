@@ -337,6 +337,70 @@ integer function FirstConfiguredGasSlot()
     end do
 end function FirstConfiguredGasSlot
 
+!***************************************************************************
+!
+! \brief       First gas slot whose analyser model contains `fragment`, or 0.
+! \author      Jonathan Muller
+! \note        For the gates that name a *particular instrument* rather than a
+!              particular gas: the LI-7700 multiplier block, and the AGC/RSSI
+!              columns whose own heading says LI-7200 or LI-7500. Those asked
+!              E2Col(ch4) and E2Col(co2) - slots seven and five - which is that
+!              analyser only when the project happens to order its records so.
+!              A site carrying both a 7200 and a 7500 had each one's column
+!              decided by whichever firmware version slot five reported, and a
+!              site whose first record sits on a third instrument had both
+!              decided by something unrelated to either.
+!
+!              Distinct from FirstConfiguredGasSlot, which answers "any
+!              analyser" for things like the logger version. This answers "that
+!              analyser", and returns 0 when the site carries none - the arm the
+!              slot lookup took when its instrument was unset.
+!
+!              Matching is by substring, as InterpretLicorDiagnostics has always
+!              done it, because the model string carries a trailing revision.
+!***************************************************************************
+integer function GasSlotByInstrModel(fragment)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: fragment
+    integer :: gas
+
+    GasSlotByInstrModel = 0
+    do gas = firstGas, lastGas
+        if (index(E2Col(gas)%instr%model, fragment) == 0) cycle
+        GasSlotByInstrModel = gas
+        return
+    end do
+end function GasSlotByInstrModel
+
+!***************************************************************************
+!
+! \brief       Firmware reported by the first analyser whose model matches.
+! \author      Jonathan Muller
+! \note        The companion to GasSlotByInstrModel, holding the one rule its
+!              three callers would otherwise each have to restate: a site with
+!              no such analyser reports version zero, which compares older than
+!              any threshold. That is the arm an unpopulated
+!              E2Col(co2)%instr%sw_ver took, so the absent-instrument case
+!              keeps behaving as it did.
+!
+!              Two thresholds are asked of this, and they are different
+!              questions: 5.3.0 changed how the diagnostic word *encodes* the
+!              signal strength, and 6.0.0 changed what the column is *called*.
+!***************************************************************************
+function InstrSwVerFor(fragment) result(ver)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: fragment
+    type(SwVerType) :: ver
+    integer :: slot
+    integer, external :: GasSlotByInstrModel
+
+    ver = SwVerType(0, 0, 0)
+    slot = GasSlotByInstrModel(fragment)
+    if (slot > 0) ver = E2Col(slot)%instr%sw_ver
+end function InstrSwVerFor
+
 logical function HasInSituSpectralCorrection(gas_slot)
     use m_common_global_var
     implicit none

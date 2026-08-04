@@ -129,6 +129,23 @@ interface
         implicit none
     end function FirstConfiguredGasSlot
 
+    !> First gas slot whose analyser model contains the fragment, or 0. For
+    !> the gates that name a particular instrument rather than a gas.
+    integer function GasSlotByInstrModel(fragment)
+        use m_common_global_var
+        implicit none
+        character(*), intent(in) :: fragment
+    end function GasSlotByInstrModel
+
+    !> Firmware of the first analyser whose model contains the fragment, or
+    !> version zero when the site carries none.
+    function InstrSwVerFor(fragment) result(ver)
+        use m_common_global_var
+        implicit none
+        character(*), intent(in) :: fragment
+        type(SwVerType) :: ver
+    end function InstrSwVerFor
+
     !> Per-slot full-output scales and labels. Header and row writer share
     !> one call so a label can never describe a scale that was not applied.
     subroutine GasFullOutputUnitsAll(flux_sc, dens_sc, &
