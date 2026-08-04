@@ -111,7 +111,7 @@ module m_fx_global_var
 
     !> tags of the setup ".ini" file for eccoce
     integer, parameter :: Nsn = 493
-    integer, parameter :: Nsc = 31
+    integer, parameter :: Nsc = 91
     logical            :: SNTagFound(Nsn)
     logical            :: SCTagFound(Nsc)
     type (Numerical)   :: SNTags(Nsn)
@@ -639,6 +639,70 @@ module m_fx_global_var
          SCTags(24)%Label  / 'sa_use_foken_low' / &
          SCTags(25)%Label  / 'sa_use_foken_mid' / &
          SCTags(26)%Label  / 'keep_parent_fluxnet_file' / &
-         SCTags(27)%Label  / 'automatic_spectra_config' /
+         SCTags(27)%Label  / 'automatic_spectra_config' / &
+         SCTags(28)%Label  / 'gas_1_sa_months' / &
+         SCTags(29)%Label  / 'gas_2_sa_months' / &
+         SCTags(30)%Label  / 'gas_3_sa_months' / &
+         SCTags(31)%Label  / 'gas_4_sa_months' / &
+         SCTags(32)%Label  / 'gas_5_sa_months' / &
+         SCTags(33)%Label  / 'gas_6_sa_months' / &
+         SCTags(34)%Label  / 'gas_7_sa_months' / &
+         SCTags(35)%Label  / 'gas_8_sa_months' / &
+         SCTags(36)%Label  / 'gas_9_sa_months' / &
+         SCTags(37)%Label  / 'gas_10_sa_months' / &
+         SCTags(38)%Label  / 'gas_11_sa_months' / &
+         SCTags(39)%Label  / 'gas_12_sa_months' / &
+         SCTags(40)%Label  / 'gas_13_sa_months' / &
+         SCTags(41)%Label  / 'gas_14_sa_months' / &
+         SCTags(42)%Label  / 'gas_15_sa_months' / &
+         SCTags(43)%Label  / 'gas_16_sa_months' / &
+         SCTags(44)%Label  / 'gas_17_sa_months' / &
+         SCTags(45)%Label  / 'gas_18_sa_months' / &
+         SCTags(46)%Label  / 'gas_19_sa_months' / &
+         SCTags(47)%Label  / 'gas_20_sa_months' / &
+         SCTags(48)%Label  / 'gas_21_sa_months' / &
+         SCTags(49)%Label  / 'gas_22_sa_months' / &
+         SCTags(50)%Label  / 'gas_23_sa_months' / &
+         SCTags(51)%Label  / 'gas_24_sa_months' / &
+         SCTags(52)%Label  / 'gas_25_sa_months' / &
+         SCTags(53)%Label  / 'gas_26_sa_months' / &
+         SCTags(54)%Label  / 'gas_27_sa_months' / &
+         SCTags(55)%Label  / 'gas_28_sa_months' / &
+         SCTags(56)%Label  / 'gas_29_sa_months' / &
+         SCTags(57)%Label  / 'gas_30_sa_months' / &
+         SCTags(58)%Label  / 'gas_31_sa_months' / &
+         SCTags(59)%Label  / 'gas_32_sa_months' / &
+         SCTags(60)%Label  / 'gas_33_sa_months' / &
+         SCTags(61)%Label  / 'gas_34_sa_months' / &
+         SCTags(62)%Label  / 'gas_35_sa_months' / &
+         SCTags(63)%Label  / 'gas_36_sa_months' / &
+         SCTags(64)%Label  / 'gas_37_sa_months' / &
+         SCTags(65)%Label  / 'gas_38_sa_months' / &
+         SCTags(66)%Label  / 'gas_39_sa_months' / &
+         SCTags(67)%Label  / 'gas_40_sa_months' / &
+         SCTags(68)%Label  / 'gas_41_sa_months' / &
+         SCTags(69)%Label  / 'gas_42_sa_months' / &
+         SCTags(70)%Label  / 'gas_43_sa_months' / &
+         SCTags(71)%Label  / 'gas_44_sa_months' / &
+         SCTags(72)%Label  / 'gas_45_sa_months' / &
+         SCTags(73)%Label  / 'gas_46_sa_months' / &
+         SCTags(74)%Label  / 'gas_47_sa_months' / &
+         SCTags(75)%Label  / 'gas_48_sa_months' / &
+         SCTags(76)%Label  / 'gas_49_sa_months' / &
+         SCTags(77)%Label  / 'gas_50_sa_months' / &
+         SCTags(78)%Label  / 'gas_51_sa_months' / &
+         SCTags(79)%Label  / 'gas_52_sa_months' / &
+         SCTags(80)%Label  / 'gas_53_sa_months' / &
+         SCTags(81)%Label  / 'gas_54_sa_months' / &
+         SCTags(82)%Label  / 'gas_55_sa_months' / &
+         SCTags(83)%Label  / 'gas_56_sa_months' / &
+         SCTags(84)%Label  / 'gas_57_sa_months' / &
+         SCTags(85)%Label  / 'gas_58_sa_months' / &
+         SCTags(86)%Label  / 'gas_59_sa_months' / &
+         SCTags(87)%Label  / 'gas_60_sa_months' / &
+         SCTags(88)%Label  / 'gas_61_sa_months' / &
+         SCTags(89)%Label  / 'gas_62_sa_months' / &
+         SCTags(90)%Label  / 'gas_63_sa_months' / &
+         SCTags(91)%Label  / 'gas_64_sa_months' /
     !> END GENERATED FCC.SCTags
 end module m_fx_global_var

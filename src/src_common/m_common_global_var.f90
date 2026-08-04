@@ -460,6 +460,7 @@ module m_common_global_var
     integer, parameter :: rpGasOriginN = 425
     integer, parameter :: rpGasOriginC = 102
     integer, parameter :: fccGasOriginN = 110
+    integer, parameter :: fccGasOriginC = 28
     integer, parameter :: gasRecLeapN   = 5
     integer, parameter :: gasRecLeapC   = 2
     integer, parameter :: cellRecLeapN  = 1
@@ -469,6 +470,7 @@ module m_common_global_var
     integer, parameter :: rpGasLeapN    = 25
     integer, parameter :: rpGasLeapC    = 3
     integer, parameter :: fccGasLeapN   = 6
+    integer, parameter :: fccGasLeapC   = 1
     !> END GENERATED ProjectRecordOrigins
     logical :: EPPrjNTagFound(Npn)
     logical :: EPPrjCTagFound(Npc)

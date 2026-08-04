@@ -82,6 +82,16 @@ RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
 FCC_GAS_NUMERIC = [
     "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",
 ]
+#> The months this gas pools before a transfer function is fitted, written as
+#> a group list: `1-12` is one group over the calendar, `1-6,7-12` is two. A
+#> group's ordinal in the list is its class index.
+#>
+#> Text rather than 24 numeric slots per gas. The flat form this replaces was
+#> sa_<slot>_g<k>_start / _stop, twelve pairs for each of three slots - 72
+#> tags to express a setting every real project leaves at "all months". Per
+#> gas that shape would be 1536 tags, almost all of them empty. The engine
+#> parses the list in ParseMonthGrouping.
+FCC_GAS_TEXT = ["sa_months"]
 
 
 def limits():
@@ -128,6 +138,8 @@ def appended(marker, lim):
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in RP_GAS_TEXT]
     elif marker == "FCC.SNTags":
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in FCC_GAS_NUMERIC]
+    elif marker == "FCC.SCTags":
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in FCC_GAS_TEXT]
     return out
 
 
@@ -332,6 +344,7 @@ def origins_block(origins, lim):
     L.append(f"    integer, parameter :: rpGasLeapN    = {len(RP_GAS_NUMERIC)}")
     L.append(f"    integer, parameter :: rpGasLeapC    = {len(RP_GAS_TEXT)}")
     L.append(f"    integer, parameter :: fccGasLeapN   = {len(FCC_GAS_NUMERIC)}")
+    L.append(f"    integer, parameter :: fccGasLeapC   = {len(FCC_GAS_TEXT)}")
     return L
 
 
@@ -375,6 +388,8 @@ def main():
             origins.append(("rpGasOriginC", base))
         elif marker == "FCC.SNTags":
             origins.append(("fccGasOriginN", base))
+        elif marker == "FCC.SCTags":
+            origins.append(("fccGasOriginC", base))
 
     # The origins live beside the [Project] tables, where every reader can see
     # them via m_common_global_var.
