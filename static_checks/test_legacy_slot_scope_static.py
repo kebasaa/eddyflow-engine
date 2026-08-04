@@ -1,12 +1,7 @@
 """The legacy gas-slot names stay, but only where they earn it.
 
-`co2 = 5, h2o = 6, ch4 = 7, n2o = 8, gas4 = 8` are not deleted, and should not
-be. A handful of uses are correct by design:
-
-  legacy ini layer      read_ini_rp and read_ini_fcc read the flat
-                        `sr_lim_co2`-style tags and then let an
-                        `SNTagFound`-guarded record override win. Removing the
-                        flat read would drop a pre-5.0.0 project's settings.
+`co2 = 5, h2o = 6, ch4 = 7, n2o = 8, gas4 = 8` are not deleted yet. A handful
+of uses are correct by design:
 
   on-disk aliases       LegacySpectralVarTag, HistoricGasSlot,
                         TimelagOptGasLabel and GasSlotFromDynMDTag accept the
@@ -27,6 +22,11 @@ be. A handful of uses are correct by design:
                         to the historical slot when a project describes no
                         water or no CO2 - which is what the gates they replace
                         evaluated in that case.
+
+The flat ini layer used to be on this list, and is not any more: read_ini_rp
+and read_ini_fcc read every per-gas setting from its record, and a project
+without records is refused rather than half-processed. That is what took
+read_ini_rp from 76 occurrences to none.
 
 What must not happen is a *new* `Set(:, co2)` or `E2Col(h2o)` appearing in a
 processing path, which is how every defect this effort fixed began. So this
@@ -55,7 +55,7 @@ ALLOWED = {
     "src/src_common/bpcf_bandpass_spectral_corrections.f90": 1,
     "src/src_common/bpcf_li7550_analog_filters.f90": 4,
     "src/src_common/define_all_var_set.f90": 19,
-    "src/src_common/define_e2_set.f90": 17,
+    "src/src_common/define_e2_set.f90": 1,
     "src/src_common/define_used_variables.f90": 6,
     "src/src_common/gas4_output_units.f90": 18,
     "src/src_common/m_common_global_var.f90": 4,
@@ -73,7 +73,6 @@ ALLOWED = {
     "src/src_rp/add_to_timelag_opt_dataset.f90": 1,
     "src/src_rp/configure_for_express.f90": 5,
     "src/src_rp/default_vars_selection.f90": 15,
-    "src/src_rp/define_vars.f90": 12,
     "src/src_rp/drift_correction.f90": 1,
     "src/src_rp/init_fluxnet_file_rp.f90": 29,
     "src/src_rp/init_outfiles_rp.f90": 42,
@@ -139,8 +138,8 @@ class TheSlotNamesThemselvesSurvive(unittest.TestCase):
         for name in ("co2", "h2o", "ch4", "n2o", "gas4"):
             self.assertRegex(
                 src, r"integer, parameter :: %s\s*=" % name,
-                "%s is still needed by the legacy ini layer, the on-disk "
-                "aliases and the fixed output format" % name)
+                "%s is still needed by the on-disk aliases and the fixed "
+                "output format" % name)
 
     def test_the_dynamic_bounds_are_declared_from_the_capacity(self):
         """firstGas/lastGas are what everything else should iterate."""

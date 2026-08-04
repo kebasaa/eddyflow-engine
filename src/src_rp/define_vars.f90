@@ -33,7 +33,9 @@ subroutine DefineVars(LocCol, ncol, uncol)
     type(ColType), intent(in) :: LocCol(MaxNumCol)
     integer :: idx, usr_cnt
     integer :: slot
+    integer :: i
     character(len(LocCol%label)), external :: replace
+    integer, external :: LocColByOrigCol
 
     E2Col = NullCol
 
@@ -49,14 +51,33 @@ subroutine DefineVars(LocCol, ncol, uncol)
         end select
     end do
 
-    ! Pass 2: gas species and auxiliary met (useit required)
+    !> Pass 2a: the gases, by record.
+    !>
+    !> Record i owns slot firstGas + i - 1, which is the same assignment
+    !> ApplyGasRecords makes later on the per-file pass - and it has to be,
+    !> because InitFluxnetFile_rp runs between the two and lays out its header
+    !> from what this leaves behind.
+    !>
+    !> This was a select case mapping the species name to a fixed slot, so a
+    !> project measuring CO2 on two analysers put both records in slot five
+    !> and lost one, and anything past the fourth species had no slot at all.
+    !> Matching on %orig_col rather than indexing directly is required: unused
+    !> columns are dropped before this point, so the metadata numbering and
+    !> the LocCol numbering have already diverged.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        slot = firstGas + i - 1
+        if (slot > lastGas) exit
+        idx = LocColByOrigCol(LocCol, ncol, EddyFlowProj%gas(i)%col)
+        if (idx <= 0) cycle
+        if (.not. LocCol(idx)%useit) cycle
+        E2Col(slot) = LocCol(idx)
+        E2Col(slot)%present = .true.
+    end do
+
+    ! Pass 2b: auxiliary met (useit required)
     do idx = 1, ncol
         if (.not. LocCol(idx)%useit) cycle
         select case (trim(LocCol(idx)%var))
-            case ('co2');     E2Col(co2)  = LocCol(idx);  E2Col(co2)%present  = .true.
-            case ('h2o');     E2Col(h2o)  = LocCol(idx);  E2Col(h2o)%present  = .true.
-            case ('ch4');     E2Col(ch4)  = LocCol(idx);  E2Col(ch4)%present  = .true.
-            case ('n2o');     E2Col(gas4) = LocCol(idx);  E2Col(gas4)%present = .true.
             case ('ts');      E2Col(ts)   = LocCol(idx);  E2Col(ts)%present   = .true.
             case ('cell_t');  E2Col(tc)   = LocCol(idx);  E2Col(tc)%present   = .true.
             case ('int_t_1'); E2Col(ti1)  = LocCol(idx);  E2Col(ti1)%present  = .true.

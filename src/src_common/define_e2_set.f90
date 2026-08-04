@@ -55,6 +55,10 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     integer :: wsl
     character(32) :: cellInstr(MaxNumInstruments)
     integer, external :: PrimaryWaterSlot
+    !> Declared in the host so the internal procedures inherit it. The lookup
+    !> moved to file scope for DefineVars, which asks the same question on the
+    !> earlier pass.
+    integer, external :: LocColByOrigCol
 
 
     E2Col = NullCol
@@ -104,36 +108,17 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
         end if
     end do
 
-    !> Now, all remaining EddyFlow standard variables (concentrations, temperatures and pressure)
+    !> The remaining standard variables: cell temperatures and pressures, and
+    !> ambient temperature and pressure.
+    !>
+    !> The gases are not here. Four branches used to match a column's species
+    !> name onto a fixed slot - co2 to five, h2o to six and so on - and
+    !> ApplyGasRecords then cleared firstGas..lastGas and refilled it from the
+    !> records a few lines below, so every one of those assignments was
+    !> overwritten before anything read it. What the branches could express
+    !> was also strictly less: one column per species, and nothing at all past
+    !> the fourth.
     do j = 1, ncol
-        !> master co2 concentration
-        if (LocCol(j)%var(1:len_trim(LocCol(j)%var)) == 'co2' .and. LocCol(j)%useit) then
-            E2Col(co2) = LocCol(j)
-            E2Col(co2)%present = .true.
-            E2Set(1:e2nrow, co2) = Raw(1:e2nrow, j)
-            cycle
-        end if
-        !> master h2o concentration
-        if (LocCol(j)%var(1:len_trim(LocCol(j)%var)) == 'h2o' .and. LocCol(j)%useit) then
-            E2Col(h2o) = LocCol(j)
-            E2Col(h2o)%present = .true.
-            E2Set(1:e2nrow, h2o) = Raw(1:e2nrow, j)
-            cycle
-        end if
-        !> master ch4 concentration
-        if (LocCol(j)%var(1:len_trim(LocCol(j)%var)) == 'ch4' .and. LocCol(j)%useit) then
-            E2Col(ch4) = LocCol(j)
-            E2Col(ch4)%present = .true.
-            E2Set(1:e2nrow, ch4) = Raw(1:e2nrow, j)
-            cycle
-        end if
-        !> master 4th gas concentration
-        if (LocCol(j)%var(1:len_trim(LocCol(j)%var)) == 'n2o' .and. LocCol(j)%useit) then
-            E2Col(gas4) = LocCol(j)
-            E2Col(gas4)%present = .true.
-            E2Set(1:e2nrow, gas4) = Raw(1:e2nrow, j)
-            cycle
-        end if
         !> master cell temperature
         if (LocCol(j)%var(1:len_trim(LocCol(j)%var)) == 'cell_t' .and. LocCol(j)%useit) then
             E2Col(tc) = LocCol(j)
@@ -402,31 +387,6 @@ subroutine ApplyGasRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol)
 end subroutine ApplyGasRecords
 
 !***************************************************************************
-!> Translate a .metadata column number into its position in LocCol/Raw.
-!>
-!> Columns the project does not use are dropped before this point, so the two
-!> numbering schemes diverge. The project file stores metadata numbers, so a
-!> record must be matched on %orig_col rather than indexed directly - doing
-!> the latter silently selects a different variable.
-!***************************************************************************
-integer function LocColByOrigCol(LocCol, ncol, wanted)
-    implicit none
-    type(ColType), intent(in) :: LocCol(MaxNumCol)
-    integer, intent(in) :: ncol
-    integer, intent(in) :: wanted
-    integer :: k
-
-    LocColByOrigCol = 0
-    if (wanted < 1) return
-    do k = 1, ncol
-        if (LocCol(k)%orig_col == wanted) then
-            LocColByOrigCol = k
-            return
-        end if
-    end do
-end function LocColByOrigCol
-
-!***************************************************************************
 !> Map a record-level reference onto an E2Col slot.
 !>
 !> An explicit reference (>0) is a 1-based index into the gas records. Zero
@@ -515,3 +475,34 @@ integer function cellPressureSlot(gas) result(slot)
     if (E2Col(gas)%cell_ref < firstCell .or. E2Col(gas)%cell_ref > lastCell) return
     slot = E2Col(gas)%cell_ref + 3
 end function cellPressureSlot
+
+!***************************************************************************
+!> Translate a .metadata column number into its position in LocCol/Raw.
+!>
+!> Columns the project does not use are dropped before this point, so the two
+!> numbering schemes diverge. The project file stores metadata numbers, so a
+!> record must be matched on %orig_col rather than indexed directly - doing
+!> the latter silently selects a different variable.
+!>
+!> At file scope rather than contained in DefineE2Set, because DefineVars asks
+!> the same question of the same records on the earlier pass and had no way to
+!> reach it. Two copies of "which column is metadata column N" is the class of
+!> drift this effort keeps unwinding.
+!***************************************************************************
+integer function LocColByOrigCol(LocCol, ncol, wanted)
+    use m_common_global_var
+    implicit none
+    type(ColType), intent(in) :: LocCol(MaxNumCol)
+    integer, intent(in) :: ncol
+    integer, intent(in) :: wanted
+    integer :: k
+
+    LocColByOrigCol = 0
+    if (wanted < 1) return
+    do k = 1, ncol
+        if (LocCol(k)%orig_col == wanted) then
+            LocColByOrigCol = k
+            return
+        end if
+    end do
+end function LocColByOrigCol

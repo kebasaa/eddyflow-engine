@@ -129,6 +129,16 @@ interface
         implicit none
     end function FirstConfiguredGasSlot
 
+    !> Position in LocCol/Raw of a given .metadata column number, or 0. The
+    !> two numberings diverge once unused columns are dropped.
+    integer function LocColByOrigCol(LocCol, ncol, wanted)
+        use m_common_global_var
+        implicit none
+        type(ColType), intent(in) :: LocCol(MaxNumCol)
+        integer, intent(in) :: ncol
+        integer, intent(in) :: wanted
+    end function LocColByOrigCol
+
     !> First gas slot whose analyser model contains the fragment, or 0. For
     !> the gates that name a particular instrument rather than a gas.
     integer function GasSlotByInstrModel(fragment)
