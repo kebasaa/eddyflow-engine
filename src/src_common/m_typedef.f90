@@ -1185,14 +1185,13 @@ module m_typedef
         character(FlagStrLen) :: ns
     end type RSCharFlagType
 
+    !> Only the whole-run outcomes are still integers. The per-variable tests
+    !> pack their flags directly as strings, because the base-10 encoding
+    !> caps the variable count at about nine before a 32-bit integer
+    !> overflows; sr, ar, do, al, sk and ds went first and tl last. Leaving
+    !> their members here would let a future test pick the packing that
+    !> bounded TestTimeLag at four gases.
     type :: RSIntFlagType
-        integer :: sr
-        integer :: ar
-        integer :: do
-        integer :: al
-        integer :: sk
-        integer :: ds
-        integer :: tl
         integer :: aa
         integer :: ns
     end type RSIntFlagType
@@ -1461,8 +1460,17 @@ module m_typedef
         !> which is exactly FlagStrLen. At character(9) a fifth gas had nowhere
         !> to go and its outcome was written over the end of the string.
         character(FlagStrLen) :: vm_flags(8)
-        character(9) :: vm_tlag_hf
-        character(9) :: vm_tlag_sf
+        !> The time-lag pair carries one digit per *gas* behind a leading
+        !> filler, so it grows with the gas count exactly as vm_flags does.
+        !> These were character(9) because the test that filled them packed
+        !> four digits into a base-10 integer; at eight gases the cell is nine
+        !> characters and at any more it was silently truncated on the way
+        !> through the ex file.
+        !>
+        !> aoa and nshw stay at 9: they are single-digit whole-run outcomes,
+        !> not per-variable strings.
+        character(FlagStrLen) :: vm_tlag_hf
+        character(FlagStrLen) :: vm_tlag_sf
         character(9) :: vm_aoa_hf
         character(9) :: vm_nshw_hf
         character(32) :: measure_type(GHGNumVar)

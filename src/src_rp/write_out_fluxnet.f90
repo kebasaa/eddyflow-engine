@@ -56,6 +56,10 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     character(32) :: char_doy
     character(14) :: tsIso
     character(9) :: vm97flags(GHGNumVar)
+    !> How many gases the time-lag flag string describes, from the helper the
+    !> header uses, so the cell and its legend cannot disagree.
+    integer :: n_tl_vars
+    character(LongOutstringLen) :: tl_legend
     !> FluxnetGasScale / FluxnetGasAdvScale arrive with interfaces.inc, whose
     !> first line pulls in interfaces_1.inc.
     include '../src_common/interfaces.inc'
@@ -579,8 +583,13 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     end do
 
     !> Uncomment to reintroduce flags for last 3 tests
-    call AddDatum(csv_row, '8'//CharHF%tl(FlagStrLen-3:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharSF%tl(FlagStrLen-3:FlagStrLen), separator)
+    !>
+    !> The time-lag pair names gases only, so it starts at the first gas.
+    !> Slicing from the end of the string was an artefact of the base-10
+    !> packing, which right-aligned four digits there.
+    call TimelagFlagLegend(n_tl_vars, tl_legend)
+    call AddDatum(csv_row, '8'//CharHF%tl(firstGas + 1:firstGas + n_tl_vars), separator)
+    call AddDatum(csv_row, '8'//CharSF%tl(firstGas + 1:firstGas + n_tl_vars), separator)
     call AddDatum(csv_row, '8'//CharHF%aa(FlagStrLen:FlagStrLen), separator)
     call AddDatum(csv_row, '8'//CharHF%ns(FlagStrLen:FlagStrLen), separator)
 

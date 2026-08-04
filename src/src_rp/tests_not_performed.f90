@@ -49,8 +49,8 @@ subroutine TestsNotPerformed()
     if(.not.Test%sk) CharSF%sk = repeat('9', FlagStrLen)
     if(.not.Test%ds) CharHF%ds = repeat('9', FlagStrLen)
     if(.not.Test%ds) CharSF%ds = repeat('9', FlagStrLen)
-    if(.not.Test%tl) IntHF%tl = 9999
-    if(.not.Test%tl) IntSF%tl = 9999
+    if(.not.Test%tl) CharHF%tl = repeat('9', FlagStrLen)
+    if(.not.Test%tl) CharSF%tl = repeat('9', FlagStrLen)
     if(.not.Test%aa) IntHF%aa = 9
     if(.not.Test%ns) IntHF%ns = 9
 end subroutine TestsNotPerformed

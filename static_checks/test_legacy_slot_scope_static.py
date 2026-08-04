@@ -57,7 +57,7 @@ ALLOWED = {
     "src/src_common/define_all_var_set.f90": 19,
     "src/src_common/define_e2_set.f90": 17,
     "src/src_common/define_used_variables.f90": 6,
-    "src/src_common/gas4_output_units.f90": 20,
+    "src/src_common/gas4_output_units.f90": 18,
     "src/src_common/m_common_global_var.f90": 4,
     "src/src_common/m_typedef.f90": 12,
     "src/src_common/metadata_file_validation.f90": 6,
@@ -80,7 +80,6 @@ ALLOWED = {
     "src/src_rp/out_raw_data.f90": 3,
     "src/src_rp/pwb_timelag_handle.f90": 28,
     "src/src_rp/read_ini_rp.f90": 68,
-    "src/src_rp/test_timelag.f90": 11,
     "src/src_rp/write_out_fluxnet.f90": 1,
 }
 

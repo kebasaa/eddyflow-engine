@@ -483,9 +483,13 @@ subroutine TimelagFlagLegend(nvars, legend)
 
     call SpectralVarTags(tags)
 
+    !> Every configured gas. This ran co2..gas4 to match a four-digit packing
+    !> in TestTimeLag; that packing is a per-variable string now, so the legend
+    !> follows the gases the test actually ran over.
     legend = ''
     nvars = 0
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         nvars = nvars + 1
         if (len_trim(tags(gas)) > 0) then
             if (nvars == 1) then

@@ -240,6 +240,7 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
         "src/src_rp/test_spike_detection_vickers_97.f90",
         "src/src_rp/test_spike_detection_mauder_13.f90",
         "src/src_rp/test_absolute_limits.f90",
+        "src/src_rp/test_timelag.f90",
     )
 
     def test_no_producer_packs_only_the_historical_slots(self):
@@ -255,6 +256,46 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
                 self.assertRegex(
                     source, r"call PackFlagString\(.*,\s*GHGNumVar\s*,"
                 )
+
+    def test_the_time_lag_flags_are_not_an_integer(self):
+        """The base-10 packing is what bounded TestTimeLag at four gases.
+
+        `90000 + sum(hflags(j) * 10**(4 - j))` overflows a 32-bit integer past
+        about nine variables, so the flag arrays could not grow - and because
+        the loop was sized to them, neither could the test. A fifth gas's lag
+        was never compared against its default while the flag column read as
+        "not performed".
+
+        The two row writers sliced the string from its end, which only found
+        the right four digits because int2char right-aligned them there. They
+        must slice from the first gas now, and against the same legend helper
+        the header uses, or the cell and its units row disagree.
+        """
+        #> Comment lines dropped, or the note explaining the removed packing
+        #> reads as the packing itself.
+        source = "\n".join(
+            ln for ln in read("src/src_rp/test_timelag.f90").splitlines()
+            if not ln.lstrip().startswith("!"))
+        self.assertNotIn("IntHF%tl", source)
+        self.assertNotRegex(source, r"10\*\*\(4 - j\)")
+
+        typedefs = read("src/src_common/m_typedef.f90")
+        self.assertNotRegex(
+            typedefs, r"type :: RSIntFlagType.*?integer :: tl.*?end type",
+            "IntHF%tl is back; the per-variable flags must stay strings")
+        for field in ("vm_tlag_hf", "vm_tlag_sf"):
+            self.assertIn("character(FlagStrLen) :: %s" % field, typedefs,
+                          "%s must grow with the gas count or the ex file "
+                          "truncates it past eight gases" % field)
+
+        for path in ("src/src_rp/write_out_full.f90",
+                     "src/src_rp/write_out_fluxnet.f90"):
+            writer = read(path)
+            self.assertNotIn("CharHF%tl(FlagStrLen-3:FlagStrLen)", writer)
+            self.assertIn(
+                "CharHF%tl(firstGas + 1:firstGas + n_tl_vars)", writer,
+                "%s must cut the cell to the gases the legend names" % path)
+            self.assertIn("TimelagFlagLegend(n_tl_vars", writer)
 
     def test_the_spike_tests_evaluate_every_slot(self):
         for path in self.PRODUCERS[:2]:

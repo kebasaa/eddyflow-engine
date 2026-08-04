@@ -50,7 +50,11 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> How many variables the packed statistical-flag strings describe. The
     !> header names exactly these, from the same helper.
     integer :: n_flag_vars
+    !> How many gases the time-lag flag string describes. Fewer than
+    !> n_flag_vars: that pair names gases only, not u/v/w/ts.
+    integer :: n_tl_vars
     character(LongOutstringLen) :: flag_legend
+    character(LongOutstringLen) :: tl_legend
 !    integer :: prof
     real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
@@ -71,6 +75,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
 
     !> The flag cells are cut to the variables the units row names.
     call StatisticalFlagVars(n_flag_vars, flag_legend)
+    call TimelagFlagLegend(n_tl_vars, tl_legend)
 
     !> Preliminary file and timestamp information
     call clearstr(csv_row)
@@ -398,8 +403,13 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call AddDatum(csv_row, '8'//CharSF%sk(2:1 + n_flag_vars), separator)
     call AddDatum(csv_row, '8'//CharHF%ds(2:1 + n_flag_vars), separator)
     call AddDatum(csv_row, '8'//CharSF%ds(2:1 + n_flag_vars), separator)
-    call AddDatum(csv_row, '8'//CharHF%tl(FlagStrLen-3:FlagStrLen), separator)
-    call AddDatum(csv_row, '8'//CharSF%tl(FlagStrLen-3:FlagStrLen), separator)
+    !> The time-lag pair names gases only, so it starts at the first gas
+    !> rather than at the first variable. Slicing from the end of the string
+    !> was an artefact of the base-10 packing, which right-aligned four digits
+    !> there; PackFlagString puts slot j at position j + 1, and the legend
+    !> TimelagFlagLegend writes counts the same gases.
+    call AddDatum(csv_row, '8'//CharHF%tl(firstGas + 1:firstGas + n_tl_vars), separator)
+    call AddDatum(csv_row, '8'//CharSF%tl(firstGas + 1:firstGas + n_tl_vars), separator)
     call AddDatum(csv_row, '8'//CharHF%aa(FlagStrLen:FlagStrLen), separator)
     call AddDatum(csv_row, '8'//CharHF%ns(FlagStrLen:FlagStrLen), separator)
 
