@@ -40,9 +40,14 @@ src/src_rp/deprecated
 !/tests/regression/README.md
 !/tests/regression/run.sh
 !/tests/regression/base*.eddyflow
-!/tests/regression/gen_sa.py
-!/tests/regression/gen_fixtures.py
-!/tests/regression/check_h2o_late.py
+# Track the harness by pattern, not by name, for the reason spelled out below
+# for static_checks - and for the same reason twice over: this list had already
+# fallen behind by two files. check_columns.py, which is what catches a value
+# sitting under the wrong column name, and migrate_records.py both existed only
+# on disk. A check nobody can clone is not a check.
+!/tests/regression/gen_*.py
+!/tests/regression/check_*.py
+!/tests/regression/migrate_*.py
 !/tests/regression/sa_*.txt
 !/tests/regression/*.metadata
 /_temp
