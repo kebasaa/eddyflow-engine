@@ -115,8 +115,8 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                     h2o_n(cls) = 0
                     tmpvec = 0d0
                     do i = 1, actn(gas)
-                        if(toSet(i)%RH >= dfloat(cls - 1) * cls_size &
-                            .and. toSet(i)%RH <= dfloat(cls) * cls_size) then
+                        if(toSet(i)%RH(wsl) >= dfloat(cls - 1) * cls_size &
+                            .and. toSet(i)%RH(wsl) <= dfloat(cls) * cls_size) then
                             h2o_n(cls) = h2o_n(cls) + 1
                             tmpvec(h2o_n(cls)) = toSet(i)%tlag(wsl)
                         end if

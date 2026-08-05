@@ -92,7 +92,10 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     !> guard on the h2o block said.
     do gas = firstGas, lastGas
         if (.not. E2Col(gas)%present) cycle
-        if (GasSlotIsWater(gas) .and. ncls > 1) cycle
+        !> Only the primary is carried by the per-class table below; a
+        !> second hygrometer gets an ordinary per-gas row, which is how its
+        !> optimised window survives to the next run at all.
+        if (gas == PrimaryWaterSlot() .and. ncls > 1) cycle
         gname = TimelagOptGasLabel(gas)
         if (actn(gas) > 0) then
             tl_def = toPasGas(gas)%def

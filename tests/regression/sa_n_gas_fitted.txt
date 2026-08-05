@@ -99,6 +99,17 @@ October            =     0.20000     0.05000
 November           =     0.20000     0.05000 
 December           =     0.20000     0.05000 
  
+H2O_2 vapour TFP              Fn          fc    numerosity
+RH class   5 - 15% =     0.20000     0.05000          500
+RH class  15 - 25% =     0.20000     0.05000          500
+RH class  25 - 35% =     0.20000     0.05000          500
+RH class  35 - 45% =     0.20000     0.05000          500
+RH class  45 - 55% =     0.20000     0.05000          500
+RH class  55 - 65% =     0.20000     0.05000          500
+RH class  65 - 75% =     0.20000     0.05000          500
+RH class  75 - 85% =     0.20000     0.05000          500
+RH class  85 - 95% =     0.20000     0.05000          500
+
 RH/fc_exponential_fit_parameters_for_water_vapour_spectral_corrections
 -----------------------------------
          exp1         exp2         exp3

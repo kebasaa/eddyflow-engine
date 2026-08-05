@@ -1370,7 +1370,12 @@ module m_typedef
 
     type :: TimeLagDatasetType
         real(kind = dbl) :: tlag(E2NumVar)
-        real(kind = dbl) :: RH
+        !> The relative humidity of the period that produced tlag(slot), per
+        !> slot. It was one scalar per row against a per-slot tlag, and the
+        !> dataset is compacted per slot - each gas has its own count of
+        !> valid determinations - so with two hygrometers the RH at row k and
+        !> the lag at row k came from different half-hours.
+        real(kind = dbl) :: RH(E2NumVar)
     end type TimeLagDatasetType
 
     type :: TimeLagOptType

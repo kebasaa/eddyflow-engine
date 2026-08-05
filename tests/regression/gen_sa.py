@@ -43,6 +43,21 @@ for name, fn, fc in BLOCKS:
     for m in MONTHS:
         L.append('%-18s = %11.5f %11.5f ' % (m, fn, fc))
     L.append(' ')
+# The second hygrometer's own RH table.
+#
+# base_n_gas declares two H2O records. The primary's table is the "Water
+# vapour TFP" block at the top, in the fixed position the reader's seven-line
+# skip expects; the second had nowhere to go, so it was fitted on every run
+# and discarded. It is a named block like a gas's, and keeps `numerosity` in
+# the header - that word is what tells the reader these are nine RH rows and
+# not twelve monthly ones.
+#
+# Given a cut-off far from the primary's 0.80 so that a second hygrometer
+# reading its own row cannot be mistaken for one falling back to the first's.
+L.append('H2O_2 vapour TFP              Fn          fc    numerosity')
+for r in RH:
+    L.append('RH class %s%% = %11.5f %11.5f %12d' % (r, 0.20, 0.05, 500))
+L.append('')
 L.append('RH/fc_exponential_fit_parameters_for_water_vapour_spectral_corrections')
 L.append('-' * 35)
 L.append('         exp1         exp2         exp3')

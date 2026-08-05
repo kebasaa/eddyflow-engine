@@ -114,7 +114,7 @@ subroutine ReadSpectralAssessmentFile()
         !> both spelled JAN:DEC, which is how a month index came to be stored
         !> where a class index belongs.
         do gas = firstGas, lastGas
-            if (GasSlotIsWater(gas)) cycle
+            if (gas == wsl) cycle
             RegPar(gas, 1:MaxGasClasses)%Fn = error
             RegPar(gas, 1:MaxGasClasses)%fc = error
         end do
@@ -158,13 +158,38 @@ subroutine ReadSpectralAssessmentFile()
             call uppercase(blockname)
             slot = 0
             do gas = firstGas, lastGas
-                if (GasSlotIsWater(gas)) cycle
+                !> Only the PRIMARY is excluded - its table is the one
+                !> read above, at the fixed position. Every other
+                !> hygrometer has a named block like any gas, which is
+                !> what lets its fit survive a round trip at all.
+                if (gas == wsl) cycle
                 if (len_trim(sa_tags(gas)) == 0) cycle
                 if (trim(adjustl(sa_tags(gas))) == trim(blockname)) then
                     slot = gas
                     exit
                 end if
             end do
+
+            !> A hygrometer's block carries nine RH classes, a gas's
+            !> twelve months. The header says which: `numerosity` is
+            !> the count column only the RH tables have, and it has
+            !> been in this format since before the records.
+            if (index(dataline, 'numerosity') /= 0) then
+                do cls = RH10, RH90
+                    read(udf, '(a)', iostat = read_status) dataline
+                    if (read_status /= 0) exit
+                    dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
+                    if (slot > 0) then
+                        read(dataline, *, iostat = read_status) &
+                            RegPar(slot, cls)%Fn, RegPar(slot, cls)%fc
+                    else
+                        read(dataline, *, iostat = read_status) skipFn, skipfc
+                    end if
+                    if (read_status /= 0) exit
+                end do
+                if (read_status /= 0) exit
+                cycle
+            end if
 
             !> Read the twelve months, then map them onto this project's
             !> classes. The file is keyed by month and RegPar by class; storing

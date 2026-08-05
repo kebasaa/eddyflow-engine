@@ -259,6 +259,37 @@ subroutine OutputSpectralAssessmentResults(nbins)
             end do
 
             !> Exponential fit f_co vs. RH
+            !> One RH block per hygrometer past the primary.
+            !>
+            !> The primary's table is written above, in the fixed position
+            !> the reader's seven-line skip expects. A second hygrometer is
+            !> RH-binned too - SpectraSortingAndAveraging bins every water
+            !> slot by relative humidity and FitTfModels fits each one - but
+            !> the file had nowhere to put the result, so it was fitted and
+            !> discarded, while the readiness check went on demanding it.
+            !>
+            !> Named like the per-gas blocks so the reader resolves it the
+            !> same way, and keeping `numerosity` in the header, which is
+            !> what tells the reader these are nine RH rows and not twelve
+            !> monthly ones.
+            do gas = firstGas, lastGas
+                if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                if (.not. GasSlotIsWater(gas)) cycle
+                if (gas == wsl) cycle
+                sa_name = sa_tags(gas)
+                call uppercase(sa_name)
+                write(udf,'(a)') trim(sa_name) // ' vapour TFP           &
+                    &   Fn          fc    numerosity'
+                do cls = RH10, RH90
+                    write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
+                        10 * cls - 5, ' - ', 10 * cls + 5, '% = '
+                    write(udf,'(a, 2(f11.5,1x), i13)') rh_label, &
+                        RegPar(gas, cls)%Fn, RegPar(gas, cls)%fc, &
+                        MeanBinSpec(nbins/2, cls)%cnt(gas)
+                end do
+                write(udf,'(a)') ''
+            end do
+
             write(udf,'(a)') 'RH/fc_exponential_fit_parameters_for_water_vapour&
                 &_spectral_corrections'
             write(udf,'(a)') '-----------------------------------'

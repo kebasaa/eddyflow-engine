@@ -37,6 +37,7 @@
 subroutine SetTimelags()
     use m_rp_global_var
     implicit none
+    integer, external :: PrimaryWaterSlot
     !> local variables
     integer :: gas
     integer :: cls
@@ -62,7 +63,18 @@ subroutine SetTimelags()
     if (meth%tlag == 'tlag_opt') then
         do gas = firstGas, lastGas
             if (E2Col(gas)%present) then
-                if (.not. GasSlotIsWater(gas)) then
+                !> Only the SITE's hygrometer is classed by relative
+                !> humidity. RH is a site quantity and the optimiser fits
+                !> one table from it; a second hygrometer is a measurement
+                !> like any other and takes its own window, which
+                !> OptimizeTimelags already computes for every gas.
+                !>
+                !> Every water slot used to read that table, so a second
+                !> hygrometer got the primary's window - and, when RH
+                !> classing was off, no optimised window at all, because the
+                !> branch below does nothing when h2o_nclass <= 1.
+                if (.not. GasSlotIsWater(gas) .or. gas /= PrimaryWaterSlot() &
+                    .or. TOSetup%h2o_nclass <= 1) then
                     !> Passive gases.
                     !>
                     !> Only where the optimiser actually has a window for this

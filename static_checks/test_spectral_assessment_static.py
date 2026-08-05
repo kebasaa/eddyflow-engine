@@ -139,8 +139,13 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
         stored a month where a class belongs. That is right only when there is
         one group, which is every file written before per-gas groupings
         existed. With `1-2,3-12`, June has class 2 and read February's row.
+
+        Scoped to the monthly branch. A hygrometer's block is keyed by RH class
+        and stores RegPar(slot, cls) directly, which is not the same mistake -
+        there the index really is a class, and there are nine of them.
         """
         source = strip_comments(read(READER))
+        source = source[source.index("monthFn = error"):]
         self.assertNotIn(
             "RegPar(slot, cls)%Fn, RegPar(slot, cls)%fc", source,
             "a month row is being stored straight into a class index again")

@@ -120,9 +120,20 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         do gas = firstGas, lastGas
             if (gas == wsl .or. .not. fcc_var_present(gas)) cycle
             gas_ok = .false.
-            do cls = 1, MaxGasClasses
-                if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
-            end do
+            if (GasSlotIsWater(gas)) then
+                !> A hygrometer is binned by relative humidity, not by
+                !> month, so its fit lives in the RH range. Looking for it
+                !> in the month range demanded something no hygrometer ever
+                !> has - and, until the file could carry a second one at
+                !> all, something the round trip could not have supplied.
+                do cls = RH10, RH90
+                    if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
+                end do
+            else
+                do cls = 1, MaxGasClasses
+                    if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
+                end do
+            end if
             assessment_ready = assessment_ready .and. gas_ok
         end do
     end if

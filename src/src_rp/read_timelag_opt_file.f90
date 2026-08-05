@@ -37,6 +37,7 @@ subroutine ReadTimelagOptFile(ncls)
     use m_rp_global_var
     use m_pwb_timelag, only: TimelagOptGasLabel
     implicit none
+    integer, external :: PrimaryWaterSlot
     !> in/out variables
     integer :: ncls
     !> local variables
@@ -74,7 +75,10 @@ subroutine ReadTimelagOptFile(ncls)
                 gname = TimelagOptGasLabel(gas)
                 if (index(strg, 'Median_' // trim(gname) // '_timelag_[s]') /= 0) then
                     read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%def
-                    if (GasSlotIsWater(gas)) ncls = 0
+                    !> A plain median row for the PRIMARY means it was not
+                    !> classed by RH. A second hygrometer always has one and
+                    !> says nothing about whether the primary was classed.
+                    if (gas == PrimaryWaterSlot()) ncls = 0
                     matched = .true.
                     exit
                 end if

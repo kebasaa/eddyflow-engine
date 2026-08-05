@@ -244,7 +244,17 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                         do gas = firstGas, lastGas
                             if (.not. GasSlotIsWater(gas)) cycle
                             if (.not. lEx%var_present(gas)) cycle
-                            f_2(gas) = RegPar(wsl, RH)%f2
+                            !> Each hygrometer's own RH-class fit. Every one
+                            !> took the primary's, because the assessment
+                            !> file could not carry a second - it is fitted
+                            !> per slot and was then discarded. The primary
+                            !> remains the fallback for a hygrometer the
+                            !> assessment never fitted.
+                            if (RegPar(gas, RH)%f2 /= error) then
+                                f_2(gas) = RegPar(gas, RH)%f2
+                            else
+                                f_2(gas) = RegPar(wsl, RH)%f2
+                            end if
                         end do
                         exit
                     end if

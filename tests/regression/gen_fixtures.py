@@ -304,7 +304,33 @@ def build_auto_sa(src_lines):
     return _set(src_lines, 'automatic_spectra_config', '1')
 
 
+def build_sa_write(src_lines):
+    """base_n_gas attempting a spectral assessment on the fly.
+
+    hf_meth=3 is ibrom_07, which is in-situ, and sa_mode=1 leaves no assessment
+    file to read - together those are what set do_spectral_assessment, so FCC
+    fits rather than reads. Derived from base_n_gas_bin because that one points
+    sa_bin_spectra at its own run's output; the shared directory the others use
+    is not on every machine, and without binned spectra there is nothing to fit.
+
+    What it actually covers, stated plainly: three half-hours are far too few
+    to fit anything, so the readiness gate declines and the run falls back to
+    the analytic method WITHOUT writing an assessment file. That is the path
+    this fixture holds - the only coverage of do_spectral_assessment being set
+    and refused, which is the arm Stage F changed for hygrometers.
+
+    It is therefore NOT proof that the file can carry a second hygrometer. No
+    file is produced to inspect. The writer's second-water block is covered
+    from the reading end instead: gen_sa.py authors one, and the static checks
+    in test_spectral_assessment_blocks_static.py pin writer, reader and gate
+    to the same rule.
+    """
+    out = _set(src_lines, 'hf_meth', '3')
+    return _set(out, 'sa_mode', '1')
+
+
 TARGETS = {
+    'base_sa_write.eddyflow': ('base_n_gas_bin.eddyflow', build_sa_write),
     'base_auto_sa.eddyflow': ('base_n_gas.eddyflow', build_auto_sa),
     'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),
     'base_no_water.eddyflow': ('base_rec.eddyflow', build_no_water),
