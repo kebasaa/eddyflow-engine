@@ -50,8 +50,8 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
     integer :: sepa
     character(10) :: date
     character(5) :: time
-    character(32) :: mdStringVars(256)
-    character(32) :: mdCurrentStringVars(256)
+    character(32) :: mdStringVars(MaxRowFields)
+    character(32) :: mdCurrentStringVars(MaxRowFields)
     character(LongInstringLen) :: dataline
     type (DateType) :: mdCurrentTimestamp
 
@@ -88,6 +88,13 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
                 sepa = index(dataline, separator)
                 if (sepa == 0) sepa = len_trim(dataline) + 1
                 if (len_trim(dataline) == 0) exit
+                !> Guarded: this row's width follows the gas count, and the
+                !> fill had no bound at all - a wide file wrote past the end
+                !> of the array.
+                if (var_num >= size(mdStringVars)) then
+                    call ExceptionHandler(105)
+                    exit
+                end if
                 var_num = var_num + 1
                 mdStringVars(var_num) = dataline(1:sepa - 1)
                 dataline = dataline(sepa + 1: len_trim(dataline))

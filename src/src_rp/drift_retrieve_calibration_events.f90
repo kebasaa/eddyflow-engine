@@ -62,7 +62,7 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
     real(kind = dbl) :: biased_abs
     real(kind = dbl) :: unbiased_abs
     real(kind = dbl) :: abs_scale
-    character(32) :: text_vars(128)
+    character(32) :: text_vars(MaxRowFields)
     character(64) :: field
     character(LongInstringLen) :: dataline
     logical :: bias_is_negative
@@ -134,6 +134,13 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
                 sepa = index(dataline, separator)
                 if (sepa == 0) sepa = len_trim(dataline) + 1
                 if (len_trim(dataline) == 0) exit
+                !> Guarded, same as the dynamic-metadata reader: this array
+                !> was 128 fields against a row whose width scales with the
+                !> gas count, and the fill had no bound.
+                if (var_num >= size(text_vars)) then
+                    call ExceptionHandler(105)
+                    exit
+                end if
                 var_num = var_num + 1
                 text_vars(var_num) = dataline(1:sepa - 1)
                 dataline = dataline(sepa + 1: len_trim(dataline))

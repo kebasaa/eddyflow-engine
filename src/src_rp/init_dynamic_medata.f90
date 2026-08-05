@@ -92,7 +92,7 @@ subroutine ReadDynamicMetadataHeader(unt)
     !> file for eight gases carries 8 * nDynMDGasFields + 2 = 114 of them, so it
     !> wrote past the end of a stack array. Sized to match DynamicMetadataOrder,
     !> which is what the first pass indexes.
-    character(64) :: Headerlabels(256)
+    character(64) :: Headerlabels(MaxRowFields)
     integer :: read_status
     integer :: sepa
     integer :: cnt
@@ -110,7 +110,14 @@ subroutine ReadDynamicMetadataHeader(unt)
         sepa = index(dataline, ',')
         if (sepa == 0) sepa = len_trim(dataline) + 1
         if (len_trim(dataline) == 0) exit
-        if (cnt >= size(Headerlabels)) exit
+        !> Says so rather than stopping quietly. A header wider than this
+        !> array was truncated in silence, so the fields past the cut simply
+        !> never existed as far as the rest of the run was concerned - and the
+        !> width of this header follows the gas count.
+        if (cnt >= size(Headerlabels)) then
+            call ExceptionHandler(105)
+            exit
+        end if
         cnt = cnt + 1
         Headerlabels(cnt) = dataline(1:sepa - 1)
         dataline = dataline(sepa + 1: len_trim(dataline))

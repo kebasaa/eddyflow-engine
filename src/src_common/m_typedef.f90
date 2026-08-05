@@ -105,6 +105,24 @@ module m_typedef
     !> tube properties, kw, ko, the two path lengths and tau. Spelled out in
     !> DynMDGasFieldNames.
     integer, parameter :: nDynMDGasFields = 14
+    !> Widest row any of the readers below has to hold, in fields.
+    !>
+    !> The dynamic-metadata and calibration files carry per-gas fields, so
+    !> their width scales with the gas count. The readers used literal 128
+    !> and 256, which were ample when a project had four gases and are not
+    !> now: nDynMDGasFields alone reaches 896 at MaxNumGases. Derived so a
+    !> widened loop cannot leave a buffer behind, which is how
+    !> raw_out_header came to overflow.
+    integer, parameter :: MaxRowFields = &
+        max(MaxNumCol, MaxNumGases * nDynMDGasFields + 64)
+    !> Width of the raw-dataset header, in characters.
+    !>
+    !> ReadIniRP appends one 25-character name per selected variable, over the
+    !> anemometric four, every gas slot and the cell and ambient columns - the
+    !> E2 set, in other words - with a margin for the leading pad and any
+    !> custom names. It was `character(512)`, which held four gases and was
+    !> never widened when the loop that fills it became MaxNumGases.
+    integer, parameter :: RawHeaderLen = 32 + 25 * (E2NumVar + 8)
     integer, parameter :: MaxNumBins = 300
     integer, parameter :: MaxNumBiometCol = 100
     !> Must track MaxNumInstruments, or instruments beyond this are silently

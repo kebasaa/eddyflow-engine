@@ -90,7 +90,11 @@ module m_rp_global_var
     character(21), parameter :: SubDirRaw           = 'eddyflow_raw_datasets'
     character(19), parameter :: SubDirUserStats     = 'eddyflow_user_stats'
     character(22), parameter :: SubDirBinOgives     = 'eddyflow_binned_ogives'
-    character(512) :: raw_out_header
+    !> One 25-character name per selected variable, plus the anemometric
+    !> four and a margin. Sized from the capacity rather than from a
+    !> literal: the gas loop that fills it was widened to MaxNumGases and
+    !> the 512 it used to be was not, so it overflowed past ~17 gases.
+    character(RawHeaderLen) :: raw_out_header
     character(PathLen) :: StatsDir
     character(PathLen) :: UserStatsDir
     character(PathLen) :: RawDir
@@ -198,7 +202,7 @@ module m_rp_global_var
 
     !> Dynamic metadata
     type(DynMDType) :: DynamicMetadata
-    integer :: DynamicMetadataOrder(256)
+    integer :: DynamicMetadataOrder(MaxRowFields)
     !> Header column of each per-gas field, by gas slot; nint(error) where the
     !> file has none. The fixed DynamicMetadataOrder above covers the four
     !> historical analysers only - its index table stops at gas4_irga_tau -

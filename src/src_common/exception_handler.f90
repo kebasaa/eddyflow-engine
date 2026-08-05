@@ -424,5 +424,11 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(104)> not a true sensible heat flux. Over a wet surface the two'
             write(*,*) ' Warning(104)> differ by several percent.'
             write(*,*) ' Warning(104)> A biomet relative humidity sensor is enough to remove both.'
+        case(105)
+            write(*,*) ' Warning(105)> A row of the dynamic metadata or calibration file has more'
+            write(*,*) ' Warning(105)> fields than this engine can hold, and the ones past the'
+            write(*,*) ' Warning(105)> limit were dropped. Those files carry a block per gas, so'
+            write(*,*) ' Warning(105)> their width grows with the number of gases in the project.'
+            write(*,*) ' Warning(105)> Reduce the number of columns, or split the file.'
     end select
 end subroutine ExceptionHandler
