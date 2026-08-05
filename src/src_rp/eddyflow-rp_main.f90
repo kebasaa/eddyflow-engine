@@ -54,6 +54,8 @@ program EddyFlowRP
     integer :: NumberOfPeriods
     integer :: i
     integer :: j
+    !> The hygrometer a gas is corrected with, from its own record.
+    integer :: msl
     integer :: cec_co2_signal_col
     integer :: cec_h2o_signal_col
     integer :: SpecRow
@@ -2391,9 +2393,19 @@ program EddyFlowRP
             do j = firstGas, lastGas
                 if (E2Col(j)%Instr%model(1:max(1, &
                     len_trim(E2Col(j)%Instr%model) - 2)) /= 'li7700') cycle
-                !> Calculate multipliers for LI-7700 spectroscopic correction
+                !> Calculate multipliers for LI-7700 spectroscopic correction,
+                !> from the water this gas is corrected with.
+                !>
+                !> Eq. 6.13 is a spectroscopic property of the sample the
+                !> analyser sees, so it wants that analyser's humidity. This
+                !> read the site's, which on a two-analyser site corrects a
+                !> 7700 with a hygrometer it does not share air with - and
+                !> through the fallback variant, which names a trace gas when
+                !> a project has no water at all.
+                msl = E2Col(j)%moist_ref
+                if (msl < firstGas .or. msl > lastGas) cycle
                 call Multipliers7700(Stats%Pr, Ambient%Ta, &
-                    Stats%chi(PrimaryWaterOutSlot()), &
+                    Stats%chi(msl), &
                     Mul7700%A, Mul7700%B, Mul7700%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual

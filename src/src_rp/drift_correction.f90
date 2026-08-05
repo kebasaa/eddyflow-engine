@@ -48,6 +48,7 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     integer :: i
     integer :: gas
     integer :: wsl
+    integer :: msl
     integer :: nPeriods
     integer, external :: NumOfPeriods
     real(kind = dbl) :: lDrift(GHGNumVar)
@@ -162,9 +163,17 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
 
         label = GasOutputLabel(gas)
         call lowercase(label)
+        !> Pressure broadening of the CO2 band by water vapour, from the
+        !> humidity in the same cell as this CO2 - not the site's. With two
+        !> CO2 analysers the site's water is the wrong sample for one of them,
+        !> and the effect is a property of the gas mixture the detector sees.
         broadening = 1d0
-        if (trim(adjustl(label)) == 'co2' .and. wsl >= firstGas) &
-            broadening = 1d0 + 0.15d0 * Stats%chi(wsl) * 1d-3
+        msl = E2Col(gas)%moist_ref
+        if (trim(adjustl(label)) == 'co2' &
+            .and. msl >= firstGas .and. msl <= lastGas) then
+            if (Stats%chi(msl) /= error) &
+                broadening = 1d0 + 0.15d0 * Stats%chi(msl) * 1d-3
+        end if
 
         if (locCol(gas)%measure_type /= 'molar_density') then
             where (Set(:, gas) /= error)

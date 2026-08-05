@@ -101,11 +101,18 @@ class TheStatisticsTypeIsIndexedBySlot(unittest.TestCase):
         self.assertIn("tc_cov_tl(E2NumVar)", src)
 
     def test_the_water_column_they_are_taken_against_is_resolved(self):
-        """The covariance is against the site's water. Reading E2Col(h2o) took
-        whatever species record two held - on base_h2o_late that was N2O, and
-        the in-cell water flux came out three orders of magnitude wrong."""
+        """The covariance is against the water that corrects THIS gas.
+
+        Reading E2Col(h2o) took whatever species record two held - on
+        base_h2o_late that was N2O, and the in-cell water flux came out three
+        orders of magnitude wrong. Resolving the site's water fixed that, and
+        was still one answer for every gas: a gas on a second analyser was
+        matched against the primary hygrometer's model, failed, and got no
+        covariance at all. It reads the gas's own moist_ref now.
+        """
         src = code("src/src_rp/timelag_handle.f90")
-        self.assertIn("PrimaryWaterOutSlot()", src)
+        self.assertIn("msl = E2Col(j)%moist_ref", src)
+        self.assertNotIn("E2Col(h2o)", src)
         self.assertNotIn("E2Col(h2o)", src,
                          "the water column must be resolved, not indexed")
 

@@ -41,6 +41,7 @@ subroutine Fluxes0_rp(printout)
     real(kind = dbl) :: Tp
     real(kind = dbl) :: dens_gain
     integer :: msl
+    integer :: gas
     integer :: wsl
     integer :: wsx
     include '../src_common/interfaces_1.inc'
@@ -193,10 +194,24 @@ subroutine Fluxes0_rp(printout)
     !> record's measure type, so it is chosen once and the gases loop inside.
     !> The water slot itself has no entry in h2ocov_tl, so the loop skips it
     !> the same way the unrolled arms did by omission.
+    !> The divisor belongs to the hygrometer whose covariance this is, and
+    !> that is the one the gas names - not the site's. Chosen inside the loop
+    !> for that reason: with two analysers the two hygrometers can differ in
+    !> measure type, and the gate on the primary's path type meant a gas on a
+    !> closed-path analyser lost this term entirely whenever the *primary*
+    !> hygrometer happened to be open-path.
+    !>
+    !> TimeLagHandle has already declined to compute a covariance where the
+    !> reference is unusable, so an `error` here is simply that answer
+    !> arriving.
     Flux0%E_gas(firstGas:lastGas) = error
-    if (wsl >= firstGas .and. E2Col(wsx)%Instr%path_type == 'closed') then
+    do gas = firstGas, lastGas
+        if (Stats%h2ocov_tl(gas) == error) cycle
+        msl = E2Col(gas)%moist_ref
+        if (msl < firstGas .or. msl > lastGas) cycle
+
         dens_gain = error
-        select case (E2Col(wsl)%measure_type)
+        select case (E2Col(msl)%measure_type)
             case ('molar_density')
                 dens_gain = 1d0
             case ('mole_fraction')
@@ -204,15 +219,10 @@ subroutine Fluxes0_rp(printout)
             case ('mixing_ratio')
                 if (Ambient%Vd > 0d0) dens_gain = 1d0 / Ambient%Vd
         end select
+        if (dens_gain == error) cycle
 
-        if (dens_gain /= error) then
-            do msl = firstGas, lastGas
-                if (Stats%h2ocov_tl(msl) /= error) &
-                    Flux0%E_gas(msl) = &
-                        Stats%h2ocov_tl(msl) * MW_H2O * 1d-3 * dens_gain
-            end do
-        end if
-    end if
+        Flux0%E_gas(gas) = Stats%h2ocov_tl(gas) * MW_H2O * 1d-3 * dens_gain
+    end do
 
     !> Friction velocity [m s-1]
     if (Stats%Cov(u, w) /= error .and. Stats%Cov(v, w) /= error) then

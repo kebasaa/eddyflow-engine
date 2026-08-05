@@ -68,9 +68,9 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: cache_actual_lag
     real(kind = dbl) :: cache_used_lag
     integer :: cache_row_lag
-    !> The slot the site's water is measured in, for the covariances taken at
-    !> another gas's lag. Was the literal h2o, which is water by convention.
-    integer :: wsl
+    !> The hygrometer that corrects the gas being handled, from that gas's
+    !> own record. Was the site's water for every gas.
+    integer :: msl
     include '../src_common/interfaces_1.inc'
 
     skip_apply = pwb_detect_only_mode
@@ -295,25 +295,53 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         !> for time-lags of other scalars from the same instrument
         !>
         !> One pass per configured gas, replacing three unrolled arms that
-        !> named co2, ch4 and the fourth slot. Water is skipped by identity
-        !> rather than by position: its covariance with itself at its own lag
-        !> is Cov(w, wsl), and with a second hygrometer there is more than one
-        !> slot that would have to be excluded.
+        !> named co2, ch4 and the fourth slot. A gas is skipped against its
+        !> own hygrometer by identity rather than by position: that
+        !> covariance is the water flux itself, not a cross term.
+        !> Each gas against the water that corrects IT, not against the site's.
+        !>
+        !> This asked the primary hygrometer three questions on every gas's
+        !> behalf: is the primary present, is the primary closed-path, and is
+        !> this gas on the same analyser as the primary. A gas whose
+        !> moist_ref is a second hygrometer therefore got no covariance at
+        !> all, and so no water-flux term in its WPL correction - while its
+        !> sigma and rho_w came from that second hygrometer. The two halves of
+        !> one term disagreed about which water they meant.
+        !>
+        !> The same-model test was doing what moist_ref does properly:
+        !> ResolveGasRef already prefers a hygrometer on the gas's own
+        !> instrument. Asking the reference directly covers the case the model
+        !> string cannot - two analysers of the same model - and drops the
+        !> primary-only restriction with it.
         Stats%h2ocov_tl = error
-        wsl = PrimaryWaterOutSlot()
-        if (E2Col(wsl)%present &
-            .and. E2Col(wsl)%instr%path_type == 'closed') then
-            ColW(1:nrow) = Set(1:nrow, w)
-            ColH2O(1:nrow) = Set(1:nrow, wsl)
-            do j = firstGas, lastGas
-                if (j == wsl) cycle
-                if (.not. E2Col(j)%present) cycle
-                if (E2Col(j)%instr%model /= E2Col(wsl)%instr%model) cycle
-                if (RowLags(j) <= 0) cycle
-                call CovarianceW(ColW, ColH2O, size(ColW), &
-                    RowLags(j), Stats%h2ocov_tl(j))
-            end do
-        end if
+        ColW(1:nrow) = Set(1:nrow, w)
+        do j = firstGas, lastGas
+            if (.not. E2Col(j)%present) cycle
+            msl = E2Col(j)%moist_ref
+            if (msl < firstGas .or. msl > lastGas) cycle
+            if (j == msl) cycle
+            if (.not. E2Col(msl)%present) cycle
+            !> The covariance is only meaningful where the water is sampled
+            !> through the same cell the gas is, which is what closed-path
+            !> means here.
+            if (E2Col(msl)%instr%path_type /= 'closed') cycle
+            !> And on the same analyser. This is a time-series operation -
+            !> Cov(w, water) taken at *this gas's* row lag - so a hygrometer
+            !> down a different tube has a different lag and the covariance
+            !> means nothing. ResolveGasRef prefers a hygrometer on the gas's
+            !> own instrument and only falls back to "the first anywhere" when
+            !> there is none; that fallback is a reasonable ambient-humidity
+            !> stand-in for the mean WPL terms, and not for this.
+            !>
+            !> PointByPointToMixingRatio declines the same pairing for the
+            !> same reason. The two must agree, or a gas is diluted with water
+            !> it is not correlated against.
+            if (E2Col(j)%instr%model /= E2Col(msl)%instr%model) cycle
+            if (RowLags(j) <= 0) cycle
+            ColH2O(1:nrow) = Set(1:nrow, msl)
+            call CovarianceW(ColW, ColH2O, size(ColW), &
+                RowLags(j), Stats%h2ocov_tl(j))
+        end do
 
         !> Calculate cell temperature covariances with
         !> time-lags of scalars from the same instrument
