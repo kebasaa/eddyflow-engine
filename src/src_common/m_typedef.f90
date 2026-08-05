@@ -172,16 +172,15 @@ module m_typedef
     !> but kept the species in the name; expressing them as offsets from
     !> firstGas removes it, and the count is what any of them ever meant.
     !>
-    !> nHistoricGasSlots is the number EddyPro's format has, not a capacity:
-    !> MaxNumGases is the capacity. It survives because three things still
-    !> need it - the fixed EddyPro 7.x output format, which promises four gas
-    !> blocks whatever the project holds; the readers that accept the four
-    !> historical spellings in files written before the records; and the three
-    !> month-grouping tables the FCC interface exposes.
+    !> Four is the number EddyPro's format has, not a capacity: MaxNumGases
+    !> is the capacity. These survive for the readers that accept the four
+    !> historical spellings in files written before the records, and for the
+    !> fallbacks used when a project describes no water or no CO2. The fixed
+    !> output format and the three month-grouping tables that also needed them
+    !> are both retired.
     !>
     !> Nothing that decides a number for a gas belongs here. Iterate
     !> firstGas..lastGas and resolve the species from its record.
-    integer, parameter :: nHistoricGasSlots = 4
     integer, parameter :: histGas1 = firstGas
     integer, parameter :: histGas2 = firstGas + 1
     integer, parameter :: histGas3 = firstGas + 2

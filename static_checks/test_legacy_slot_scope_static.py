@@ -187,7 +187,11 @@ class TheSpeciesSpellingsAreGone(unittest.TestCase):
         """
         src = (ROOT / "src/src_common/m_typedef.f90").read_text(
             encoding="utf-8", errors="replace")
-        self.assertIn("integer, parameter :: nHistoricGasSlots = 4", src)
+        #: nHistoricGasSlots was declared beside these and read by
+        #: nothing - its own doc comment named three consumers, all of
+        #: which use histGas1..4 directly. Removed, and pinned as gone
+        #: so it does not return as decoration.
+        self.assertNotIn("nHistoricGasSlots", src)
         self.assertIn("integer, parameter :: histGas1 = firstGas", src)
         for n, name in enumerate(("histGas2", "histGas3", "histGas4"), start=1):
             self.assertIn(

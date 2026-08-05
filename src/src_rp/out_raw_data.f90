@@ -72,7 +72,7 @@ subroutine OutRawData(date, time, Set, nrow, ncol, level)
     write(udf, '(a)') 'ts: sonic temperature [K]'
     write(udf, '(a)') 'air_t: ambient temperature [K]'
     write(udf, '(a)') 'air_p: ambient pressure [Pa]'
-    string =  'co2, ch4, 4th gas: molar density [mmol m-3],&
+    string =  'trace gases: molar density [mmol m-3],&
         & mole fraction [' // char(181) // 'mol/mol] or mixing ratio &
         &[' // char(181) // 'mol/mol], depending on raw data'
     call latin1_to_utf8(string, string_utf8)

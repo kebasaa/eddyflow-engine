@@ -469,9 +469,10 @@ contains
 !> Every field is *TagFound-guarded: a missing numeric tag is left undefined by
 !> SearchLocalTags rather than defaulted, so reading one blind yields garbage.
 !>
-!> NOTE: nothing consumes these records yet. The legacy col_co2/col_h2o/col_ch4/
-!> col_gas4 slots still drive processing; this only makes the new format
-!> readable so the switch-over can be a separate, single-purpose change.
+!> These records ARE what drives processing. ApplyGasRecords fills E2Col from
+!> them, SelectFluxnetGasSlots lays out the output from them, and the MW and
+!> Dc tables below are filled per record. The flat col_co2/col_h2o/col_ch4/
+!> col_gas4 keys they replaced are retired and blanked in the tag table.
 !***************************************************************************
 subroutine ReadMeasurementRecords()
     integer :: i

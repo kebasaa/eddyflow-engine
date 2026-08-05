@@ -97,7 +97,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     tot_spikes_sng = 0
 
     !> Set different threshold for different variables.
-    !> Specifically, w, co2, h2o, ch4 and gas4 have their own thresholds
+    !> Specifically, w and every configured gas have their own thresholds
     adv_lim(u:pe) = sr%lim_u
     adv_lim(w)    = sr%lim_w
     adv_lim(firstGas:lastGas) = sr%lim_gas(firstGas:lastGas)

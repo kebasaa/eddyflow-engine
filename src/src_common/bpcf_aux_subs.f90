@@ -216,7 +216,7 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                 f_c(gas) = dexp(A * lRH**2 + B * lRH + C)
             end do
             !> select relevant tranfer function parameters
-            !> according to the month, for CO2, CH4, GAS4
+            !> according to the month, for every configured gas
             call char2int(lEx%end_date(6:7), month, 2)
             !> Every configured gas but the water slot, whose cutoff comes
             !> from the RH class above. Guarded on the class index: a gas the

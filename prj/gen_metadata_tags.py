@@ -10,8 +10,8 @@ it is generated instead.
 
 Layout produced (1-based, contiguous):
 
-    ANTags : header(9) | instruments(N x 15) | columns(100 x 8)
-    ACTags : header(24) | instruments(N x 8) | data_label(1) | columns(100 x 7)
+    ANTags : header(9) | instruments(N x 15) | columns(200 x 8)
+    ACTags : header(24) | instruments(N x 8) | data_label(1) | columns(200 x 7)
              | instr_<N+1>_manufacturer   <- overflow sentinel
 
 The sentinel lets the engine notice that the file describes more instruments
