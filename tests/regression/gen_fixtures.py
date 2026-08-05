@@ -249,27 +249,50 @@ def build_no_water(src_lines):
     return _water_last(src_lines, '0')
 
 
-# NOT YET DERIVABLE: gases and no hygrometer, but a biomet RH sensor.
-#
-# That sensor is enough for the moist-air correction, and the reorder in
-# flux_params.f90 is what makes it reach one. A fixture would be the proof -
-# but every project here points biom_file at E:/LAE/biomet/lae_biomet.csv,
-# which is not on this machine, so `biomet%val(bRH)` is never populated and a
-# fixture setting biom_rh would take the no-humidity branch regardless. It
-# would sit in the suite looking like coverage and testing nothing, which is
-# exactly how the spectral-assessment fixtures came to exercise the analytic
-# fallback for months.
-#
-# What it needs: a small biomet CSV authored here, the way gen_sa.py authors
-# the assessment files, covering the 2025-06-01 00:00-03:00 window with an RH
-# column. Until then the branch order is pinned by
-# static_checks/test_humidity_source_static.py instead, which is a weaker
-# claim honestly labelled.
+#: The site's biomet record, covering the processing window at one-minute
+#: resolution. Its RH column is variable 3, which is what biom_rh names.
+#:
+#: Every other fixture points biom_file at a drive that is not present, so
+#: their biomet is inert and their humidity comes from the hygrometer. That is
+#: deliberate - pointing them here would move them onto the biomet branch and
+#: change every one of their outputs. Only the two fixtures below use it.
+BIOMET = 'C:/Users/jonmuell/Documents/_data/CH-LAE COS/lae_biomet.csv'
+
+
+def build_biomet_water(src_lines):
+    """Gases and no hygrometer, but a biomet RH sensor.
+
+    That sensor is enough for the moist-air correction, and this is what
+    proves it is used. The no-hygrometer guard was tested at the head of the
+    humidity chain and ran *instead of* the biomet branch, so a site in
+    exactly this shape got RH, vapour pressure and water density all `error`
+    and no correction at all, with the measurement sitting right there.
+
+    It must also NOT carry warning 104: humidity is available, just not from
+    an analyser.
+    """
+    return _set(_water_last(src_lines, '3'), 'biom_file', BIOMET)
+
+
+def build_biomet_rh(src_lines):
+    """Two hygrometers AND biomet RH - the branch that left RHO%w_at stale.
+
+    The per-hygrometer water density was filled only in the raw-data arm, and
+    RHO is a module global with no per-period reset, so a site whose humidity
+    came from biomet corrected every gas with the *previous* averaging
+    period's humidity and wrote that into the ex record for FCC to reuse.
+
+    Derived from base_n_gas because it carries two hygrometers: with one, the
+    per-slot array collapses to the site scalar and the staleness is invisible.
+    """
+    return _set(src_lines, 'biom_file', BIOMET)
 
 
 TARGETS = {
     'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),
     'base_no_water.eddyflow': ('base_rec.eddyflow', build_no_water),
+    'base_biomet_water.eddyflow': ('base_rec.eddyflow', build_biomet_water),
+    'base_biomet_rh.eddyflow': ('base_n_gas.eddyflow', build_biomet_rh),
     'base_cell_ref.eddyflow': ('base_n_gas_cell.eddyflow', build_cell_ref),
     'base_tlag_opt.eddyflow': ('base_n_gas.eddyflow', build_tlag_opt),
     'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),
