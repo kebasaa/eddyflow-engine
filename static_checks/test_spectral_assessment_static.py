@@ -234,6 +234,27 @@ class EveryConfiguredGasCanBeClassified(unittest.TestCase):
                 gone, source,
                 "%s is back; a gas states its own months now" % gone)
 
+    def test_the_grouping_fixtures_exist_and_say_what_they_cover(self):
+        """Three cases, because one is not enough to separate them.
+
+        base_n_gas_sa_2grp is the one that fails without the class/month fix -
+        June is in group two, so the lookup asks for class 2 and the file's
+        second month is in group one. base_n_gas_sa_permonth reaches the same
+        cut-off by a different route through the class map, so the two must
+        agree. base_n_gas_sa_bad proves a refused list is treated as absent
+        rather than as a reason to stop.
+        """
+        here = ROOT / "tests/regression"
+        for name, want in (
+                ("base_n_gas_sa_2grp.eddyflow", "1-2,3-12"),
+                ("base_n_gas_sa_permonth.eddyflow", "1,2,3,4,5,6,7,8,9,10,11,12"),
+                ("base_n_gas_sa_bad.eddyflow", "1-13,junk")):
+            path = here / name
+            self.assertTrue(path.exists(), "%s is missing" % name)
+            self.assertIn("gas_1_sa_months=%s" % want,
+                          path.read_text(encoding="utf-8", errors="replace"),
+                          "%s must state the grouping it exists to cover" % name)
+
     def test_a_grouping_that_cannot_be_read_is_treated_as_absent(self):
         """Not as a reason to stop.
 

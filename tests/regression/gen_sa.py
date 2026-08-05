@@ -100,7 +100,7 @@ with open(grp_path, 'w') as fh:
     fh.write('\n'.join(G) + '\n')
 
 
-def variant(name, sa_file, months=None):
+def variant(name, sa_file, months=None, only=None):
     src = open(os.path.join(here, 'base_n_gas.eddyflow')).read().splitlines()
     ngas = 0
     for ln in src:
@@ -121,7 +121,7 @@ def variant(name, sa_file, months=None):
         # the old three tables could not reach.
         if months and ln == '[FluxCorrection_SpectralAnalysis_General]':
             out += ['gas_%d_sa_months=%s' % (i, months)
-                    for i in range(1, ngas + 1)]
+                    for i in (only or range(1, ngas + 1))]
     with open(os.path.join(here, name), 'w') as fh:
         fh.write('\n'.join(out) + '\n')
 
@@ -130,5 +130,28 @@ variant('base_n_gas_sa.eddyflow', sa_path)
 variant('base_n_gas_sa_short.eddyflow',
         os.path.join(here, 'sa_n_gas_short.txt'))
 variant('base_n_gas_sa_2grp.eddyflow', grp_path, months=GROUPING)
+
+# Twelve groups of one month, written in the bare-month form.
+#
+# Reads the same two-group file, so it is a cross-check rather than a case of
+# its own: under `1,2,...,12` June is class 6 and takes month six's row, and
+# under `1-2,3-12` June is class 2 and takes group two's - which the file
+# gives the same cut-off. The two fixtures must therefore agree, by different
+# routes through the class map.
+#
+# It is also the only fixture that reaches MaxGasClasses, and the only one
+# that spells a group without a dash - a form the parser accepts and the
+# interface never writes.
+variant('base_n_gas_sa_permonth.eddyflow', grp_path,
+        months=','.join(str(m) for m in range(1, 13)))
+
+# A grouping the parser refuses, on record one only.
+#
+# Must be byte-identical to base_n_gas_sa: malformed is treated exactly as
+# absent, which is one group over the calendar. `1-13` is out of range and
+# `junk` is not a number, so both refusal paths are covered, and the run
+# continues for the other seven gases rather than stopping.
+variant('base_n_gas_sa_bad.eddyflow', sa_path, months='1-13,junk', only=[1])
+
 print('wrote %d-line assessment file, %d-line short file, %d-line two-group '
-      'file, 3 projects' % (len(L), len(short), len(G)))
+      'file, 5 projects' % (len(L), len(short), len(G)))
