@@ -113,7 +113,20 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
                 min(EddyFlowProj%gas_num, MaxNumGases)) exit
             if (.not. fcc_var_present(gas)) cycle
             if (GasSlotIsWater(gas)) then
-                gas_flux = dabs(lEx%Flux0%LE)
+                !> This hygrometer's own latent heat flux, not the
+                !> site's. Every water slot was screened on Flux0%LE,
+                !> so a second hygrometer's spectra were accepted or
+                !> rejected on the primary's flux. lambda turns its own
+                !> water flux into the latent heat these thresholds are
+                !> stated in; for the primary that reproduces Flux0%LE
+                !> exactly, so a single-hygrometer site is unchanged.
+                if (lEx%Flux0%gas(gas) /= error &
+                    .and. lEx%lambda /= error) then
+                    gas_flux = dabs(lEx%Flux0%gas(gas) * lEx%lambda &
+                        * MW_H2O * 1d-3)
+                else
+                    gas_flux = dabs(lEx%Flux0%LE)
+                end if
                 lo = FCCsetup%SA%min_un_LE
                 hi = FCCsetup%SA%max_LE
             else
@@ -159,7 +172,20 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
                 min(EddyFlowProj%gas_num, MaxNumGases)) exit
             if (.not. fcc_var_present(gas)) cycle
             if (GasSlotIsWater(gas)) then
-                gas_flux = dabs(lEx%Flux0%LE)
+                !> This hygrometer's own latent heat flux, not the
+                !> site's. Every water slot was screened on Flux0%LE,
+                !> so a second hygrometer's spectra were accepted or
+                !> rejected on the primary's flux. lambda turns its own
+                !> water flux into the latent heat these thresholds are
+                !> stated in; for the primary that reproduces Flux0%LE
+                !> exactly, so a single-hygrometer site is unchanged.
+                if (lEx%Flux0%gas(gas) /= error &
+                    .and. lEx%lambda /= error) then
+                    gas_flux = dabs(lEx%Flux0%gas(gas) * lEx%lambda &
+                        * MW_H2O * 1d-3)
+                else
+                    gas_flux = dabs(lEx%Flux0%LE)
+                end if
                 lo = FCCsetup%SA%min_st_LE
                 hi = FCCsetup%SA%max_LE
             else

@@ -418,6 +418,7 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
     integer, intent(in) :: gas
     real(kind = dbl), intent(in) :: sigma_gas
     real(kind = dbl), intent(in) :: rhow_gas
+    real(kind = dbl) :: dens_to_chi
     real(kind = dbl) :: base
     real(kind = dbl) :: wpl
     !> Cell conditions of this gas's own analyser, falling back to the global
@@ -485,13 +486,30 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
         Flux2%gas(gas) = wpl
     else
         !> Open path, after e.g. Burba et al. (2008, GCB, eq. 1)
+        !>
+        !> Both terms want chi/Va, and reach it from the molar density. The
+        !> factor that recovers it is not the same for every species:
+        !> MoleFractionsAndMixingRatios gives a trace gas
+        !> d = chi/Va * 1d-3 and water d = chi/Va, because a trace gas's chi
+        !> is on the umol basis and water's is already on the mmol one.
+        !>
+        !> This was a bare 1d3, calibrated for the trace-gas case. A second
+        !> hygrometer is deliberately routed through here as a trace gas -
+        !> only the primary is skipped above, so that its flux is reported at
+        !> all - and on an open path it therefore had a WPL term a thousand
+        !> times too large.
+        if (GasSlotIsWater(gas)) then
+            dens_to_chi = 1d0
+        else
+            dens_to_chi = 1d3
+        end if
         wpl = Flux1%gas(gas)
         if (Flux3%E /= error .and. RHO%d > 0d0 .and. sigma_gas /= error) &
-            wpl = wpl + mu * Flux3%E * Stats%d(gas) * 1d3 &
+            wpl = wpl + mu * Flux3%E * Stats%d(gas) * dens_to_chi &
                 / ((1d0 + mu * sigma_gas) * RHO%d)
         if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 .and. Ambient%Ta > 0d0) &
             wpl = wpl + (Flux3%H + Burba%h_top + Burba%h_bot + Burba%h_spar) &
-                * Stats%d(gas) * 1d3 / (Ambient%RhoCp * Ambient%Ta)
+                * Stats%d(gas) * dens_to_chi / (Ambient%RhoCp * Ambient%Ta)
         Flux2%gas(gas) = wpl
     end if
 

@@ -211,8 +211,18 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         do gas = firstGas, lastGas
             if (.not. loc_var_present(gas)) cycle
             if (GasSlotIsWater(gas)) then
-                low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-                    .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE
+                !> This hygrometer's own latent heat flux. Screening
+                !> every water slot on the site's meant a second
+                !> hygrometer was judged on the primary's.
+                if (lEx%Flux0%gas(gas) /= error &
+                    .and. lEx%lambda /= error) then
+                    low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                        .or. dabs(lEx%Flux0%gas(gas) * lEx%lambda &
+                            * MW_H2O * 1d-3) < LocSetup%SA%min_un_LE
+                else
+                    low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                        .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE
+                end if
             else
                 low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
                     .or. dabs(lEx%Flux0%gas(gas)) < LocSetup%SA%min_un_gas(gas)
