@@ -117,7 +117,14 @@ subroutine Fluxes1(lEx)
     !> through uncorrected - which is what the path_type test evaluated to when
     !> the slot held nothing.
     wsl = PrimaryWaterSlot()
-    lEx%Flux0%E = lEx%Flux0%LE / lEx%lambda
+    !> Guarded: with no hygrometer LE is `error`, and dividing it by a lambda
+    !> that is itself `error` produced a finite nonsense number that then flowed
+    !> into Flux1%E.
+    if (lEx%Flux0%LE /= error .and. lEx%lambda /= error .and. lEx%lambda /= 0d0) then
+        lEx%Flux0%E = lEx%Flux0%LE / lEx%lambda
+    else
+        lEx%Flux0%E = error
+    end if
     if (wsl >= firstGas) then
         if (lEx%gas_instr(wsl)%path_type /= 'closed' .and. BPCF%of(wsl) /= error) then
             Flux1%E   = lEx%Flux0%E   * BPCF%of(wsl)

@@ -39,6 +39,7 @@ subroutine Fluxes1_rp()
     real(kind = dbl)  :: Cox
     integer :: msl
     integer :: wsl
+    integer :: wsx
     include '../src_common/interfaces_1.inc'
 
     write(*,'(a)', advance = 'no') '  Calculating fluxes Level 1..'
@@ -50,6 +51,14 @@ subroutine Fluxes1_rp()
     !> E/ET/LE terms are the primary water's. Both resolve the slot rather
     !> than assuming record two holds water.
     wsl = PrimaryWaterSlot()
+    !> An always-in-bounds stand-in for wsl inside guard expressions.
+    !>
+    !> Fortran does not mandate short-circuit `.and.`, so
+    !> `wsl >= firstGas .and. X(wsl)` still evaluates X(wsl) - and with no
+    !> hygrometer wsl is 0, which is out of bounds. The wsl >= firstGas test
+    !> still decides the outcome; wsx only keeps the subscript legal while it
+    !> is being decided.
+    wsx = max(wsl, firstGas)
 
     !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
     !> according to van Dijk et al. (2003, JAOT, eq. 13b).
@@ -112,7 +121,7 @@ subroutine Fluxes1_rp()
     !> The water flux carries evapotranspiration and latent heat with it.
     !> Those are scalars - one per project, from the primary H2O slot - so
     !> they are corrected here rather than inside the loop.
-    if (wsl >= firstGas .and. BPCF%of(max(wsl, 1)) /= error) then
+    if (wsl >= firstGas .and. BPCF%of(wsx) /= error) then
     if (E2Col(wsl)%Instr%path_type /= 'closed') then
         Flux1%E   = Flux0%E   * BPCF%of(wsl)
         Flux1%ET  = Flux0%ET  * BPCF%of(wsl)

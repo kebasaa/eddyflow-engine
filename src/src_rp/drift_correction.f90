@@ -126,8 +126,15 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     !> If chi could not be calculated, set it to zero, which in this
     !> context means not accounting for broadening effects. From the site's
     !> water record, not the sixth slot, which is water by convention only.
-    wsl = PrimaryWaterOutSlot()
-    if (Stats%chi(wsl) == error) Stats%chi(wsl) = 0d0
+    !>
+    !> PrimaryWaterSlot, not the fallback variant: the fallback answers
+    !> histGas2 when a project has no water, and this line would then write a
+    !> zero into whatever real trace gas holds that slot. With no hygrometer
+    !> there is simply nothing to zero, and broadening stays 1 below.
+    wsl = PrimaryWaterSlot()
+    if (wsl >= firstGas) then
+        if (Stats%chi(wsl) == error) Stats%chi(wsl) = 0d0
+    end if
 
     !> Convert to density/press, correct the absorptance, convert back.
     !>
@@ -156,7 +163,7 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
         label = GasOutputLabel(gas)
         call lowercase(label)
         broadening = 1d0
-        if (trim(adjustl(label)) == 'co2') &
+        if (trim(adjustl(label)) == 'co2' .and. wsl >= firstGas) &
             broadening = 1d0 + 0.15d0 * Stats%chi(wsl) * 1d-3
 
         if (locCol(gas)%measure_type /= 'molar_density') then

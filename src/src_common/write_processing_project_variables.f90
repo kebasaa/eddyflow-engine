@@ -482,6 +482,10 @@ subroutine ReadMeasurementRecords()
     EddyFlowProj%cell_num = 0
     EddyFlowProj%diag_num = 0
 
+    !> Whether the file states a gas count at all, which is a different
+    !> question from whether that count is zero. See gas_num_stated.
+    EddyFlowProj%gas_num_stated = EPPrjNTagFound(gasNumTag)
+
     if (EPPrjNTagFound(gasNumTag)) &
         EddyFlowProj%gas_num = nint(EPPrjNTags(gasNumTag)%value)
     if (EPPrjNTagFound(cellNumTag)) &

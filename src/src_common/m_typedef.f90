@@ -676,10 +676,17 @@ module m_typedef
         logical :: hf_correct_ghg_zoh
         integer :: do_cec    !< 0=disabled, 1=H2O+CO2, 2=H2O only, 3=CO2 only
         type(CECSetupType) :: cec
-        !> Measurement records read from the project file. These supersede the
-        !> fixed col(...) slots above; while both are populated the legacy
-        !> slots still drive processing, so behaviour is unchanged until the
-        !> consumers are switched over.
+        !> Measurement records read from the project file. These are the only
+        !> way a project names its gases, cell measurements and diagnostics.
+        !>
+        !> gas_num_stated separates two files that gas_num alone cannot:
+        !> a project that says `gas_num=0` measures no gases and is perfectly
+        !> valid - it still has wind and sonic temperature, so it still has a
+        !> heat flux - while a project with no gas_num tag at all is a
+        !> pre-5.0.0 file that never went through the interface, and is
+        !> refused. Testing `gas_num <= 0` conflated the two and made an
+        !> anemometer-only project unprocessable.
+        logical :: gas_num_stated
         integer :: gas_num
         integer :: cell_num
         integer :: diag_num

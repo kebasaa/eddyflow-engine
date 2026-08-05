@@ -69,16 +69,15 @@ subroutine FluxParams(printout)
         Ambient%es = error
     end if
 
-    if (wsl < firstGas) then
-        !> The project describes no water at all. Every humidity-derived
-        !> quantity is *not performed* rather than computed from a slot that
-        !> holds something else - which is what reading the h2o slot did.
-        RHO%w = error
-        RHO%w_at = error
-        Ambient%e = error
-        Ambient%VPD = error
-        Stats%RH = error
-    elseif (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
+    !> Humidity, from whichever source the site has.
+    !>
+    !> The order of these tests matters. It asks "is any humidity available?"
+    !> before "is there a hygrometer?", because a biomet RH sensor is enough
+    !> for the moist-air correction and a site may have one without an IRGA
+    !> water channel. Testing for the hygrometer first discarded that: the
+    !> guard that stopped the engine reading a non-water slot ran instead of
+    !> the biomet branch, so such a site got no correction at all.
+    if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
         !> If meteo RH is available, uses it for all slow parameters,
         !> including redefining chi, r and d of H2O
         Stats%RH = biomet%val(bRH)
@@ -100,9 +99,15 @@ subroutine FluxParams(printout)
         else
             RHO%w = error
         end if
-        !> Water vapour concentrations and densities
-        !> Water vapour mole fractions
-        if (RHO%w /= error .and. Ambient%Va /= error) then
+        !> Water vapour concentrations and densities.
+        !>
+        !> These describe the hygrometer's own channel, so they are written
+        !> only when there is a hygrometer. The site scalars above come from
+        !> biomet either way, and they are what the moist-air correction
+        !> needs.
+        if (wsl < firstGas) then
+            continue
+        elseif (RHO%w /= error .and. Ambient%Va /= error) then
             Stats%chi(wsl) = RHO%w * Ambient%Va / MW_H2O * 1d3
             !> Water vapour mixing ratio
             Stats%r(wsl)   = Stats%chi(wsl) / (1.d0 - Stats%chi(wsl) * 1d-3)
@@ -123,7 +128,7 @@ subroutine FluxParams(printout)
             Stats%r(wsl) = error
             Stats%d(wsl) = error
         end if
-    else
+    elseif (wsl >= firstGas) then
         !> If meteo RH is not available or out of range, uses H2O from raw data
         !> Molecular weight of wet air:
         !> Ma = chi(h2o) * MW_H2O + chi(dry_air) * Md
@@ -143,18 +148,6 @@ subroutine FluxParams(printout)
         else
             RHO%w = error
         end if
-
-        !> Same quantity for every H2O measurement the project describes, so a
-        !> gas can be corrected with the humidity from its own analyser. With a
-        !> single H2O this reduces to RHO%w above, which is why the existing
-        !> configuration comes out unchanged.
-        RHO%w_at = error
-        do msl = firstGas, lastGas
-            if (.not. E2Col(msl)%present) cycle
-            if (.not. GasSlotIsWater(msl)) cycle
-            if (Stats%chi(msl) > 0d0 .and. Ambient%Va > 0d0) &
-                RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW_H2O * 1d-3
-        end do
 
         if (Stats%T > 0d0 .and. RHO%w >= 0d0) then
             !> Water vapour partial pressure [Pa]
@@ -182,7 +175,36 @@ subroutine FluxParams(printout)
             Stats%RH = 100d0 !< RH slightly higher than 100% is set to 100%
             Ambient%VPD = 0d0 !< RH slightly higher than 100%, VPD is set to 0
         end if
+    else
+        !> No humidity from any source - no hygrometer and no usable biomet
+        !> RH. Every humidity-derived quantity is *not performed* rather than
+        !> computed from a slot that holds something else, which is what
+        !> reading the h2o slot did. WarnIfNoHumidity below says what that
+        !> costs.
+        RHO%w = error
+        Ambient%e = error
+        Ambient%VPD = error
+        Stats%RH = error
     end if
+
+    !> Water vapour mass density for every H2O measurement the project
+    !> describes, so a gas can be corrected with the humidity from its own
+    !> analyser. With a single H2O this reduces to RHO%w above, which is why
+    !> the existing configuration comes out unchanged.
+    !>
+    !> Outside the branches, because it belongs to all of them. It used to sit
+    !> inside the raw-data arm alone, so a site with biomet RH kept whatever
+    !> the *previous* averaging period left here - RHO is a module global with
+    !> no per-period reset - and every gas was then WPL-corrected with last
+    !> half-hour's humidity. Where humidity comes from biomet and there is no
+    !> hygrometer at all there is nothing to fill, and these stay `error`.
+    RHO%w_at = error
+    do msl = firstGas, lastGas
+        if (.not. E2Col(msl)%present) cycle
+        if (.not. GasSlotIsWater(msl)) cycle
+        if (Stats%chi(msl) > 0d0 .and. Ambient%Va > 0d0) &
+            RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW_H2O * 1d-3
+    end do
 
     !> Dew-point temperature [K], after Campbell and Norman (1998)
     !> Environmental Biophysics. Here e is in Pa, thus it must be divided

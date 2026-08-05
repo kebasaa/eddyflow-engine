@@ -195,7 +195,81 @@ def build_cell_ref(src_lines):
             for ln in src_lines]
 
 
+def _set(lines, key, value):
+    return [('%s=%s' % (key, value)) if ln.startswith(key + '=') else ln
+            for ln in lines]
+
+
+def build_no_gas(src_lines):
+    """A site with an anemometer and no analyser.
+
+    It still measures wind and sonic temperature, so it still has a heat
+    flux, and it is a perfectly ordinary configuration. The engine refused it
+    outright: the record-less test read `gas_num <= 0`, which conflated a
+    project stating zero gases with a pre-5.0.0 file stating no gas count at
+    all. `gas_num=0` is left in the file, so the format is current; only the
+    count is zero.
+    """
+    return _set(src_lines, 'gas_num', '0')
+
+
+def _water_last(src_lines, biomet_rh):
+    """base_rec with its H2O record moved past the declared count.
+
+    Records 1..3 become co2, ch4, cos and gas_num drops to 3, so no record
+    names H2O while the file stays otherwise identical. Moving the record
+    rather than deleting it keeps the key block the shape write_records
+    expects; everything past gas_num is ignored.
+    """
+    count = 0
+    for ln in src_lines:
+        if ln.startswith('gas_num='):
+            count = int(ln.split('=', 1)[1])
+    recs = read_records(src_lines, count)
+    water = [i for i, r in enumerate(recs)
+             if r.get('var', '').strip().lower() == 'h2o']
+    if len(water) != 1:
+        raise SystemExit('expected exactly one H2O record, found %d' % len(water))
+    w = water.pop()
+    recs = recs[:w] + recs[w + 1:] + [recs[w]]
+    out = write_records(src_lines, recs)
+    out = _set(out, 'gas_num', str(count - 1))
+    return _set(out, 'biom_rh', biomet_rh)
+
+
+def build_no_water(src_lines):
+    """Gases, but humidity from nowhere at all.
+
+    No H2O record and no biomet RH column, so air density and heat capacity
+    are computed dry and the humidity correction to sensible heat flux cannot
+    be applied - the reported H is the uncorrected buoyancy flux. The engine
+    says so once, as warning 104. Before this it did not run at all: with no
+    water PrimaryWaterSlot returns 0 and the flux code indexed with it.
+    """
+    return _water_last(src_lines, '0')
+
+
+# NOT YET DERIVABLE: gases and no hygrometer, but a biomet RH sensor.
+#
+# That sensor is enough for the moist-air correction, and the reorder in
+# flux_params.f90 is what makes it reach one. A fixture would be the proof -
+# but every project here points biom_file at E:/LAE/biomet/lae_biomet.csv,
+# which is not on this machine, so `biomet%val(bRH)` is never populated and a
+# fixture setting biom_rh would take the no-humidity branch regardless. It
+# would sit in the suite looking like coverage and testing nothing, which is
+# exactly how the spectral-assessment fixtures came to exercise the analytic
+# fallback for months.
+#
+# What it needs: a small biomet CSV authored here, the way gen_sa.py authors
+# the assessment files, covering the 2025-06-01 00:00-03:00 window with an RH
+# column. Until then the branch order is pinned by
+# static_checks/test_humidity_source_static.py instead, which is a weaker
+# claim honestly labelled.
+
+
 TARGETS = {
+    'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),
+    'base_no_water.eddyflow': ('base_rec.eddyflow', build_no_water),
     'base_cell_ref.eddyflow': ('base_n_gas_cell.eddyflow', build_cell_ref),
     'base_tlag_opt.eddyflow': ('base_n_gas.eddyflow', build_tlag_opt),
     'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),

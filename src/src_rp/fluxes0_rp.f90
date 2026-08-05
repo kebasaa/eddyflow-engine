@@ -42,11 +42,20 @@ subroutine Fluxes0_rp(printout)
     real(kind = dbl) :: dens_gain
     integer :: msl
     integer :: wsl
+    integer :: wsx
     include '../src_common/interfaces_1.inc'
 
     !> The site's latent heat flux and evapotranspiration come from the
     !> first water record, not from the h2o slot.
     wsl = PrimaryWaterSlot()
+    !> An always-in-bounds stand-in for wsl inside guard expressions.
+    !>
+    !> Fortran does not mandate short-circuit `.and.`, so
+    !> `wsl >= firstGas .and. X(wsl)` still evaluates X(wsl) - and with no
+    !> hygrometer wsl is 0, which is out of bounds. The wsl >= firstGas test
+    !> still decides the outcome; wsx only keeps the subscript legal while it
+    !> is being decided.
+    wsx = max(wsl, firstGas)
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating fluxes Level 0..'
@@ -151,7 +160,7 @@ subroutine Fluxes0_rp(printout)
     !> quantities and come from the primary water record; a project that
     !> describes no water performs none of them, rather than computing them
     !> from whatever gas happens to sit in the h2o slot.
-    if (wsl >= firstGas .and. Flux0%gas(wsl) /= error &
+    if (wsl >= firstGas .and. Flux0%gas(wsx) /= error &
         .and. Ambient%lambda > 0d0) then
         Flux0%LE = Flux0%gas(wsl) * Ambient%lambda * MW_H2O * 1d-3
         Flux0%E  = Flux0%gas(wsl) * MW_H2O * 1d-3
@@ -164,7 +173,7 @@ subroutine Fluxes0_rp(printout)
 
     !> Random uncertainty on latent heat flux, lambda in [J+1kg-1]
     if (RUsetup%meth /= 'none') then
-        if (wsl >= firstGas .and. Essentials%rand_uncer(wsl) /= error &
+        if (wsl >= firstGas .and. Essentials%rand_uncer(wsx) /= error &
             .and. Ambient%lambda > 0d0) then
             Essentials%rand_uncer_LE = &
                 Essentials%rand_uncer(wsl) * Ambient%lambda * MW_H2O * 1d-3
@@ -185,7 +194,7 @@ subroutine Fluxes0_rp(printout)
     !> The water slot itself has no entry in h2ocov_tl, so the loop skips it
     !> the same way the unrolled arms did by omission.
     Flux0%E_gas(firstGas:lastGas) = error
-    if (wsl >= firstGas .and. E2Col(wsl)%Instr%path_type == 'closed') then
+    if (wsl >= firstGas .and. E2Col(wsx)%Instr%path_type == 'closed') then
         dens_gain = error
         select case (E2Col(wsl)%measure_type)
             case ('molar_density')

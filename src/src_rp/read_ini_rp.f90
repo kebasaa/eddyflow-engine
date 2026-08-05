@@ -82,6 +82,7 @@ end subroutine ReadIniRP
 subroutine WriteVariablesRP()
     use m_rp_global_var
     implicit none
+    integer, external :: PrimaryWaterSlot
     !> local variables
     integer :: i
     integer :: j
@@ -920,4 +921,17 @@ subroutine WriteVariablesRP()
     call AdjDir(Dir%main_in, slash)
     call AdjFilePath(AuxFile%pf, slash)
     call AdjFilePath(AuxFile%to, slash)
+
+    !> Say once, up front, when the project measures gases but has no humidity
+    !> from any source. Here because it is the first point at which both halves
+    !> of the question are known: the gas records come from the [Project]
+    !> section read earlier, the biomet selection from the block above.
+    !>
+    !> Not an error - the run is still useful - but the user should know that
+    !> the numbers mean something different from what they usually mean.
+    if (EddyFlowProj%gas_num > 0 .and. bSetup%sel(bRH) <= 0) then
+        !> Nested rather than one .and. chain: gfortran warns that a function
+        !> in a compound condition might not be evaluated.
+        if (PrimaryWaterSlot() < firstGas) call ExceptionHandler(104)
+    end if
 end subroutine WriteVariablesRP

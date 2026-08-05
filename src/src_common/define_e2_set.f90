@@ -377,14 +377,19 @@ subroutine ApplyGasRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol)
     real(kind = dbl), intent(inout) :: E2Set(e2nrow, e2ncol)
     integer :: i, slot, src
 
-    !> Records are the only way a project names its gases. A file without
-    !> them is a pre-5.0.0 project that has not been through the interface;
-    !> processing would silently produce no gas fluxes at all, so it is
-    !> refused instead. The GUI migrates such a file on open.
-    if (EddyFlowProj%gas_num <= 0) then
-        write(*, '(a)') '  Fatal error(99)> Project file describes no gas &
-            &records (gas_num). Open and save it in the EddyFlow interface &
-            &to bring it up to the current format.'
+    !> Records are the only way a project names its gases, so a file that
+    !> states no gas count at all is a pre-5.0.0 project that has not been
+    !> through the interface. Processing it would silently produce no gas
+    !> fluxes, so it is refused; the GUI migrates such a file on open.
+    !>
+    !> A file that states `gas_num=0` is a different thing entirely: a site
+    !> with an anemometer and no analyser. It measures wind and sonic
+    !> temperature, so it has a heat flux, and it is processed normally. This
+    !> test used to be `gas_num <= 0`, which refused it.
+    if (.not. EddyFlowProj%gas_num_stated) then
+        write(*, '(a)') '  Fatal error(99)> Project file states no gas count &
+            &(gas_num). Open and save it in the EddyFlow interface to bring &
+            &it up to the current format.'
         call ExceptionHandler(99)
     end if
 

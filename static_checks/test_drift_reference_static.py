@@ -97,10 +97,24 @@ class TheCorrectionIsPerGas(unittest.TestCase):
         self.assertNotIn("Set(:, h2o)", src)
 
     def test_water_is_resolved_not_indexed(self):
-        self.assertNotIn("Stats%chi(h2o)", code(CORRECT),
+        """And resolved with the strict answer, not the fallback one.
+
+        This asked for PrimaryWaterOutSlot, whose fallback returns histGas2
+        when a project declares no water. The line below it writes
+        `Stats%chi(wsl) = 0d0` when the value is `error`, so with no
+        hygrometer that wrote a zero into whatever real trace gas holds the
+        sixth slot, and the broadening term then read that species' mole
+        fraction as if it were water. PrimaryWaterSlot answers 0 instead, and
+        the broadening is skipped.
+        """
+        src = code(CORRECT)
+        self.assertNotIn("Stats%chi(h2o)", src,
                          "the broadening term reads the site's water, and the "
                          "sixth slot is water only by convention")
-        self.assertIn("PrimaryWaterOutSlot()", code(CORRECT))
+        self.assertIn("wsl = PrimaryWaterSlot()", src)
+        self.assertNotIn("PrimaryWaterOutSlot()", src,
+                         "the fallback variant names a trace gas when there "
+                         "is no water, and this routine writes through it")
 
     def test_the_band_broadening_is_applied_to_carbon_dioxide_only(self):
         """0.15 is the water-vapour broadening of the CO2 band (LI-7200 manual

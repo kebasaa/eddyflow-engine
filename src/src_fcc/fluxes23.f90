@@ -47,6 +47,7 @@ subroutine Fluxes23(lEx)
     real(kind = dbl) :: sigma_g, rhow_g
     integer :: msl
     integer :: wsl
+    integer :: wsx
     include '../src_common/interfaces_1.inc'
     real(kind = dbl), parameter :: alpha = 0.51d0
 
@@ -57,6 +58,14 @@ subroutine Fluxes23(lEx)
     !> two, FCC wrote water's flux into slot 6 - overwriting whatever gas is
     !> actually there - and left the real water on the generic trace-gas path.
     wsl = PrimaryWaterSlot()
+    !> An always-in-bounds stand-in for wsl inside guard expressions.
+    !>
+    !> Fortran does not mandate short-circuit `.and.`, so
+    !> `wsl >= firstGas .and. X(wsl)` still evaluates X(wsl) - and with no
+    !> hygrometer wsl is 0, which is out of bounds. The wsl >= firstGas test
+    !> still decides the outcome; wsx only keeps the subscript legal while it
+    !> is being decided.
+    wsx = max(wsl, firstGas)
 
     Flux2 = errFlux
     Flux3 = errFlux
@@ -76,7 +85,13 @@ subroutine Fluxes23(lEx)
 
     !> Level 2 evapotranspiration WPL corrected, including Burba if the case
     if (EddyFlowProj%wpl) then
-        if (wsl >= firstGas .and. lEx%gas_instr(wsl)%path_type == 'open') then
+        if (wsl < firstGas) then
+            !> No hygrometer, so there is no evapotranspiration to correct.
+            !> Tested on its own: Fortran does not mandate short-circuit
+            !> `.and.`, so folding it into the open-path test below is not a
+            !> guard, and the closed-path arm reached measure_type(0).
+            Flux2%E = error
+        elseif (lEx%gas_instr(wsl)%path_type == 'open') then
             if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
                 .and. Flux1%E /= error .and. Flux1%H /= error &
                 .and. lEx%sigma /= error) then
@@ -143,7 +158,10 @@ subroutine Fluxes23(lEx)
     if (Flux1%E == error) Flux2%E = error
 
     !> Level 2 h2o and latent heat flux
-    if (Flux2%E /= error) then
+    if (wsl < firstGas) then
+        Flux2%LE  = error
+        Flux2%ET  = error
+    elseif (Flux2%E /= error) then
         Flux2%gas(wsl) = Flux2%E * 1d3 / MW_H2O
         Flux2%ET = Flux2%gas(wsl) * h2o_to_ET
         if (lEx%lambda /= error) then
@@ -204,7 +222,7 @@ subroutine Fluxes23(lEx)
     !> Level 3 for evapotranspiration: for open path, WPL again with corrected H
     !> Starts again from Level 1 of E, Level 2 was only used to calculate H Level 3.
     if(EddyFlowProj%wpl .and. wsl >= firstGas &
-        .and. lEx%gas_instr(wsl)%path_type == 'open') then
+        .and. lEx%gas_instr(wsx)%path_type == 'open') then
         if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. Flux1%E /= error &
             .and. Flux1%H /= error .and. lEx%sigma /= error) then
             Flux3%E = (1d0 + mu * lEx%sigma) * Flux1%E &
@@ -224,7 +242,10 @@ subroutine Fluxes23(lEx)
     Flux3%E_gas(firstGas:lastGas) = Flux2%E_gas(firstGas:lastGas)
 
     !> Level 3 h2o flux and latent heat flux
-    if (Flux3%E /= error) then
+    if (wsl < firstGas) then
+        Flux3%LE  = error
+        Flux3%ET  = error
+    elseif (Flux3%E /= error) then
         Flux3%gas(wsl) = Flux3%E * 1d3 / MW_H2O
         Flux3%ET = Flux3%gas(wsl) * h2o_to_ET
         if (lEx%lambda /= error) then
@@ -239,7 +260,7 @@ subroutine Fluxes23(lEx)
     end if
 
     !> Calculate E_nowpl for closed and open path systems
-    if (wsl >= firstGas .and. lEx%gas_instr(wsl)%path_type == 'closed') then
+    if (wsl >= firstGas .and. lEx%gas_instr(wsx)%path_type == 'closed') then
         if (Flux1%E /= error .and. BPCF%of(wsl) /= error) then
             E_nowpl = Flux1%E * BPCF%of(wsl)
         elseif(Flux1%E /= error) then
