@@ -108,7 +108,6 @@ cec_max_gap_fill=4
 cec_max_stationarity=50.0
 tob1_format=0
 out_path=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Out-EF-Testing
-fix_out_format=0
 err_label=-9999.0
 qc_meth=1
 use_biom=2

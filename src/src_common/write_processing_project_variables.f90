@@ -262,8 +262,6 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%out_avrg_spec = EPPrjCTags(43)%value(1:1) == '1'
     !> select whether to output biomet average values
     EddyFlowProj%out_biomet = EPPrjCTags(42)%value(1:1) == '1'
-    !> select whether to use fixed or dynamic output format
-    EddyFlowProj%fix_out_format = EPPrjCTags(37)%value(1:1) == '1'
 
     !> Select whether to apply high-pass theoretical spectral correction.
     !> It is independent from the choice of the low-pass method

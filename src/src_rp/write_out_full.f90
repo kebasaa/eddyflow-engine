@@ -43,8 +43,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     integer :: gas
     integer :: k
     !> The gas slots this file carries a block for. InitOutFiles_rp builds the
-    !> header from the same list; spelled out separately, the two disagreed by
-    !> sixty gas blocks whenever fix_out_format was set.
+    !> header from the same list; spelled out separately, the two disagreed
+    !> by sixty gas blocks.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
     !> How many variables the packed statistical-flag strings describe. The
@@ -99,8 +99,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if (RUsetup%meth /= 'none') then
         call WriteDatumFloat(Essentials%rand_uncer(u), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
     !> H
@@ -111,8 +109,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if (RUsetup%meth /= 'none') then
         call WriteDatumFloat(Essentials%rand_uncer(ts), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
     !> LE
@@ -124,13 +120,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(Essentials%rand_uncer_LE, field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-            elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
     !> Gases. One block per configured gas rather than four unrolled ones;
@@ -148,13 +138,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
                 call WriteDatumFloat(merge(Essentials%rand_uncer(gas) * gas_flux_sc(gas), error, &
                     Essentials%rand_uncer(gas) /= error), field_val, EddyFlowProj%err_label)
                 call AddDatum(csv_row, field_val, separator)
-            elseif(EddyFlowProj%fix_out_format) then
-                call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             end if
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
 
@@ -164,8 +148,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     if(OutVarPresent(PrimaryWaterOutSlot())) then
         call WriteDatumFloat(Stor%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     do k = 1, n_fo_slots
         gas = fo_slots(k)
@@ -173,8 +155,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
             call WriteDatumFloat(merge(Stor%of(gas) * gas_flux_sc(gas), error, &
                 Stor%of(gas) /= error), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
 
@@ -198,8 +178,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
             else
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             end if
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
 
@@ -223,12 +201,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
             else
                 call AddDatum(csv_row, '0', separator)
             endif
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, '9', separator)
         end if
     end do
 
@@ -335,15 +307,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumFloat(Foot%x90, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, EddyFlowProj%err_label, separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
     !> Uncorrected fluxes (Level 0)
@@ -367,9 +330,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         !> hold it.
         call WriteDatumFloat(BPCF%of(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     !> Gases: uncorrected flux and its spectral correction factor. BPCF%of is
     !> indexed by the w_* covariance labels, which carry the same numbering as
@@ -382,9 +342,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
             call AddDatum(csv_row, field_val, separator)
             call WriteDatumFloat(BPCF%of(gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
 
@@ -427,8 +384,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         if(OutVarPresent(var)) then
             call WriteDatumInt(Essentials%e2spikes(var), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
 
@@ -452,16 +407,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumInt(Diag7200%sync, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     if (Diag7500%present) then
         call WriteDatumInt(Diag7500%chopper, field_val, EddyFlowProj%err_label)
@@ -472,11 +417,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumInt(Diag7500%sync, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     if (Diag7700%present) then
         call WriteDatumInt(Diag7700%not_ready, field_val, EddyFlowProj%err_label)
@@ -511,37 +451,16 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call AddDatum(csv_row, field_val, separator)
         call WriteDatumInt(Diag7700%box_connected, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
     !> AGCs and RSSIs for LI-7200 and LI-7500
     if (Diag7200%present) then
         call WriteDatumInt(nint(Essentials%AGC72), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     if (Diag7500%present) then
         call WriteDatumInt(nint(Essentials%AGC75), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-    elseif(EddyFlowProj%fix_out_format) then
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
 
     !> Variances
@@ -554,8 +473,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(Stats%Cov(gas, gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     end do
     !> w-covariances
@@ -566,9 +483,6 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         if(OutVarPresent(gas)) then
             call WriteDatumFloat(Stats%Cov(w, gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
-        elseif(EddyFlowProj%fix_out_format) then
-            call AddDatum(csv_row, &
-            trim(adjustl(EddyFlowProj%err_label)), separator)
         end if
     enddo
 

@@ -389,16 +389,10 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(100)> factor, and nothing else in the output will look unusual.'
             write(*,*) ' Warning(100)> Set the molecular weight and diffusivity for that gas in'
             write(*,*) ' Warning(100)> the EddyFlow GUI.'
-        case(101)
-            write(*,*) ' Warning(101)> The project asks for the fixed full-output format, which'
-            write(*,*) ' Warning(101)> names exactly four gas blocks, but configures more than'
-            write(*,*) ' Warning(101)> four gases. The gases past the fourth record have no'
-            write(*,*) ' Warning(101)> columns in that format and are omitted from the full'
-            write(*,*) ' Warning(101)> output. They are still written to the FLUXNET file and to'
-            write(*,*) ' Warning(101)> the essentials record, both of which size themselves to'
-            write(*,*) ' Warning(101)> the project.'
-            write(*,*) ' Warning(101)> Turn the fixed format off to get a column set that covers'
-            write(*,*) ' Warning(101)> every gas.'
+        !> 101 was the fixed full-output format's "gases past the fourth are
+        !> dropped" warning. That format is gone and the code is not reused:
+        !> a message a user may have seen must not come back meaning
+        !> something else.
         case(102)
             write(*,*) ' Warning(102)> A gas states a spectral-assessment month grouping that'
             write(*,*) ' Warning(102)> cannot be read. It must be a list of month ranges, such as'

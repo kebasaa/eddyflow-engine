@@ -177,6 +177,12 @@ def region(text, name):
 #: col_air_p are absent deliberately: they are one per project, not one per
 #: instrument, and are still live.
 RETIRED_LABELS = {
+    #: The fixed full-output format, which named four gas blocks whatever the
+    #: project held. It described a column set no reader in this fork has been
+    #: checked against, its two header branches had already drifted apart, and
+    #: a fifth gas simply fell out of the file. The full output covers every
+    #: configured gas now, so there is nothing left for the flag to select.
+    "fix_out_format",
     "col_co2", "col_h2o", "col_ch4", "col_gas4",
     "col_cell_t", "col_int_t_1", "col_int_t_2", "col_int_p",
     "col_diag_72", "col_diag_75", "col_diag_77", "col_diag_anem",

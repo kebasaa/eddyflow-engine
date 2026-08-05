@@ -108,19 +108,19 @@ class NoCallerReadsAFixedSlot(unittest.TestCase):
         self.assertIn("GasSlotByInstrModel('li7700')", source)
 
     def test_each_analyser_column_is_labelled_from_its_own_firmware(self):
-        """Including under fix_out_format.
+        """Each analyser named from its own firmware.
 
-        That branch built both column names from one test, so the two could
-        not disagree even when the instruments did. It stays two columns -
-        the fixed format promises exactly that - but each is now named from
-        the analyser it names.
+        The retired fixed-format header built both column names from one
+        test, so the two could not disagree even when the instruments did.
+        It stays two columns, but each is named from the analyser it
+        describes.
         """
         source = code("src/src_rp/init_outfiles_rp.f90")
         for model in ("li7200", "li7500"):
             self.assertIn("InstrSwVerFor('%s')" % model, source)
         self.assertNotIn(
             "'RSSI_LI-7200,RSSI_LI-7500,variances", source,
-            "the fixed-format header names both analysers from one test")
+            "the header names both analysers from one test")
 
     def test_the_row_and_the_header_ask_the_same_question(self):
         """They are in different files and were agreeing by coincidence."""

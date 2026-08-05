@@ -10,11 +10,6 @@ first. The same four numbers survive as `histGas1..histGas4`, offsets from
 
 Where they legitimately remain:
 
-  compatibility mode    fix_out_format promises the fixed EddyPro 7.x column
-                        set, which is four gas blocks whatever the project
-                        holds. Widening it would break the compatibility the
-                        flag exists to provide.
-
   on-disk aliases       LegacySpectralVarTag, HistoricGasSlot,
                         TimelagOptGasLabel and GasSlotFromDynMDTag accept the
                         four historical spellings so files written before the
@@ -34,6 +29,10 @@ The flat ini layer used to be on this list. It is gone: read_ini_rp and
 read_ini_fcc read every per-gas setting from its record, and a project without
 records is refused rather than half-processed. That alone took read_ini_rp
 from 76 occurrences to none.
+
+The fixed full-output format was on it too. It promised four gas blocks
+whatever the project held, so a fifth gas fell out of the file; it is
+retired, and the full output covers every configured gas.
 
 So were the interface's three month-grouping tables, for CO2, CH4 and the
 fourth gas, which every other gas had to inherit. A gas states its own months
@@ -69,13 +68,11 @@ RETIRED_SPELLINGS = ("co2", "h2o", "ch4", "n2o", "gas4",
 ALLOWED = {
     "src/src_common/define_all_var_set.f90": 6,
     "src/src_common/define_used_variables.f90": 1,
-    "src/src_common/gas_slot_resolution.f90": 9,
+    "src/src_common/gas_slot_resolution.f90": 7,
     "src/src_common/m_common_global_var.f90": 4,
     "src/src_common/m_typedef.f90": 4,
     "src/src_fcc/cospectra_sorting_and_averaging.f90": 1,
-    "src/src_fcc/init_out_files.f90": 1,
     "src/src_fcc/spectral_assessment_diagnostics.f90": 3,
-    "src/src_rp/init_outfiles_rp.f90": 1,
     "src/src_rp/pwb_timelag_handle.f90": 4,
 }
 
@@ -132,8 +129,8 @@ class LegacySlotUseIsPinned(unittest.TestCase):
             "these files gained a fixed gas-slot reference:\n  "
             + "\n  ".join(grew)
             + "\n\nA gas is addressed by its record. If the new use is one of "
-              "the legitimate kinds - a compatibility mode, an on-disk alias, "
-              "an interface table or a no-water fallback - say which in a "
+              "the legitimate kinds - an on-disk alias, a no-water "
+              "fallback or a dormant path - say which in a "
               "comment and raise the count here.")
 
     def test_the_expectations_are_not_stale(self):
@@ -155,8 +152,8 @@ class LegacySlotUseIsPinned(unittest.TestCase):
 class TheSpeciesSpellingsAreGone(unittest.TestCase):
     """`co2` as an integer is what this migration removed.
 
-    Keeping the numbers is fine - the fixed output format and the on-disk
-    readers need them. Keeping the *names* is not: they made a position read
+    Keeping the numbers is fine - the on-disk readers and the no-water
+    fallbacks need them. Keeping the *names* is not: they made a position read
     as a measurement, and that is what put water's molecular weight on a trace
     gas, gave methane carbon dioxide's flux column and left five subsystems
     silently correcting the wrong species.

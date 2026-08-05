@@ -671,7 +671,6 @@ module m_typedef
         logical :: out_avrg_spec
         logical :: out_biomet
         logical :: fcc_follows
-        logical :: fix_out_format
         logical :: hf_meth_in_situ
         logical :: hf_correct_ghg_ba
         logical :: hf_correct_ghg_zoh

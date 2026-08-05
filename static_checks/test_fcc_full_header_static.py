@@ -1,3 +1,13 @@
+"""The full-output header, checked against what the writer emits.
+
+A note on the exact counts below. They were 2, meaning "once in each header
+branch" - the file used to hold a dynamic header and a literal one for the
+fixed EddyPro-style format, and a line added to one and not the other was the
+defect these pinned. There is one branch now, so they are 1. The number is the
+whole assertion, so it is stated rather than left to drift: a count whose
+reason has changed is worse than no count.
+"""
+
 from pathlib import Path
 import csv
 import re
@@ -44,9 +54,9 @@ class FccFullHeaderStaticTests(unittest.TestCase):
 
         self.assertIn("character(64) :: UserVarHeader(MaxUserVar)", globals_source)
         self.assertNotIn("AddDatum(header2, UserVarHeader(1:len_trim(UserVarHeader))", source)
-        self.assertEqual(source.count("custom_label = UserVarHeader(i)"), 2)
-        self.assertEqual(source.count('write(custom_label, \'("custom_", i0, "_mean")\') i'), 2)
-        self.assertEqual(source.count("if (i > 1) call AddDatum(header1, '', separator)"), 2)
+        self.assertEqual(source.count("custom_label = UserVarHeader(i)"), 1)
+        self.assertEqual(source.count('write(custom_label, \'("custom_", i0, "_mean")\') i'), 1)
+        self.assertEqual(source.count("if (i > 1) call AddDatum(header1, '', separator)"), 1)
 
     def test_fcc_custom_headers_get_inferred_units(self):
         source = read("src/src_fcc/init_out_files.f90")
@@ -57,8 +67,8 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertIn("index(clean_label, 'h2o_') == 1", source)
         self.assertIn("index(clean_label, 'int_t_') == 1", source)
         self.assertIn("index(clean_label, 'int_p_') == 1", source)
-        self.assertEqual(source.count("custom_unit = CustomUnitFromLabel(custom_label)"), 2)
-        self.assertEqual(source.count("call AddDatum(header3, custom_unit"), 2)
+        self.assertEqual(source.count("custom_unit = CustomUnitFromLabel(custom_label)"), 1)
+        self.assertEqual(source.count("call AddDatum(header3, custom_unit"), 1)
 
     def test_raw_flowrate_override_is_gas_scoped_and_instrument_specific(self):
         """Every configured gas, still matched to its own analyser.
@@ -103,7 +113,7 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertIn("clean_label = trim(var_token) // '_' // trim(model_token)", source)
         self.assertNotIn('write(user_header(j), \'("flowrate_", a, "_", i0, "_mean")\')', source)
         self.assertIn("user_unit(j) = '[m+3s-1]'", source)
-        self.assertEqual(source.count("call AddDatum(header3, user_unit(var)"), 2)
+        self.assertEqual(source.count("call AddDatum(header3, user_unit(var)"), 1)
         self.assertNotIn("usg(var)(1:len_trim(usg(var))) // 'mean'", source)
 
     def test_rp_multi_irga_custom_column_selection_is_consistent(self):
@@ -340,10 +350,10 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         header_source = read("src/src_fcc/init_out_files.f90")
         writer_source = read("src/src_fcc/write_out_full_fcc.f90")
 
-        self.assertEqual(header_source.count("r_ET_cec,qc_cec_h2o"), 2)
-        self.assertEqual(header_source.count("r_Fc_cec,qc_cec_co2"), 2)
-        self.assertEqual(header_source.count("[mm+1hour-1],[#],[#]"), 2)
-        self.assertEqual(header_source.count("[umol+1m-2s-1],[#],[#]"), 2)
+        self.assertEqual(header_source.count("r_ET_cec,qc_cec_h2o"), 1)
+        self.assertEqual(header_source.count("r_Fc_cec,qc_cec_co2"), 1)
+        self.assertEqual(header_source.count("[mm+1hour-1],[#],[#]"), 1)
+        self.assertEqual(header_source.count("[umol+1m-2s-1],[#],[#]"), 1)
         self.assertIn("WriteDatumInt(lEx%cec%h2o_status", writer_source)
         self.assertIn("WriteDatumInt(lEx%cec%co2_status", writer_source)
 

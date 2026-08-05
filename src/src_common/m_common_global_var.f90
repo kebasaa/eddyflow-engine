@@ -917,7 +917,7 @@ module m_common_global_var
          EPPrjCTags(34)%Label / 'foot_meth' / &
          EPPrjCTags(35)%Label / 'out_path' / &
          EPPrjCTags(36)%Label / 'err_label' / &
-         EPPrjCTags(37)%Label / 'fix_out_format' / &
+         EPPrjCTags(37)%Label / '' / &
          EPPrjCTags(38)%Label / 'qc_meth' / &
          EPPrjCTags(39)%Label / 'out_metadata' / &
          EPPrjCTags(40)%Label / 'pr_subset' / &
