@@ -459,35 +459,35 @@ subroutine SpectralFluxLimitSettings(gas, stability, minimum, maximum, min_label
     !> record. The setting was written, read, and then not used.
     if (stability == SADiagUnstable) then
         minimum = FCCsetup%SA%min_un_gas(gas)
-        min_label = 'sa_min_un_' // trim(SpectralLimitTag(gas))
+        min_label = SpectralLimitKey(gas, 'min_un')
     else
         minimum = FCCsetup%SA%min_st_gas(gas)
-        min_label = 'sa_min_st_' // trim(SpectralLimitTag(gas))
+        min_label = SpectralLimitKey(gas, 'min_st')
     end if
     maximum = FCCsetup%SA%max_gas(gas)
-    max_label = 'sa_max_' // trim(SpectralLimitTag(gas))
+    max_label = SpectralLimitKey(gas, 'max')
 
 contains
 
-!> The name of the project setting that carries this gas's limits.
+!> The project-file key that carries this gas's limit.
 !>
-!> The first four slots keep their flat spellings, which are the keys those
-!> settings still have. Beyond them the setting only exists per record, so the
-!> record key is what the diagnostic should tell the user to edit - it used to
-!> say `sa_min_un_gas4` for every gas past the fourth, naming a setting that
-!> does not control them.
-character(32) function SpectralLimitTag(gas_slot)
+!> This must be the key ReadIniFCC actually reads, because the automatic
+!> configuration does not merely name it in a report - it writes it, through
+!> EditIniFile, into the project the next run reads.
+!>
+!> It used to compose `sa_min_un_co2` and friends for the first four slots and
+!> `sa_min_un_gas_5_record` beyond them. Neither exists: the flat sa_min_*_<gas>
+!> tags were retired with the record format, and the record spelling is
+!> `gas_<i>_sa_min_un`. So automatic_spectra_config wrote settings nothing
+!> reads, and reported changes that never took effect - for every gas,
+!> including the first four.
+character(32) function SpectralLimitKey(gas_slot, suffix)
     integer, intent(in) :: gas_slot
+    character(*), intent(in) :: suffix
 
-    select case (gas_slot)
-        case (histGas1);  SpectralLimitTag = 'co2'
-        case (histGas3);  SpectralLimitTag = 'ch4'
-        case (histGas4); SpectralLimitTag = 'gas4'
-        case default
-            write(SpectralLimitTag, '(a,i0,a)') &
-                'gas_', gas_slot - firstGas + 1, '_record'
-    end select
-end function SpectralLimitTag
+    write(SpectralLimitKey, '(a,i0,a)') &
+        'gas_', gas_slot - firstGas + 1, '_sa_' // trim(suffix)
+end function SpectralLimitKey
 
 end subroutine SpectralFluxLimitSettings
 

@@ -34,6 +34,11 @@ The fixed full-output format was on it too. It promised four gas blocks
 whatever the project held, so a fifth gas fell out of the file; it is
 retired, and the full output covers every configured gas.
 
+The automatic spectral configuration was on it too. It named the flat
+sa_min_un_<gas> keys when suggesting thresholds - and wrote them into the
+project - so the whole feature was inert. It composes the record key now,
+and spectral_assessment_diagnostics went from 3 occurrences to none.
+
 So were the interface's three month-grouping tables, for CO2, CH4 and the
 fourth gas, which every other gas had to inherit. A gas states its own months
 now, as gas_<i>_sa_months, and read_ini_fcc went from 5 occurrences to none.
@@ -72,7 +77,6 @@ ALLOWED = {
     "src/src_common/m_common_global_var.f90": 4,
     "src/src_common/m_typedef.f90": 4,
     "src/src_fcc/cospectra_sorting_and_averaging.f90": 1,
-    "src/src_fcc/spectral_assessment_diagnostics.f90": 3,
     "src/src_rp/pwb_timelag_handle.f90": 4,
 }
 

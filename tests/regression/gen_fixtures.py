@@ -288,7 +288,24 @@ def build_biomet_rh(src_lines):
     return _set(src_lines, 'biom_file', BIOMET)
 
 
+def build_auto_sa(src_lines):
+    """base_n_gas with the automatic spectral configuration switched on.
+
+    That feature reads the flux distribution, decides better per-gas
+    thresholds, and writes them into a copy of the project for the next run.
+    It composed `sa_min_un_co2` and `sa_min_un_gas_5_record` - keys that do
+    not exist, since the flat sa_min_*_<gas> tags were retired with the record
+    format and the record spelling is gas_<i>_sa_min_un. So it wrote settings
+    nothing reads and reported changes that never took effect.
+
+    What this fixture is for: run it, then read the project it writes. The
+    keys it contains are the whole test.
+    """
+    return _set(src_lines, 'automatic_spectra_config', '1')
+
+
 TARGETS = {
+    'base_auto_sa.eddyflow': ('base_n_gas.eddyflow', build_auto_sa),
     'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),
     'base_no_water.eddyflow': ('base_rec.eddyflow', build_no_water),
     'base_biomet_water.eddyflow': ('base_rec.eddyflow', build_biomet_water),
