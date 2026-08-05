@@ -2,6 +2,21 @@
 # Makefile for EddyFlow's engine executables
 # Author: Jonathan Muller, ETH Zurich
 #
+# Parallel builds are supported: `mingw32-make -j8 all` is about three times
+# faster than serial and produces byte-identical object files. That rests
+# entirely on the generated dependency block at the bottom - before it, an
+# object could be missing a rule altogether, and -j would have raced on
+# whatever ordering it happened to pick.
+#
+# Note the executables themselves are NOT byte-reproducible, in serial or in
+# parallel: the linker stamps a timestamp into the PE header, so two builds of
+# identical objects give two different .exe files. Compare .o files, or
+# compare behaviour, when checking whether a change is inert.
+#
+# The .mod files gfortran writes land in this directory and are moved to the
+# object directory by the link rule. Both rp and fcc do that move, so a
+# parallel `all` runs it twice; it is idempotent, and the objects each link
+# needs are already built by the time it happens.
 
 #Portabilityn
 #ifdef ComSpec
