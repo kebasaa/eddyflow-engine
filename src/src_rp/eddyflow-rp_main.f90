@@ -658,10 +658,11 @@ program EddyFlowRP
 
                 !> If H2O instrument path type is 'open', doesn't make sense
                 !> to use RH classes so set it to 1.
-                if (toInit .and. &
-                    E2Col(PrimaryWaterOutSlot())%instr%path_type == 'open') then
-                    TOSetup%h2o_nclass = 1
-                    toInit = .false.
+                if (toInit) then
+                    if (E2Col(PrimaryWaterOutSlot())%instr%path_type == 'open') then
+                        TOSetup%h2o_nclass = 1
+                        toInit = .false.
+                    end if
                 end if
 
                 !> Clean up E2Set, eliminating values that are clearly unphysical

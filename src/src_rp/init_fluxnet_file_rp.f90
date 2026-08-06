@@ -465,10 +465,11 @@ subroutine InitFluxnetFile_rp()
 
     !> The header used to be built with a GS4 placeholder for the fourth gas
     !> and have its real name substituted in here, over the whole finished
-    !> row. FluxnetGasTag names every gas for its species from the start, so
-    !> there is nothing to substitute - and a blind replace over the row was a
-    !> hazard in its own right, rewriting the literal GS4 wherever it appeared,
-    !> including inside a biomet column name that happened to contain it.
+    !> row. The layout pass in SelectFluxnetGasSlots names every gas for its
+    !> species from the start, so there is nothing to substitute - and a blind
+    !> replace over the row was a hazard in its own right, rewriting the literal
+    !> GS4 wherever it appeared, including inside a biomet column name that
+    !> happened to contain it.
 
     !> CEC partitioning ratios (always present; error when do_cec=0)
     call AddDatum(csv_row, 'r_ET_cec', separator)
@@ -776,22 +777,6 @@ function FluxnetFluxTag(layout_index) result(tag)
         tag = 'F' // trim(FluxnetLayoutTags(layout_index))
     end if
 end function FluxnetFluxTag
-
-!> Every gas is named for the species it measures.
-!>
-!> There is no fourth-gas placeholder. This had four arms - CO2, H2O, CH4 and
-!> GS4 for the fourth slot - so a project's fourth gas was called GS4 whatever
-!> it measured, and its real name was substituted into the finished header far
-!> later by a string replace. CO2, H2O and CH4 sanitise to exactly the tokens
-!> FP-In defines for them, so those names survive by derivation rather than by
-!> literal, and COS, N2O or CO get theirs the same way.
-function FluxnetGasTag(gas_slot) result(tag)
-    integer, intent(in) :: gas_slot
-    character(32) :: tag
-
-    tag = SanitizeFluxnetToken(E2Col(gas_slot)%var)
-    call uppercase(tag)
-end function FluxnetGasTag
 
 function SanitizeFluxnetToken(raw_token) result(clean_token)
     character(*), intent(in) :: raw_token

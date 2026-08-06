@@ -90,7 +90,6 @@ subroutine WriteVariablesRP()
     integer :: leap_an_flags
     integer :: init_an_wsect
     integer :: leap_an_wsect
-    integer :: init_prof_z
     integer :: hlen
     integer :: gasslot
     character(64) :: raw_gas_tag(GHGNumVar)

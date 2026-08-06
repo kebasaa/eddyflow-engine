@@ -214,8 +214,14 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             Instr(i)%firm = ACTags(init_ac_instr + i*leap_ac_instr)%value &
                 (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr)%value))
 
-            Instr(i)%model = ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
-                (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value))
+            !> Normalised on the way in, so everything below - the path-length
+            !> and firm lookups here, metadata validation, and every select
+            !> case downstream - sees one spelling. This is the reader for both
+            !> the standalone metadata file and the copy inside a GHG archive,
+            !> so it is the only place a retired model key has to be caught.
+            Instr(i)%model = CanonicalInstrumentModel( &
+                ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
+                (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value)))
             Instr(i)%height = dble(ANTags(init_an_instr + i*leap_an_instr)%value)
 
             !> For "generic" instruments, retrieve path lengths, time response,

@@ -63,9 +63,11 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
         !> Legacy projects escaped this only because DefineUsedVariables
         !> renamed the fourth gas's column to 'n2o' so it borrowed N2O's arm.
         gasSlot = RecordGasSlot(LocCol(j)%orig_col)
-        if (gasSlot > 0 .and. .not. IsHistoricGasVar(LocCol(j)%var)) then
-            call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, gasSlot)
-            cycle
+        if (gasSlot > 0) then
+            if (.not. IsHistoricGasVar(LocCol(j)%var)) then
+                call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, gasSlot)
+                cycle
+            end if
         end if
 
         select case (LocCol(j)%var)

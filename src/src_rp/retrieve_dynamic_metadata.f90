@@ -333,6 +333,17 @@ subroutine ReadMetadataFromTextVars(mdStringVars, nrow)
         end do
     end do
 
+    !> Retired model keys, brought up to date the same way the metadata file's
+    !> are. After the loop rather than inside it: the fields are visited in
+    !> file-column order, so the model is not guaranteed to have been read yet
+    !> at any point during it.
+    DynamicMetadata%instr(u)%model = &
+        CanonicalInstrumentModel(DynamicMetadata%instr(u)%model)
+    do gas = firstGas, lastGas
+        DynamicMetadata%instr(gas)%model = &
+            CanonicalInstrumentModel(DynamicMetadata%instr(gas)%model)
+    end do
+
 end subroutine ReadMetadataFromTextVars
 
 !***************************************************************************

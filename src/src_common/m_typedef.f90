@@ -1672,6 +1672,52 @@ contains
         if (model_len > 2) InstrumentModelBase = model(1:model_len - 2)
     end function InstrumentModelBase
 
+    !***************************************************************************
+    !> Current key for an instrument model, whatever spelling the file uses.
+    !>
+    !> The Campbell keys were renamed: EddyPro's bare `csat3` and `csat3b` are
+    !> `csi_csat3` and `csi_csat3b` now. No other manufacturer moved - every
+    !> Gill, Metek, Young and LI-COR key is what EddyPro wrote - so this only
+    !> ever fires on a Campbell site. Left unmapped the model matches nothing
+    !> in the select cases downstream and metadata validation rejects the file,
+    !> which for a GHG archive means every file in the run is skipped.
+    !>
+    !> The interface additionally tolerates the manufacturer-name prefix that
+    !> one release wrote. It is deliberately absent here: that prefix is a
+    !> retired identifier in this program and a static check bans the string
+    !> outright, so a file spelling it that way is an interface-side concern.
+    !>
+    !> Only the key is rewritten. The value carries a trailing `_<n>` pairing it
+    !> with an instrument, and every reader strips it with the same
+    !> two-character arithmetic InstrumentModelBase uses, so the suffix has to
+    !> come back untouched.
+    !***************************************************************************
+    character(32) function CanonicalInstrumentModel(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+        !> local variables
+        character(32) :: base
+        integer :: model_len
+
+        CanonicalInstrumentModel = model
+        model_len = len_trim(model)
+        if (model_len <= 2) return
+
+        base = InstrumentModelBase(model)
+        !> No bare 'csat3c', 'ec155' or 'tga200a': those arrived already
+        !> carrying a prefix, so no file can spell them this way.
+        select case (trim(base))
+            case ('csat3');  base = 'csi_csat3'
+            case ('csat3a'); base = 'csi_csat3a'
+            case ('csat3b'); base = 'csi_csat3b'
+            case ('ec150');  base = 'csi_ec150'
+            case default;    return
+        end select
+
+        CanonicalInstrumentModel = trim(base) // model(model_len - 1:model_len)
+    end function CanonicalInstrumentModel
+
     logical function IsOpenPathIrgaModel(model)
         implicit none
         !> in/out variables

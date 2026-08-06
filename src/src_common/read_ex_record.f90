@@ -46,7 +46,6 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> Local variables
     integer :: flag
     integer :: gas
-    integer :: igas
     integer :: open_status
     integer :: read_status
     integer :: i
@@ -838,7 +837,6 @@ subroutine CompleteEssentials(lEx)
     !> in/out variables
     type(ExType), intent(inout) :: lEx
     !> local variables
-    integer :: igas
     integer :: gas
     integer :: var
     !> The inverse of WriteOutFluxnet's per-species column scale. This

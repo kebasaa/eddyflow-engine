@@ -41,6 +41,7 @@ subroutine SetTimelags()
     !> local variables
     integer :: gas
     integer :: cls
+    integer :: wsl
     real(kind = dbl) :: lRH
     real(kind = dbl) :: mult(GHGNumVar)
     real(kind = dbl) :: tube_time(GHGNumVar)
@@ -61,6 +62,9 @@ subroutine SetTimelags()
 
     !> set time-lags to optimized values if selected so by user
     if (meth%tlag == 'tlag_opt') then
+        !> The site's hygrometer, resolved once: it is a property of the
+        !> project's records, which do not change across the loop below.
+        wsl = PrimaryWaterSlot()
         do gas = firstGas, lastGas
             if (E2Col(gas)%present) then
                 !> Only the SITE's hygrometer is classed by relative
@@ -73,7 +77,7 @@ subroutine SetTimelags()
                 !> hygrometer got the primary's window - and, when RH
                 !> classing was off, no optimised window at all, because the
                 !> branch below does nothing when h2o_nclass <= 1.
-                if (.not. GasSlotIsWater(gas) .or. gas /= PrimaryWaterSlot() &
+                if (.not. GasSlotIsWater(gas) .or. gas /= wsl &
                     .or. TOSetup%h2o_nclass <= 1) then
                     !> Passive gases.
                     !>

@@ -495,9 +495,11 @@ subroutine WriteDatumChar(char_in, char_datum, err_label)
     character(*), intent(out) :: char_datum
     character(*), intent(in) :: err_label
     logical, external :: AllFlagsNotPerformed
+    logical :: flags_not_performed
 
+    flags_not_performed = AllFlagsNotPerformed(char_in)
     if (trim(adjustl(char_in)) /= 'none' .and. trim(adjustl(char_in)) /= 'None' &
-        .and. .not. AllFlagsNotPerformed(char_in)) then
+        .and. .not. flags_not_performed) then
         char_datum = trim(adjustl(char_in))
     else
         char_datum = trim(adjustl(err_label))

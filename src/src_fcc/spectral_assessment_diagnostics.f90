@@ -355,8 +355,6 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
     character(*), intent(in) :: output_project
     integer :: gas
     integer :: stability
-    integer :: report_unit
-    integer :: open_status
     real(kind = dbl) :: current_min
     real(kind = dbl) :: current_max
     character(32) :: min_label
