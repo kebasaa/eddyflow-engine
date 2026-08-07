@@ -186,9 +186,19 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         end where
 
         !> Calculate correction factors after Fratini et al. (2012, AFM)
+        !>
+        !> The model cospectrum is the *measured* w/T one, for every gas: that
+        !> substitution is the method. Only the slot being corrected varies,
+        !> which is what the loop iterates.
+        !>
+        !> Indexing the first argument by `gas` instead reads a slot `wanted`
+        !> above deliberately excludes from the import, so it is all error -
+        !> SpectralCorrectionFactors returns error, the plausibility band below
+        !> rejects it, and every gas falls to Ibrom 2007 in every period. The
+        !> direct method then never runs, silently.
         do gas = firstGas, lastGas
             if (loc_var_present(gas)) &
-                call SpectralCorrectionFactors(fullCospectra%of(gas), gas, nf, nfreq, BPTF)
+                call SpectralCorrectionFactors(fullCospectra%of(w_ts), gas, nf, nfreq, BPTF)
         end do
 
         !> Calculate correction factors after revision of Laubach and Fratini, unpublished

@@ -47,9 +47,6 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> they used to read the sixth slot, which is water by convention only.
     integer :: wsl
     integer :: vi
-    !> Gases the fixed part of the row carries columns for. Mirrors what
-    !> InitFluxnetFile_rp sized its header loops from.
-    integer :: n_layout_gas
     !> The row's variable order: the four anemometric slots, then the gas
     !> layout, taken from the same helper RP wrote the parent file with. FCC
     !> rewrites this file, so writing it in a different order from the one it
@@ -71,9 +68,6 @@ subroutine WriteOutFluxnetFcc(lEx)
     character(9) :: vm97flags(GHGNumVar)
     include '../src_common/interfaces_1.inc'
 
-
-    !> Gases the fixed part of the row carries columns for.
-    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
 
     call FluxnetLayoutGasSlots(gasSlots, nGasSlots)
     nRowVar = 0
@@ -418,12 +412,15 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> VM97 flags, here organized per variable instead of per test.
     !>
     !> Re-derived from the transposed form, so this loop has to reproduce
-    !> exactly the fields RP wrote: u,v,w,ts then one per configured gas. FCC
-    !> has no access to RP's layout lists, but it reads the same project, and
-    !> SelectFluxnetGasSlots assigns slot firstGas+k-1 over this same range.
-    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
+    !> exactly the fields RP wrote: u,v,w,ts then one per layout gas.
+    !>
+    !> Both branches are sized from nRowVar, which is the layout list. The
+    !> absent-flags branch used the *configured* gas count instead, so a
+    !> project whose layout carries a required species it does not measure
+    !> emitted one field fewer here than the header names - only on the path
+    !> where the flags are missing, which is why it survived.
     if (lEx%vm_flags(1) == '-9999') then
-        do j = 1, 4 + n_layout_gas
+        do j = 1, nRowVar
             call AddCharDatumToDataline(EddyFlowProj%err_label, csv_row, EddyFlowProj%err_label)
         end do
     else
@@ -554,14 +551,24 @@ subroutine WriteOutFluxnetFcc(lEx)
     call AddFloatDatumToDataline(lEx%instr(sonic)%vpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
     call AddFloatDatumToDataline(lEx%instr(sonic)%tau, csv_row, EddyFlowProj%err_label)
 
-    !>> Gas analysers, one block per configured gas.
+    !>> Gas analysers, one block per gas the *layout* carries.
     !>
     !> Re-emitted from the slot-indexed array rather than by instrument role,
     !> which only ever addressed four. ReadExRecord fills that array for every
     !> gas - the historical four by mirroring the role-indexed one - so this
     !> reproduces the block RP wrote, at whatever width the project has.
-    do gas = firstGas, firstGas + min(EddyFlowProj%gas_num, MaxNumGases) - 1
-        if (gas > lastGas) exit
+    !>
+    !> Over the layout list, not the configured gas count and not a contiguous
+    !> range from firstGas. The layout carries the species FLUXNET requires
+    !> whether or not the project measures them, so on a CO2/H2O/COS project it
+    !> is four blocks and gas_num is three: iterating gas_num dropped a whole
+    !> eleven-field block and shifted every column after it, including the
+    !> per-gas moisture and analyser blocks that follow. It is also the list
+    !> the header was built from, and the only thing that keeps the two in
+    !> step; a range from firstGas additionally assumes layout position and
+    !> record index run together, which they need not.
+    do jg = 1, nGasSlots
+        gas = gasSlots(jg)
         call AddDatum(csv_row, trim(lEx%gas_instr(gas)%firm), separator)
         call AddDatum(csv_row, trim(lEx%gas_instr(gas)%model), separator)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%nsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
