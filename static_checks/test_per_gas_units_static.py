@@ -125,11 +125,21 @@ class GasFullOutputUnitStaticTests(unittest.TestCase):
         family for each.
         """
         source = read("src/src_fcc/init_ex_vars.f90")
-        self.assertIn(
-            "do gas = firstGas, firstGas + min(EddyFlowProj%gas_num, MaxNumGases) - 1",
-            source,
-        )
+        self.assertIn("do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)", source)
         self.assertNotIn("do gas = co2, gas4", source)
+
+    def test_fcc_presence_is_configured_not_measured(self):
+        """A gas is present because a record names a column for it.
+
+        Derived from the essentials record instead, presence collapsed to
+        whatever survived filtering: a gas whose data was discarded reported
+        the error code as its measure type, so it lost its columns rather than
+        carrying -9999 in them. A filtered gas is written as the error label;
+        absence is not how this file says "no data".
+        """
+        source = read("src/src_fcc/init_ex_vars.f90")
+        self.assertIn("EddyFlowProj%gas(k)%col > 0", source)
+        self.assertNotIn("lEx%measure_type_int(gas) /= ierror", source)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,14 @@ module m_rp_global_var
     integer :: FluxnetLayoutSlots(GHGNumVar) = 0
     integer :: nFluxnetLayoutSlots = 0
     character(32) :: FluxnetLayoutTags(GHGNumVar) = ''
+    !> The required FLUXNET variables, in the order the layout places them.
+    !> FluxnetLayoutGasSlots puts these first, so a layout position is enough
+    !> to say which column a name belongs to - no slot needs resolving, and a
+    !> site that measures none of them still names its columns correctly.
+    character(3), parameter :: FluxnetRequiredOrder(3) = &
+        (/ 'CO2', 'H2O', 'CH4' /)
+    integer, parameter :: FluxnetCarbonPosition = 1
+    integer, parameter :: FluxnetWaterPosition  = 2
 
     integer :: NumAllRow = 0
     integer :: NumSlowVar = 0

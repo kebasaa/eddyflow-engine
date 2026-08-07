@@ -118,11 +118,18 @@ class CellConditionsCrossIntoFcc(unittest.TestCase):
         self.assertIn("Stats%cov(w, cellPressureSlot(gas))", source)
 
     def test_the_reader_accounts_for_them(self):
+        """Three fields per gas, read in the order the writer emitted them.
+
+        The slice used to be `firstGas:lastCfg`, which is the right set only
+        while the gas layout is the record list; it is read over the layout
+        now so a reordered or synthesised entry lands in its own slot.
+        """
         source = read(self.READER)
         self.assertIn("+ 3 * nExGas", source)
-        self.assertIn("lEx%Tcell_at(firstGas:lastCfg)", source)
-        self.assertIn("lEx%Pcell_at(firstGas:lastCfg)", source)
-        self.assertIn("lEx%cov_w_pcell(firstGas:lastCfg)", source)
+        for member in ("Tcell_at", "Pcell_at", "cov_w_pcell"):
+            self.assertIn(
+                "(lEx%%%s(exSlots(jx)), jx = 1, nExSlots)" % member, source
+            )
 
     def test_fcc_echoes_them(self):
         source = read(self.FCC_EMIT)

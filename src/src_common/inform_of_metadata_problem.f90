@@ -39,6 +39,11 @@ subroutine InformOfMetadataProblem(passed, faulty_col)
     !> in/out variables
     logical, intent(in) :: passed(32)
     integer, intent(in) :: faulty_col
+    !> local variables
+    integer :: i
+    character(8) :: LogRecord
+    character(8) :: LogColumn
+    character(32) :: clash_var
 
 
     write(LogInteger, '(i3)') faulty_col
@@ -199,6 +204,56 @@ subroutine InformOfMetadataProblem(passed, faulty_col)
                                      &which was declared either as "ignore" or "not numeric".'
         write(*,*) '  Warning(1001)> Check the metadata file and the selected data columns.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+    end if
+
+    !> Two records of one kind competing for a slot that holds one.
+    !>
+    !> Worth naming both, because the file looks right: the interface shows a
+    !> single row and the duplicate is only visible in the project file. Left
+    !> undetected the loser is discarded silently, and which record loses turns
+    !> on their order.
+    if (.not. passed(27)) then
+        write(*,*) '  Warning(1001)> Invalid metadata.'
+        write(*,*) '  Warning(1001)> Two measurement records describe the same quantity on the same &
+                                     &instrument, and the engine holds only one.'
+        write(*,*) '  Warning(1001)> Remove the duplicate record, or give it its own instrument.'
+        write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        !> Both sides of the collision, not only the column that tripped it:
+        !> the point of the message is which two records to look at, and the
+        !> one that loses is the one the user cannot see.
+        call clearstr(clash_var)
+        do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+            if (EddyFlowProj%diag(i)%col == faulty_col) &
+                clash_var = EddyFlowProj%diag(i)%var
+        end do
+        if (len_trim(clash_var) > 0) then
+            do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+                if (trim(adjustl(EddyFlowProj%diag(i)%var)) /= &
+                    trim(adjustl(clash_var))) cycle
+                write(LogRecord, '(i0)') i
+                write(LogColumn, '(i0)') EddyFlowProj%diag(i)%col
+                write(*,*) '  Warning(1001)> Diagnostic record ' // trim(LogRecord) // &
+                    ' names "' // trim(adjustl(clash_var)) // &
+                    '" on column ' // trim(LogColumn) // '.'
+            end do
+        end if
+
+        call clearstr(clash_var)
+        do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+            if (EddyFlowProj%cell(i)%col == faulty_col) &
+                clash_var = EddyFlowProj%cell(i)%var
+        end do
+        if (len_trim(clash_var) > 0) then
+            do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+                if (trim(adjustl(EddyFlowProj%cell(i)%var)) /= &
+                    trim(adjustl(clash_var))) cycle
+                write(LogRecord, '(i0)') i
+                write(LogColumn, '(i0)') EddyFlowProj%cell(i)%col
+                write(*,*) '  Warning(1001)> Cell record ' // trim(LogRecord) // &
+                    ' names "' // trim(adjustl(clash_var)) // &
+                    '" on column ' // trim(LogColumn) // '.'
+            end do
+        end if
     end if
 
     if (.not. passed(25)) then

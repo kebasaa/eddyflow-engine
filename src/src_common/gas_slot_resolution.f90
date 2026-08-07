@@ -169,17 +169,11 @@ end function GasSlotIsWater
 integer function PrimaryWaterSlot()
     use m_common_global_var
     implicit none
-    integer :: gas
-    logical, external :: GasSlotIsWater
+    integer, external :: DesignatedGasSlot
 
-    PrimaryWaterSlot = 0
-    do gas = firstGas, lastGas
-        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
-        if (.not. GasSlotIsWater(gas)) cycle
-        if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
-        PrimaryWaterSlot = gas
-        return
-    end do
+    !> Same designation the FLUXNET naming uses, so the bare H2O column and
+    !> the site's LE and ET come from one hygrometer rather than two.
+    PrimaryWaterSlot = DesignatedGasSlot('H2O')
 end function PrimaryWaterSlot
 
 !***************************************************************************
@@ -285,6 +279,101 @@ subroutine FullOutputGasSlots(slots, nslots)
         slots(nslots) = gas
     end do
 end subroutine FullOutputGasSlots
+
+!***************************************************************************
+!
+! \brief       The FLUXNET/essentials gas layout: one slot per column family.
+! \author      Jonathan Muller
+! \note        RP writes this file, FCC rewrites it, and ReadExRecord parses it
+!              by field position. Three programs, one order - and until this
+!              existed each derived it separately, RP from nFluxnetLayoutSlots
+!              and the other two from min(gas_num, MaxNumGases). They agreed
+!              only because the layout happened to be the record list; nothing
+!              made them agree.
+!
+!              Position, not arithmetic. Callers must index this list rather
+!              than assume position n is slot firstGas + n - 1: the order is
+!              free to differ from record order, and a caller computing the
+!              slot itself would read one gas's field into another's slot with
+!              nothing to flag it.
+!
+!              CO2, H2O and CH4 lead, in that order, then every other record
+!              in the order the project declares them. FLUXNET requires those
+!              three variables, so their columns exist whatever the site
+!              measures - a species no record names is carried by a slot past
+!              the configured records, which holds no data and so reports the
+!              error label throughout, exactly as a record with no column does.
+!
+!              The designation is by NAME and ignores %col: a project that
+!              declares CH4 without a column still holds position three with
+!              it. That is a different question from DesignatedGasSlot, which
+!              requires a column because it answers which instrument supplies
+!              FC and LE - a quantity, not a column heading.
+!***************************************************************************
+subroutine FluxnetLayoutGasSlots(slots, nslots)
+    use m_common_global_var
+    implicit none
+    integer, intent(out) :: slots(GHGNumVar)
+    integer, intent(out) :: nslots
+    integer :: rec
+    integer :: nrec
+    integer :: nsynth
+    integer :: placed(MaxNumGases)
+    integer :: req
+    integer :: designated
+    character(32) :: species
+    character(3) :: required(3)
+
+    required = (/ 'CO2', 'H2O', 'CH4' /)
+
+    slots = 0
+    nslots = 0
+    placed = 0
+    nsynth = 0
+    nrec = min(EddyFlowProj%gas_num, MaxNumGases)
+
+    !> The three required variables first, one entry each.
+    do req = 1, 3
+        designated = 0
+        do rec = 1, nrec
+            species = EddyFlowProj%gas(rec)%var
+            call uppercase(species)
+            if (trim(adjustl(species)) /= trim(required(req))) cycle
+            !> The first record of the species holds it until one the project
+            !> flags takes it, so the choice matches the naming and FC/LE.
+            if (designated == 0) designated = rec
+            if (EddyFlowProj%gas(rec)%fluxnet_default == 1) then
+                designated = rec
+                exit
+            end if
+        end do
+
+        if (designated > 0) then
+            if (firstGas + designated - 1 > lastGas) cycle
+            nslots = nslots + 1
+            slots(nslots) = firstGas + designated - 1
+            placed(designated) = 1
+        else
+            !> Nothing names it. Carry it on a slot past the configured
+            !> records, which no record owns and nothing fills, so every field
+            !> of it is written as the error label. Dropped rather than
+            !> overrun when the project already fills the slot space: the
+            !> arrays this indexes are exactly MaxNumGases wide.
+            if (firstGas + nrec + nsynth > lastGas) cycle
+            nslots = nslots + 1
+            slots(nslots) = firstGas + nrec + nsynth
+            nsynth = nsynth + 1
+        end if
+    end do
+
+    !> Then every record the required block did not already take.
+    do rec = 1, nrec
+        if (placed(rec) == 1) cycle
+        if (firstGas + rec - 1 > lastGas) exit
+        nslots = nslots + 1
+        slots(nslots) = firstGas + rec - 1
+    end do
+end subroutine FluxnetLayoutGasSlots
 
 !***************************************************************************
 !
@@ -616,20 +705,60 @@ end function GasSlotFromDynMDTag
 integer function PrimaryCarbonSlot()
     use m_common_global_var
     implicit none
-    integer :: gas
-    character(32) :: species
+    integer, external :: DesignatedGasSlot
 
-    PrimaryCarbonSlot = 0
-    do gas = firstGas, lastGas
-        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
-        if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
-        species = EddyFlowProj%gas(gas - firstGas + 1)%var
-        call uppercase(species)
-        if (trim(adjustl(species)) /= 'CO2') cycle
-        PrimaryCarbonSlot = gas
-        return
-    end do
+    PrimaryCarbonSlot = DesignatedGasSlot('CO2')
 end function PrimaryCarbonSlot
+
+!***************************************************************************
+!
+! \brief       The record a project designates for a species, as a gas slot.
+! \author      Jonathan Muller
+! \note        A species can be measured more than once. The record whose
+!              gas_<i>_fluxnet_default is set is the site's default for it:
+!              the one whose FLUXNET columns carry the bare species name, and
+!              the one the one-per-site quantities are computed from. Those
+!              two must agree - were the naming to follow the flag and the
+!              flux not, FC and the bare CO2 column would describe different
+!              instruments, which is worse than either choice alone.
+!
+!              Unflagged, the first record of the species is designated. That
+!              is what every project written before this flag existed already
+!              gets, so adding the key changes no existing result.
+!
+!              Only records naming a column are eligible: a species the site
+!              declares but does not measure has nothing to designate. Returns
+!              0 when the project describes no such species, which callers
+!              treat as "not performed".
+!***************************************************************************
+integer function DesignatedGasSlot(wantedVar)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: wantedVar
+    integer :: gas
+    integer :: rec
+    character(32) :: species
+    character(32) :: wanted
+
+    wanted = wantedVar
+    call uppercase(wanted)
+
+    DesignatedGasSlot = 0
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (EddyFlowProj%gas(rec)%col <= 0) cycle
+        species = EddyFlowProj%gas(rec)%var
+        call uppercase(species)
+        if (trim(adjustl(species)) /= trim(adjustl(wanted))) cycle
+        !> The first match holds the slot until a flagged one claims it.
+        if (DesignatedGasSlot == 0) DesignatedGasSlot = gas
+        if (EddyFlowProj%gas(rec)%fluxnet_default == 1) then
+            DesignatedGasSlot = gas
+            return
+        end if
+    end do
+end function DesignatedGasSlot
 
 !***************************************************************************
 !

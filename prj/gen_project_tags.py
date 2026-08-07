@@ -53,7 +53,12 @@ MAX_CONT = 200
 # [Project] scalars introduced alongside the records
 PROJECT_COUNTS = ["gas_num", "cell_num", "diag_num"]
 
-GAS_NUMERIC = ["col", "moist", "cell", "mw", "diff"]
+#: `fluxnet_default` marks the record whose FLUXNET columns carry the bare
+#: species name. CO2, H2O and CH4 are required FLUXNET variables, so the
+#: standard spelling has to exist: the designated record is FC/CO2 and further
+#: records of that species are CO2_2, CO2_3. Unflagged, the lowest record index
+#: is designated, which is what every project written before this key expects.
+GAS_NUMERIC = ["col", "moist", "cell", "mw", "diff", "fluxnet_default"]
 GAS_TEXT = ["var", "instr"]
 CELL_NUMERIC = ["col"]
 CELL_TEXT = ["var", "instr"]

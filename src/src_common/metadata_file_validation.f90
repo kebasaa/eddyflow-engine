@@ -171,6 +171,77 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
             return
         end if
     end do
+
+    !> Two records competing for one slot.
+    !>
+    !> ApplyDiagnosticRecordColumns maps every diag_72 record onto the single
+    !> Col(E2NumVar + diag72), so a second one overwrote the first and the
+    !> loser vanished with nothing said. That is how a record left behind by an
+    !> edit survives in a project file: it is inert until the day it is the one
+    !> that wins, and then it takes a working diagnostic down with it.
+    !>
+    !> Records naming a column the metadata ignores are already inert and do
+    !> not count - they are what an edit leaves behind, and refusing the
+    !> project for one would put the user back where this check is meant to
+    !> keep them out of.
+    !>
+    !> The key is the collision, not the name. Cell records repeat their
+    !> variable by design - one cell_t per analyser - and are keyed by
+    !> instrument, so only a true duplicate collides. Gas records cannot
+    !> collide at all: their slot is the record index.
+    do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+        if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%diag(i)%col)) cycle
+        do j = i + 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+            if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%diag(j)%col)) cycle
+            if (trim(adjustl(EddyFlowProj%diag(i)%var)) /= &
+                trim(adjustl(EddyFlowProj%diag(j)%var))) cycle
+            passed(1) = .false.
+            passed(27) = .false.
+            faulty_col = EddyFlowProj%diag(j)%col
+            return
+        end do
+    end do
+
+    do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+        if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%cell(i)%col)) cycle
+        do j = i + 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+            if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%cell(j)%col)) cycle
+            if (trim(adjustl(EddyFlowProj%cell(i)%var)) /= &
+                trim(adjustl(EddyFlowProj%cell(j)%var))) cycle
+            !> Same quantity on two analysers is the design, not a duplicate.
+            if (trim(adjustl(EddyFlowProj%cell(i)%instr)) /= &
+                trim(adjustl(EddyFlowProj%cell(j)%instr))) cycle
+            passed(1) = .false.
+            passed(27) = .false.
+            faulty_col = EddyFlowProj%cell(j)%col
+            return
+        end do
+    end do
+
+contains
+
+!> Whether a record's column is one the run will actually read.
+!>
+!> Mirrors ColumnIsSelectable in DefineUsedVariables: a column the metadata
+!> declares `ignore` or `not_numeric` is dropped at import, so a record naming
+!> one selects nothing and cannot be in competition with anything.
+logical function RecordColumnIsLive(Cols, col_num)
+    type(ColType), intent(in) :: Cols(MaxNumCol)
+    integer, intent(in) :: col_num
+    character(32) :: var
+
+    RecordColumnIsLive = .false.
+    if (col_num < 1 .or. col_num > MaxNumCol) return
+
+    var = Cols(col_num)%var
+    call lowercase(var)
+    select case (trim(adjustl(var)))
+        case ('ignore', 'not_numeric')
+            return
+        case default
+            RecordColumnIsLive = .true.
+    end select
+end function RecordColumnIsLive
 end subroutine MetadataFileValidation
 
 !***************************************************************************

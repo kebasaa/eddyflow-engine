@@ -167,19 +167,33 @@ class Vm97IsPerConfiguredGas(unittest.TestCase):
         self.assertIn("lastGas", block)
 
     def test_the_writers_bound_the_chunk_by_the_configured_gas_count(self):
+        """One field per row variable, in the layout's order.
+
+        The bound used to be spelled as a slot range, `u .. ts + <gas count>`,
+        which is only the right set while the layout is the record list. Both
+        writers now walk rowVar - the four anemometric slots then the gas
+        layout - so the width still follows the gas count and the order still
+        matches the header.
+        """
         rp = read("src/src_rp/write_out_fluxnet.f90")
         fcc = read("src/src_fcc/write_out_fluxnet_fcc.f90")
-        self.assertIn(
-            "do var = u, ts + nFluxnetLayoutSlots",
-            rp,
-            "RP must emit one VM97 field per configured gas",
-        )
-        self.assertIn(
-            "do var = u, ts + n_layout_gas",
-            fcc,
-            "FCC re-derives this chunk, so its loop has to match RP's width; "
-            "echoing is not an option here",
-        )
+        for name, src in (("RP", rp), ("FCC", fcc)):
+            self.assertIn(
+                "do jg = 1, nRowVar",
+                src,
+                "%s must emit one VM97 field per row variable" % name,
+            )
+            self.assertIn(
+                "rowVar(nRowVar) = gasSlots(jg)" if name == "FCC"
+                else "rowVar(nRowVar) = FluxnetLayoutSlots(jg)",
+                src,
+                "%s must take the gas order from the shared layout" % name,
+            )
+            self.assertNotIn(
+                "ts + n_layout_gas", src,
+                "%s must not re-derive the layout width from the record "
+                "count" % name,
+            )
 
     def test_the_full_output_writers_agree_on_the_flag_width(self):
         """RP and FCC write the same column; it cannot be two widths.
@@ -585,7 +599,16 @@ class TrailingBlocksArePerConfiguredGas(unittest.TestCase):
                 "%s asks which record is fifth, not which holds the carbon "
                 "dioxide - a project whose first gas is methane then emits "
                 "FC and SC for methane" % name)
-            self.assertIn("== PrimaryCarbonOutSlot()", body)
+            #> The layout puts the designated CO2 at a fixed position, so the
+            #> question is asked of the position rather than resolved back to a
+            #> slot. Resolving it fell back to the historical slot on a site
+            #> that measures no CO2 at all, which named FC for whatever gas
+            #> happened to sit there.
+            self.assertIn("layout_index == FluxnetCarbonPosition", body)
+            self.assertNotIn(
+                "PrimaryCarbonOutSlot", body,
+                "%s must not resolve a slot: the fallback names the wrong gas "
+                "when the site measures no carbon dioxide" % name)
         body = source[source.index("function FluxnetFluxTag"):]
         body = body[: body.index("end function FluxnetFluxTag")]
         self.assertIn("tag = 'FC'", body)

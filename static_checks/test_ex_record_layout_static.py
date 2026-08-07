@@ -214,6 +214,27 @@ def _gas_count_names(text):
             re.MULTILINE | re.IGNORECASE,
         )
     }
+    #: The FLUXNET/essentials layout count, which is what the record's widths
+    #: are actually counted from. The layout and the record list are the same
+    #: length only while the layout is the record list; once a gas can be
+    #: placed somewhere other than its record index - or a required species
+    #: carried with no record at all - the layout is the authority and the
+    #: record count is not. Both spellings still have to be a gas count, which
+    #: is what this check is for.
+    names |= {
+        m.group(1)
+        for m in re.finditer(
+            r"^[ \t]*call\s+FluxnetLayoutGasSlots\s*\(\s*\w+\s*,\s*(\w+)\s*\)",
+            text,
+            re.MULTILINE | re.IGNORECASE,
+        )
+    }
+    #: One level of indirection, so a count may be aliased to a local that
+    #: reads better at its use sites without escaping the check.
+    for _ in range(2):
+        for m in re.finditer(r"^[ \t]*(\w+)\s*=\s*(\w+)\s*$", text, re.MULTILINE):
+            if m.group(2) in names:
+                names.add(m.group(1))
     return names
 
 
@@ -442,6 +463,7 @@ class TheCellWaterBlockCountsEveryHygrometer(unittest.TestCase):
 
     def test_the_scatter_skips_every_hygrometer(self):
         text = _reader_text()
-        body = text[text.index("lEx%Flux0%E_gas(firstGas:lastCfg) = error"):]
-        self.assertIn("GasSlotIsWater(mgas)) cycle", body[:400],
-                      "the scatter must skip water the same way the writer does")
+        body = text[text.index("lEx%Flux0%E_gas(exSlots(jx)) = error"):]
+        self.assertIn("GasSlotIsWater(exSlots(jx))) cycle", body[:400],
+                      "the scatter must skip water the same way the writer "
+                      "does, and walk the layout the writer emitted it in")

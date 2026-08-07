@@ -502,7 +502,7 @@ subroutine ReadMeasurementRecords()
 
     do i = 1, MaxNumGases
         EddyFlowProj%gas(i) = GasRecordType('none', 'none', nint(error), 0, 0, &
-                                            error, error)
+                                            error, error, 0)
         if (i > EddyFlowProj%gas_num) cycle
 
         b = gasRecOriginC + (i - 1) * gasRecLeapC
@@ -517,6 +517,8 @@ subroutine ReadMeasurementRecords()
         if (EPPrjNTagFound(b + 2)) EddyFlowProj%gas(i)%cell  = nint(EPPrjNTags(b + 2)%value)
         if (EPPrjNTagFound(b + 3)) EddyFlowProj%gas(i)%mw    = dble(EPPrjNTags(b + 3)%value)
         if (EPPrjNTagFound(b + 4)) EddyFlowProj%gas(i)%diff  = dble(EPPrjNTags(b + 4)%value)
+        if (EPPrjNTagFound(b + 5)) EddyFlowProj%gas(i)%fluxnet_default = &
+            nint(EPPrjNTags(b + 5)%value)
     end do
 
     !> Carry each record's molecular weight and diffusivity onto its gas slot.

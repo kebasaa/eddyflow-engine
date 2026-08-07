@@ -56,6 +56,14 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> sizes its loops from. Clamped, because a project naming more gases than
     !> the build supports would otherwise index past the layout arrays.
     integer :: n_layout_gas
+    !> The gas layout: which slot each column-family position belongs to,
+    !> taken from the same helper the writers use so the file is read in the
+    !> order it was written rather than in record order.
+    integer :: exSlots(GHGNumVar)
+    integer :: nExSlots
+    integer :: jx
+    integer :: jxi
+    integer :: jxj
     integer :: cec_h2o_valid
     integer :: cec_co2_valid
     integer :: cec_start
@@ -100,7 +108,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: nExScal     !< ts + gas slots
     !> Last configured gas slot, and the implied-do indices of the main read.
     integer :: lastCfg
-    integer :: mgas, mgi, mgj
+    integer :: mgi
     !> Cell water flux arrives for every gas but the water slot, so it cannot
     !> be an implied-do; read into this and scatter afterwards. Separate from
     !> aux, which the skip groups in the same read are using.
@@ -199,7 +207,13 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     lEx%end_time = lEx%end_timestamp(9:10) // ':' // lEx%end_timestamp(11:12)  
 
     !> Widths of the main record, from the gas count the project configures.
-    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
+    !> The gas layout: which slot each column-family position holds, and how
+    !> many there are. Every width below is counted from it rather than from
+    !> the record count, so the record stays readable when the layout is not
+    !> the record list - which is the whole point of taking it from the same
+    !> helper the two writers use.
+    call FluxnetLayoutGasSlots(exSlots, nExSlots)
+    n_layout_gas = nExSlots
     lastCfg = ts + n_layout_gas
     nExGas  = n_layout_gas
     !> How many of the configured gases are water. Two families are sized by
@@ -208,8 +222,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> used to assume exactly one, so a second hygrometer moved the record
     !> width and FCC could no longer read what RP had written.
     nExWater = 0
-    do mgas = firstGas, lastCfg
-        if (GasSlotIsWater(mgas)) nExWater = nExWater + 1
+    do jx = 1, nExSlots
+        if (GasSlotIsWater(exSlots(jx))) nExWater = nExWater + 1
     end do
     nExVar  = 4 + n_layout_gas
     nExScal = 1 + n_layout_gas
@@ -254,36 +268,46 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     read(dataline, *, iostat = read_status) lEx%DOY_start, lEx%DOY_end, lEx%fname, lEx%RP, &
         lEx%nighttime_int, lEx%nr_theor, &
         lEx%nr_files, lEx%nr_after_custom_flags, lEx%nr_after_wdf, &
-        lEx%nr(u), lEx%nr(ts:lastCfg), lEx%nr_w(u), lEx%nr_w(ts:lastCfg), &
+        lEx%nr(u), lEx%nr(ts), (lEx%nr(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%nr_w(u), lEx%nr_w(ts), (lEx%nr_w(exSlots(jx)), jx = 1, nExSlots), &
         aux(1 : 4 + n_layout_gas), & !< Skip final fluxes
         lEx%rand_uncer(u), lEx%rand_uncer(ts), &
-        lEx%rand_uncer_LE, lEx%rand_uncer_ET, lEx%rand_uncer(firstGas:lastCfg), &
-        lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, lEx%Stor%of(firstGas:lastCfg), &
+        lEx%rand_uncer_LE, lEx%rand_uncer_ET, &
+        (lEx%rand_uncer(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, &
+        (lEx%Stor%of(exSlots(jx)), jx = 1, nExSlots), &
         aux(1 : n_layout_gas), & !< Skip advection fluxes
         lEx%unrot_u, lEx%unrot_v, lEx%unrot_w, lEx%rot_u, lEx%rot_v, lEx%rot_w, &
         lEx%WS, lEx%MWS, lEx%WD, lEx%WD_SIGMA, lEx%ustar, lEx%TKE, lEx%L, lEx%zL, lEx%Bowen, lEx%Tstar, &
         lEx%Ts, lEx%Ta, lEx%Pa, lEx%RH, lEx%Va, lEx%RHO%a, lEx%RhoCp, lEx%Cp, &
         lEx%RHO%w, lEx%e, lEx%es, lEx%Q, lEx%VPD, lEx%Tdew, &
         lEx%Pd, lEx%RHO%d, lEx%Vd, lEx%lambda, lEx%sigma, &
-        (lEx%measure_type_int(mgas), lEx%d(mgas), lEx%r(mgas), lEx%chi(mgas), &
-            mgas = firstGas, lastCfg), &
-        (lEx%act_tlag(mgas), lEx%used_tlag(mgas), lEx%nom_tlag(mgas), &
-            lEx%min_tlag(mgas), lEx%max_tlag(mgas), mgas = firstGas, lastCfg), &
-        lEx%pwb_source(firstGas:lastCfg), &
-        lEx%stats%median(u:lastCfg), lEx%stats%Q1(u:lastCfg), lEx%stats%Q3(u:lastCfg), &
-        (lEx%stats%Cov(var, var), var=u, lastCfg), &
-        lEx%stats%Skw(u:lastCfg), lEx%stats%Kur(u:lastCfg), &
-        lEx%stats%Cov(w, u), lEx%stats%Cov(w, ts:lastCfg), &
-        ((lEx%stats%Cov(mgi, mgj), mgj = mgi + 1, lastCfg), &
-            mgi = firstGas, lastCfg - 1), &
+        (lEx%measure_type_int(exSlots(jx)), lEx%d(exSlots(jx)), &
+            lEx%r(exSlots(jx)), lEx%chi(exSlots(jx)), jx = 1, nExSlots), &
+        (lEx%act_tlag(exSlots(jx)), lEx%used_tlag(exSlots(jx)), &
+            lEx%nom_tlag(exSlots(jx)), lEx%min_tlag(exSlots(jx)), &
+            lEx%max_tlag(exSlots(jx)), jx = 1, nExSlots), &
+        (lEx%pwb_source(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%stats%median(u:ts), (lEx%stats%median(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%stats%Q1(u:ts), (lEx%stats%Q1(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%stats%Q3(u:ts), (lEx%stats%Q3(exSlots(jx)), jx = 1, nExSlots), &
+        (lEx%stats%Cov(var, var), var = u, ts), &
+        (lEx%stats%Cov(exSlots(jx), exSlots(jx)), jx = 1, nExSlots), &
+        lEx%stats%Skw(u:ts), (lEx%stats%Skw(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%stats%Kur(u:ts), (lEx%stats%Kur(exSlots(jx)), jx = 1, nExSlots), &
+        lEx%stats%Cov(w, u), lEx%stats%Cov(w, ts), &
+        (lEx%stats%Cov(w, exSlots(jx)), jx = 1, nExSlots), &
+        ((lEx%stats%Cov(exSlots(jxi), exSlots(jxj)), jxj = jxi + 1, nExSlots), &
+            jxi = 1, nExSlots - 1), &
         aux(1:8), & !< Skip footprint
         lEx%Flux0%ustar, lEx%Flux0%L, lEx%Flux0%zL, &
         lEx%Flux0%Tau, lEx%Flux0%H, lEx%Flux0%LE, lEx%Flux0%ET, &
-        lEx%Flux0%gas(firstGas:lastCfg), &
+        (lEx%Flux0%gas(exSlots(jx)), jx = 1, nExSlots), &
         aux(1 : 2 * (4 + n_layout_gas)), & !< Skip fluxes level 1 and 2
-        lEx%Tcell, lEx%Pcell, lEx%Vcell(firstGas:lastCfg), &
-        lEx%Tcell_at(firstGas:lastCfg), lEx%Pcell_at(firstGas:lastCfg), &
-        lEx%cov_w_pcell(firstGas:lastCfg), &
+        lEx%Tcell, lEx%Pcell, (lEx%Vcell(exSlots(jx)), jx = 1, nExSlots), &
+        (lEx%Tcell_at(exSlots(jx)), jx = 1, nExSlots), &
+        (lEx%Pcell_at(exSlots(jx)), jx = 1, nExSlots), &
+        (lEx%cov_w_pcell(exSlots(jx)), jx = 1, nExSlots), &
         !> One field per gas that is *not* a hygrometer, which is what
         !> WriteOutFluxnet emits - it cycles on GasSlotIsWater, so it skips
         !> every water record, not one. Reading `n_layout_gas - 1` assumed
@@ -293,12 +317,12 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         !> above already counts this correctly as nExGas - nExWater; only the
         !> read did not.
         e_gas_buf(1 : max(nExGas - nExWater, 0)), &
-        lEx%Flux0%Hi_gas(firstGas:lastCfg), &
+        (lEx%Flux0%Hi_gas(exSlots(jx)), jx = 1, nExSlots), &
         lEx%Burba%h_bot, lEx%Burba%h_top, lEx%Burba%h_spar, &
         lEx%Mul7700%A, lEx%Mul7700%B, lEx%Mul7700%C, &
         aux(1 : 4 + n_layout_gas), & !< Skip SCFs
         lEx%degT%cov, lEx%degT%dcov(1:9), &
-        lEx%spikes(u:lastCfg)
+        lEx%spikes(u:ts), (lEx%spikes(exSlots(jx)), jx = 1, nExSlots)
     if (read_status /= 0) then
         call InvalidateRecord()
         return
@@ -311,12 +335,14 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> Scatter the cell water flux back onto its slots. The row carries one
     !> field per gas except the water slot, which no implied-do can express,
     !> so it was read into a buffer above.
-    lEx%Flux0%E_gas(firstGas:lastCfg) = error
+    do jx = 1, nExSlots
+        lEx%Flux0%E_gas(exSlots(jx)) = error
+    end do
     mgi = 0
-    do mgas = firstGas, lastCfg
-        if (GasSlotIsWater(mgas)) cycle
+    do jx = 1, nExSlots
+        if (GasSlotIsWater(exSlots(jx))) cycle
         mgi = mgi + 1
-        lEx%Flux0%E_gas(mgas) = e_gas_buf(mgi)
+        lEx%Flux0%E_gas(exSlots(jx)) = e_gas_buf(mgi)
     end do
 
     ix = strCharIndex(dataline, ',', nMainFields)
@@ -328,7 +354,10 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
 
 
     !> Copy NREX chunk
-    nNrexFields = 3 + 4 + 4 + 3 * min(EddyFlowProj%gas_num, MaxNumGases)
+    !> Three per-gas blocks, sized from the layout the writer emitted them
+    !> from rather than from the record count - the two are the same length
+    !> only while the layout is the record list.
+    nNrexFields = 3 + 4 + 4 + 3 * nExSlots
     ix = strCharIndex(dataline, ',', nNrexFields)
     if (ix <= 0) then
         call InvalidateRecord()
@@ -342,9 +371,9 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> configured gas. Reading a fixed u:gas4 would consume four gas fields
     !> whatever the project holds - too few for five gases, and for three it
     !> would silently swallow the field that follows.
-    n_layout_gas = min(EddyFlowProj%gas_num, MaxNumGases)
+    n_layout_gas = nExSlots
     read(dataline, *, iostat = read_status) vm97flags(u:ts), &
-        vm97flags(firstGas : firstGas + n_layout_gas - 1), &
+        (vm97flags(exSlots(jx)), jx = 1, nExSlots), &
         lEx%vm_tlag_hf, lEx%vm_tlag_sf, lEx%vm_aoa_hf, lEx%vm_nshw_hf
     if (read_status /= 0) then
         call InvalidateRecord()
@@ -374,7 +403,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             lEx%vm_flags(flag)(3:3) = vm97flags(v)(flag + 1: flag + 1)
             lEx%vm_flags(flag)(4:4) = vm97flags(w)(flag + 1: flag + 1)
             lEx%vm_flags(flag)(5:5) = vm97flags(ts)(flag + 1: flag + 1)
-            do gas = firstGas, firstGas + n_layout_gas - 1
+            do jx = 1, nExSlots
+                gas = exSlots(jx)
                 if (gas > lastGas) exit
                 if (vm97flags(gas)(1:1) == '8') then
                     lEx%vm_flags(flag)(gas + 1 : gas + 1) = vm97flags(gas)(flag + 1: flag + 1)
@@ -397,7 +427,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
 
     read(dataline, *, iostat = read_status) &
         lEx%TAU_SS, lEx%H_SS, &
-        lEx%F_SS(firstGas : firstGas + n_layout_gas - 1), &
+        (lEx%F_SS(exSlots(jx)), jx = 1, nExSlots), &
         lEx%U_ITC, lEx%W_ITC, lEx%TS_ITC
     if (read_status /= 0) then
         call InvalidateRecord()
@@ -525,8 +555,11 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> to run after that block and clobbered slots 5-8 back to converted
     !> values; a conversion pass placed there instead would scale that block's
     !> SI values a second time.
-    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
-        gas = firstGas + i - 1
+    !> In layout order: WriteOutFluxnet emits this block walking the layout,
+    !> so reading it by record index would attach one analyser's metadata to
+    !> another gas as soon as the two orders differ.
+    do jx = 1, nExSlots
+        gas = exSlots(jx)
         if (gas > lastGas) exit
         if (GasSlotIsWater(gas)) then
             read(dataline, *, iostat = read_status) &

@@ -64,12 +64,26 @@ class WaterIsResolvedNotAssumed(unittest.TestCase):
                 "reference (E2Col(gas)%%moist_ref)" % path)
 
     def test_the_resolver_is_record_derived(self):
+        """Water is resolved from the records, and delegates that to one place.
+
+        The scan moved into DesignatedGasSlot so the record designated as the
+        site's water is the same one the FLUXNET naming calls H2O; resolving
+        them separately would let LE come from one hygrometer and the bare H2O
+        column from the other.
+        """
         source = read("src/src_common/gas_slot_resolution.f90")
         body = source[source.index("integer function PrimaryWaterSlot"):]
         body = body[:body.index("end function PrimaryWaterSlot")]
-        self.assertIn("GasSlotIsWater(gas)", body)
+        self.assertIn("DesignatedGasSlot('H2O')", body)
+
+        body = source[source.index("integer function DesignatedGasSlot"):]
+        body = body[:body.index("end function DesignatedGasSlot")]
         self.assertIn("do gas = firstGas, lastGas", body)
-        self.assertIn("PrimaryWaterSlot = 0", body,
+        self.assertIn("EddyFlowProj%gas(rec)%var", body)
+        self.assertIn("EddyFlowProj%gas(rec)%col <= 0", body,
+                      "a record naming no column is not a measurement and "
+                      "cannot be designated")
+        self.assertIn("DesignatedGasSlot = 0", body,
                       "a project with no water must resolve to 0, so callers "
                       "can report the quantity as not performed rather than "
                       "computing it from whatever occupies the slot")

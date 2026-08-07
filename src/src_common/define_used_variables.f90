@@ -67,15 +67,60 @@ subroutine DefineUsedVariables(LocCol)
     end do
 
     LocCol%useit = .false.
+
+    !> Re-resolve the diagnostic slots now that the metadata is known.
+    !>
+    !> ApplyDiagnosticRecordColumns runs from ReadIniFile, before any metadata
+    !> is read, so it cannot tell that a record names a column the metadata
+    !> ignores - and it is last-writer-wins, so such a record can take the slot
+    !> from a usable one. Redoing the mapping here, with the ignored records
+    !> left out, is what makes the record that survives the one that can
+    !> actually be read.
+    !>
+    !> Clearing first matters: a slot whose only record names an ignored column
+    !> has to come back empty, not keep what the pre-metadata pass left in it,
+    !> or the presence test below reports a diagnostic the file does not carry.
+    !>
+    !> Records only. Express mode fills these slots directly, with none behind
+    !> them, and must not be undone here.
+    if (EddyFlowProj%diag_num > 0) then
+        do i = E2NumVar + diag72, E2NumVar + diagAnem
+            if (.not. ColumnIsSelectable(EddyFlowProj%Col(i))) &
+                EddyFlowProj%Col(i) = nint(error)
+        end do
+        do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+            if (.not. ColumnIsSelectable(EddyFlowProj%diag(i)%col)) cycle
+            select case (trim(adjustl(EddyFlowProj%diag(i)%var)))
+                case ('diag_72')
+                    EddyFlowProj%Col(E2NumVar + diag72)   = EddyFlowProj%diag(i)%col
+                case ('diag_75')
+                    EddyFlowProj%Col(E2NumVar + diag75)   = EddyFlowProj%diag(i)%col
+                case ('diag_77')
+                    EddyFlowProj%Col(E2NumVar + diag77)   = EddyFlowProj%diag(i)%col
+                case ('diag_anem')
+                    EddyFlowProj%Col(E2NumVar + diagAnem) = EddyFlowProj%diag(i)%col
+            end select
+        end do
+    end if
+
     !> Information in EddyFlow project file (user explicitly selects which
     !> variables are to be used)
-    where (EddyFlowProj%Col(firstGas:E2NumVar) > 0)
-        LocCol(EddyFlowProj%Col(firstGas:E2NumVar))%useit = .true.
-    endwhere
+    !>
+    !> Through ColumnIsSelectable, like the record loops below: the slot array
+    !> is filled from those same records before any metadata exists, so a slot
+    !> can hold a column the metadata turns out to ignore. That happens when
+    !> the ignored record is the one that wins the last-writer-wins fight in
+    !> ApplyDiagnosticRecordColumns - guarding only the loops would leave this
+    !> path marking the column and the run still dying on it.
+    do i = firstGas, E2NumVar
+        if (ColumnIsSelectable(EddyFlowProj%Col(i))) &
+            LocCol(EddyFlowProj%Col(i))%useit = .true.
+    end do
 
-    where (EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem) > 0)
-        LocCol(EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem))%useit = .true.
-    endwhere
+    do i = E2NumVar + diag72, E2NumVar + diagAnem
+        if (ColumnIsSelectable(EddyFlowProj%Col(i))) &
+            LocCol(EddyFlowProj%Col(i))%useit = .true.
+    end do
 
     !> Columns named by gas/cell/diagnostic records must be marked here too.
     !> This runs while LocCol is still indexed by .metadata column number, and
@@ -83,18 +128,15 @@ subroutine DefineUsedVariables(LocCol)
     !> unmarked never reaches DefineE2Set, so the record silently selects
     !> nothing.
     do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
-        if (EddyFlowProj%gas(i)%col > 0 .and. &
-            EddyFlowProj%gas(i)%col <= MaxNumCol) &
+        if (ColumnIsSelectable(EddyFlowProj%gas(i)%col)) &
             LocCol(EddyFlowProj%gas(i)%col)%useit = .true.
     end do
     do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
-        if (EddyFlowProj%cell(i)%col > 0 .and. &
-            EddyFlowProj%cell(i)%col <= MaxNumCol) &
+        if (ColumnIsSelectable(EddyFlowProj%cell(i)%col)) &
             LocCol(EddyFlowProj%cell(i)%col)%useit = .true.
     end do
     do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
-        if (EddyFlowProj%diag(i)%col > 0 .and. &
-            EddyFlowProj%diag(i)%col <= MaxNumCol) &
+        if (ColumnIsSelectable(EddyFlowProj%diag(i)%col)) &
             LocCol(EddyFlowProj%diag(i)%col)%useit = .true.
     end do
 
@@ -198,6 +240,35 @@ subroutine DefineUsedVariables(LocCol)
     end if
 
 contains
+
+!> Whether the metadata permits a column to be selected at all.
+!>
+!> `ignore` and `not_numeric` are how the metadata says a column holds nothing
+!> usable, and the import drops such columns outright - so a project record
+!> naming one could never resolve to data whatever we do here. Honouring that
+!> is what lets a record left behind by an edit be simply inert, instead of
+!> marking a column that MetadataFileValidation then rejects and the run dies
+!> on. The metadata is the authority on what a column is; the project only
+!> says which columns it wants.
+!>
+!> Reads LocCol from the host rather than taking it again, so there is one
+!> array in play and no chance of asking about a different one.
+logical function ColumnIsSelectable(col_num)
+    integer, intent(in) :: col_num
+    character(32) :: var
+
+    ColumnIsSelectable = .false.
+    if (col_num < 1 .or. col_num > MaxNumCol) return
+
+    var = LocCol(col_num)%var
+    call lowercase(var)
+    select case (trim(adjustl(var)))
+        case ('ignore', 'not_numeric')
+            return
+        case default
+            ColumnIsSelectable = .true.
+    end select
+end function ColumnIsSelectable
 
 logical function IsCustomOutputColumn(col)
     type(ColType), intent(in) :: col

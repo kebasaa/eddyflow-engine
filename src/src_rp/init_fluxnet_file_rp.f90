@@ -572,6 +572,8 @@ subroutine SelectFluxnetGasSlots()
     integer :: n
     integer :: m
     integer :: ordinal
+    integer :: designated
+    integer :: rec
     character(32) :: tag
     character(8) :: ord
     !> Species names before numbering. Held apart from FluxnetLayoutTags
@@ -591,32 +593,87 @@ subroutine SelectFluxnetGasSlots()
     !> Two passes, because whether a species needs a number depends on how many
     !> times it appears in total and the first occurrence cannot know that yet.
     !>
-    !> A species measured once keeps its bare name - COS, N2O. One measured
-    !> more than once has *every* occurrence numbered: H2O_1 and H2O_2, not
-    !> H2O and H2O_2. Numbering only the later ones leaves the first column
-    !> reading as the site's single measurement of that gas, which is precisely
-    !> what it is not, and makes the pair impossible to treat symmetrically.
+    !> A species measured once keeps its bare name - COS, N2O.
+    !>
+    !> Measured more than once, the numbering depends on whether FLUXNET
+    !> requires the species. CO2, H2O and CH4 are required variables, so the
+    !> standard spelling has to be present: the designated record is CO2, and
+    !> the others are CO2_2, CO2_3. Everything else numbers every occurrence -
+    !> COS_1 and COS_2, not COS and COS_2 - because with no standard name to
+    !> honour, leaving the first bare would read as the site's single
+    !> measurement of that gas, which is precisely what it is not.
+    !>
+    !> Which record is designated is the project's to state, through
+    !> gas_<i>_fluxnet_default; unflagged it is the first of the species. The
+    !> same designation decides FC and LE, via DesignatedGasSlot.
     if (EddyFlowProj%gas_num > 0) then
-        do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
-            slot = firstGas + k - 1
-            if (slot > lastGas) exit
-            nFluxnetLayoutSlots = nFluxnetLayoutSlots + 1
-            FluxnetLayoutSlots(nFluxnetLayoutSlots) = slot
-            tag = EddyFlowProj%gas(k)%var
+        !> The order itself comes from one place, shared with the row writer,
+        !> FCC's rewriter and ReadExRecord. Deriving it here as well is how a
+        !> file gets written in one order and read in another.
+        call FluxnetLayoutGasSlots(FluxnetLayoutSlots, nFluxnetLayoutSlots)
+        do n = 1, nFluxnetLayoutSlots
+            !> Which record a position holds, rather than assuming the two
+            !> run together - they need not.
+            rec = FluxnetLayoutSlots(n) - firstGas + 1
+            call clearstr(tag)
+            if (rec >= 1 .and. rec <= min(EddyFlowProj%gas_num, MaxNumGases)) &
+                tag = EddyFlowProj%gas(rec)%var
             call uppercase(tag)
+            !> A required variable the project names no record for is carried
+            !> on a slot past the records, so there is nothing to read its
+            !> species from - the layout put it there precisely because the
+            !> standard needs the column, and the layout knows which one.
+            if (len_trim(tag) == 0 .and. n <= size(FluxnetRequiredOrder)) &
+                tag = FluxnetRequiredOrder(n)
             if (len_trim(tag) == 0) tag = 'GAS'
-            bareTag(nFluxnetLayoutSlots) = tag
+            bareTag(n) = tag
         end do
 
         do n = 1, nFluxnetLayoutSlots
             dup = 0
-            ordinal = 0
+            do m = 1, nFluxnetLayoutSlots
+                if (trim(bareTag(m)) == trim(bareTag(n))) dup = dup + 1
+            end do
+
+            !> Which occurrence of this species is the designated one. Layout
+            !> position and record index are the same thing here, so the flag
+            !> can be read straight off the record.
+            designated = 0
             do m = 1, nFluxnetLayoutSlots
                 if (trim(bareTag(m)) /= trim(bareTag(n))) cycle
-                dup = dup + 1
-                if (m <= n) ordinal = ordinal + 1
+                if (designated == 0) designated = m
+                rec = FluxnetLayoutSlots(m) - firstGas + 1
+                if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) cycle
+                if (EddyFlowProj%gas(rec)%fluxnet_default == 1) then
+                    designated = m
+                    exit
+                end if
             end do
-            if (dup > 1) then
+
+            !> Rank within the species: the designated record takes 1, the
+            !> rest follow in record order. Ranking by position alone would
+            !> give the designated record whatever number its position implied.
+            if (n == designated) then
+                ordinal = 1
+            else
+                ordinal = 1
+                do m = 1, nFluxnetLayoutSlots
+                    if (trim(bareTag(m)) /= trim(bareTag(n))) cycle
+                    if (m == designated) cycle
+                    ordinal = ordinal + 1
+                    if (m == n) exit
+                end do
+            end if
+
+            if (FluxnetRequiredSpecies(bareTag(n))) then
+                !> Rank one is the standard name itself, unnumbered.
+                if (ordinal == 1) then
+                    FluxnetLayoutTags(n) = bareTag(n)
+                else
+                    write(ord, '(i0)') ordinal
+                    FluxnetLayoutTags(n) = trim(bareTag(n)) // '_' // trim(ord)
+                end if
+            else if (dup > 1) then
                 write(ord, '(i0)') ordinal
                 FluxnetLayoutTags(n) = trim(bareTag(n)) // '_' // trim(ord)
             else
@@ -697,12 +754,18 @@ end subroutine AddVariableFamily
 !> Water is LE here and FH2O everywhere else - the column counts the records
 !> behind the latent-heat flux. One of three per-gas naming conventions in this
 !> row; they cannot be collapsed without renaming shipped columns.
+!>
+!> Position, not slot. The layout puts the site's water at position two by
+!> construction, so asking it there is asking the same question the column
+!> name answers. Resolved through PrimaryWaterOutSlot instead, a site with no
+!> hygrometer at all fell back to the historical second slot and pinned LE on
+!> whichever gas happened to occupy it - a wrong name, and a duplicate of one
+!> already in the row.
 function FluxnetNrwTag(layout_index) result(tag)
     integer, intent(in) :: layout_index
     character(32) :: tag
-    integer, external :: PrimaryWaterOutSlot
 
-    if (FluxnetLayoutSlots(layout_index) == PrimaryWaterOutSlot()) then
+    if (layout_index == FluxnetWaterPosition) then
         tag = 'LE'
     else
         tag = FluxnetFluxTag(layout_index)
@@ -716,12 +779,11 @@ end function FluxnetNrwTag
 function FluxnetStorTag(layout_index) result(tag)
     integer, intent(in) :: layout_index
     character(32) :: tag
-    integer, external :: PrimaryCarbonOutSlot
 
-    !> Which record holds the CO2, not which record is fifth. Asked as
+    !> Which position holds the CO2, not which record is fifth. Asked as
     !> `== co2` this named slot five, so a project whose first gas is methane
     !> emitted SC for methane and SCO2 for its carbon dioxide.
-    if (FluxnetLayoutSlots(layout_index) == PrimaryCarbonOutSlot()) then
+    if (layout_index == FluxnetCarbonPosition) then
         tag = 'SC'
     else
         tag = 'S' // trim(FluxnetLayoutTags(layout_index))
@@ -767,16 +829,32 @@ end subroutine AddStatFamily
 function FluxnetFluxTag(layout_index) result(tag)
     integer, intent(in) :: layout_index
     character(32) :: tag
-    integer, external :: PrimaryCarbonOutSlot
 
-    !> Which record holds the CO2, not which record is fifth. The mirror of
-    !> FluxnetNrwTag just above, which already resolves its water this way.
-    if (FluxnetLayoutSlots(layout_index) == PrimaryCarbonOutSlot()) then
+    !> Which position holds the CO2, not which record is fifth. The mirror of
+    !> FluxnetNrwTag just above, which resolves its water the same way.
+    if (layout_index == FluxnetCarbonPosition) then
         tag = 'FC'
     else
         tag = 'F' // trim(FluxnetLayoutTags(layout_index))
     end if
 end function FluxnetFluxTag
+
+!> Whether FLUXNET requires a variable for this species.
+!>
+!> FP-In defines CO2, H2O and CH4 columns whatever a site measures, so their
+!> standard spelling has to appear unnumbered even when the site carries two of
+!> them. No other species is named by the standard, so nothing else earns the
+!> bare form by right - it only keeps it by being measured once.
+!>
+!> The tag arrives already uppercased by the layout pass.
+logical function FluxnetRequiredSpecies(tag)
+    character(*), intent(in) :: tag
+
+    select case (trim(adjustl(tag)))
+        case ('CO2', 'H2O', 'CH4'); FluxnetRequiredSpecies = .true.
+        case default;               FluxnetRequiredSpecies = .false.
+    end select
+end function FluxnetRequiredSpecies
 
 function SanitizeFluxnetToken(raw_token) result(clean_token)
     character(*), intent(in) :: raw_token

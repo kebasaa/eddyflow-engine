@@ -66,3 +66,4 @@ src/src_rp/deprecated
 
 # gfortran's fallback output; see the note in the GUI repo's .gitignore.
 fort.*
+/fluxnet_example

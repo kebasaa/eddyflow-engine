@@ -45,6 +45,7 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     !> local variables
     integer :: open_status
     integer :: j
+    integer :: k
     integer :: gas
     integer :: field_start
     integer :: field_end
@@ -169,11 +170,23 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
             !> absent from the full output no matter how wide the loops were.
             if (lEx%WS /= error) fcc_var_present(u:w) = .true.
             if (lEx%Ts /= error) fcc_var_present(ts)  = .true.
-            !> Only as far as the project configures. An unconfigured slot's
-            !> measure type is not the error code either, so running to lastGas
-            !> marks all 64 present and emits a column family per empty slot.
-            do gas = firstGas, firstGas + min(EddyFlowProj%gas_num, MaxNumGases) - 1
-                fcc_var_present(gas) = lEx%measure_type_int(gas) /= ierror .or. fcc_var_present(gas)
+            !> A gas is present because the project names a column for it, not
+            !> because this particular record carried a value. Asking the
+            !> essentials record instead - its measure type is the error code
+            !> whenever the gas was filtered away - made a gas that lost its
+            !> data lose its columns as well, so COS and a second analyser's
+            !> CO2 and H2O were absent from the full output altogether rather
+            !> than present and empty. A filtered gas is written as the error
+            !> label; a missing column is not the way to say "no data".
+            !>
+            !> Only as far as the project configures, and only records that
+            !> name a column: an unconfigured slot would otherwise emit a
+            !> column family per empty slot, and a record with no column - a
+            !> species the site does not measure - has nothing to report here.
+            do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+                gas = firstGas + k - 1
+                if (gas > lastGas) exit
+                if (EddyFlowProj%gas(k)%col > 0) fcc_var_present(gas) = .true.
             end do
                 
             !> Determine whether LI-COR's flags are available

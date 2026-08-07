@@ -638,6 +638,10 @@ module m_typedef
         integer :: cell             !< index into the cell records; 0 = auto
         real(kind = dbl) :: mw      !< molecular weight override; error = default
         real(kind = dbl) :: diff    !< diffusivity override; error = default
+        integer :: fluxnet_default  !< 1 = this record carries the bare FLUXNET
+                                    !< name for its species; 0 = numbered.
+                                    !< Unset anywhere, the lowest record index
+                                    !< of a species is designated.
     end type GasRecordType
 
     !> A cell temperature/pressure or diagnostic measurement, tied to the
