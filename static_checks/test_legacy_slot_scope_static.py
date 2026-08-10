@@ -10,11 +10,20 @@ first. The same four numbers survive as `histGas1..histGas4`, offsets from
 
 Where they legitimately remain:
 
-  on-disk aliases       LegacySpectralVarTag, HistoricGasSlot,
-                        TimelagOptGasLabel and GasSlotFromDynMDTag accept the
-                        four historical spellings so files written before the
-                        records keep being readable. These only ever *widen*
-                        what a reader accepts.
+  on-disk aliases       LegacySpectralVarTag, HistoricGasSlot and
+                        GasSlotFromDynMDTag accept the four historical
+                        spellings so files written before the records keep
+                        being readable. These only ever *widen* what a reader
+                        accepts.
+
+                        TimelagOptGasLabel was on this list and did not belong
+                        there. It was not an alias a reader also accepted: it
+                        was the name the *writer* used, so the time-lag
+                        optimisation summary headed its blocks co2/h2o/ch4 by
+                        slot position. On records ordered COS, CO2, H2O that
+                        named every block for the wrong species. An alias that
+                        reaches the writer is a rename, not a widening, and
+                        this is the line the distinction is drawn on.
 
   fallbacks             PrimaryWaterOutSlot and PrimaryCarbonOutSlot fall back
                         to the historical slot when a project describes no
@@ -77,7 +86,9 @@ ALLOWED = {
     "src/src_common/m_common_global_var.f90": 4,
     "src/src_common/m_typedef.f90": 4,
     "src/src_fcc/cospectra_sorting_and_averaging.f90": 1,
-    "src/src_rp/pwb_timelag_handle.f90": 4,
+    #> Was 4, for TimelagOptGasLabel's select case. Zero now: the summary is
+    #> named from the record like every other file this module writes.
+    "src/src_rp/pwb_timelag_handle.f90": 0,
 }
 
 

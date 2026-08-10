@@ -158,16 +158,16 @@ class PwbTimelagStaticTests(unittest.TestCase):
         a provenance line exists to record.
 
         The buffer has to grow with the label. 'inferred_from_' is fourteen
-        characters and TimelagOptGasLabel returns up to thirty-two, so
-        character(32) would truncate a record-derived donor name, and a
-        truncated provenance string still parses as a valid one.
+        characters and GasLabel returns up to thirty-two, so character(32)
+        would truncate a record-derived donor name, and a truncated provenance
+        string still parses as a valid one.
         """
         writer_source = read("src/src_rp/writeout_timelag_optimization.f90")
 
         self.assertIn("character(64) :: source", writer_source)
         self.assertNotIn("character(16) :: source", writer_source)
         self.assertIn(
-            "source = 'inferred_from_' // trim(TimelagOptGasLabel(PwbSummarySource(gas)))",
+            "source = 'inferred_from_' // trim(GasLabel(PwbSummarySource(gas)))",
             writer_source,
             "the donor must be named from its own record",
         )
@@ -178,6 +178,82 @@ class PwbTimelagStaticTests(unittest.TestCase):
                 f"{label} is back as a literal; the three-case chain cannot "
                 "name a donor outside it",
             )
+
+
+class TheOptimisationSummaryNamesSpeciesNotSlots(unittest.TestCase):
+    """One naming for a gas, and it comes from the record.
+
+    `TimelagOptGasLabel` spelled slots five to eight co2/h2o/ch4/4th_gas by
+    position and deferred to `GasLabel` only past the fourth. It was kept so an
+    existing optimisation file would still match, and that cost the file its
+    meaning: on a project whose records are ordered COS, CO2, H2O it headed the
+    COS block 'co2', the CO2 block 'h2o', and wrote a 'ch4' block for a project
+    measuring no methane.
+
+    Writer and reader shared it, so a single project round-tripped and no flux
+    moved. The damage is that the name reads as a species and means a slot: a
+    user reordering their records between two runs gets a cached window
+    restored onto the wrong gas, silently. `GasLabel` directly above it already
+    carries this exact note for the PWB cache - fixing one file and not the
+    other left the two disagreeing about what a gas is called.
+    """
+
+    HANDLE = "src/src_rp/pwb_timelag_handle.f90"
+    WRITER = "src/src_rp/writeout_timelag_optimization.f90"
+    READER = "src/src_rp/read_timelag_opt_file.f90"
+
+    def code(self, path):
+        """Source with comment-only lines dropped.
+
+        The removal is documented in prose where the function stood, so a
+        naive search matches the explanation rather than a live call.
+        """
+        return "\n".join(
+            ln for ln in read(path).splitlines() if not ln.lstrip().startswith("!")
+        )
+
+    def test_the_positional_helper_is_gone(self):
+        self.assertNotIn(
+            "TimelagOptGasLabel",
+            self.code(self.HANDLE),
+            "a second naming for the same slots is what this removed",
+        )
+
+    def test_no_historical_spelling_is_pinned_to_a_slot(self):
+        body = self.code(self.HANDLE)
+        for slot in ("histGas1", "histGas2", "histGas3", "histGas4"):
+            self.assertNotIn(
+                f"case ({slot})",
+                body,
+                f"{slot} is being given a name again; a label selected by "
+                "slot position says species and means position",
+            )
+        self.assertNotIn(
+            "'4th_gas'",
+            body,
+            "'4th_gas' is the spelling that existed nowhere else in the tree",
+        )
+
+    def test_writer_and_reader_both_name_from_the_record(self):
+        for path in (self.WRITER, self.READER):
+            src = self.code(path)
+            self.assertIn(
+                "use m_pwb_timelag, only: GasLabel",
+                src,
+                f"{path} must take the record-derived label",
+            )
+            self.assertIn(
+                "GasLabel(gas)",
+                src,
+                f"{path} must name each block from its own record",
+            )
+
+    def test_gaslabel_still_resolves_through_the_records(self):
+        """The helper everything now depends on. If this stops asking the
+        records, every file named from it goes back to meaning positions."""
+        body = self.code(self.HANDLE)
+        self.assertIn("call SpectralVarTags(tags)", body)
+        self.assertIn("if (len_trim(tags(gas)) > 0) GasLabel = tags(gas)", body)
 
 
 if __name__ == "__main__":

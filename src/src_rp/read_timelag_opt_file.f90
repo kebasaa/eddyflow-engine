@@ -35,7 +35,7 @@
 !***************************************************************************
 subroutine ReadTimelagOptFile(ncls)
     use m_rp_global_var
-    use m_pwb_timelag, only: TimelagOptGasLabel
+    use m_pwb_timelag, only: GasLabel
     implicit none
     integer, external :: PrimaryWaterSlot
     !> in/out variables
@@ -60,8 +60,8 @@ subroutine ReadTimelagOptFile(ncls)
             read(udf, '(a)', iostat = read_status) strg
             if (read_status /= 0) exit
 
-            !> One lookup per configured gas, under the same names
-            !> TimelagOptGasLabel gave the writer. These were four hand-written
+            !> One lookup per configured gas, under the same record-derived
+            !> names GasLabel gave the writer. These were four hand-written
             !> triples, so a gas past the fourth was written by the optimiser
             !> and then never read back - its window was lost between runs and
             !> it fell to its nominal one without saying so.
@@ -72,7 +72,7 @@ subroutine ReadTimelagOptFile(ncls)
             !> reads a file written by the previous, narrower format.
             matched = .false.
             do gas = firstGas, lastGas
-                gname = TimelagOptGasLabel(gas)
+                gname = GasLabel(gas)
                 if (index(strg, 'Median_' // trim(gname) // '_timelag_[s]') /= 0) then
                     read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%def
                     !> A plain median row for the PRIMARY means it was not

@@ -36,7 +36,6 @@ module m_pwb_timelag
     implicit none
     private
     public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, WritePwbDiagnostic, GasLabel
-    public :: TimelagOptGasLabel
     public :: InitPwbTimelagCache, ReadPwbTimelagCache, WritePwbTimelagCache
     public :: LookupPwbTimelagCache, StorePwbTimelagCache, SetPwbPeriodTimestamp
     public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
@@ -1247,28 +1246,22 @@ character(32) function GasLabel(gas)
     if (len_trim(tags(gas)) > 0) GasLabel = tags(gas)
 end function GasLabel
 
-!***************************************************************************
-!> Name a gas carries in the time-lag optimisation summary.
+!> TimelagOptGasLabel stood here: a second naming for the same slots, which
+!> spelled the first four co2/h2o/ch4/4th_gas by *position* and deferred to
+!> GasLabel only past the fourth. It was kept so an existing optimisation file
+!> would still match, and it cost the file its meaning: on a project whose
+!> records are ordered COS, CO2, H2O it headed the COS block 'co2', the CO2
+!> block 'h2o', and wrote a 'ch4' block for a project that measures no methane.
 !>
-!> The summary is read back by matching on these strings, so the four
-!> historical slots keep the spellings they have always had - including
-!> `4th_gas`, which is spelled differently here than in any other file.
-!> Renaming them would orphan every optimisation file a user already has.
-!> Past the fourth there is no historical spelling to preserve, so the
-!> record-derived label is used. Writer and reader both call this, so a gas
-!> cannot be written under one name and looked up under another.
-!***************************************************************************
-character(32) function TimelagOptGasLabel(gas)
-    integer, intent(in) :: gas
-
-    select case (gas)
-        case (histGas1);  TimelagOptGasLabel = 'co2'
-        case (histGas2);  TimelagOptGasLabel = 'h2o'
-        case (histGas3);  TimelagOptGasLabel = 'ch4'
-        case (histGas4); TimelagOptGasLabel = '4th_gas'
-        case default
-            TimelagOptGasLabel = GasLabel(gas)
-    end select
-end function TimelagOptGasLabel
+!> Writer and reader shared it, so a single project still round-tripped and no
+!> flux moved - but the name means "slot five" while every reader takes it for
+!> a species, and reordering records between two runs therefore restored a
+!> cached window onto the wrong gas. That is the defect GasLabel above already
+!> carries the note for; having fixed it for the cache and not for the summary
+!> left the two files disagreeing about what a gas is called.
+!>
+!> Everything calls GasLabel now. For records in the historical order only the
+!> fourth slot's spelling changes, so an existing file keeps its CO2, H2O and
+!> CH4 windows; a fourth gas's window is read as absent once and re-optimised.
 
 end module m_pwb_timelag

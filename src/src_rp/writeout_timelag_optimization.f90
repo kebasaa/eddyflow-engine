@@ -34,7 +34,7 @@
 !***************************************************************************
 subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     use m_rp_global_var
-    use m_pwb_timelag, only: TimelagOptGasLabel
+    use m_pwb_timelag, only: GasLabel
     implicit none
     !> in/out variables
     integer, intent(in) :: M
@@ -75,10 +75,11 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     write(uto, '(a, a)') 'End_of_timelag_optimization_period: ', TOSetup%end_date
     write(uto, '(a)')
 
-    !> One block per configured gas, named from TimelagOptGasLabel so the
-    !> reader looks each one up under the name it was written with. These were
-    !> four hand-written blocks, so a gas past the fourth had no entry at all
-    !> and its optimised window was lost between runs.
+    !> One block per configured gas, named from its record so the reader looks
+    !> each one up under the name it was written with, and so the name says
+    !> which species the block is about. These were four hand-written blocks,
+    !> so a gas past the fourth had no entry at all and its optimised window
+    !> was lost between runs.
     !>
     !> A gas the optimiser found no determinations for is written as the error
     !> code, not as 0.00. Zero is a window - [0, 0] - and SetTimelags would
@@ -96,7 +97,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
         !> second hygrometer gets an ordinary per-gas row, which is how its
         !> optimised window survives to the next run at all.
         if (gas == PrimaryWaterSlot() .and. ncls > 1) cycle
-        gname = TimelagOptGasLabel(gas)
+        gname = GasLabel(gas)
         if (actn(gas) > 0) then
             tl_def = toPasGas(gas)%def
             tl_min = toPasGas(gas)%min
@@ -150,14 +151,14 @@ subroutine WritePwbProvenance(unit, gas)
 
     !> Had no default arm, so a gas past the fourth printed whatever `name`
     !> held. One helper, shared with the writer above and with the reader.
-    name = TimelagOptGasLabel(gas)
+    name = GasLabel(gas)
     if (PwbSummarySource(gas) == gas) then
         source = 'native'
     elseif (PwbSummarySource(gas) > 0) then
         !> Name the donor from its own record. The three cases spelled out
         !> co2/h2o/ch4 and sent every other donor to a bare 'inferred', so a
         !> summary borrowed from a COS or a second CO2 did not say which.
-        source = 'inferred_from_' // trim(TimelagOptGasLabel(PwbSummarySource(gas)))
+        source = 'inferred_from_' // trim(GasLabel(PwbSummarySource(gas)))
     else
         source = 'unavailable'
     end if
