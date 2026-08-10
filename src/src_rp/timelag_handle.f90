@@ -71,6 +71,12 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     !> The hygrometer that corrects the gas being handled, from that gas's
     !> own record. Was the site's water for every gas.
     integer :: msl
+    !> Base slot of the cell block belonging to the analyser that measured the
+    !> gas being handled: cellBase + 0..3 is cell_t, int_t_1, int_t_2, int_p.
+    integer :: cellBase
+    !> Row lag the water covariance is taken at: the gas's own where the two
+    !> share an analyser, the hygrometer's where they do not.
+    integer :: lagRow
     include '../src_common/interfaces_1.inc'
 
     skip_apply = pwb_detect_only_mode
@@ -325,39 +331,69 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             !> through the same cell the gas is, which is what closed-path
             !> means here.
             if (E2Col(msl)%instr%path_type /= 'closed') cycle
-            !> And on the same analyser. This is a time-series operation -
-            !> Cov(w, water) taken at *this gas's* row lag - so a hygrometer
-            !> down a different tube has a different lag and the covariance
-            !> means nothing. ResolveGasRef prefers a hygrometer on the gas's
-            !> own instrument and only falls back to "the first anywhere" when
-            !> there is none; that fallback is a reasonable ambient-humidity
-            !> stand-in for the mean WPL terms, and not for this.
+            !> At whichever lag the water itself has.
             !>
-            !> PointByPointToMixingRatio declines the same pairing for the
-            !> same reason. The two must agree, or a gas is diluted with water
-            !> it is not correlated against.
-            if (E2Col(j)%instr%model /= E2Col(msl)%instr%model) cycle
-            if (RowLags(j) <= 0) cycle
+            !> A gas and a hygrometer sharing an analyser share a tube, so the
+            !> gas's own lag is the water's too. Down a different tube it is
+            !> not, and this used to decline the pairing on that ground -
+            !> which left the gas with no water-flux term at all while
+            !> MoistTerms went on taking its sigma and rho_w from that same
+            !> hygrometer. Two halves of one term disagreeing about which
+            !> water they meant, which is the fault the paragraph above
+            !> records for a second hygrometer, returning by another route.
+            !>
+            !> The quantity wanted is that hygrometer's own water flux, so it
+            !> is evaluated at that hygrometer's lag. Borrowing across
+            !> analysers is a compromise and ExceptionHandler(106) says so;
+            !> declaring an H2O on the gas's own analyser makes ResolveGasRef
+            !> prefer it and the two lags become one again.
+            if (E2Col(j)%instr%model == E2Col(msl)%instr%model) then
+                lagRow = RowLags(j)
+            else
+                lagRow = RowLags(msl)
+            end if
+            if (lagRow <= 0) cycle
             ColH2O(1:nrow) = Set(1:nrow, msl)
             call CovarianceW(ColW, ColH2O, size(ColW), &
-                RowLags(j), Stats%h2ocov_tl(j))
+                lagRow, Stats%h2ocov_tl(j))
         end do
 
-        !> Calculate cell temperature covariances with
-        !> time-lags of scalars from the same instrument
+        !> Cell temperature covariance, each gas against the cell it was
+        !> measured in, at its own time lag.
+        !>
+        !> This read `tc` - firstCell, the *first* cell block - and admitted a
+        !> gas only if its analyser matched that block's. One global cell made
+        !> the two the same thing. With per-instrument blocks the first is
+        !> whichever analyser happens to hold cell record one, so every gas on
+        !> any other analyser failed the test, got no covariance, and lost the
+        !> cell-temperature term of its WPL correction entirely - reported as
+        !> H_CELL = -9999 while the analyser that owned record one had it.
+        !>
+        !> On CH-LAE the MIRO owns record one, so the LI-7200's CO2 and H2O
+        !> were the ones going without. v7.2.5 does the same, its single cell
+        !> record belonging to the MIRO; this is not a regression, it is the
+        !> defect becoming expressible now that cells are per-instrument.
+        !>
+        !> cell_ref is resolved in DefineE2Set and is what AirAndCellParameters
+        !> and PointByPointToMixingRatio already read. A project with one cell
+        !> block falls back to firstCell and behaves exactly as before.
         Stats%tc_cov_tl = error
-        if (E2Col(tc)%present) then
-            !> Store vertical wind component and tc in ad-hoc arrays
-            ColW(1:nrow) = Set(1:nrow, w)
-            ColTC(1:nrow) = Set(1:nrow, tc)
-            do j = firstGas, lastGas
-                if (.not. E2Col(j)%present) cycle
-                if (E2Col(j)%instr%model /= E2Col(tc)%instr%model) cycle
-                if (RowLags(j) <= 0) cycle
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(j), Stats%tc_cov_tl(j))
-            end do
-        end if
+        ColW(1:nrow) = Set(1:nrow, w)
+        do j = firstGas, lastGas
+            if (.not. E2Col(j)%present) cycle
+            !> Zero when no cell record belongs to this gas's analyser, in
+            !> which case there is no cell temperature to correlate against -
+            !> the first block belongs to a different instrument.
+            cellBase = E2Col(j)%cell_ref
+            if (cellBase < firstCell .or. cellBase > lastCell) cycle
+            if (.not. E2Col(cellBase)%present) cycle
+            if (RowLags(j) <= 0) cycle
+            !> Inside the loop: the column is this gas's cell now, not one
+            !> array filled once for every gas.
+            ColTC(1:nrow) = Set(1:nrow, cellBase)
+            call CovarianceW(ColW, ColTC, size(ColTC), &
+                RowLags(j), Stats%tc_cov_tl(j))
+        end do
     end if
 
     if (.not. skip_apply) then

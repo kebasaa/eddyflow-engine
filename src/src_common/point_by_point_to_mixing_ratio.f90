@@ -47,6 +47,9 @@ subroutine PointByPointToMixingRatio(Set, nrow, ncol, printout)
     integer :: watSlot(MaxNumGases)
     integer :: nwat
     integer :: gas, msl, k, iw
+    !> Base slot of the cell block belonging to the analyser that measured the
+    !> gas being converted: cellBase + 0..3 is cell_t, int_t_1, int_t_2, int_p.
+    integer :: cellBase
     logical :: cellVaAvailable
     logical, external :: GasSlotIsWater
 
@@ -82,18 +85,34 @@ subroutine PointByPointToMixingRatio(Set, nrow, ncol, printout)
         msl = watSlot(iw)
 
         !> Air molar volume in the cell of the analyser that measured *this*
-        !> water. The cell block is still instrument 1's; carrying each gas's
-        !> own cell_ref through here is a separate change.
-        if (E2Col(tc)%present .and. E2Col(pi)%present &
-            .and. E2Col(tc)%instr%model == E2Col(msl)%instr%model &
-            .and. E2Col(pi)%instr%model == E2Col(msl)%instr%model) then
-            where (Set(:, pi) > 0d0 .and. Set(:, tc) > 0d0)
-                Va(:) = Ru * Set(:, tc) / Set(:, pi)
-            elsewhere
-                Va(:) = error
-            end where
-        else
-            Va(:) = error
+        !> water, from that analyser's own cell block.
+        !>
+        !> This read tc and pi - the first block - and gated them on whether
+        !> that block's instrument matched this hygrometer's, which was a way
+        !> of saying "only if these cell columns belong to this analyser". It
+        !> gave the right answer for instrument one and no answer for any
+        !> other, so a second hygrometer reporting molar density was left
+        !> unconvertible. cell_ref states the block directly, and the gas loop
+        !> below now reads it the same way.
+        !>
+        !> Zero when no cell record belongs to this hygrometer's analyser, in
+        !> which case there is no cell molar volume to be had - the first block
+        !> is a different instrument's cell, not this one's.
+        !> Nested, not one .and. chain: Fortran does not promise to stop
+        !> evaluating a compound condition once it is decided, so an
+        !> unresolved cell_ref of zero reaches E2Col(0) and the run dies in
+        !> the WPL step. The same note stands over the diagnostics loop in
+        !> DefineE2Set, for the same reason.
+        cellBase = E2Col(msl)%cell_ref
+        Va(:) = error
+        if (cellBase >= firstCell .and. cellBase <= lastCell) then
+            if (E2Col(cellBase)%present .and. E2Col(cellBase + 3)%present) then
+                where (Set(:, cellBase + 3) > 0d0 .and. Set(:, cellBase) > 0d0)
+                    Va(:) = Ru * Set(:, cellBase) / Set(:, cellBase + 3)
+                elsewhere
+                    Va(:) = error
+                end where
+            end if
         end if
         cellVaAvailable = .not. all(Va(:) == error)
 
@@ -153,22 +172,46 @@ subroutine PointByPointToMixingRatio(Set, nrow, ncol, printout)
         end do
         if (iw == 0) cycle
 
-        !> Same analyser, as before. moist_ref falls back to "the first H2O
-        !> anywhere" when a gas's own instrument has none, and diluting a gas
-        !> on analyser B with analyser A's water would be a new defect, not a
-        !> fix. This is the pre-existing model test, moved inside the loop.
-        if (E2Col(gas)%instr%model /= E2Col(msl)%instr%model) cycle
+        !> Whatever water the record names, including one on another analyser.
+        !>
+        !> A same-analyser test stood here and declined the pairing outright,
+        !> so a gas whose own instrument carries no hygrometer was not diluted
+        !> at all - while MoistTerms went on taking its sigma and rho_w from
+        !> the very water this refused. Declining is not the neutral choice it
+        !> looks like: it leaves the gas a wet mole fraction corrected with
+        !> terms derived from a water it is held not to share.
+        !>
+        !> Borrowing across analysers is a compromise, and the instantaneous
+        !> humidity in another cell is the weaker half of it.
+        !> ExceptionHandler(106) says so once per gas, and declaring an H2O on
+        !> the gas's own analyser makes ResolveGasRef prefer it.
 
-        if (E2Col(tc)%present .and. E2Col(pi)%present &
-            .and. E2Col(tc)%instr%model == E2Col(msl)%instr%model &
-            .and. E2Col(pi)%instr%model == E2Col(msl)%instr%model) then
-            where (Set(:, pi) > 0d0 .and. Set(:, tc) > 0d0)
-                Va(:) = Ru * Set(:, tc) / Set(:, pi)
-            elsewhere
-                Va(:) = error
-            end where
-        else
-            Va(:) = error
+        !> Cell conditions of the analyser that measured THIS gas.
+        !>
+        !> Asked of tc and pi - the first cell block - and gated on the
+        !> *water's* model. Both were the same thing while one global cell
+        !> served every analyser; with per-instrument blocks the first is
+        !> whichever analyser happens to hold cell record one, and the second
+        !> asks the wrong instrument entirely. A gas was converted with
+        !> another analyser's cell temperature and pressure, which is exactly
+        !> the mixing this routine exists to avoid. cell_ref is resolved in
+        !> DefineE2Set and is what AirAndCellParameters reads.
+        !> Zero when no cell record belongs to this gas's analyser.
+        !> Nested, not one .and. chain: Fortran does not promise to stop
+        !> evaluating a compound condition once it is decided, so an
+        !> unresolved cell_ref of zero reaches E2Col(0) and the run dies in
+        !> the WPL step. The same note stands over the diagnostics loop in
+        !> DefineE2Set, for the same reason.
+        cellBase = E2Col(gas)%cell_ref
+        Va(:) = error
+        if (cellBase >= firstCell .and. cellBase <= lastCell) then
+            if (E2Col(cellBase)%present .and. E2Col(cellBase + 3)%present) then
+                where (Set(:, cellBase + 3) > 0d0 .and. Set(:, cellBase) > 0d0)
+                    Va(:) = Ru * Set(:, cellBase) / Set(:, cellBase + 3)
+                elsewhere
+                    Va(:) = error
+                end where
+            end if
         end if
         cellVaAvailable = .not. all(Va(:) == error)
 

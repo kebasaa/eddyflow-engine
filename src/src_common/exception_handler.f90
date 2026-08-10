@@ -430,5 +430,16 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(105)> limit were dropped. Those files carry a block per gas, so'
             write(*,*) ' Warning(105)> their width grows with the number of gases in the project.'
             write(*,*) ' Warning(105)> Reduce the number of columns, or split the file.'
+        case(106)
+            write(*,*) ' Warning(106)> The gas named on the line above is corrected with a'
+            write(*,*) ' Warning(106)> hygrometer on a different analyser, because its own'
+            write(*,*) ' Warning(106)> carries none. The water-flux term of its WPL correction'
+            write(*,*) ' Warning(106)> is taken at that hygrometer''s own time lag, and the'
+            write(*,*) ' Warning(106)> dilution to a mixing ratio uses that cell''s humidity'
+            write(*,*) ' Warning(106)> rather than its own - a stand-in, not a measurement of'
+            write(*,*) ' Warning(106)> the air this gas was sampled in.'
+            write(*,*) ' Warning(106)> Declare an H2O column on the gas''s own analyser to'
+            write(*,*) ' Warning(106)> remove the compromise: EddyFlow prefers a hygrometer on'
+            write(*,*) ' Warning(106)> the gas''s own instrument whenever the project has one.'
     end select
 end subroutine ExceptionHandler

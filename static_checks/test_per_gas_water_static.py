@@ -13,19 +13,27 @@ analyser got no covariance and therefore no water-flux term - while its sigma
 and rho_w came from that second analyser's hygrometer. The two halves of one
 term disagreed about which water they meant.
 
-There is a real distinction underneath, and these checks encode it:
+The distinction these checks used to encode has since been withdrawn, and the
+reason is worth recording where it was asserted.
 
-  time-series operations - the covariance, and point-by-point dilution - use
-    the gas's reference AND require it to be on the same analyser. They work
-    on raw columns at the gas's own row lag, and a hygrometer down another
-    tube has a different lag, so the pairing means nothing.
+Time-series operations - the covariance and the point-by-point dilution - used
+the gas's reference AND required it to be on the same analyser, on the ground
+that a hygrometer down another tube has a different lag. Mean WPL terms - sigma
+and rho_w - used the reference and accepted ResolveGasRef's fallback to "the
+first hygrometer anywhere".
 
-  mean/WPL terms - sigma and rho_w - use the reference and accept
-    ResolveGasRef's fallback to "the first hygrometer anywhere". Ambient
-    humidity is a reasonable stand-in there; MoistTerms starts from the site
-    value and overrides only where the per-gas one is real.
+Splitting them that way reproduced the very fault described above. A gas whose
+own analyser carries no hygrometer took sigma and rho_w from the borrowed water
+and then got no flux term and no dilution: the correction ran half-built, from a
+water the other two halves held it did not share. Declining is not the neutral
+choice it looks like.
 
-What must not come back is either of them reading the site's water directly.
+All three honour the reference now. The lag objection was real and is answered
+by taking the covariance at the *hygrometer's* lag rather than the gas's, and
+the compromise is announced through ExceptionHandler(106) instead of being
+silently absorbed. `test_moisture_reference_static.py` owns that rule.
+
+What must not come back is any of them reading the site's water directly.
 """
 
 from pathlib import Path
@@ -70,19 +78,26 @@ class EachGasUsesItsOwnReference(unittest.TestCase):
         self.assertNotIn("Stats%chi(PrimaryWaterOutSlot())", src)
 
 
-class TimeSeriesPairingStaysOnOneAnalyser(unittest.TestCase):
-    """Cov(w, water) at this gas's lag, and point-by-point dilution, both
-    need the water to have come down the same tube."""
+class TimeSeriesPairingHonoursTheReference(unittest.TestCase):
+    """Cov(w, water) and point-by-point dilution use the water the gas names,
+    across analysers as well as on one.
+
+    They refused it, and the refusal is what left a gas corrected by half a
+    term. The lag objection behind the refusal is answered by choosing the lag;
+    `test_moisture_reference_static.py` pins that, and this only guards against
+    the flat refusal returning.
+    """
 
     SITES = ("src/src_rp/timelag_handle.f90",
              "src/src_common/point_by_point_to_mixing_ratio.f90")
 
-    def test_both_require_the_same_analyser(self):
+    def test_neither_refuses_the_pairing(self):
         for rel in self.SITES:
-            self.assertIn(
-                "%instr%model /= E2Col(msl)%instr%model", code(rel),
-                "%s pairs a gas with a hygrometer on another analyser; the "
-                "row lag does not transfer between tubes" % rel)
+            self.assertNotIn(
+                "%instr%model /= E2Col(msl)%instr%model) cycle", code(rel),
+                "%s is declining the water its own record names, which leaves "
+                "MoistTerms correcting the gas with a water this site says it "
+                "does not share" % rel)
 
 
 class TheMeanTermsAcceptTheFallback(unittest.TestCase):

@@ -118,13 +118,25 @@ class WaterIsResolvedNotAssumed(unittest.TestCase):
                           % path)
             self.assertIn("GasSlotIsWater", source)
 
-    def test_the_same_instrument_guard_survives(self):
-        """moist_ref falls back to "the first H2O anywhere" when a gas's own
-        analyser has none. Diluting analyser B's gas with analyser A's water
-        would be a new defect, not a fix."""
+    def test_the_dilution_reads_the_gas_own_cell(self):
+        """The same-analyser guard that stood here has been withdrawn - see
+        test_moisture_reference_static.py for why - so this path now runs for
+        a gas whose hygrometer sits on another instrument. Where it reads cell
+        conditions therefore matters.
+
+        It read `tc` and `pi`, which are `firstCell` and `firstCell + 3`: the
+        *first* cell block, not the gas's. That was the same thing while one
+        global cell served every analyser. With per-instrument blocks the first
+        is whichever analyser happens to hold cell record one, so a gas could
+        be converted with another instrument's cell temperature and pressure.
+        """
         source = code("src/src_common/point_by_point_to_mixing_ratio.f90")
-        self.assertIn("E2Col(gas)%instr%model /= E2Col(msl)%instr%model",
-                      source)
+        self.assertIn("cellBase = E2Col(gas)%cell_ref", source)
+        self.assertIn("cellBase = E2Col(msl)%cell_ref", source,
+                      "the water loop reads a cell block too, and it is that "
+                      "hygrometer's own")
+        self.assertNotIn("Va(:) = Ru * Set(:, tc) / Set(:, pi)", source,
+                         "the first cell block is not every analyser's")
 
 
 class SpeciesPropertiesAreKeyedOnSpecies(unittest.TestCase):

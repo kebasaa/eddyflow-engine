@@ -53,12 +53,23 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     integer :: nCellInstr
     integer :: i
     integer :: wsl
+    !> The hygrometer a gas is corrected with, when reporting the ones that
+    !> borrow across analysers.
+    integer :: msl
+    !> Gases already reported as borrowing. Saved, because this routine runs
+    !> once per averaging period and the report belongs to the run.
+    logical, save :: crossWaterWarned(GHGNumVar) = .false.
     !> A gas record's index and the cell record it names, for resolving an
     !> explicit gas_<i>_cell.
     integer :: gasrec
     integer :: cellrec
     character(32) :: cellInstr(MaxNumInstruments)
+    !> Whether any cell record names an analyser. Decides whether a gas that
+    !> matches none of them falls back to the first block or has no cell.
+    logical :: cellInstrNamed
     integer, external :: PrimaryWaterSlot
+    logical, external :: GasSlotIsWater
+    character(32), external :: GasOutputLabel
     !> Declared in the host so the internal procedures inherit it. The lookup
     !> moved to file scope for DefineVars, which asks the same question on the
     !> earlier pass.
@@ -219,9 +230,27 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     !> this loop overwrote it from the name match - because the cell slots
     !> were one global set and there was nothing for an index to select. They
     !> have been per-instrument since, so the field can mean what it says.
+    !> Whether the cell records name analysers at all.
+    !>
+    !> They either do or they do not, and the answer decides what an unmatched
+    !> gas means. Records that name nobody describe the site's single cell,
+    !> which is every pre-record project, and every gas uses it. Records that
+    !> name analysers are making a claim about which cell is whose, and a gas
+    !> none of them names has no cell record - not the first one's.
+    cellInstrNamed = .false.
+    do i = 1, nCellInstr
+        if (len_trim(cellInstr(i)) > 0) cellInstrNamed = .true.
+    end do
+
     do j = firstGas, lastGas
         if (.not. E2Col(j)%present) cycle
-        E2Col(j)%cell_ref = firstCell
+        !> Unresolved until this gas's own cell is found. It defaulted to
+        !> firstCell, which reads as "every gas has a cell" and on a site whose
+        !> analysers do not all have one handed the first analyser's cell
+        !> temperature and pressure to gases measured somewhere else. Va, the
+        !> point-by-point dilution and the cell-temperature covariance all read
+        !> this field, so one default silently fed three corrections.
+        E2Col(j)%cell_ref = 0
 
         gasrec = j - firstGas + 1
         cellrec = 0
@@ -236,7 +265,12 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
             end if
         end if
 
-        if (nCellInstr <= 0) cycle
+        !> Undescribed cells belong to everyone; named cells belong to the
+        !> analyser they name.
+        if (nCellInstr <= 0 .or. .not. cellInstrNamed) then
+            if (nCellInstr > 0) E2Col(j)%cell_ref = firstCell
+            cycle
+        end if
         do i = 1, nCellInstr
             if (trim(cellInstr(i)) == trim(E2Col(j)%instr%model) .or. &
                 trim(cellInstr(i)) == trim(E2Col(j)%Instr%ep_label)) then
@@ -266,6 +300,35 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
             end do
         end if
     end if
+
+    !> Say which gases are corrected with another analyser's water.
+    !>
+    !> A legitimate configuration - it is what a site with one hygrometer and
+    !> two analysers has - but a compromise, and the compromise used to be
+    !> invisible. The dilution and the water-flux covariance both declined the
+    !> pairing outright while the mean WPL terms took it, so the gas came out
+    !> corrected by a water it was held not to share, with nothing in the
+    !> output to show for it. Both honour it now, so the one thing left to do
+    !> is say so.
+    !>
+    !> Once per gas for the whole run. This routine is called for every
+    !> averaging period, so an unguarded message is one per period per gas -
+    !> ninety-seven of them on a single day of CH-LAE, which buries the log
+    !> the warning exists to be read in.
+    do j = firstGas, lastGas
+        if (.not. E2Col(j)%present) cycle
+        if (GasSlotIsWater(j)) cycle
+        msl = E2Col(j)%moist_ref
+        if (msl < firstGas .or. msl > lastGas) cycle
+        if (j == msl .or. .not. E2Col(msl)%present) cycle
+        if (E2Col(j)%instr%model == E2Col(msl)%instr%model) cycle
+        if (crossWaterWarned(j)) cycle
+        crossWaterWarned(j) = .true.
+        write(*, '(a)') '  Warning(106)> ' // trim(GasOutputLabel(j)) // ' on ' &
+            // trim(E2Col(j)%instr%model) // ' is corrected with the water on ' &
+            // trim(E2Col(msl)%instr%model) // '.'
+        call ExceptionHandler(106)
+    end do
 
 contains
 

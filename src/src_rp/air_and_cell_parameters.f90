@@ -89,8 +89,26 @@ subroutine AirAndCellParameters()
     do gas = firstGas, lastGas
         if (.not. E2Col(gas)%present) cycle
 
+        !> Zero when no cell record belongs to this gas's analyser. It used to
+        !> be coerced to firstCell here, which handed the first analyser's cell
+        !> to a gas measured in a different one; DefineE2Set now resolves the
+        !> field to zero in that case and every reader declines together.
+        !> The site scalars stand in, as they do for a gas whose block carries
+        !> no reading.
         cellBase = E2Col(gas)%cell_ref
-        if (cellBase < firstCell .or. cellBase > lastCell) cellBase = firstCell
+        if (cellBase < firstCell .or. cellBase > lastCell) then
+            Ambient%Tcell_at(gas) = Ambient%Tcell
+            Ambient%Pcell_at(gas) = Ambient%Pcell
+            if (E2Col(gas)%instr%path_type == 'closed') then
+                if (Ambient%Pcell_at(gas) > 0d0 &
+                    .and. Ambient%Tcell_at(gas) /= error) then
+                    E2Col(gas)%Va = Ru * Ambient%Tcell_at(gas) / Ambient%Pcell_at(gas)
+                else
+                    E2Col(gas)%Va = error
+                end if
+            end if
+            cycle
+        end if
 
         if (Stats%Mean(cellBase) /= error) then
             Ambient%Tcell_at(gas) = Stats%Mean(cellBase)
