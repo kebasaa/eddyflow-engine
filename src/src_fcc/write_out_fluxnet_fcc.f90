@@ -47,6 +47,12 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> they used to read the sixth slot, which is water by convention only.
     integer :: wsl
     integer :: vi
+    !> Hygrometers and their column suffixes, from WaterOutSlots, and how many
+    !> of them are not the designated one.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
+    integer :: n_w_flux
     !> The row's variable order: the four anemometric slots, then the gas
     !> layout, taken from the same helper RP wrote the parent file with. FCC
     !> rewrites this file, so writing it in a different order from the one it
@@ -605,6 +611,10 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddIntDatumToDataline(gas, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%rhow_at(gas), csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%sigma_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%q_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%rhoa_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%rhocp_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%rh_at(gas), csv_row, EddyFlowProj%err_label)
     end do
 
     !> Analyser of each gas past the four historical slots, replayed exactly as
@@ -628,6 +638,30 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%ko, csv_row, EddyFlowProj%err_label)
     end do
 
+
+    !> The non-designated hygrometers, recomputed by this run rather than
+    !> echoed from the ex record - unlike the moisture and analyser blocks
+    !> above, these are fluxes, and recomputing them is FCC's whole job. Same
+    !> position and order as InitFluxnetFile_rp writes the headers: after the
+    !> analyser block and before biomet, because the CEC descriptor that
+    !> follows is anchored to the end of the row.
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    n_w_flux = 0
+    do i = 1, n_w_slots
+        if (len_trim(w_tags(i)) > 0) n_w_flux = n_w_flux + 1
+    end do
+    call AddIntDatumToDataline(n_w_flux, csv_row, EddyFlowProj%err_label)
+    do i = 1, n_w_slots
+        if (len_trim(w_tags(i)) == 0) cycle
+        gas = w_slots(i)
+        call AddIntDatumToDataline(gas, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%H_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%LE_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%ET_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%tau_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%L_at(gas), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%zL_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
 
     !> Write sisxth string from Chunks
     !> Biomet data

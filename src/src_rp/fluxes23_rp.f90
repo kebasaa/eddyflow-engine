@@ -382,6 +382,14 @@ subroutine Fluxes23_rp()
     Flux2%ustar = Flux1%ustar
     Flux3%ustar = Flux1%ustar
 
+    !> The same quantities, once per hygrometer. Mirrors PerHygrometerFluxes
+    !> in src_fcc/fluxes23.f90, reading Ambient rather than the ex record.
+    !>
+    !> RP needs its own copy because RP's FLUXNET file is the deliverable when
+    !> FCC is not run; when it is, FCC recomputes these from the ex record and
+    !> overwrites the row.
+    call PerHygrometerFluxes_rp()
+
     !> If fluxes are error, set also time-lags to error, just for clarity
     !>
     !> Every configured gas. Four named slots left a fifth gas reporting a
@@ -396,6 +404,106 @@ subroutine Fluxes23_rp()
     write(*,'(a)')   ' Done.'
 
 contains
+
+!***************************************************************************
+!> H, LE, ET, tau and the stability, one set per hygrometer.
+!>
+!> The RP twin of PerHygrometerFluxes in src_fcc/fluxes23.f90. Same formulas
+!> on the same inputs, taken from Ambient and Flux3 rather than from the ex
+!> record. Kept in step with that routine: two sites reporting different
+!> numbers for the same half-hour depending on whether FCC ran would be worse
+!> than either alone.
+!***************************************************************************
+subroutine PerHygrometerFluxes_rp()
+    implicit none
+    integer :: slots(GHGNumVar)
+    character(8) :: wtags(GHGNumVar)
+    !> `wslot`, not `w`: w is the module's wind-component index and a loop
+    !> variable of that name would shadow it inside this routine, silently
+    !> retargeting every Stats%Cov(w, ...) below.
+    integer :: nw, iw, wslot
+    real(kind = dbl) :: rhocp_w, rhoa_w, q_w, e0_w
+
+    Flux3%E_at = error
+    Flux3%LE_at = error
+    Flux3%ET_at = error
+    Flux3%H_at = error
+    Flux3%tau_at = error
+    Flux3%L_at = error
+    Flux3%zL_at = error
+
+    call WaterOutSlots(slots, wtags, nw)
+
+    do iw = 1, nw
+        wslot = slots(iw)
+        if (.not. E2Col(wslot)%present) cycle
+
+        !> A hygrometer's own moisture reference is itself.
+        rhocp_w = Ambient%RhoCp_at(wslot)
+        rhoa_w  = Ambient%rho_a_at(wslot)
+        q_w     = Ambient%Q_at(wslot)
+        if (rhocp_w == error) rhocp_w = Ambient%RhoCp
+        if (rhoa_w  == error) rhoa_w  = RHO%a
+        if (q_w     == error) q_w     = Ambient%Q
+
+        !> Reported water flux: fully corrected, as LE and ET are.
+        if (Flux3%gas(wslot) /= error) then
+            Flux3%E_at(wslot) = Flux3%gas(wslot) * MW_H2O * 1d-3
+            Flux3%ET_at(wslot) = Flux3%gas(wslot) * h2o_to_ET
+            if (Ambient%lambda /= error) &
+                Flux3%LE_at(wslot) = Flux3%E_at(wslot) * Ambient%lambda
+        end if
+
+        !> The humidity correction of sensible heat takes the *level 0* water
+        !> flux, which is what the scalar above uses - Flux0%E is exactly
+        !> Flux0%gas(designated) in these units. Reaching for the corrected
+        !> flux here instead would make the numbered columns disagree with the
+        !> bare ones by more than the hygrometers do.
+        e0_w = error
+        if (Flux0%gas(wslot) /= error) e0_w = Flux0%gas(wslot) * MW_H2O * 1d-3
+
+        !> Sensible heat corrected for humidity, after Van Dijk et al. (2004)
+        !> eq. 3.53 revising Schotanus et al. (1983), on this hygrometer's air.
+        if (Flux1%H /= error) then
+            if (e0_w /= error .and. Stats%Cov(w, ts) /= error &
+                .and. rhoa_w > 0d0 .and. q_w >= 0d0 .and. rhocp_w > 0d0 &
+                .and. Ambient%alpha /= error) then
+                Flux3%H_at(wslot) = Flux1%H &
+                    - rhocp_w * Ambient%alpha * Stats%Mean(ts) * e0_w / rhoa_w &
+                    - rhocp_w * Ambient%alpha * q_w * Stats%Cov(w, ts)
+            else
+                Flux3%H_at(wslot) = Flux1%H
+            end if
+        end if
+
+        !> Momentum follows the humidity only through air density; u* comes
+        !> from the wind covariances alone and is the same for every one.
+        if (rhoa_w > 0d0 .and. Ambient%us /= error) &
+            Flux3%tau_at(wslot) = &
+                sign(rhoa_w * Ambient%us**2d0, Stats%Cov(u, w))
+
+        if (Flux3%H_at(wslot) /= 0d0 .and. Flux3%H_at(wslot) /= error .and. &
+            rhocp_w > 0d0 .and. Ambient%us >= 0d0 .and. Tp > 0d0) then
+            Flux3%L_at(wslot) = -Tp * (Ambient%us**3) &
+                / (vk * g * Flux3%H_at(wslot) / rhocp_w)
+            if (Flux3%L_at(wslot) /= 0d0) &
+                Flux3%zL_at(wslot) = (E2Col(u)%Instr%height - Metadata%d) &
+                    / Flux3%L_at(wslot)
+        end if
+    end do
+
+    !> The designated hygrometer's entry is overwritten by the scalars, not
+    !> the other way round - see the note in the FCC twin.
+    if (wsl >= firstGas .and. wsl <= lastGas) then
+        Flux3%E_at(wsl)   = Flux3%E
+        Flux3%LE_at(wsl)  = Flux3%LE
+        Flux3%ET_at(wsl)  = Flux3%ET
+        Flux3%H_at(wsl)   = Flux3%H
+        Flux3%tau_at(wsl) = Flux3%tau
+        Flux3%L_at(wsl)   = Ambient%L
+        Flux3%zL_at(wsl)  = Ambient%zL
+    end if
+end subroutine PerHygrometerFluxes_rp
 
 !***************************************************************************
 !> Level 2 flux of one gas: the WPL / density correction.

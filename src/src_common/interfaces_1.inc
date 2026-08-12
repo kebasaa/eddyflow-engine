@@ -83,6 +83,17 @@ interface
         implicit none
     end function PrimaryWaterOutSlot
 
+    !> Every hygrometer with its column suffix, in one call. Header and rows
+    !> in both executables walk this; getting the list right and the naming
+    !> wrong shifts the file exactly as getting the list wrong does.
+    subroutine WaterOutSlots(slots, tags, nslots)
+        use m_common_global_var
+        implicit none
+        integer, intent(out) :: slots(GHGNumVar)
+        character(*), intent(out) :: tags(GHGNumVar)
+        integer, intent(out) :: nslots
+    end subroutine WaterOutSlots
+
     !> The slot holding the site's primary CO2, or 0 if there is none, and
     !> the same falling back to the historical slot. Only conditional eddy
     !> covariance needs these: it is defined on a CO2/water pair and so has

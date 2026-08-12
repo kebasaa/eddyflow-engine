@@ -441,5 +441,32 @@ subroutine ExceptionHandler(error_code)
             write(*,*) ' Warning(106)> Declare an H2O column on the gas''s own analyser to'
             write(*,*) ' Warning(106)> remove the compromise: EddyFlow prefers a hygrometer on'
             write(*,*) ' Warning(106)> the gas''s own instrument whenever the project has one.'
+
+        case(107)
+            write(*,*) ' Fatal error(107)> The "essentials" file was written by an earlier'
+            write(*,*) ' Fatal error(107)> version of EddyFlow-RP and cannot be read.'
+            write(*,*) ' Fatal error(107)> Its per-gas water vapour records are narrower than'
+            write(*,*) ' Fatal error(107)> this version expects. Reading them would not fail -'
+            write(*,*) ' Fatal error(107)> it would run on into the next gas''s fields and mix'
+            write(*,*) ' Fatal error(107)> one gas''s water terms into another''s, silently.'
+            write(*,*) ' Fatal error(107)> Re-run EddyFlow-RP to regenerate the file, then run'
+            write(*,*) ' Fatal error(107)> EddyFlow-FCC again. There is nothing to migrate.'
+            write(*,*) ' Fatal error(107)> Program execution aborted.'
+            stop 1
+
+        case(108)
+            write(*,*) ' Warning(108)> This project describes no gas analyser, so no gas'
+            write(*,*) ' Warning(108)> flux can be computed. EddyFlow will process it as an'
+            write(*,*) ' Warning(108)> anemometer-only site.'
+            write(*,*) ' Warning(108)> Computed: momentum flux and u*, sensible heat from the'
+            write(*,*) ' Warning(108)> sonic temperature, Monin-Obukhov length and stability,'
+            write(*,*) ' Warning(108)> wind speed and direction, and the turbulence statistics.'
+            write(*,*) ' Warning(108)> Not computed: every gas flux, LE, ET, and the WPL and'
+            write(*,*) ' Warning(108)> spectral corrections that depend on them. Their columns'
+            write(*,*) ' Warning(108)> are written as the error label throughout - the FLUXNET'
+            write(*,*) ' Warning(108)> format requires CO2, H2O and CH4 columns to exist even'
+            write(*,*) ' Warning(108)> where nothing measured them.'
+            write(*,*) ' Warning(108)> The sensible heat flux carries no humidity correction'
+            write(*,*) ' Warning(108)> either, there being no hygrometer to supply one.'
     end select
 end subroutine ExceptionHandler

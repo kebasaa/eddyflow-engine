@@ -9,6 +9,18 @@ in the reader shifts every later field and is consumed without error.
 
     BASE=base_rec.eddyflow bash run.sh ref     # before the change
     BASE=base_rec.eddyflow bash run.sh chk     # after it
+
+To run every fixture rather than one, and be told which broke:
+
+    bash sweep.sh chk
+
+`run.sh` takes a single fixture, which is right for diffing one case but meant
+nothing ever ran the whole set. `base_no_gas` sat failing at the FCC stage
+because of that, and was not in the table below either. `sweep.sh` gates on two
+things per fixture: `run.sh` exiting zero, so RP *and* FCC completed, and
+`check_columns.py` passing. The second alone would not have caught
+`base_no_gas` - its header and rows were short by the same block and so agreed
+with each other.
     diff -r out_ref out_chk
 
 `run.sh` now normalises recursively, so `diff -r` on two run directories is
@@ -28,6 +40,7 @@ that before trusting a difference.
 | `base_rec.eddyflow` | the same selection as records: 4 gases, CH4 configured *without* a column, cell_t/int_p and the 7200 diagnostic as records. **Output must stay byte-identical** to the legacy reference - that is the proof a conversion is faithful. |
 | `base_5gas.eddyflow` | the minimal case past the historical four - one gas in slot 9 and nothing else changed, so a failure here is about crossing the boundary rather than about scale. Adds N2O on column 9. Header and rows must agree; no duplicate column names. |
 | `base_dup.eddyflow` | the same species in slots 4 and 5, to check the `_2` disambiguation. |
+| `base_no_gas.eddyflow` | an anemometer and no analyser at all: `gas_num=0`. A perfectly ordinary site - it still has momentum, sensible heat and stability - and the only fixture where the FLUXNET layout is **entirely** synthetic, three required CO2/H2O/CH4 columns against zero records. That is what `SelectFluxnetGasSlots` used to skip, having guarded the layout on `gas_num > 0` while `ReadExRecord` guards nothing, so RP wrote no gas columns and FCC expected three of everything. Gate: `run.sh` must exit zero - RP alone passed throughout, and `check_columns.py` passed too, because header and rows were short by the same block. |
 | `base_no_ch4.eddyflow` | `base_rec` with the CH4 record removed: CO2, H2O and COS, and nothing else changed. The only fixture where the FLUXNET **layout is wider than the gas count** - the layout carries CH4 because the standard requires the column, so it is four blocks against three records. Every other fixture names CH4, so `nFluxnetLayoutSlots` and `gas_num` agreed everywhere and a writer sized from the wrong one looked correct. Gate: `check_columns.py` must pass. |
 | `base_n_gas.eddyflow` | currently eight gases across **two** analysers - the count is a property of the fixture, not of the test: the MIRO's four plus the LI-7200's CO2 and H2O, and a duplicate N2O. Exercises the capacity target (64 gases, with no per-instrument cap) and, because the two analysers measure the same species independently, catches slot cross-wiring: `CO2` and `CO2_2` must hold *different* real values, not the same one twice. |
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |

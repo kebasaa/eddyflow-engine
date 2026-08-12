@@ -55,12 +55,28 @@ class BiometRHIsAskedFirst(unittest.TestCase):
 
     def test_the_hygrometer_channel_is_written_only_when_one_exists(self):
         """The biomet branch computes site scalars either way, but chi/r/d
-        describe a hygrometer's own channel and index wsl."""
+        describe a hygrometer's own channel and must not be written where
+        there is no hygrometer.
+
+        This used to be spelled `if (wsl < firstGas) then continue`, guarding
+        writes that indexed the primary slot - 0 when the site has no water.
+        Those writes are a loop over the water records now, so the guarantee
+        holds by construction: no water record, no iteration, nothing indexed.
+        The property is the same one, and still worth pinning; only the shape
+        that provides it has changed.
+        """
         src = code(PARAMS)
-        self.assertIn("if (wsl < firstGas) then\n            continue", src,
-                      "the biomet branch must skip the per-hygrometer writes "
-                      "when there is no hygrometer; they index wsl, which is "
-                      "0 in that case")
+        start = src.index("if (biomet%val(bRH) > 0d0")
+        block = src[start: src.index("elseif (wsl >= firstGas) then", start)]
+        self.assertIn("do msl = firstGas, lastGas", block)
+        self.assertIn("if (.not. GasSlotIsWater(msl)) cycle", block,
+                      "the per-hygrometer writes must be confined to water "
+                      "records, or they reach a slot that holds another gas")
+        for field in ("Stats%chi(wsl)", "Stats%r(wsl)", "Stats%d(wsl)"):
+            self.assertNotIn(field, block,
+                             "%s indexes the primary slot, which is 0 on a "
+                             "site with no hygrometer - and on a site with "
+                             "two it singles one out for no reason" % field)
 
 
 class EveryBranchLeavesThePerHygrometerDensityDefined(unittest.TestCase):

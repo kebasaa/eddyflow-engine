@@ -366,7 +366,140 @@ subroutine Fluxes23(lEx)
     else
         lEx%Bowen = error
     end if
+
+    !> The same quantities, once per hygrometer.
+    !>
+    !> Everything above computes one latent heat flux, one evapotranspiration,
+    !> one sensible heat flux and one stability, from the designated
+    !> hygrometer. A site fielding two produced a second water flux and nothing
+    !> derived from it - so the two hygrometers could not be compared on any
+    !> quantity a reader actually uses, and the disagreement that motivates
+    !> fielding two was invisible.
+    !>
+    !> Each entry is the block above replayed on that hygrometer's own air, as
+    !> RP resolved it into the moisture terms this record carries. The
+    !> designated hygrometer's entry is then *assigned to* the scalars rather
+    !> than recomputed, which is what keeps the bare columns and the numbered
+    !> column describing the same instrument from ever disagreeing.
+    call PerHygrometerFluxes()
 contains
+
+    !***********************************************************************
+    !> H, LE, ET, tau and the stability, one set per hygrometer.
+    !>
+    !> Called after the scalars are settled, and deliberately reads them: the
+    !> water flux Flux3%gas(w) is already corrected and spectrally adjusted per
+    !> H2O record, and Flux1%H, Tp and ustar carry no humidity, so nothing here
+    !> repeats work done above. Only the four moisture terms change per entry.
+    subroutine PerHygrometerFluxes()
+        implicit none
+        integer :: slots(GHGNumVar)
+        character(8) :: wtags(GHGNumVar)
+        !> `wslot`, not `w`: w is the module's wind-component index and a loop
+        !> variable of that name would shadow it inside this routine, silently
+        !> retargeting lEx%cov_w(ts) and every other use below.
+        integer :: nw, iw, wslot
+        real(kind = dbl) :: rhocp_w, rhoa_w, q_w, e0_w
+
+        Flux3%E_at = error
+        Flux3%LE_at = error
+        Flux3%ET_at = error
+        Flux3%H_at = error
+        Flux3%tau_at = error
+        Flux3%L_at = error
+        Flux3%zL_at = error
+
+        call WaterOutSlots(slots, wtags, nw)
+
+        do iw = 1, nw
+            wslot = slots(iw)
+            if (.not. lEx%var_present(wslot)) cycle
+
+            !> A hygrometer's own moisture reference is itself, so these are
+            !> its own air rather than some other instrument's.
+            rhocp_w = lEx%rhocp_at(wslot)
+            rhoa_w  = lEx%rhoa_at(wslot)
+            q_w     = lEx%q_at(wslot)
+            if (rhocp_w == error) rhocp_w = lEx%RhoCp
+            if (rhoa_w  == error) rhoa_w  = lEx%RHO%a
+            if (q_w     == error) q_w     = lEx%Q
+
+            !> Reported water flux: fully corrected, as LE and ET are.
+            if (Flux3%gas(wslot) /= error) then
+                Flux3%E_at(wslot) = Flux3%gas(wslot) * MW_H2O * 1d-3
+                Flux3%ET_at(wslot) = Flux3%gas(wslot) * h2o_to_ET
+                if (lEx%lambda /= error) &
+                    Flux3%LE_at(wslot) = Flux3%E_at(wslot) * lEx%lambda
+            end if
+
+            !> The humidity correction of sensible heat takes the *level 0*
+            !> water flux, which is what the scalar above uses - lEx%Flux0%E is
+            !> exactly Flux0%gas(designated) in these units. Reaching for the
+            !> corrected flux here instead would make the numbered columns
+            !> disagree with the bare ones by more than the hygrometers do.
+            e0_w = error
+            if (lEx%Flux0%gas(wslot) /= error) &
+                e0_w = lEx%Flux0%gas(wslot) * MW_H2O * 1d-3
+
+            !> Sensible heat corrected for humidity, after Van Dijk et al.
+            !> (2004) eq. 3.53 revising Schotanus et al. (1983) - the block at
+            !> the top of this routine, on this hygrometer's air.
+            if (Flux1%H /= error) then
+                if (e0_w /= error .and. lEx%cov_w(ts) /= error &
+                    .and. rhoa_w > 0d0 .and. q_w >= 0d0 &
+                    .and. rhocp_w > 0d0) then
+                    Flux3%H_at(wslot) = Flux1%H &
+                        - rhocp_w * alpha * lEx%Ts * e0_w / rhoa_w &
+                        - rhocp_w * alpha * q_w * lEx%cov_w(ts)
+                else
+                    Flux3%H_at(wslot) = Flux1%H
+                end if
+            end if
+
+            !> Momentum, which follows the humidity only through air density.
+            !> u* is not here: it comes from the wind covariances alone and is
+            !> the same number for every hygrometer.
+            if (rhoa_w > 0d0 .and. Flux3%ustar /= error) &
+                Flux3%tau_at(wslot) = &
+                    sign(rhoa_w * Flux3%ustar**2d0, Flux3%tau)
+
+            !> Monin-Obukhov length and stability parameter
+            if (Flux3%H_at(wslot) /= 0d0 .and. Flux3%H_at(wslot) /= error &
+                .and. rhocp_w > 0d0 .and. Flux3%ustar >= 0d0 .and. Tp > 0d0) then
+                Flux3%L_at(wslot) = -Tp * (Flux3%ustar**3) &
+                    / (vk * g * Flux3%H_at(wslot) / rhocp_w)
+                if (Flux3%L_at(wslot) /= 0d0) &
+                    Flux3%zL_at(wslot) = &
+                        (lEx%instr(sonic)%height - lEx%disp_height) &
+                        / Flux3%L_at(wslot)
+            end if
+        end do
+
+        !> The designated hygrometer's entry is *overwritten by* the scalars,
+        !> not the other way round.
+        !>
+        !> Both directions would give the same numbers if this loop were a
+        !> perfect replay, and it very nearly is. But the scalars have been
+        !> through the Burba terms, the closed-path spectral correction and the
+        !> storage chain, and this loop reproduces none of that - it does not
+        !> need to, because every other hygrometer reaches it by the same
+        !> route. Writing the loop's answer into the bare columns would move
+        !> output that has been verified against v7.2.5; writing the scalar
+        !> into the entry cannot.
+        !>
+        !> It also gives the row writer a single rule - walk WaterOutSlots and
+        !> emit the `_at` entry - with no special case for the designated slot,
+        !> which is one fewer place for header and row to disagree.
+        if (wsl >= firstGas .and. wsl <= lastGas) then
+            Flux3%E_at(wsl)   = Flux3%E
+            Flux3%LE_at(wsl)  = Flux3%LE
+            Flux3%ET_at(wsl)  = Flux3%ET
+            Flux3%H_at(wsl)   = Flux3%H
+            Flux3%tau_at(wsl) = Flux3%tau
+            Flux3%L_at(wsl)   = lEx%L
+            Flux3%zL_at(wsl)  = lEx%zL
+        end if
+    end subroutine PerHygrometerFluxes
 
     !***********************************************************************
     !> Level 2 flux of one gas: the WPL / density correction.

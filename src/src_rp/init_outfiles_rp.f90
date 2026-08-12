@@ -797,6 +797,11 @@ subroutine InitOutFiles_rp()
         write(ust7, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
+    !> Last, so it can name every column family the headers above just wrote -
+    !> including the FLUXNET tags, which SelectFluxnetGasSlots fills when
+    !> InitFluxnetFile_rp runs earlier in this same period.
+    call WriteColumnLegend()
+
 contains
 
 function FullOutputCustomLabel(ordinal) result(clean_label)

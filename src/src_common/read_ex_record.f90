@@ -71,6 +71,10 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: n_gas_moist
     real(kind = dbl) :: moist_rhow
     real(kind = dbl) :: moist_sigma
+    real(kind = dbl) :: moist_q
+    real(kind = dbl) :: moist_rhoa
+    real(kind = dbl) :: moist_rhocp
+    real(kind = dbl) :: moist_rh
     integer :: n_gas_instr
     character(32) :: instr_firm
     character(32) :: instr_model
@@ -157,8 +161,12 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: n_meta_gas
     integer, parameter :: nCecFields   = 11                       !< CEC descriptor
     !> Per-gas moisture block: a count, then this many fields per gas
-    !> (slot, rhow, sigma).
-    integer, parameter :: nGasMoistFields = 3
+    !> (slot, rhow, sigma, q, rhoa, rhocp, rh).
+    integer, parameter :: nGasMoistFields = 7
+    !> Per-hygrometer flux block: a count, then this many fields per
+    !> non-designated hygrometer (slot, H, LE, ET, tau, L, zL).
+    integer, parameter :: nWaterFluxFields = 7
+    integer :: n_water_flux
     !> Per-gas analyser block: a count, then this many fields per gas
     !> (slot, firm, model, nsep, esep, vsep, tube_l, tube_d, tube_f,
     !>  hpath, vpath, tau, kw, ko).
@@ -661,12 +669,17 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     end if
 
     !> Read the per-gas water vapour terms written by WriteOutFluxnet.
-    !> Self-describing: a count, then that many (slot, rhow, sigma) triples.
+    !> Self-describing: a count, then that many
+    !> (slot, rhow, sigma, q, rhoa, rhocp, rh) records - nGasMoistFields wide.
     !> The slot is explicit because configured gases need not be contiguous.
     !> Slots not named here keep `error`, which makes the consumers fall back
     !> to the single global sigma/RHO%w.
     lEx%rhow_at = error
     lEx%sigma_at = error
+    lEx%q_at = error
+    lEx%rhoa_at = error
+    lEx%rhocp_at = error
+    lEx%rh_at = error
     lEx%n_gas_moist = 0
     lEx%gas_moist_slot = 0
     n_gas_moist = 0
@@ -688,7 +701,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             return
         end if
         do i = 1, n_gas_moist
-            read(dataline, *, iostat = read_status) gas, moist_rhow, moist_sigma
+            read(dataline, *, iostat = read_status) gas, moist_rhow, &
+                moist_sigma, moist_q, moist_rhoa, moist_rhocp, moist_rh
             if (read_status /= 0) then
                 call InvalidateRecord()
                 return
@@ -696,6 +710,10 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             if (gas >= firstGas .and. gas <= lastGas) then
                 lEx%rhow_at(gas) = moist_rhow
                 lEx%sigma_at(gas) = moist_sigma
+                lEx%q_at(gas) = moist_q
+                lEx%rhoa_at(gas) = moist_rhoa
+                lEx%rhocp_at(gas) = moist_rhocp
+                lEx%rh_at(gas) = moist_rh
                 lEx%n_gas_moist = lEx%n_gas_moist + 1
                 lEx%gas_moist_slot(lEx%n_gas_moist) = gas
             end if
@@ -795,6 +813,40 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         end do
     end if
 
+
+    !> Consume the per-hygrometer flux block RP wrote after the analyser one.
+    !>
+    !> FCC recomputes every one of these, so nothing is kept - but the fields
+    !> must still be stepped over. The CEC descriptor below is located by
+    !> taking the last nCecFields of whatever remains, and the biomet chunk is
+    !> whatever is left after that; leaving these in place would push both
+    !> along and hand the CEC parser six flux values.
+    if (len_trim(dataline) > 0) then
+        read(dataline, *, iostat = read_status) n_water_flux
+        if (read_status /= 0) then
+            call InvalidateRecord()
+            return
+        end if
+        ix = strCharIndex(dataline, ',', 1)
+        if (ix <= 0) then
+            call InvalidateRecord()
+            return
+        end if
+        dataline = dataline(ix+1: len_trim(dataline))
+
+        if (n_water_flux < 0 .or. n_water_flux > GHGNumVar) then
+            call InvalidateRecord()
+            return
+        end if
+        do i = 1, n_water_flux
+            ix = strCharIndex(dataline, ',', nWaterFluxFields)
+            if (ix <= 0) then
+                call InvalidateRecord()
+                return
+            end if
+            dataline = dataline(ix+1: len_trim(dataline))
+        end do
+    end if
 
     !> Split and read the CEC descriptor appended after variable biomet data.
     lEx%cec%r_ET = error

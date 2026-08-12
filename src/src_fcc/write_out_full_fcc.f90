@@ -47,6 +47,10 @@ subroutine WriteOutFullFcc(lEx)
     !> header from the same list.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
+    !> Hygrometers and their column suffixes, from WaterOutSlots.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
     !> How many variables the packed statistical-flag strings describe.
     integer :: n_flag_vars
     character(LongOutstringLen) :: flag_legend
@@ -112,6 +116,28 @@ subroutine WriteOutFullFcc(lEx)
             call AddDatum(csv_row, field_val, separator)
         end if
     end if
+
+    !> The other hygrometers, in the same order and under the same test as
+    !> InitOutFiles writes the matching headers. Walks WaterOutSlots for both,
+    !> so the two cannot disagree about which hygrometers appear or what they
+    !> are called.
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    do k = 1, n_w_slots
+        if (len_trim(w_tags(k)) == 0) cycle
+        if (.not. fcc_var_present(w_slots(k))) cycle
+        call WriteDatumFloat(Flux3%H_at(w_slots(k)), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(Flux3%LE_at(w_slots(k)), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(Flux3%ET_at(w_slots(k)), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(Flux3%tau_at(w_slots(k)), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(Flux3%L_at(w_slots(k)), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+        call WriteDatumFloat(Flux3%zL_at(w_slots(k)), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end do
 
     !> Gases, one block per configured gas.
     do k = 1, n_fo_slots

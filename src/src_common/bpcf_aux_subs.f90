@@ -209,10 +209,22 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             A = RegPar(dum, dum)%e1
             B = RegPar(dum, dum)%e2
             C = RegPar(dum, dum)%e3
-            lRH = lEx%RH * 1d-2
             do gas = firstGas, lastGas
                 if (.not. GasSlotIsWater(gas)) cycle
                 if (.not. lEx%var_present(gas)) cycle
+                !> Each hygrometer's own humidity, not the primary's.
+                !>
+                !> The coefficients stay shared - one fit per project, the
+                !> documented limit noted above - but the RH they are evaluated
+                !> at must be the humidity this hygrometer actually read. The
+                !> relation describes how a tube and filter attenuate water at
+                !> a given humidity, so it is a property of the instrument and
+                !> its own air; feeding it another instrument's RH answers the
+                !> question for the wrong sample. On CH-LAE the two read some
+                !> 20% apart, which is two RH classes.
+                lRH = lEx%rh_at(gas)
+                if (lRH == error) lRH = lEx%RH
+                lRH = lRH * 1d-2
                 f_c(gas) = dexp(A * lRH**2 + B * lRH + C)
             end do
             !> select relevant tranfer function parameters
@@ -233,31 +245,41 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
         case('sigma')
             !> select relevant tranfer function parameters
             !> according to the RH-class, for H2O
-            !> Same rule as the iir arm: every hygrometer, each taking the
-            !> primary water's RH-class parameter, since that is the only
-            !> water slot the assessment fits.
+            !> Same rule as the iir arm: every hygrometer, placed in the class
+            !> its own humidity falls in. The primary's fitted parameter is
+            !> still the fallback, since the assessment fits only that slot -
+            !> but which class to read it from is this hygrometer's question.
             wsl = PrimaryWaterSlot()
             if (wsl >= firstGas) then
-                do RH = RH10, RH90
-                    if(lEx%RH > dfloat(RH)*10d0 - 5d0 &
-                       .and. lEx%RH < dfloat(RH)*10d0 + 5d0) then
-                        do gas = firstGas, lastGas
-                            if (.not. GasSlotIsWater(gas)) cycle
-                            if (.not. lEx%var_present(gas)) cycle
-                            !> Each hygrometer's own RH-class fit. Every one
-                            !> took the primary's, because the assessment
-                            !> file could not carry a second - it is fitted
-                            !> per slot and was then discarded. The primary
-                            !> remains the fallback for a hygrometer the
-                            !> assessment never fitted.
-                            if (RegPar(gas, RH)%f2 /= error) then
-                                f_2(gas) = RegPar(gas, RH)%f2
-                            else
-                                f_2(gas) = RegPar(wsl, RH)%f2
-                            end if
-                        end do
+                !> Hygrometer outside, class inside: each one is placed in the
+                !> class its *own* humidity falls in.
+                !>
+                !> The class was chosen once, from the primary's RH, and handed
+                !> to every hygrometer. The classes are ten points wide, so two
+                !> hygrometers disagreeing by more than that - CH-LAE's differ
+                !> by some twenty - belong in different ones, and the second
+                !> was given a cutoff fitted for humidity it never saw.
+                do gas = firstGas, lastGas
+                    if (.not. GasSlotIsWater(gas)) cycle
+                    if (.not. lEx%var_present(gas)) cycle
+                    lRH = lEx%rh_at(gas)
+                    if (lRH == error) lRH = lEx%RH
+                    do RH = RH10, RH90
+                        if (lRH <= dfloat(RH)*10d0 - 5d0 &
+                            .or. lRH >= dfloat(RH)*10d0 + 5d0) cycle
+                        !> Each hygrometer's own RH-class fit. Every one
+                        !> took the primary's, because the assessment
+                        !> file could not carry a second - it is fitted
+                        !> per slot and was then discarded. The primary
+                        !> remains the fallback for a hygrometer the
+                        !> assessment never fitted.
+                        if (RegPar(gas, RH)%f2 /= error) then
+                            f_2(gas) = RegPar(gas, RH)%f2
+                        else
+                            f_2(gas) = RegPar(wsl, RH)%f2
+                        end if
                         exit
-                    end if
+                    end do
                 end do
             end if
             call char2int(lEx%end_date(6:7), month, 2)

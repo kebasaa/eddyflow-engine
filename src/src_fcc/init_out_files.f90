@@ -52,6 +52,10 @@ subroutine InitOutFiles(lEx)
     !> WriteOutFullFcc walks the same list.
     integer :: fo_slots(GHGNumVar)
     integer :: n_fo_slots
+    !> Hygrometers and their column suffixes, from WaterOutSlots.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
     !> Statistical-flag legends, shared with WriteOutFullFcc.
     character(LongOutstringLen) :: flag_legend
     character(LongOutstringLen) :: tl_legend
@@ -141,6 +145,29 @@ subroutine InitOutFiles(lEx)
                 call AddDatum(header3, '[W+1m-2]', separator)
             end if
         end if
+
+        !> The other hygrometers' sensible and latent heat, evapotranspiration
+        !> and stability. The designated one carries the bare names above and
+        !> is skipped here, so a single-hygrometer project emits nothing extra
+        !> and its file is unchanged.
+        call WaterOutSlots(w_slots, w_tags, n_w_slots)
+        do k = 1, n_w_slots
+            if (len_trim(w_tags(k)) == 0) cycle
+            if (.not. fcc_var_present(w_slots(k))) cycle
+            call AddDatum(header1, ',,,,,', separator)
+            call AddDatum(header2, 'H' // trim(w_tags(k)) &
+                // ',LE' // trim(w_tags(k)) &
+                // ',ET' // trim(w_tags(k)) &
+                // ',Tau' // trim(w_tags(k)) &
+                // ',L' // trim(w_tags(k)) &
+                !> Paired with the bare column, which is spelled `(z-d)/L`
+                !> rather than zL. An unpaired name is the one thing a reader
+                !> cannot resolve: it would have to guess which of these
+                !> describes the same quantity as which.
+                // ',(z-d)/L' // trim(w_tags(k)), separator)
+            call AddDatum(header3, '[W+1m-2],[W+1m-2],[mm+1hour-1],' &
+                // '[kg+1m-1s-2],[m],[#]', separator)
+        end do
 
         !> Corrected co2 fluxes
         !> Corrected gas fluxes, one block per configured gas.

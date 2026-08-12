@@ -845,8 +845,10 @@ module m_typedef
         !> Per-gas fluxes, indexed by E2Col slot. Were four named scalars
         !> (co2/h2o/ch4/gas4); a project can now configure more gases than
         !> that, so the flux of gas N has to be addressable by N.
-        !> `E`/`LE`/`ET` stay scalar: they are the water flux itself, of which
-        !> there is one per H2O record, not one per gas.
+        !> `E`/`LE`/`ET`/`H` and the stability below stay scalar as the
+        !> *designated* hygrometer's values - the ones carrying the bare
+        !> FLUXNET column names. Every hygrometer's own set is in the `_at`
+        !> arrays, indexed by that hygrometer's E2Col slot.
         real(kind = dbl) :: gas(GHGNumVar)
         real(kind = dbl) :: E
         real(kind = dbl) :: ET
@@ -861,6 +863,33 @@ module m_typedef
         real(kind = dbl) :: ustar
         real(kind = dbl) :: L
         real(kind = dbl) :: zL
+        !> One set per hygrometer, indexed by its own E2Col slot.
+        !>
+        !> A site with two hygrometers has two humidities, and every quantity
+        !> derived from humidity has two values. Reporting one of them and
+        !> discarding the other is a choice the data does not support: the
+        !> second hygrometer produced a water flux and nothing else - no latent
+        !> heat, no evapotranspiration, no sensible heat of its own, no
+        !> stability - so there was no way to see the two disagree.
+        !>
+        !> `tau` is here and `ustar` is not, which is the opposite way round
+        !> from how it first reads. u* comes from the wind covariances alone
+        !> (Flux0%ustar = Ambient%us) and carries no humidity; tau is
+        !> rho_a * u*^2 and carries it through rho_a. A per-hygrometer u*
+        !> column would be a copy of the one beside it - worse than absent,
+        !> because a reader would take the agreement for corroboration.
+        !>
+        !> The designated hygrometer's entry and the scalar above are the same
+        !> number by construction - the scalar is assigned from the entry, not
+        !> computed alongside it - so the bare columns cannot drift from the
+        !> numbered one that describes the same instrument.
+        real(kind = dbl) :: E_at(GHGNumVar)
+        real(kind = dbl) :: LE_at(GHGNumVar)
+        real(kind = dbl) :: ET_at(GHGNumVar)
+        real(kind = dbl) :: H_at(GHGNumVar)
+        real(kind = dbl) :: tau_at(GHGNumVar)
+        real(kind = dbl) :: L_at(GHGNumVar)
+        real(kind = dbl) :: zL_at(GHGNumVar)
     end type FluxType
 
     type :: FileCheckType
@@ -1058,6 +1087,24 @@ module m_typedef
         !> measurement's E2Col slot. `sigma` above remains the single-H2O
         !> value; per-gas WPL uses sigma_at(moisture slot) instead.
         real(kind = dbl) :: sigma_at(GHGNumVar)
+        !> The rest of the moisture regime, per hygrometer, on the same index.
+        !> Each is the scalar above replayed from one hygrometer's own vapour
+        !> density: a second hygrometer reads a different humidity, so it
+        !> implies a different dry-air partial pressure and therefore its own
+        !> air density, specific humidity and heat capacity. H, LE, ET and the
+        !> stability derived from them are computed once per entry.
+        !>
+        !> Air temperature is deliberately NOT here. Ta comes from the sonic
+        !> corrected for humidity, so a per-hygrometer Ta would give the site
+        !> two air temperatures and, through molar volume and every WPL term,
+        !> two values for every gas flux. These are all computed from the one
+        !> settled Ta, which is what keeps the widening bounded.
+        real(kind = dbl) :: e_at(GHGNumVar)
+        real(kind = dbl) :: RH_at(GHGNumVar)
+        real(kind = dbl) :: rho_d_at(GHGNumVar)
+        real(kind = dbl) :: rho_a_at(GHGNumVar)
+        real(kind = dbl) :: Q_at(GHGNumVar)
+        real(kind = dbl) :: RhoCp_at(GHGNumVar)
         !> Cell temperature and pressure of the analyser measuring each gas,
         !> indexed by that gas's E2Col slot. The scalars above stay as the
         !> first instrument's values, which is what a single-analyser site has
@@ -1577,6 +1624,20 @@ module m_typedef
         !> case the global values apply.
         real(kind = dbl) :: rhow_at(GHGNumVar)
         real(kind = dbl) :: sigma_at(GHGNumVar)
+        !> The rest of that H2O's regime, on the same index and written by the
+        !> same block. Two terms were enough while the only per-gas quantity
+        !> was the WPL dilution; a per-hygrometer sensible heat flux needs the
+        !> air its hygrometer implies - specific humidity, wet air density,
+        !> heat capacity - and the spectral corrections need its humidity.
+        !>
+        !> A hygrometer's own moisture reference is itself, so the entry
+        !> indexed by an H2O slot is that hygrometer's own regime. That is what
+        !> makes this block, keyed by gas, also the carrier for the
+        !> per-hygrometer quantities: no second block to keep in step.
+        real(kind = dbl) :: q_at(GHGNumVar)
+        real(kind = dbl) :: rhoa_at(GHGNumVar)
+        real(kind = dbl) :: rhocp_at(GHGNumVar)
+        real(kind = dbl) :: rh_at(GHGNumVar)
         !> Gas slots the ex file actually carried terms for, in file order.
         !> FCC rewrites the row and must replay exactly this set: deriving it
         !> again from the values would drop any gas whose terms happened to be

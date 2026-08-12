@@ -182,4 +182,6 @@ module m_index_parameters
     integer, parameter :: uoff  = 159
     integer, parameter :: urh   = 160
     integer, parameter :: uto   = 161
+    !> Column legend: which suffix denotes which instrument.
+    integer, parameter :: uleg  = 162
 end module m_index_parameters

@@ -119,6 +119,7 @@ module m_common_global_var
     character(23), parameter :: Rot2D_FilePadding       = '_double_rotation_angles'
     character(9),  parameter :: Metadata_FilePadding    = '_metadata'
     character(11), parameter :: QCdetails_FilePadding  = '_qc_details'
+    character(14), parameter :: Legend_FilePadding     = '_column_legend'
     character(16), parameter :: H2OCov_FilePadding      = '_h2o_covariances'
     character(9),  parameter :: Tlag_FilePadding        = '_timelags'
     character(14), parameter :: RH_FilePadding          = '_timelag_vs_rh'
@@ -377,7 +378,9 @@ module m_common_global_var
         errFlux = fluxtype(date = '', time = '', &
             gas = error, E = error, ET = error, E_gas = error, &
             LE = error, H = error, Hi_gas = error, &
-            tau = error, ustar = error, L = error, zL = error)
+            tau = error, ustar = error, L = error, zL = error, &
+            E_at = error, LE_at = error, ET_at = error, H_at = error, &
+            tau_at = error, L_at = error, zL_at = error)
 
     integer :: RowLags(E2NumVar)
     integer :: UserRowLags(MaxUserVar)

@@ -302,8 +302,9 @@ Program EddyFlowFCC
         open(uex, file = AuxFile%ex, status = 'old', iostat = open_status)
         if (open_status /= 0) call ExceptionHandler(60)
 
-        !> Skip header in Ex file
-        read(uex, *)
+        !> Skip header in Ex file, after checking it was written by this
+        !> version - see CheckExFileVintage.
+        call CheckExFileVintage()
 
         !> Loop to import binned (co)spectra
         month = 0
@@ -460,8 +461,13 @@ Program EddyFlowFCC
     !> and exit with error in case of problems opening the file
     open(uex, file = AuxFile%ex, status = 'old', iostat = open_status)
     if (open_status /= 0) call ExceptionHandler(60)
-    !> Skip first line for header
-    read(uex, *)
+    !> The header was skipped unread. ReadExRecord parses this file by field
+    !> position, so a file written by an older RP is not merely out of date -
+    !> its per-gas moisture records are three fields wide where the reader now
+    !> expects seven, and a list-directed read simply continues into the next
+    !> gas's fields and returns plausible numbers for the wrong slot. Nothing
+    !> downstream can notice. Checking one column name turns that into a stop.
+    call CheckExFileVintage()
 
 
 
@@ -619,4 +625,38 @@ Program EddyFlowFCC
     write(*, '(a)') ' Check results in the selected output directory.     '
     write(*, '(a)') ' ****************************************************'
     stop ''
+
+contains
+
+!***************************************************************************
+!
+! \brief       Read past the ex-file header, refusing one this version cannot
+!              parse.
+! \author      Jonathan Muller
+! \note        Both places that open the ex file used to `read(uex, *)` and
+!              throw the header away. That was harmless while the format only
+!              ever grew at the end - a reader stops when it has what it wants.
+!              It stopped being harmless when the per-gas moisture records went
+!              from three fields to seven: a list-directed read of seven values
+!              from a three-field record does not fail, it continues into the
+!              next gas's fields and returns numbers that look entirely
+!              ordinary for the wrong slot, and every flux computed from them
+!              is quietly wrong.
+!
+!              So one column name is checked. NUM_WATER_FLUX appears only in
+!              files written by this version, and its absence means the
+!              moisture records are the narrow ones. Re-running RP regenerates
+!              the file; there is nothing to migrate.
+!***************************************************************************
+subroutine CheckExFileVintage()
+    implicit none
+    character(LongOutstringLen) :: header
+
+    header = ''
+    read(uex, '(a)', iostat = open_status) header
+    if (open_status /= 0) call ExceptionHandler(60)
+
+    if (index(header, 'NUM_WATER_FLUX') <= 0) call ExceptionHandler(107)
+end subroutine CheckExFileVintage
+
 end program EddyFlowFCC

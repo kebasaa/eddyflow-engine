@@ -905,6 +905,9 @@ wind_direction.o: \
 wind_sector.o: \
 	wind_sector.f90 \
 	m_rp_global_var.o
+write_column_legend.o: \
+	write_column_legend.f90 \
+	m_rp_global_var.o
 write_out_biomet.o: \
 	write_out_biomet.f90 \
 	interfaces.inc \

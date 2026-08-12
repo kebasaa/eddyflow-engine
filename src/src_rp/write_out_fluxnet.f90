@@ -49,6 +49,12 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     integer :: i
     integer :: indx
     integer :: int_doy
+    !> Hygrometers and their column suffixes, from WaterOutSlots, and how many
+    !> of them are not the designated one.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
+    integer :: n_w_flux
     real(kind = dbl) :: float_doy
     real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
@@ -1001,7 +1007,18 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         if (indx >= firstGas .and. indx <= lastGas) then
             call AddFloatDatumToDataline(RHO%w_at(indx), csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Ambient%sigma_at(indx), csv_row, EddyFlowProj%err_label)
+            !> The air that hygrometer implies, for the sensible heat flux and
+            !> the stability computed from it, and its humidity for the
+            !> spectral corrections.
+            call AddFloatDatumToDataline(Ambient%Q_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%rho_a_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%RhoCp_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%RH_at(indx), csv_row, EddyFlowProj%err_label)
         else
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
         end if
@@ -1028,6 +1045,29 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(E2Col(var)%Instr%ko, csv_row, EddyFlowProj%err_label)
     end do
 
+
+    !> The non-designated hygrometers' H, LE, ET, momentum and stability, in
+    !> the same position and order as InitFluxnetFile_rp writes the matching
+    !> headers: after the analyser block and before biomet. Not at the end of
+    !> the row - the CEC descriptor there is found by taking the last eleven
+    !> fields, so anything after it would be read as the descriptor.
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    n_w_flux = 0
+    do j = 1, n_w_slots
+        if (len_trim(w_tags(j)) > 0) n_w_flux = n_w_flux + 1
+    end do
+    call AddIntDatumToDataline(n_w_flux, csv_row, EddyFlowProj%err_label)
+    do j = 1, n_w_slots
+        if (len_trim(w_tags(j)) == 0) cycle
+        var = w_slots(j)
+        call AddIntDatumToDataline(var, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%H_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%LE_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%ET_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%tau_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%L_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%zL_at(var), csv_row, EddyFlowProj%err_label)
+    end do
 
     !> All aggregated biomet values in FLUXNET units
     call AddIntDatumToDataline(nbVars, csv_row, EddyFlowProj%err_label)

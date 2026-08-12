@@ -145,11 +145,13 @@ end function GasSlotIsWater
 !
 ! \brief       The gas slot holding the site's primary water measurement.
 ! \author      Jonathan Muller
-! \note        A site has one humidity, one latent heat flux and one
-!              evapotranspiration however many hygrometers it carries, and
-!              those come from the first water record. Gases that need *their
-!              own* water for a WPL correction use E2Col(gas)%moist_ref
-!              instead; this is only for the one-per-site quantities.
+! \note        The hygrometer whose H, LE and ET carry the bare column names,
+!              which is the first water record unless one is flagged. Every
+!              hygrometer now gets its own family - see WaterOutSlots - so this
+!              no longer decides which humidity the site *has*, only which one
+!              a reader finds under the unsuffixed FLUXNET spelling. Gases that
+!              need *their own* water for a WPL correction use
+!              E2Col(gas)%moist_ref, as they already did.
 !
 !              Returns 0 when the project describes no water at all. Callers
 !              must treat that as "not performed" - the quantity is `error`
@@ -785,6 +787,80 @@ integer function PrimaryWaterOutSlot()
     PrimaryWaterOutSlot = PrimaryWaterSlot()
     if (PrimaryWaterOutSlot < firstGas) PrimaryWaterOutSlot = histGas2
 end function PrimaryWaterOutSlot
+
+!***************************************************************************
+!
+! \brief       Every hygrometer the project describes, with its column suffix.
+! \author      Jonathan Muller
+! \note        H, LE and ET used to be one column each, computed from the
+!              designated hygrometer, because a site was taken to have one
+!              humidity however many hygrometers it carried. A site that
+!              deliberately fields two got one answer and no way to see the
+!              other: the second hygrometer produced its own water flux and
+!              nothing else - no latent heat, no evapotranspiration, no
+!              sensible heat, no stability of its own.
+!
+!              So every water record gets a family. The designated one keeps
+!              the bare names - H, LE, ET - because those are the FLUXNET
+!              spellings and a reader that knows nothing of this change still
+!              finds what it expects, reading the same hygrometer it read
+!              before. The rest are numbered.
+!
+!              The suffix is the water's *position in this list*, not a running
+!              count of the numbered ones. With the designated hygrometer
+!              second of three the families are H_1, H, H_3 - a gap where the
+!              bare name sits, rather than H_2 meaning the first record and
+!              H_3 the third. The number always names which hygrometer, which
+!              is the only property worth having when a project is edited.
+!
+!              Slots AND suffixes together, from one call, because header and
+!              row are written by different routines in different executables:
+!              getting the list right and the naming wrong shifts the file
+!              exactly as getting the list wrong does. There is nothing here to
+!              recompute, so no caller has the chance to disagree.
+!
+!              Record-derived like PrimaryWaterSlot, for the same reason -
+!              headers are written before the first data file is read, and FCC
+!              has no E2Col. Only records naming a column are eligible.
+!***************************************************************************
+subroutine WaterOutSlots(slots, tags, nslots)
+    use m_common_global_var
+    implicit none
+    integer, intent(out) :: slots(GHGNumVar)
+    character(*), intent(out) :: tags(GHGNumVar)
+    integer, intent(out) :: nslots
+    integer :: gas
+    integer :: rec
+    integer :: i
+    integer :: designated
+    integer, external :: PrimaryWaterSlot
+    logical, external :: GasSlotIsWater
+
+    slots = 0
+    tags = ''
+    nslots = 0
+    designated = PrimaryWaterSlot()
+
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (EddyFlowProj%gas(rec)%col <= 0) cycle
+        if (.not. GasSlotIsWater(gas)) cycle
+        nslots = nslots + 1
+        slots(nslots) = gas
+    end do
+
+    !> Suffixes only once the list is complete: whether the designated
+    !> hygrometer is in it at all decides whether any name is left bare, and
+    !> the first record cannot know that.
+    do i = 1, nslots
+        if (slots(i) == designated) then
+            tags(i) = ''
+        else
+            write(tags(i), '(a,i0)') '_', i
+        end if
+    end do
+end subroutine WaterOutSlots
 
 !***************************************************************************
 !

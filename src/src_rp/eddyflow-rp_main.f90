@@ -214,6 +214,13 @@ program EddyFlowRP
         RPsetup%tlag_assessment_only
     allocate(bf(Meth%spec%nbins + 1))
 
+    !> A project with no analyser is a legitimate configuration - an
+    !> anemometer still measures momentum, sensible heat and stability - but
+    !> the gas half of every output file is error codes, and that is worth
+    !> saying before the user goes looking for the cause. Here rather than in
+    !> the period loop, so it is said once.
+    if (EddyFlowProj%gas_num <= 0) call ExceptionHandler(108)
+
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
     call ResetPwbDiagnostics()

@@ -45,6 +45,10 @@ subroutine InitFluxnetFile_rp()
     integer :: k
     character(PathLen) :: Test_Path
     character(32) :: g4label
+    !> Hygrometers and their column suffixes, from WaterOutSlots.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
     character(64) :: usg(NumUserVar)
     character(LongOutstringLen) :: csv_row
     include '../src_common/interfaces.inc'
@@ -413,12 +417,21 @@ subroutine InitFluxnetFile_rp()
     !>
     !> The count is always emitted so the block is self-describing and the
     !> reader needs no knowledge of the project configuration.
+    !> Seven terms, not two. The dilution needs RHOW and SIGMA; a
+    !> per-hygrometer sensible heat flux needs the air that hygrometer implies
+    !> - Q, RHOA, RHOCP - and the spectral corrections need its RH. A
+    !> hygrometer's own moisture reference is itself, so the entry under an H2O
+    !> tag is that hygrometer's own regime and no separate block is needed.
     call AddDatum(csv_row, 'NUM_GAS_MOIST', separator)
     do j = 1, nFluxnetGasSlots
         i = FluxnetGasSlots(j)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SLOT', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RHOW', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SIGMA', separator)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_Q', separator)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RHOA', separator)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RHOCP', separator)
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RH', separator)
     end do
 
     !> Analyser describing each gas beyond the four historical slots.
@@ -451,6 +464,33 @@ subroutine InitFluxnetFile_rp()
     end do
 
     !> Add biomet variables
+    !> The non-designated hygrometers' H, LE, ET, momentum and stability.
+    !>
+    !> Self-describing and here rather than beside the bare H, for the same
+    !> reason the moisture and analyser blocks are: FCC parses the fixed part
+    !> by field position, so a family inserted earlier would shift every column
+    !> after it and be read into the wrong variable.
+    !>
+    !> Here rather than at the very end because the CEC descriptor is anchored
+    !> to the end - its reader takes the last eleven fields of whatever remains
+    !> - so a block appended after it would be swallowed as the descriptor.
+    !>
+    !> The designated hygrometer is not in this block: it is TAU/H/LE/ET above,
+    !> under the FLUXNET spellings a reader expects. A single-hygrometer site
+    !> emits the count and nothing else, and its row is as it was.
+    call AddDatum(csv_row, 'NUM_WATER_FLUX', separator)
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    do j = 1, n_w_slots
+        if (len_trim(w_tags(j)) == 0) cycle
+        call AddDatum(csv_row, 'WATER_FLUX_SLOT' // trim(w_tags(j)), separator)
+        call AddDatum(csv_row, 'H' // trim(w_tags(j)), separator)
+        call AddDatum(csv_row, 'LE' // trim(w_tags(j)), separator)
+        call AddDatum(csv_row, 'ET' // trim(w_tags(j)), separator)
+        call AddDatum(csv_row, 'TAU' // trim(w_tags(j)), separator)
+        call AddDatum(csv_row, 'MO_LENGTH' // trim(w_tags(j)), separator)
+        call AddDatum(csv_row, 'ZL' // trim(w_tags(j)), separator)
+    end do
+
     call AddDatum(csv_row, 'NUM_BIOMET_VARS', separator)
 
     if (nbVars > 0) then
@@ -606,82 +646,103 @@ subroutine SelectFluxnetGasSlots()
     !> Which record is designated is the project's to state, through
     !> gas_<i>_fluxnet_default; unflagged it is the first of the species. The
     !> same designation decides FC and LE, via DesignatedGasSlot.
-    if (EddyFlowProj%gas_num > 0) then
-        !> The order itself comes from one place, shared with the row writer,
-        !> FCC's rewriter and ReadExRecord. Deriving it here as well is how a
-        !> file gets written in one order and read in another.
-        call FluxnetLayoutGasSlots(FluxnetLayoutSlots, nFluxnetLayoutSlots)
-        do n = 1, nFluxnetLayoutSlots
-            !> Which record a position holds, rather than assuming the two
-            !> run together - they need not.
-            rec = FluxnetLayoutSlots(n) - firstGas + 1
-            call clearstr(tag)
-            if (rec >= 1 .and. rec <= min(EddyFlowProj%gas_num, MaxNumGases)) &
-                tag = EddyFlowProj%gas(rec)%var
-            call uppercase(tag)
-            !> A required variable the project names no record for is carried
-            !> on a slot past the records, so there is nothing to read its
-            !> species from - the layout put it there precisely because the
-            !> standard needs the column, and the layout knows which one.
-            if (len_trim(tag) == 0 .and. n <= size(FluxnetRequiredOrder)) &
-                tag = FluxnetRequiredOrder(n)
-            if (len_trim(tag) == 0) tag = 'GAS'
-            bareTag(n) = tag
+    !> Unconditionally, including when the project configures no gas at all.
+    !>
+    !> This stood under `if (EddyFlowProj%gas_num > 0)`, and that guard was the
+    !> divergence the paragraph above warns about. FluxnetLayoutGasSlots returns
+    !> three synthetic CO2/H2O/CH4 slots whatever gas_num is - FLUXNET requires
+    !> those columns to exist however little the site measures - and
+    !> ReadExRecord calls it with no guard at all. So an anemometer-only project
+    !> had RP write no gas column families and FCC expect three of everything,
+    !> and every field after the _NR block was out of step. The read died on the
+    !> first integer item, measure_type, landing on a real.
+    !>
+    !> Header and row agreed with each other, both being short by the same
+    !> block, so the column-count check passed and the fault only surfaced as
+    !> "no valid data records" one executable later.
+    !>
+    !> The body below already copes with a slot no record owns: it takes the
+    !> species from FluxnetRequiredOrder when the record lookup comes back
+    !> empty. Only reaching it was the problem.
+    !>
+    !> The order itself comes from one place, shared with the row writer,
+    !> FCC's rewriter and ReadExRecord. Deriving it here as well is how a
+    !> file gets written in one order and read in another.
+    call FluxnetLayoutGasSlots(FluxnetLayoutSlots, nFluxnetLayoutSlots)
+    do n = 1, nFluxnetLayoutSlots
+        !> Which record a position holds, rather than assuming the two
+        !> run together - they need not.
+        rec = FluxnetLayoutSlots(n) - firstGas + 1
+        call clearstr(tag)
+        if (rec >= 1 .and. rec <= min(EddyFlowProj%gas_num, MaxNumGases)) &
+            tag = EddyFlowProj%gas(rec)%var
+        call uppercase(tag)
+        !> A required variable the project names no record for is carried
+        !> on a slot past the records, so there is nothing to read its
+        !> species from - the layout put it there precisely because the
+        !> standard needs the column, and the layout knows which one.
+        if (len_trim(tag) == 0 .and. n <= size(FluxnetRequiredOrder)) &
+            tag = FluxnetRequiredOrder(n)
+        if (len_trim(tag) == 0) tag = 'GAS'
+        bareTag(n) = tag
+    end do
+
+    do n = 1, nFluxnetLayoutSlots
+        dup = 0
+        do m = 1, nFluxnetLayoutSlots
+            if (trim(bareTag(m)) == trim(bareTag(n))) dup = dup + 1
         end do
 
-        do n = 1, nFluxnetLayoutSlots
-            dup = 0
-            do m = 1, nFluxnetLayoutSlots
-                if (trim(bareTag(m)) == trim(bareTag(n))) dup = dup + 1
-            end do
+        !> Which occurrence of this species is the designated one. Layout
+        !> position and record index are the same thing here, so the flag
+        !> can be read straight off the record.
+        designated = 0
+        do m = 1, nFluxnetLayoutSlots
+            if (trim(bareTag(m)) /= trim(bareTag(n))) cycle
+            if (designated == 0) designated = m
+            rec = FluxnetLayoutSlots(m) - firstGas + 1
+            if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) cycle
+            if (EddyFlowProj%gas(rec)%fluxnet_default == 1) then
+                designated = m
+                exit
+            end if
+        end do
 
-            !> Which occurrence of this species is the designated one. Layout
-            !> position and record index are the same thing here, so the flag
-            !> can be read straight off the record.
-            designated = 0
+        !> Rank within the species: the designated record takes 1, the
+        !> rest follow in record order. Ranking by position alone would
+        !> give the designated record whatever number its position implied.
+        if (n == designated) then
+            ordinal = 1
+        else
+            ordinal = 1
             do m = 1, nFluxnetLayoutSlots
                 if (trim(bareTag(m)) /= trim(bareTag(n))) cycle
-                if (designated == 0) designated = m
-                rec = FluxnetLayoutSlots(m) - firstGas + 1
-                if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) cycle
-                if (EddyFlowProj%gas(rec)%fluxnet_default == 1) then
-                    designated = m
-                    exit
-                end if
+                if (m == designated) cycle
+                ordinal = ordinal + 1
+                if (m == n) exit
             end do
+        end if
 
-            !> Rank within the species: the designated record takes 1, the
-            !> rest follow in record order. Ranking by position alone would
-            !> give the designated record whatever number its position implied.
-            if (n == designated) then
-                ordinal = 1
+        if (FluxnetRequiredSpecies(bareTag(n))) then
+            !> Rank one is the standard name itself, unnumbered.
+            if (ordinal == 1) then
+                FluxnetLayoutTags(n) = bareTag(n)
             else
-                ordinal = 1
-                do m = 1, nFluxnetLayoutSlots
-                    if (trim(bareTag(m)) /= trim(bareTag(n))) cycle
-                    if (m == designated) cycle
-                    ordinal = ordinal + 1
-                    if (m == n) exit
-                end do
-            end if
-
-            if (FluxnetRequiredSpecies(bareTag(n))) then
-                !> Rank one is the standard name itself, unnumbered.
-                if (ordinal == 1) then
-                    FluxnetLayoutTags(n) = bareTag(n)
-                else
-                    write(ord, '(i0)') ordinal
-                    FluxnetLayoutTags(n) = trim(bareTag(n)) // '_' // trim(ord)
-                end if
-            else if (dup > 1) then
                 write(ord, '(i0)') ordinal
                 FluxnetLayoutTags(n) = trim(bareTag(n)) // '_' // trim(ord)
-            else
-                FluxnetLayoutTags(n) = bareTag(n)
             end if
-        end do
-    end if
+        else if (dup > 1) then
+            write(ord, '(i0)') ordinal
+            FluxnetLayoutTags(n) = trim(bareTag(n)) // '_' // trim(ord)
+        else
+            FluxnetLayoutTags(n) = bareTag(n)
+        end if
+    end do
 
+    !> This one stays guarded. It is the list of gases the project actually
+    !> measures, not the column layout, and for a project with none it is
+    !> legitimately empty - unlike the layout above, which FLUXNET requires to
+    !> carry CO2, H2O and CH4 either way.
     if (EddyFlowProj%gas_num > 0) then
         do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
             slot = firstGas + k - 1
