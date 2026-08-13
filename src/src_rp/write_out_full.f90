@@ -241,6 +241,12 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call AddDatum(csv_row, field_val, separator)
     call WriteDatumFloat(Ambient%Td, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
+    call WriteDatumFloat(Ambient%chi_biomet, field_val, EddyFlowProj%err_label)
+    call AddDatum(csv_row, field_val, separator)
+    call WriteDatumFloat(Ambient%r_biomet, field_val, EddyFlowProj%err_label)
+    call AddDatum(csv_row, field_val, separator)
+    call WriteDatumFloat(Ambient%d_biomet, field_val, EddyFlowProj%err_label)
+    call AddDatum(csv_row, field_val, separator)
 
     !> Unrotated and rotated wind components
     call WriteDatumFloat(Stats4%Mean(u), field_val, EddyFlowProj%err_label)

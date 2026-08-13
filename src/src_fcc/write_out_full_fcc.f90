@@ -258,6 +258,12 @@ subroutine WriteOutFullFcc(lEx)
     call AddDatum(csv_row, field_val, separator)
     call WriteDatumFloat(lEx%Tdew, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
+    call WriteDatumFloat(lEx%chi_biomet, field_val, EddyFlowProj%err_label)
+    call AddDatum(csv_row, field_val, separator)
+    call WriteDatumFloat(lEx%r_biomet, field_val, EddyFlowProj%err_label)
+    call AddDatum(csv_row, field_val, separator)
+    call WriteDatumFloat(lEx%d_biomet, field_val, EddyFlowProj%err_label)
+    call AddDatum(csv_row, field_val, separator)
 
     !> Unrotated and rotated wind components
     call WriteDatumFloat(lEx%unrot_u, field_val, EddyFlowProj%err_label)

@@ -192,6 +192,17 @@ module m_typedef
     integer, parameter :: firstCell = lastGas + 1
     integer, parameter :: lastCell  = firstCell + MaxNumCellSlots - 1
 
+    !> `moist_ref` value meaning "the biomet relative humidity", as opposed to
+    !> a gas slot holding a hygrometer.
+    !>
+    !> Negative so it can never collide with a slot, and named so the eight
+    !> places that read moist_ref can be found by grep. Every one of them
+    !> bounds-checks against firstGas..lastGas, and each has to recognise this
+    !> before that test - a sentinel that merely fails the bounds check would
+    !> be indistinguishable from "nothing resolved", which is a different
+    !> thing and, on a site with no biomet, the correct answer.
+    integer, parameter :: biometMoistRef = -1
+
     !> The first instrument's cell slots keep their historical names, so code
     !> that predates per-instrument cells still addresses instrument 1.
     integer, parameter :: tc  = firstCell
@@ -1087,6 +1098,21 @@ module m_typedef
         !> measurement's E2Col slot. `sigma` above remains the single-H2O
         !> value; per-gas WPL uses sigma_at(moisture slot) instead.
         real(kind = dbl) :: sigma_at(GHGNumVar)
+        !> The biomet humidity expressed the way a hygrometer's channel is.
+        !>
+        !> These used to be written straight into Stats%chi/r/d of the primary
+        !> hygrometer, so that instrument's reported concentration was the
+        !> biomet value and its own measurement was lost. They are their own
+        !> quantity now, reported as h2o_biomet_*, and a hygrometer reports
+        !> what it measured. A gas that names the biomet as its moisture
+        !> source is corrected from these.
+        !>
+        !> Ambient-based throughout, including the molar density - unlike the
+        !> overwrite they replace, which divided by the primary analyser's cell
+        !> volume. A site humidity has no cell.
+        real(kind = dbl) :: chi_biomet
+        real(kind = dbl) :: r_biomet
+        real(kind = dbl) :: d_biomet
         !> The rest of the moisture regime, per hygrometer, on the same index.
         !> Each is the scalar above replayed from one hygrometer's own vapour
         !> density: a second hygrometer reads a different humidity, so it
@@ -1612,6 +1638,11 @@ module m_typedef
         real(kind = dbl) :: Q
         real(kind = dbl) :: VPD
         real(kind = dbl) :: Tdew
+        !> The biomet humidity as a concentration, carried so FCC can put
+        !> it in the full output beside each hygrometer's own reading.
+        real(kind = dbl) :: chi_biomet
+        real(kind = dbl) :: r_biomet
+        real(kind = dbl) :: d_biomet
         real(kind = dbl) :: Pd
         real(kind = dbl) :: Vd
         real(kind = dbl) :: lambda

@@ -248,7 +248,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 6                         &  !< unrotated and rotated u,v,w
         + 10                        &  !< WS .. Tstar
         + 8                         &  !< Ts .. Cp
-        + 6                         &  !< RHO%w .. Tdew
+        + 9                         &  !< RHO%w .. Tdew, plus the biomet triple
         + 5                         &  !< Pd .. sigma
         + 4 * nExGas                &  !< measure_type, d, r, chi per gas
         + 5 * nExGas                &  !< timelag quintuplet per gas
@@ -289,6 +289,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%WS, lEx%MWS, lEx%WD, lEx%WD_SIGMA, lEx%ustar, lEx%TKE, lEx%L, lEx%zL, lEx%Bowen, lEx%Tstar, &
         lEx%Ts, lEx%Ta, lEx%Pa, lEx%RH, lEx%Va, lEx%RHO%a, lEx%RhoCp, lEx%Cp, &
         lEx%RHO%w, lEx%e, lEx%es, lEx%Q, lEx%VPD, lEx%Tdew, &
+        lEx%chi_biomet, lEx%r_biomet, lEx%d_biomet, &
         lEx%Pd, lEx%RHO%d, lEx%Vd, lEx%lambda, lEx%sigma, &
         (lEx%measure_type_int(exSlots(jx)), lEx%d(exSlots(jx)), &
             lEx%r(exSlots(jx)), lEx%chi(exSlots(jx)), jx = 1, nExSlots), &

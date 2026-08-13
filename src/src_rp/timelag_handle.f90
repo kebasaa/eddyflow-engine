@@ -324,6 +324,12 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         do j = firstGas, lastGas
             if (.not. E2Col(j)%present) cycle
             msl = E2Col(j)%moist_ref
+            !> Out of slot range covers the biomet reference as well as an
+            !> unresolved one, and declining is right for both: this is a
+            !> covariance of w with a high-frequency water signal, and a
+            !> half-hourly RH sensor has none. Fluxes0 then finds
+            !> h2ocov_tl at error and leaves E_gas unset, which is the
+            !> honest answer rather than a missing term to explain later.
             if (msl < firstGas .or. msl > lastGas) cycle
             if (j == msl) cycle
             if (.not. E2Col(msl)%present) cycle

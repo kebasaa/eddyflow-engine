@@ -164,6 +164,23 @@ subroutine PointByPointToMixingRatio(Set, nrow, ncol, printout)
         if (GasSlotIsWater(gas)) cycle
 
         !> The gas's own moisture reference, resolved in DefineE2Set.
+        !>
+        !> A gas referencing the biomet is skipped here, and that is the whole
+        !> treatment rather than a gap in it. This routine dilutes point by
+        !> point from a high-frequency water series; a half-hourly RH sensor
+        !> has none, and averaging one value across the period would be a
+        !> constant scaling dressed up as a point-by-point conversion.
+        !>
+        !> Such a gas stays a mole fraction, and Fluxes23 then applies the
+        !> ordinary WPL density correction to it with sigma from the biomet -
+        !> MoistTerms returns exactly that for this reference. The two routes
+        !> are alternatives, not stages: a gas diluted here arrives at
+        !> Fluxes23 as a mixing ratio, where the WPL arm returns it unchanged
+        !> because the dilution has already done the work.
+        !>
+        !> Also skipped when nothing resolved, as before. FluxParams has not
+        !> run at this point in the period either, so the biomet mole fraction
+        !> does not yet exist to dilute with.
         msl = E2Col(gas)%moist_ref
         if (msl < firstGas .or. msl > lastGas) cycle
         iw = 0

@@ -382,6 +382,15 @@ module m_common_global_var
             E_at = error, LE_at = error, ET_at = error, H_at = error, &
             tau_at = error, L_at = error, zL_at = error)
 
+    !> Whether the project names a biomet relative humidity column.
+    !>
+    !> ResolveGasRef needs it - a gas may name the biomet as its moisture
+    !> source, and automatic resolution falls back to it - and that function
+    !> lives in src_common, where bSetup is not visible. Set once from the ini
+    !> rather than asked of biomet%val, which is a per-period value and is not
+    !> yet retrieved when DefineE2Set runs.
+    logical :: BiometRhConfigured = .false.
+
     integer :: RowLags(E2NumVar)
     integer :: UserRowLags(MaxUserVar)
     type(MethType) :: Meth

@@ -41,6 +41,11 @@ subroutine MoleFractionsAndMixingRatios()
     integer :: gas
     integer :: msl
     real(kind = dbl) :: LocVa(GHGNumVar)
+    !> The water this gas is diluted by, as a mixing ratio and a mole
+    !> fraction, from whichever source its reference names.
+    real(kind = dbl) :: waterR
+    real(kind = dbl) :: waterChi
+    logical :: haveWater
     logical, external :: GasSlotIsWater
 
     !> Initialization
@@ -106,14 +111,31 @@ subroutine MoleFractionsAndMixingRatios()
     !> used when Stats%r(h2o) was in error.
     do gas = firstGas, lastGas
         if (GasSlotIsWater(gas)) cycle
+        !> The water this gas names, resolved once: the biomet humidity where
+        !> that is what it names, the hygrometer's own statistics otherwise.
+        !> `haveWater` false means nothing resolved, and the gas is then left
+        !> undiluted rather than diluted by an arbitrary slot - the fallback
+        !> the single-water code used when Stats%r(h2o) was in error.
         msl = E2Col(gas)%moist_ref
-        if (msl < firstGas .or. msl > lastGas) msl = gas
+        haveWater = .false.
+        waterR   = error
+        waterChi = error
+        if (msl == biometMoistRef) then
+            haveWater = .true.
+            waterR   = Ambient%r_biomet
+            waterChi = Ambient%chi_biomet
+        elseif (msl >= firstGas .and. msl <= lastGas .and. msl /= gas) then
+            haveWater = .true.
+            waterR   = Stats%r(msl)
+            waterChi = Stats%chi(msl)
+        end if
+
         select case (E2Col(gas)%measure_type)
             case('mixing_ratio')
                 Stats%r(gas)   = Stats%Mean(gas)
-                if (msl /= gas .and. Stats%r(msl) /= error) then
+                if (haveWater .and. waterR /= error) then
                     Stats%chi(gas) = Stats%Mean(gas) &
-                        / (1.d0 + Stats%r(msl) * 1d-3)
+                        / (1.d0 + waterR * 1d-3)
                 else
                     Stats%chi(gas) = Stats%r(gas)
                 end if
@@ -124,9 +146,9 @@ subroutine MoleFractionsAndMixingRatios()
                 end if
             case('mole_fraction')
                 Stats%chi(gas) = Stats%Mean(gas)
-                if (msl /= gas .and. Stats%chi(msl) /= error) then
+                if (haveWater .and. waterChi /= error) then
                     Stats%r(gas) = Stats%chi(gas) &
-                        / (1.d0 - Stats%chi(msl) * 1d-3)
+                        / (1.d0 - waterChi * 1d-3)
                 else
                     Stats%r(gas) = Stats%chi(gas)
                 end if
@@ -139,9 +161,9 @@ subroutine MoleFractionsAndMixingRatios()
                 Stats%d(gas) = Stats%Mean(gas)
                 if (LocVa(gas) > 0d0) then
                     Stats%chi(gas) = Stats%Mean(gas) * LocVa(gas) * 1d3
-                    if (msl /= gas .and. Stats%chi(msl) /= error) then
+                    if (haveWater .and. waterChi /= error) then
                         Stats%r(gas) = Stats%chi(gas) &
-                            / (1.d0 - Stats%chi(msl) * 1d-3)
+                            / (1.d0 - waterChi * 1d-3)
                     else
                         Stats%r(gas) = Stats%chi(gas)
                     end if

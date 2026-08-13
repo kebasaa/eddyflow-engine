@@ -290,11 +290,19 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     !> water elsewhere had every unresolved gas pointed at whatever species
     !> record two happened to hold, and the WPL correction then ran against a
     !> trace gas's density as though it were humidity.
+    !> A biomet reference is not unresolved and must survive this. Left to the
+    !> bounds test alone it would not: biometMoistRef is outside firstGas..
+    !> lastGas by construction, so every gas the user pointed at the biomet
+    !> would be quietly re-pointed at the primary hygrometer here, and the
+    !> selection in the interface would do nothing. The bug would show up as a
+    !> WPL correction against the wrong water, which is the one failure mode
+    !> this file has spent the most comments on.
     wsl = PrimaryWaterSlot()
     if (wsl >= firstGas) then
         if (E2Col(wsl)%present) then
             do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
+                if (E2Col(j)%moist_ref == biometMoistRef) cycle
                 if (E2Col(j)%moist_ref < firstGas .or. E2Col(j)%moist_ref > lastGas) &
                     E2Col(j)%moist_ref = wsl
             end do
@@ -512,7 +520,17 @@ integer function ResolveGasRef(gasIdx, ref, wantedVar)
 
     ResolveGasRef = 0
 
-    if (ref > 0 .and. ref <= EddyFlowProj%gas_num) then
+    !> 0. the biomet, named explicitly. Honoured whether or not the project
+    !> also has a hygrometer - the point of naming it is to say which of the
+    !> two you want. Only if the project has no biomet RH column at all does
+    !> this fall through to the automatic rules, since the alternative is a
+    !> reference to a measurement that does not exist.
+    if (ref == biometMoistRef) then
+        if (BiometRhConfigured) then
+            ResolveGasRef = biometMoistRef
+            return
+        end if
+    elseif (ref > 0 .and. ref <= EddyFlowProj%gas_num) then
         slot = firstGas + ref - 1
         if (E2Col(slot)%present) ResolveGasRef = slot
         return
@@ -537,17 +555,37 @@ integer function ResolveGasRef(gasIdx, ref, wantedVar)
         end do
     end if
 
-    !> 2. first record of the wanted species, whichever instrument
-    do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
-        slot = firstGas + k - 1
-        if (.not. E2Col(slot)%present) cycle
-        candidate = EddyFlowProj%gas(k)%var
-        call uppercase(candidate)
-        if (trim(adjustl(candidate)) == trim(wanted)) then
-            ResolveGasRef = slot
-            return
-        end if
-    end do
+    !> 2. the biomet relative humidity, for water.
+    !>
+    !> This step used to be "the first record of the wanted species, whichever
+    !> instrument" - so a gas whose own analyser carried no hygrometer silently
+    !> borrowed another analyser's water, taken through a different cell at a
+    !> different time lag. That is the compromise Warning(106) exists to
+    !> announce, and announcing it was the best that could be done while it was
+    !> the only fallback there was. A site RH sensor is the better answer: it
+    !> measures the air rather than the inside of an unrelated instrument.
+    !>
+    !> Borrowing is still reachable, but only by asking for it - a user who
+    !> names another analyser's H2O in the interface gets it, and gets the
+    !> warning. What has gone is arriving there without being asked.
+    !>
+    !> Water only. The function takes a species because it was written to be
+    !> general, but the biomet has a humidity and nothing else, so this arm
+    !> cannot answer for any other gas.
+    if (trim(wanted) == 'H2O' .and. BiometRhConfigured) then
+        ResolveGasRef = biometMoistRef
+        return
+    end if
+
+    !> Nothing resolved - and the caller does not leave it there. The
+    !> default-to-primary block in DefineE2Set points such a gas at the site's
+    !> primary hygrometer, so on a project with no biomet RH a gas whose own
+    !> analyser has none is still corrected with another analyser's water, and
+    !> still says so through Warning(106).
+    !>
+    !> So dropping the species search above narrows what happens automatically
+    !> rather than abolishing it: with a biomet RH the gas takes that instead
+    !> of an unrelated cell, and without one the outcome is what it always was.
 end function ResolveGasRef
 
 end subroutine DefineE2Set

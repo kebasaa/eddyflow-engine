@@ -56,6 +56,8 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     real(kind = dbl) :: TempFact
     real(kind = dbl) :: abs_scale
     real(kind = dbl) :: broadening
+    !> Mole fraction of the water this gas names, from whichever source.
+    real(kind = dbl) :: chi_moist
     character(32) :: label
     include '../src_common/interfaces.inc'
 
@@ -169,10 +171,19 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
         !> and the effect is a property of the gas mixture the detector sees.
         broadening = 1d0
         msl = E2Col(gas)%moist_ref
-        if (trim(adjustl(label)) == 'co2' &
-            .and. msl >= firstGas .and. msl <= lastGas) then
-            if (Stats%chi(msl) /= error) &
-                broadening = 1d0 + 0.15d0 * Stats%chi(msl) * 1d-3
+        if (trim(adjustl(label)) == 'co2') then
+            !> Whichever source this CO2 names, hygrometer or biomet. The
+            !> biomet is not the cell's own sample, but it is a measurement
+            !> of the air being drawn into it, and it is what the user asked
+            !> for by naming it.
+            chi_moist = error
+            if (msl == biometMoistRef) then
+                chi_moist = Ambient%chi_biomet
+            elseif (msl >= firstGas .and. msl <= lastGas) then
+                chi_moist = Stats%chi(msl)
+            end if
+            if (chi_moist /= error) &
+                broadening = 1d0 + 0.15d0 * chi_moist * 1d-3
         end if
 
         if (locCol(gas)%measure_type /= 'molar_density') then

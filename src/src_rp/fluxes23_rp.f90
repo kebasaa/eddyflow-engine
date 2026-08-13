@@ -647,6 +647,16 @@ subroutine MoistTerms(gas, sigma_out, rhow_out)
     rhow_out  = RHO%w
 
     msl = E2Col(gas)%moist_ref
+
+    !> The biomet, named. These defaults already *are* the biomet values when
+    !> a biomet RH is available - the site scalars come from it - so this arm
+    !> returns the same numbers the bounds check below would have returned by
+    !> falling through. Written out anyway: "the gas asked for the biomet" and
+    !> "nothing resolved, take whatever the site has" are different statements
+    !> that happen to agree here, and a reader should not have to work out
+    !> which one they are looking at.
+    if (msl == biometMoistRef) return
+
     if (msl < firstGas .or. msl > lastGas) return
     if (.not. E2Col(msl)%present) return
 

@@ -337,13 +337,15 @@ subroutine InitOutFiles_rp()
         header1 = header1(1:len_trim(header1) - 1)
 
         !> Air properties, wind components and rotation angles
-        call AddDatum(header1, 'air_properties,,,,,,,,,,,,,,unrotated_wind,,,rotated_wind&
+        call AddDatum(header1, 'air_properties,,,,,,,,,,,,,,,,,unrotated_wind,,,rotated_wind&
                       &,,,,,,rotation_angles_for_tilt_correction,,', separator)
         call AddDatum(header2,'sonic_temperature,air_temperature,air_pressure,air_density,air_heat_capacity,air_molar_volume,&
                       &ET,water_vapor_density,e,es,specific_humidity,RH,VPD,Tdew&
+                      &,h2o_biomet_mole_fraction,h2o_biomet_mixing_ratio,h2o_biomet_molar_density&
                       &,u_unrot,v_unrot,w_unrot,u_rot,v_rot,w_rot,wind_speed,max_wind_speed,wind_dir,yaw,pitch,roll', separator)
         call AddDatum(header3,'[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],&
                       &[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
+                      &[mmol+1mol_a-1],[mmol+1mol_d-1],[mmol+1m-3],&
                       &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],&
                       &[m+1s-1],[deg_from_north],[deg],[deg],[deg]', separator)
 

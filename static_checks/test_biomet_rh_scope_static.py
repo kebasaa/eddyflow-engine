@@ -1,29 +1,25 @@
-"""One humidity in the air, or one per hygrometer - but not one of each.
+"""The biomet humidity is a quantity of its own, not an overwrite.
 
 When a biomet RH value is available, `FluxParams` takes the site scalars from
-it and then recomputes the reported mole fraction, mixing ratio and molar
-density of the hygrometer. It used to do that for the *primary* hygrometer
-alone, so a site with two reported biomet for one of them and the instrument's
-own measurement for the other - and which was which followed the primary
-designation, a naming choice with no business deciding whose numbers are real.
+it. It also used to write that value straight into `Stats%chi/r/d` of the
+*primary* hygrometer, so on a two-hygrometer site one instrument reported
+biomet and the other reported itself - and which was which followed the primary
+designation, a naming choice. On CH-LAE the tell was a mixing ratio of 19.9081
+that followed the primary slot between two runs and matched neither instrument:
+the LI-7200 read 17.1089 and the MIRO 16.354.
 
-Seen on CH-LAE across two runs that differed only in gas-record order: a mixing
-ratio of 19.9081 followed the primary slot and matched neither instrument. The
-LI-7200 measured 17.1089 and the MIRO 16.354; 19.9081 was the biomet value,
-attached to whichever record happened to be first.
+One variable was doing two jobs. It was the reported column of a hygrometer,
+and it was the humidity fed to the drift correction, the LI-7700 multipliers
+and, through `RHO%w_at`, the WPL ratio. Overwriting served the second and
+wrecked the first.
 
-Now every water record takes it. The consequence reaches further than the
-reported columns, and deliberately so: `RHO%w_at` is built from `Stats%chi`
-later in this same routine, so `sigma_at`, `Q_at`, `rho_a_at`, `RhoCp_at` and
-`RH_at` all follow, and a gas is WPL-corrected with the humidity of the air
-rather than with whichever hygrometer it was paired to. That propagation is the
-reason the change is one loop rather than a rewrite, and it is why these checks
-pin the derivation as well as the loop - break the link and the loop silently
-stops mattering.
+They are separate now. The biomet value has its own three quantities, reported
+as `h2o_biomet_*` so the number v7.2.5 put in `h2o_mixing_ratio` is still on the
+file and the two can be compared. Every hygrometer reports what it measured.
+Which humidity *corrects* a gas is `moist_ref`, and the user sets it per gas.
 
-What did *not* change: with no biomet RH the site scalars still come from the
-primary hygrometer's own channel. That arm is untouched, and a project without
-a biomet RH column sees nothing of this.
+The split this preserves, which is main's: every mean moisture quantity may
+come from biomet; every covariance comes from the instrument.
 """
 
 from pathlib import Path
@@ -33,6 +29,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 PARAMS = "src/src_rp/flux_params.f90"
+TYPEDEF = "src/src_common/m_typedef.f90"
+FO_HDR = "src/src_fcc/init_out_files.f90"
+FO_HDR_RP = "src/src_rp/init_outfiles_rp.f90"
+FO_ROW = "src/src_fcc/write_out_full_fcc.f90"
+FO_ROW_RP = "src/src_rp/write_out_full.f90"
 
 
 def read(path):
@@ -42,90 +43,97 @@ def read(path):
 def code(path):
     """Source with comment-only lines dropped.
 
-    The routine explains the retired single-slot behaviour in prose right where
-    it stood, so a naive search matches the explanation rather than live code.
+    The routine explains the retired overwrite in prose right where it stood,
+    so a naive search matches the explanation rather than live code.
     """
     return "\n".join(ln for ln in read(path).splitlines()
                      if not ln.lstrip().startswith("!"))
 
 
 def biomet_branch():
-    """The `biomet RH is available` arm, up to the arm that follows it."""
     src = code(PARAMS)
     start = src.index("if (biomet%val(bRH) > 0d0")
     return src[start: src.index("elseif (wsl >= firstGas) then", start)]
 
 
-class EveryHygrometerTakesIt(unittest.TestCase):
+class NoHygrometerIsOverwritten(unittest.TestCase):
     def setUp(self):
         self.block = biomet_branch()
 
-    def test_the_concentrations_are_written_in_a_loop(self):
-        self.assertIn("do msl = firstGas, lastGas", self.block)
-        self.assertIn("if (.not. GasSlotIsWater(msl)) cycle", self.block)
-
-    def test_no_concentration_is_written_to_the_primary_slot_alone(self):
-        """`wsl` is the primary. Writing chi/r/d through it is the defect."""
-        for field in ("Stats%chi(wsl)", "Stats%r(wsl)", "Stats%d(wsl)"):
+    def test_the_branch_writes_no_hygrometer_concentration(self):
+        """Not for the primary, not for any of them. A hygrometer's reported
+        columns are its own measurement."""
+        for field in ("Stats%chi(", "Stats%r(", "Stats%d("):
             self.assertNotIn(field, self.block,
-                             "%s makes the primary designation decide whose "
-                             "humidity is measured and whose is biomet" % field)
+                             "%s in the biomet branch replaces a measurement "
+                             "with the site value" % field)
 
-    def test_all_three_quantities_are_written_per_slot(self):
-        for field in ("Stats%chi(msl)", "Stats%r(msl)", "Stats%d(msl)"):
+    def test_the_site_scalars_still_come_from_biomet(self):
+        """That half is main's behaviour and stays: it is what the moist-air
+        correction has always used."""
+        for field in ("Stats%RH = biomet%val(bRH)", "Ambient%e =",
+                      "Ambient%VPD =", "RHO%w ="):
             self.assertIn(field, self.block)
 
-    def test_the_cell_terms_are_the_slot_own(self):
-        """A closed-path hygrometer's molar density goes through its own cell,
-        and two analysers do not share one."""
-        self.assertIn("E2Col(msl)%instr%path_type == 'closed'", self.block)
-        self.assertIn("E2Col(msl)%Va", self.block)
-        self.assertNotIn("E2Col(wsl)%Va", self.block)
 
-    def test_an_absent_record_is_skipped(self):
-        self.assertIn("if (.not. E2Col(msl)%present) cycle", self.block)
+class TheBiometValueIsItsOwnQuantity(unittest.TestCase):
+    def test_the_fields_exist(self):
+        body = code(TYPEDEF)
+        for field in ("chi_biomet", "r_biomet", "d_biomet"):
+            self.assertIn("real(kind = dbl) :: %s" % field, body)
 
+    def test_they_are_computed_by_the_formulas_the_overwrite_used(self):
+        block = biomet_branch()
+        self.assertIn("Ambient%chi_biomet = RHO%w * Ambient%Va / MW_H2O * 1d3",
+                      block)
+        self.assertIn("Ambient%r_biomet   = Ambient%chi_biomet", block)
 
-class TheDerivationIsNotBypassed(unittest.TestCase):
-    """The loop only matters because everything downstream is built from
-    `Stats%chi`. Compute RHO%w_at from anything else and the per-gas moisture
-    terms go back to describing whichever instrument they came from, while this
-    loop goes on looking correct."""
+    def test_the_molar_density_is_ambient_not_a_cell(self):
+        """The overwrite divided by the primary analyser's cell volume. A site
+        humidity is not measured in anybody's cell."""
+        block = biomet_branch()
+        self.assertIn("Ambient%d_biomet   = Ambient%chi_biomet / Ambient%Va",
+                      block)
+        self.assertNotIn("E2Col(wsl)%Va", block)
 
-    def test_the_per_water_density_still_comes_from_chi(self):
-        self.assertIn(
-            "RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW_H2O * 1d-3",
-            code(PARAMS))
-
-    def test_it_is_computed_after_the_biomet_branch(self):
+    def test_they_are_reset_outside_the_branch(self):
+        """Ambient is a module global with no per-period reset. Left to the
+        branch, a period without biomet humidity reports the previous one's -
+        the trap RHO%w_at carries its own comment about."""
         src = code(PARAMS)
-        self.assertLess(src.index("if (biomet%val(bRH) > 0d0"),
-                        src.index("RHO%w_at(msl) ="),
-                        "the per-water densities must be built after the "
-                        "override, or they carry the pre-override values")
-
-    def test_the_rest_of_the_regime_is_built_from_those_densities(self):
-        src = code(PARAMS)
-        for field in ("Ambient%e_at(msl) = RHO%w_at(msl)",
-                      "Ambient%rho_a_at(msl) = Ambient%rho_d_at(msl) + RHO%w_at(msl)"):
-            self.assertIn(field, src)
+        reset = src.index("Ambient%chi_biomet = error")
+        branch = src.index("if (biomet%val(bRH) > 0d0")
+        self.assertLess(reset, branch,
+                        "the reset must precede the branch, or a period with "
+                        "no biomet humidity carries the last one's forward")
 
 
-class WithoutBiometNothingChanges(unittest.TestCase):
-    """A project with no biomet RH column must be untouched by any of this."""
+class TheyReachTheOutput(unittest.TestCase):
+    """Both halves of the full output, and both executables."""
 
-    def test_the_fallback_arm_still_reads_the_primary(self):
-        src = code(PARAMS)
-        start = src.index("elseif (wsl >= firstGas) then")
-        block = src[start: start + 900]
-        self.assertIn("RHO%w = (Stats%chi(wsl) / Ambient%Va) * MW_H2O * 1d-3",
-                      block,
-                      "with no biomet humidity the site scalars come from the "
-                      "designated hygrometer's own channel, as they always have")
+    def test_the_header_names_them(self):
+        for path in (FO_HDR, FO_HDR_RP):
+            body = code(path)
+            for name in ("h2o_biomet_mole_fraction",
+                         "h2o_biomet_mixing_ratio",
+                         "h2o_biomet_molar_density"):
+                self.assertIn(name, body, path)
 
-    def test_the_override_is_still_gated_on_a_usable_value(self):
-        self.assertIn("if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then",
-                      code(PARAMS))
+    def test_the_row_writes_them(self):
+        self.assertIn("lEx%chi_biomet", code(FO_ROW))
+        self.assertIn("Ambient%chi_biomet", code(FO_ROW_RP))
+
+    def test_the_ex_record_carries_them(self):
+        """FCC computes nothing about humidity itself; without these in the
+        record its full output would have three empty columns."""
+        body = code("src/src_common/read_ex_record.f90")
+        self.assertIn("lEx%chi_biomet, lEx%r_biomet, lEx%d_biomet", body)
+
+    def test_an_older_ex_file_is_refused(self):
+        """They sit in the fixed part of the row, so a file written before
+        them parses three fields short from there on - silently."""
+        self.assertIn("H2O_BIOMET_MOLE_FRACTION",
+                      code("src/src_fcc/eddyflow-fcc_main.f90"))
 
 
 if __name__ == "__main__":

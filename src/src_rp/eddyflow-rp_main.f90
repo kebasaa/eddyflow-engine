@@ -56,6 +56,8 @@ program EddyFlowRP
     integer :: j
     !> The hygrometer a gas is corrected with, from its own record.
     integer :: msl
+    !> Mole fraction of the water a gas names, from whichever source.
+    real(kind = dbl) :: chi_moist
     integer :: cec_co2_signal_col
     integer :: cec_h2o_signal_col
     integer :: SpecRow
@@ -2410,10 +2412,22 @@ program EddyFlowRP
                 !> 7700 with a hygrometer it does not share air with - and
                 !> through the fallback variant, which names a trace gas when
                 !> a project has no water at all.
+                !> Whatever the gas names, including the biomet. A biomet RH
+                !> is not the analyser's own air either, but it is a
+                !> measurement of the air the analyser is sampling from,
+                !> which another instrument's cell is not - and it is what
+                !> the user asked for by naming it.
                 msl = E2Col(j)%moist_ref
-                if (msl < firstGas .or. msl > lastGas) cycle
+                if (msl == biometMoistRef) then
+                    chi_moist = Ambient%chi_biomet
+                elseif (msl >= firstGas .and. msl <= lastGas) then
+                    chi_moist = Stats%chi(msl)
+                else
+                    cycle
+                end if
+                if (chi_moist == error) cycle
                 call Multipliers7700(Stats%Pr, Ambient%Ta, &
-                    Stats%chi(msl), &
+                    chi_moist, &
                     Mul7700%A, Mul7700%B, Mul7700%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual

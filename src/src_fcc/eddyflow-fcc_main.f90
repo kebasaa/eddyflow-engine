@@ -656,7 +656,13 @@ subroutine CheckExFileVintage()
     read(uex, '(a)', iostat = open_status) header
     if (open_status /= 0) call ExceptionHandler(60)
 
-    if (index(header, 'NUM_WATER_FLUX') <= 0) call ExceptionHandler(107)
+    !> Two markers, because the row grew twice. NUM_WATER_FLUX arrived with
+    !> the per-hygrometer families and H2O_BIOMET_MOLE_FRACTION with the
+    !> biomet triple, which sits in the *fixed* part - a file carrying the
+    !> first but not the second parses three fields short from there on.
+    if (index(header, 'NUM_WATER_FLUX') <= 0 &
+        .or. index(header, 'H2O_BIOMET_MOLE_FRACTION') <= 0) &
+        call ExceptionHandler(107)
 end subroutine CheckExFileVintage
 
 end program EddyFlowFCC

@@ -258,6 +258,11 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(Ambient%Q, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Ambient%VPD, csv_row, EddyFlowProj%err_label, gain=1d-2, offset=0d0)
     call AddFloatDatumToDataline(Ambient%Td, csv_row, EddyFlowProj%err_label, gain=1d0, offset=-273.15d0)
+    !> The biomet humidity as a concentration. Carried here so FCC can put
+    !> it in the full output beside each hygrometer's own reading.
+    call AddFloatDatumToDataline(Ambient%chi_biomet, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Ambient%r_biomet, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Ambient%d_biomet, csv_row, EddyFlowProj%err_label)
     !> Dry air
     call AddFloatDatumToDataline(Ambient%p_d, csv_row, EddyFlowProj%err_label, gain=1d-3, offset=0d0)
     call AddFloatDatumToDataline(RHO%d, csv_row, EddyFlowProj%err_label)
@@ -1004,7 +1009,22 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         !> RHO%w_at is only populated for H2O slots, so writing it directly
         !> would send nothing but error for every non-H2O gas.
         indx = E2Col(var)%moist_ref
-        if (indx >= firstGas .and. indx <= lastGas) then
+        if (indx == biometMoistRef) then
+            !> The gas names the biomet. Its terms are the site's, and they
+            !> are written out here rather than left as error.
+            !>
+            !> FCC would reach the same numbers either way - its MoistTerms
+            !> defaults to lEx%sigma and lEx%RHO%w, which are these - but only
+            !> by falling through a bounds check, and a reader of the ex file
+            !> would see -9999 against a gas that is in fact being corrected.
+            !> Saying it costs six fields already in the row.
+            call AddFloatDatumToDataline(RHO%w, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%sigma, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%Q, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(RHO%a, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%RhoCp, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Stats%RH, csv_row, EddyFlowProj%err_label)
+        elseif (indx >= firstGas .and. indx <= lastGas) then
             call AddFloatDatumToDataline(RHO%w_at(indx), csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Ambient%sigma_at(indx), csv_row, EddyFlowProj%err_label)
             !> The air that hygrometer implies, for the sensible heat flux and

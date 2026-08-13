@@ -33,7 +33,15 @@ READER = SRC / "src_common" / "read_ex_record.f90"
 #: value moving. The anchor moves with it so the guard keeps meaning "still
 #: describes the file we ship".
 HISTORICAL = {
-    "nMainFields": 275,
+    #: 275 until the biomet humidity gained its own three columns
+    #: (h2o_biomet_mole_fraction / _mixing_ratio / _molar_density), which sit
+    #: in the fixed part beside the other vapour quantities.
+    #:
+    #: Moved deliberately, and the number is updated in the same edit that
+    #: widens the row - which is the whole point of pinning it. A reader who
+    #: finds this failing should ask whether the widening was intended, not
+    #: reach for the new value.
+    "nMainFields": 278,
     "nNrexFields": 23,
     "nVmFields": 12,
     "nLgdFields": 38,

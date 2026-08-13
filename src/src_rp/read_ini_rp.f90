@@ -819,6 +819,8 @@ subroutine WriteVariablesRP()
     bSetup%sel(bTa)   = nint(SNTags(111)%value)
     bSetup%sel(bPa)   = nint(SNTags(112)%value)
     bSetup%sel(bRH)   = nint(SNTags(113)%value)
+    !> Mirrored where src_common can see it - see the note on the declaration.
+    BiometRhConfigured = bSetup%sel(bRH) > 0
     bSetup%sel(bPPFD) = nint(SNTags(114)%value)
     bSetup%sel(bLWin) = nint(SNTags(115)%value)
     bSetup%sel(bRg)   = nint(SNTags(116)%value)

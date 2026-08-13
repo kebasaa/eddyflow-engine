@@ -56,7 +56,6 @@ subroutine WriteColumnLegend()
     implicit none
     !> local variables
     integer :: open_status
-    integer :: dot
     integer :: j
     integer :: gas
     integer :: rec

@@ -83,6 +83,14 @@ subroutine FluxParams(printout)
     !> water channel. Testing for the hygrometer first discarded that: the
     !> guard that stopped the engine reading a non-water slot ran instead of
     !> the biomet branch, so such a site got no correction at all.
+    !> Outside the branch below, because Ambient is a module global with no
+    !> per-period reset: left to the branch, a period without biomet humidity
+    !> would report the previous period's. The same trap RHO%w_at was written
+    !> to avoid, a few dozen lines down.
+    Ambient%chi_biomet = error
+    Ambient%r_biomet   = error
+    Ambient%d_biomet   = error
+
     if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
         !> If meteo RH is available, uses it for all slow parameters,
         !> including redefining chi, r and d of H2O
@@ -105,55 +113,36 @@ subroutine FluxParams(printout)
         else
             RHO%w = error
         end if
-        !> Water vapour concentrations and densities, for EVERY hygrometer.
+        !> The biomet humidity as a concentration, in its own right.
         !>
-        !> This wrote the primary's slot alone, so on a site with two
-        !> hygrometers one of them reported biomet and the other reported what
-        !> it measured - and which was which followed the primary designation,
-        !> a naming choice that has no business deciding whose numbers are
-        !> real. On CH-LAE the tell was a mixing ratio of 19.9081 that followed
-        !> the primary slot between two runs and matched neither instrument
-        !> (the LI-7200 read 17.1089, the MIRO 16.354).
+        !> These three used to be written straight into Stats%chi/r/d of the
+        !> primary hygrometer. That instrument then reported the biomet value
+        !> instead of its own measurement, and on a two-hygrometer site the
+        !> other one reported itself - so which instrument's number was real
+        !> followed the primary designation, a naming choice. On CH-LAE the
+        !> tell was a mixing ratio of 19.9081 that followed the primary slot
+        !> between two runs and matched neither instrument: the LI-7200 read
+        !> 17.1089 and the MIRO 16.354.
         !>
-        !> There is one humidity in the air above the tower. If the biomet
-        !> sensor is the better source - over a long deployment it usually is,
-        !> which is why this override exists at all - it is the better source
-        !> for every hygrometer.
+        !> One variable was doing two jobs - the reported column of a
+        !> hygrometer, and the humidity fed to the drift correction, the
+        !> LI-7700 multipliers and the WPL ratio. Separating them lets the
+        !> reporting stop lying without moving any correction: a gas whose
+        !> moisture reference names the biomet is corrected from these, and
+        !> every hygrometer reports what it measured.
         !>
-        !> Per slot, not per site, for the cell molar volume and the path type:
-        !> a closed-path hygrometer's molar density goes through its own cell,
-        !> and two analysers do not share one.
+        !> Reported as h2o_biomet_*, so the number v7.2.5 put in h2o_mixing_ratio
+        !> is still on the file and the two can be compared.
         !>
-        !> Everything downstream follows without further help. RHO%w_at is
-        !> built from Stats%chi further down this routine, so sigma_at, Q_at,
-        !> rho_a_at, RhoCp_at and RH_at all become the same regime - which is
-        !> the point: a gas is WPL-corrected with the humidity of the air, not
-        !> with whichever instrument happened to be listed first.
-        do msl = firstGas, lastGas
-            if (.not. GasSlotIsWater(msl)) cycle
-            if (.not. E2Col(msl)%present) cycle
-            if (RHO%w /= error .and. Ambient%Va /= error) then
-                Stats%chi(msl) = RHO%w * Ambient%Va / MW_H2O * 1d3
-                !> Water vapour mixing ratio
-                Stats%r(msl)   = Stats%chi(msl) / (1.d0 - Stats%chi(msl) * 1d-3)
-                !> Water vapour molar density
-                if (E2Col(msl)%instr%path_type == 'closed') then
-                    if (E2Col(msl)%Va > 0d0) then
-                        Stats%d(msl) = Stats%chi(msl) / E2Col(msl)%Va
-                    else
-                        Stats%d(msl) = error
-                        Stats%r(msl) = error
-                        Stats%chi(msl) = error
-                    end if
-                else
-                    Stats%d(msl) = Stats%chi(msl) / Ambient%Va
-                end if
-            else
-                Stats%chi(msl) = error
-                Stats%r(msl) = error
-                Stats%d(msl) = error
-            end if
-        end do
+        !> Ambient throughout, including the molar density, where the overwrite
+        !> divided by the primary analyser's cell volume. A site humidity is
+        !> not measured in anybody's cell.
+        if (RHO%w /= error .and. Ambient%Va /= error) then
+            Ambient%chi_biomet = RHO%w * Ambient%Va / MW_H2O * 1d3
+            Ambient%r_biomet   = Ambient%chi_biomet &
+                / (1.d0 - Ambient%chi_biomet * 1d-3)
+            Ambient%d_biomet   = Ambient%chi_biomet / Ambient%Va
+        end if
     elseif (wsl >= firstGas) then
         !> If meteo RH is not available or out of range, uses H2O from raw data
         !> Molecular weight of wet air:
