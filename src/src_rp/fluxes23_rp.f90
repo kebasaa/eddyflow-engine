@@ -45,6 +45,15 @@ subroutine Fluxes23_rp()
     !> equal the global Ambient%sigma / RHO%w, so a single-analyser site is
     !> unaffected; with two analysers each gas is corrected with its own.
     real(kind = dbl) :: sigma_g, rhow_g
+    !> Cell conditions of the primary hygrometer's own analyser, and the slot
+    !> its cell pressure is measured in. Ambient%Tcell/Pcell and the `pi`
+    !> constant are the *first* instrument's cell block, which is the primary
+    !> hygrometer's only when that instrument happens to be first. FCC's twin
+    !> has read lEx%Tcell_at(wsl)/Pcell_at(wsl)/cov_w_pcell(wsl) since the
+    !> per-gas cell records existed; this is RP catching up, so the two agree
+    !> on a site whose hygrometer is not on cell record one.
+    real(kind = dbl) :: Tcell_w, Pcell_w
+    integer :: pcs
     integer :: msl
     integer :: wsl
     integer :: wsx
@@ -66,7 +75,19 @@ subroutine Fluxes23_rp()
     !> is being decided.
     wsx = max(wsl, firstGas)
 
-    write(*,'(a)', advance = 'no') '  Calculating fluxes Level 2 and 3..'
+    !> The global pair is the fallback, exactly as in Level2GasFlux: with one
+    !> analyser it *is* that analyser's cell, so a single-analyser project is
+    !> unchanged.
+    Tcell_w = Ambient%Tcell
+    Pcell_w = Ambient%Pcell
+    pcs = pi
+    if (wsl >= firstGas .and. wsl <= lastGas) then
+        if (Ambient%Tcell_at(wsl) /= error) Tcell_w = Ambient%Tcell_at(wsl)
+        if (Ambient%Pcell_at(wsl) /= error) Pcell_w = Ambient%Pcell_at(wsl)
+        pcs = cellPressureSlot(wsl)
+    end if
+
+    call LogSayNoAdv('  Calculating fluxes Level 2 and 3..')
 
     Flux2 = errFlux
     Flux3 = errFlux
@@ -113,30 +134,30 @@ subroutine Fluxes23_rp()
                         .and. E2Col(wsl)%Va > 0d0 .and. Ambient%Va > 0d0) then
 
                         if (Flux1%Hi_gas(wsl) /= error &
-                            .and. Stats%cov(w, pi) /= error) then
+                            .and. Stats%cov(w, pcs) /= error) then
                             !> Complete formulation, should actually never be
                             !> used cause conversion to mixing ratio should have
                             !> already happened if everything is available
                             Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
                                 * E2Col(wsl)%Va / Ambient%Va &
                                 + (1d0 + mu * Ambient%sigma) * Flux1%Hi_gas(wsl) &
-                                * RHO%w / (Ambient%RhoCp * Ambient%Tcell) &
-                                - (1d0 + mu * Ambient%sigma) * Stats%cov(w, pi) &
-                                * RHO%w / (Ambient%Pcell)
+                                * RHO%w / (Ambient%RhoCp * Tcell_w) &
+                                - (1d0 + mu * Ambient%sigma) * Stats%cov(w, pcs) &
+                                * RHO%w / (Pcell_w)
 
                         elseif (Flux1%Hi_gas(wsl) /= error) then
                             !> Correct only for effect of T
                             Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
                                 * E2Col(wsl)%Va / Ambient%Va &
                                 + (1d0 + mu * Ambient%sigma) * Flux1%Hi_gas(wsl) &
-                                * RHO%w / (Ambient%RhoCp * Ambient%Tcell)
+                                * RHO%w / (Ambient%RhoCp * Tcell_w)
 
-                        elseif (Stats%cov(w, pi)  /= error) then
+                        elseif (Stats%cov(w, pcs)  /= error) then
                             !> Correct only for effect of P
                             Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
                                 * E2Col(wsl)%Va / Ambient%Va &
-                                - (1d0 + mu * Ambient%sigma) * Stats%cov(w, pi) &
-                                * RHO%w / (Ambient%Pcell)
+                                - (1d0 + mu * Ambient%sigma) * Stats%cov(w, pcs) &
+                                * RHO%w / (Pcell_w)
                         else
                             !> Can't correct for T and P
                             Flux2%E = Flux1%E * E2Col(wsl)%Va / Ambient%Va
@@ -401,7 +422,7 @@ subroutine Fluxes23_rp()
         if (Flux2%gas(gas) == error) Essentials%used_timelag(gas) = error
     end do
 
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 
 contains
 

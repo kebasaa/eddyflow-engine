@@ -70,16 +70,26 @@ cd "$OUT"
 rm -f _rp.log _fcc.log
 
 # Rename depth-first so a renamed parent cannot invalidate a child's path.
-find . -depth \( -name '*.csv' -o -name '*.txt' -o -name '*.eddyflow' \) -print |
+find . -depth \( -name '*.csv' -o -name '*.txt' -o -name '*.eddyflow' -o -name '*.log' \) -print |
 while IFS= read -r f; do
     n="$(echo "$f" | sed -E 's/_?[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}//g')"
     [ "$f" = "$n" ] || mv "$f" "$n"
 done
 
-find . -type f \( -name '*.csv' -o -name '*.txt' -o -name '*.eddyflow' \) -print |
+find . -type f \( -name '*.csv' -o -name '*.txt' -o -name '*.eddyflow' -o -name '*.log' \) -print |
 while IFS= read -r f; do
     sed -i -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}/TIMESTAMP/g' "$f"
     sed -i -E 's#(out_path|ex_file|file_name|proj_file)=.*#\1=PATH#' "$f"
+    # The run log is the engine's console, captured, so it is compared like
+    # everything else. Three things in it differ between two runs of an
+    # unchanged tree and say nothing about the results: the wall clock, how
+    # long each period took, and which of the two output directories this run
+    # was pointed at. The last one also settles a long-standing false positive
+    # in base_n_gas_bin, whose SELF token records the same path.
+    sed -i -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}/CLOCK/g' "$f"
+    sed -i -E 's/[0-9]+:[0-9]{2}:[0-9]{2}\.[0-9]{3}/ELAPSED/g' "$f"
+    sed -i -E 's#out_(ref|chk)#OUT#g' "$f"
+    sed -i -E 's#run_(ref|chk)\.eddyflow#run_WHICH.eddyflow#g' "$f"
 done
 
 echo "== $WHICH: $(find . -type f | wc -l) output files =="

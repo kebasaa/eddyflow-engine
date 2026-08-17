@@ -61,6 +61,8 @@ subroutine FitTFModels(nbins, printout)
 
     write(*, '(a)', advance = 'no') &
         '  Eliminating high-frequency noise from ensemble spectra if requested..'
+    write(ulog, '(a)', advance = 'no') &
+        '  Eliminating high-frequency noise from ensemble spectra if requested..'
 
     !> Calculate length of un-binned spectra (lSpec),
     !> by looking at fnum for each bin
@@ -77,10 +79,12 @@ subroutine FitTFModels(nbins, printout)
     call SubtractHighFreqNoise(lSpec, size(lSpec, 1), size(lSpec, 2), &
         nlong, size(nlong, 1), size(nlong, 2), nbins)
 
-    write(*, '(a)') '  Done.'
+    call LogSay('  Done.')
 
     !> Assessment of spectral attenuation
     if (printout) write(*, '(a)', advance = 'no') &
+        ' Assessing spectral attenuations..'
+    if (printout) write(ulog, '(a)', advance = 'no') &
         ' Assessing spectral attenuations..'
 
     !> Allocate vectors for fit
@@ -151,7 +155,7 @@ subroutine FitTFModels(nbins, printout)
     if (allocated(zFit)) deallocate(zFit)
     if (allocated(ddum)) deallocate(ddum)
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine FitTFModels
 
 !***************************************************************************

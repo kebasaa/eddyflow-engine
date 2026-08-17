@@ -56,6 +56,7 @@ subroutine TestAbsoluteLimits(Set, N, printout)
 
 
     if (printout) write(*, '(a)', advance = 'no') '   Absolute limits test..'
+    if (printout) write(ulog, '(a)', advance = 'no') '   Absolute limits test..'
 
     !> initializations
     hflags = 0
@@ -141,6 +142,13 @@ subroutine TestAbsoluteLimits(Set, N, printout)
         if (al%gas_max(i) <= al%gas_min(i)) then
             Essentials%al_s(i) = ierror
             hflags(i) = 9
+            !> Said out loud, once for the run. A digit of 9 in a flag string is
+            !> the only trace this leaves otherwise, and someone reading a
+            !> suspect flux will not find it there.
+            if (.not. AlLimitsWarned) then
+                call ExceptionHandler(109)
+                AlLimitsWarned = .true.
+            end if
             cycle
         end if
         if (GasSlotIsWater(i)) then
@@ -190,4 +198,5 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     end if
 
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine TestAbsoluteLimits

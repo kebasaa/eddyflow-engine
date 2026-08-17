@@ -206,12 +206,26 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             !> RH dependence rather than having none at all. Before this, only
             !> slot 6 was given a cut-off and every other water record fell
             !> through to the analytic correction without saying so.
-            A = RegPar(dum, dum)%e1
-            B = RegPar(dum, dum)%e2
-            C = RegPar(dum, dum)%e3
             do gas = firstGas, lastGas
                 if (.not. GasSlotIsWater(gas)) cycle
                 if (.not. lEx%var_present(gas)) cycle
+                !> This hygrometer's own RH dependence, where it has one.
+                !>
+                !> The coefficients used to be one project-wide set, so every
+                !> hygrometer took the primary's *shape* and differed only in
+                !> the humidity it was evaluated at. FitRh2Fco fits each one
+                !> now, and the assessment file carries each one's `exp=`, so
+                !> the fallback below is for a hygrometer the assessment never
+                !> fitted rather than for all of them.
+                A = RegPar(gas, dum)%e1
+                B = RegPar(gas, dum)%e2
+                C = RegPar(gas, dum)%e3
+                if (A == error .or. B == error .or. C == error &
+                    .or. (A == 0d0 .and. B == 0d0 .and. C == 0d0)) then
+                    A = RegPar(dum, dum)%e1
+                    B = RegPar(dum, dum)%e2
+                    C = RegPar(dum, dum)%e3
+                end if
                 !> Each hygrometer's own humidity, not the primary's.
                 !>
                 !> The coefficients stay shared - one fit per project, the

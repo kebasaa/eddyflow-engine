@@ -45,7 +45,7 @@ subroutine FourierTransform(xx, N, M)
     real :: xxx(N)
     real :: wsave(N*2 + 15)
 
-    write(*, '(a)', advance = 'no') '   FFT-ing..'
+    call LogSayNoAdv('   FFT-ing..')
     call rffti(N, wsave)
     do i = 1, M
         !> data in 1D vector
@@ -55,5 +55,5 @@ subroutine FourierTransform(xx, N, M)
         !> replace time data with spectral data
         xx(:, i) = dble(xxx(:))
     end do
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine FourierTransform

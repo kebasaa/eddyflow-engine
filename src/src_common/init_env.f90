@@ -180,6 +180,8 @@ subroutine InformOfSoftwareVersion(sw_ver, build_date)
 
     write (*, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
         &', build ' // trim(adjustl(build_date)) // '.'
+    write(ulog, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
+        &', build ' // trim(adjustl(build_date)) // '.'
     stop
 end subroutine InformOfSoftwareVersion
 
@@ -211,22 +213,33 @@ subroutine CommandLineHelp(sw_ver, build_date)
     end if
 
     write(*, '(a)') ' Help for ' // trim(adjustl(app))
-    write(*, '(a)') ' --------------------'
+    write(ulog, '(a)') ' Help for ' // trim(adjustl(app))
+    call LogSay(' --------------------')
     write (*, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
         &', build ' // trim(adjustl(build_date)) // '.'
+    write(ulog, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
+        &', build ' // trim(adjustl(build_date)) // '.'
     write(*,*)
+    write(ulog,*)
     write(*, '(a)') ' USAGE: ' // trim(prog) // ' [OPTION [ARG]] [PROJ_FILE]'
+    write(ulog, '(a)') ' USAGE: ' // trim(prog) // ' [OPTION [ARG]] [PROJ_FILE]'
     write(*,*)
-    write(*, '(a)') ' OPTIONS:'
-    write(*, '(a)') '   [-s | --system [win | linux | mac]]  Operating system; if not provided assumes "win"'
-    write(*, '(a)') '   [-m | --mode [embedded | desktop]]   Running mode; if not provided assumes "desktop"'
-    write(*, '(a)') '   [-c | --caller [gui | console]]      Caller; if not provided assumes "console"'
+    write(ulog,*)
+    call LogSay(' OPTIONS:')
+    call LogSay('   [-s | --system [win | linux | mac]]  Operating system; if not provided assumes "win"')
+    call LogSay('   [-m | --mode [embedded | desktop]]   Running mode; if not provided assumes "desktop"')
+    call LogSay('   [-c | --caller [gui | console]]      Caller; if not provided assumes "console"')
     write(*, '(a)') '   [-e | --environment [DIRECTORY]]     Working directory, to be provided in embedded mode;&
                                                              & if not provided assumes \.'
-    write(*, '(a)') '   [-h | --help]                        Display this help and exit'
-    write(*, '(a)') '   [-v | --version]                     Output version information and exit'
+    write(ulog, '(a)') '   [-e | --environment [DIRECTORY]]     Working directory, to be provided in embedded mode;&
+                                                             & if not provided assumes \.'
+    call LogSay('   [-h | --help]                        Display this help and exit')
+    call LogSay('   [-v | --version]                     Output version information and exit')
     write(*, '(a)')
+    write(ulog, '(a)')
     write(*, '(a)') ' PROJ_FILE                              Path of project (*.eddyflow) file;&
+                                                             & if not provided, assumes ..\ini\processing.eddyflow'
+    write(ulog, '(a)') ' PROJ_FILE                              Path of project (*.eddyflow) file;&
                                                              & if not provided, assumes ..\ini\processing.eddyflow'
     stop
 end subroutine CommandLineHelp

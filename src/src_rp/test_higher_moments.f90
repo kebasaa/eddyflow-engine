@@ -49,7 +49,7 @@ subroutine TestHigherMoments(Set, N)
     real(kind = dbl) :: Skw(E2NumVar)
     real(kind = dbl) :: Kur(E2NumVar)
 
-    write(*, '(a)', advance = 'no') '   Skewness & kurtosis test..'
+    call LogSayNoAdv('   Skewness & kurtosis test..')
 
     !> Initializations
     hflags = 9
@@ -91,5 +91,5 @@ subroutine TestHigherMoments(Set, N)
     !>  Pack one digit per variable into the flag strings
     call PackFlagString(hflags(u:GHGNumVar), GHGNumVar, CharHF%sk)
     call PackFlagString(sflags(u:GHGNumVar), GHGNumVar, CharSF%sk)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine TestHigherMoments

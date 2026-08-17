@@ -639,6 +639,7 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%tau, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%kw, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%gas_instr(gas)%ko, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(lEx%gas_instr(gas)%ac_freq, csv_row, EddyFlowProj%err_label)
     end do
 
 

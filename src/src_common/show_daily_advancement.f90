@@ -54,9 +54,12 @@ subroutine DisplayProgress(progress_type, init_message, tstamp, adv)
     case ('daily')
         write(*, '(a)', advance = adv) init_message // date(9:10) // ' ' // &
             trim(adjustl(months(tstamp%month))) // ' ' // date(1:4) // ' '
+        write(ulog, '(a)', advance = adv) init_message // date(9:10) // ' ' // &
+            trim(adjustl(months(tstamp%month))) // ' ' // date(1:4) // ' '
 
     case ('avrg_interval')
         write(*, '(a)', advance = adv) init_message // time(1:5)
+        write(ulog, '(a)', advance = adv) init_message // time(1:5)
     end select
 
 end subroutine DisplayProgress

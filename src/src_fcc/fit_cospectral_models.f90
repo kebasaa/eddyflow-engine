@@ -89,6 +89,9 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
         write(*, '(a)', advance = 'no') &
             ' Fitting model cospectra to unstable ' // &
                 cvar(1:len_trim(cvar)) // ' cospectra..'
+        write(ulog, '(a)', advance = 'no') &
+            ' Fitting model cospectra to unstable ' // &
+                cvar(1:len_trim(cvar)) // ' cospectra..'
 
         !> create dataset for regression
         xFit(1:m) = FitUnstable(1:m)%fnorm(var)
@@ -110,7 +113,7 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
             MassPar(var, unstable)%mu    = lMassPar(3)
         end if
         deallocate(fvec, fjac)
-        write(*,'(a)') ' Done'
+        call LogSay(' Done')
     end do
 
     !> Stable case
@@ -129,6 +132,8 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
             cvar = 'w/' // trim(GasName(var))
         end if
         write(*, '(a)', advance = 'no') &
+            ' Fitting model cospectra to stable ' // cvar(1:len_trim(cvar)) // ' cospectra..'
+        write(ulog, '(a)', advance = 'no') &
             ' Fitting model cospectra to stable ' // cvar(1:len_trim(cvar)) // ' cospectra..'
 
         !> create dataset for regression
@@ -150,7 +155,7 @@ subroutine FitCospectralModel(nfit, dim1, dim2, FitStable, FitUnstable, fnrow)
             MassPar(var, stable)%mu    = lMassPar(3)
         end if
         deallocate(fvec, fjac)
-        write(*,'(a)') ' Done'
+        call LogSay(' Done')
     end do
 
     if (allocated(xFit)) deallocate(xFit)

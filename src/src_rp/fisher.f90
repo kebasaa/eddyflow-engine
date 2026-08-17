@@ -38,6 +38,8 @@ subroutine fisher(Set, nrow, ncol)
 
     write(*, '(a)', advance = 'no') &
         '  Computing correlation-matrix difference with/without repeated values..'
+    write(ulog, '(a)', advance = 'no') &
+        '  Computing correlation-matrix difference with/without repeated values..'
 
     nodup_set = Set
     !> Every configured gas, here and in the two loops below: CorrDiff is
@@ -64,5 +66,5 @@ subroutine fisher(Set, nrow, ncol)
         end do
     end do
 
-    write(*, *) ' Done.'
+    call LogSayList(' Done.')
 end subroutine fisher

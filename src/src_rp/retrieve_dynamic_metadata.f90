@@ -56,12 +56,13 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
     type (DateType) :: mdCurrentTimestamp
 
 
-    write(*,'(a)', advance = 'no') '  Retrieving dynamic metadata..'
+    call LogSayNoAdv('  Retrieving dynamic metadata..')
 
     !> Open dynamic metadata file
     open(udf, file = AuxFile%DynMD, status = 'old', iostat = open_status)
     if (open_status /= 0) then
         write(*,*)
+        write(ulog,*)
         call ExceptionHandler(68)
         return
     end if
@@ -140,7 +141,7 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
     !> whether or not they have been updated at the current round
     call ExtractUsableMetadataFromDynamic(LocCol, size(LocCol))
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine RetrieveDynamicMetadata
 
 !*******************************************************************************

@@ -46,6 +46,8 @@
 ! \todo
 !***************************************************************************
 subroutine tsValidateTemplate(Template)
+    use m_index_parameters
+    use m_log
     implicit none
     !> local variables
     character(*), intent(in) :: Template
@@ -55,7 +57,7 @@ subroutine tsValidateTemplate(Template)
     .or. index(Template, 'dd') == 0 &
     .or. index(Template, 'HH') == 0 &
     .or. index(Template, 'MM') == 0) then
-        write(*, *) ''
+        call LogSayList('')
         call ExceptionHandler(20)
     end if
 end subroutine tsValidateTemplate

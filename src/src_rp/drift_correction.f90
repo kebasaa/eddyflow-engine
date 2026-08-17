@@ -53,9 +53,16 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     integer, external :: NumOfPeriods
     real(kind = dbl) :: lDrift(GHGNumVar)
     real(kind = dbl) :: MeanAbs(1)
-    real(kind = dbl) :: TempFact
+    !> One temperature factor per gas, from its own analyser's cell. It was a
+    !> scalar built from Ambient%Tcell, which is the *first* instrument's cell
+    !> block - the same wrong-cell reading the humidity term below was already
+    !> fixed for.
+    real(kind = dbl) :: TempFact(GHGNumVar)
     real(kind = dbl) :: abs_scale
     real(kind = dbl) :: broadening
+    !> Cell conditions of this gas's own analyser, global pair as the fallback.
+    real(kind = dbl) :: Tcell_g
+    real(kind = dbl) :: Pcell_g
     !> Mole fraction of the water this gas names, from whichever source.
     real(kind = dbl) :: chi_moist
     character(32) :: label
@@ -71,6 +78,7 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     !> Calib%offset, %ri, %rf and refCounts - have always been GHGNumVar wide;
     !> only the slices were two long.
     lDrift(firstGas:lastGas) = error
+    TempFact(firstGas:lastGas) = 1d0
     select case (trim(adjustl(DriftCorr%method)))
         case ('linear')
             do i = 1, nCalibEvents
@@ -92,12 +100,16 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
             !> drift based on signal strength
             !> Temperature dependency (LI-7200 manual REv5, Eq. 3-32)
 
-            if (Ambient%Tcell > 0d0) then
-                TempFact = 0.6d0 + 0.4d0 / (1d0 &
-                    + DriftCorr%b * dexp(DriftCorr%c * (Ambient%Tcell - 273.15d0)))
-            else
-                TempFact = 1d0
-            end if
+            do gas = firstGas, lastGas
+                Tcell_g = Ambient%Tcell
+                if (Ambient%Tcell_at(gas) /= error) Tcell_g = Ambient%Tcell_at(gas)
+                if (Tcell_g > 0d0) then
+                    TempFact(gas) = 0.6d0 + 0.4d0 / (1d0 &
+                        + DriftCorr%b * dexp(DriftCorr%c * (Tcell_g - 273.15d0)))
+                else
+                    TempFact(gas) = 1d0
+                end if
+            end do
 
             !> Detect relevant drift data (all data for periods between
             !> t1 and t2 are stored in Calib(t1))
@@ -110,9 +122,11 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
                         .and. Calib(i)%offset(firstGas:lastGas) /= error)
                         lDrift(firstGas:lastGas) = &
                             (refCounts(firstGas:lastGas) &
-                             - Calib(i)%ri(firstGas:lastGas) * TempFact) &
+                             - Calib(i)%ri(firstGas:lastGas) &
+                               * TempFact(firstGas:lastGas)) &
                             / (Calib(i)%rf(firstGas:lastGas) &
-                               - Calib(i)%ri(firstGas:lastGas) * TempFact) &
+                               - Calib(i)%ri(firstGas:lastGas) &
+                                 * TempFact(firstGas:lastGas)) &
                             * Calib(i)%offset(firstGas:lastGas)
                     elsewhere
                         lDrift(firstGas:lastGas) = error
@@ -163,6 +177,15 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
         abs_scale = 1d0
         if (GasSlotIsWater(gas)) abs_scale = 1d3
 
+        !> The cell this gas is actually measured in. Ambient%Tcell/Pcell are
+        !> the first instrument's block, so a second analyser was converted to
+        !> density and back through the first one's temperature and pressure -
+        !> the same defect as the site-water broadening below, one level up.
+        Tcell_g = Ambient%Tcell
+        Pcell_g = Ambient%Pcell
+        if (Ambient%Tcell_at(gas) /= error) Tcell_g = Ambient%Tcell_at(gas)
+        if (Ambient%Pcell_at(gas) /= error) Pcell_g = Ambient%Pcell_at(gas)
+
         label = GasOutputLabel(gas)
         call lowercase(label)
         !> Pressure broadening of the CO2 band by water vapour, from the
@@ -188,12 +211,12 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
 
         if (locCol(gas)%measure_type /= 'molar_density') then
             where (Set(:, gas) /= error)
-                Set(:, gas) = Set(:, gas) / Ru / Ambient%Tcell &
+                Set(:, gas) = Set(:, gas) / Ru / Tcell_g &
                     * abs_scale / broadening
             end where
         else
             where (Set(:, gas) /= error)
-                Set(:, gas) = Set(:, gas) / (Ambient%Pcell / 1d3 * broadening)
+                Set(:, gas) = Set(:, gas) / (Pcell_g / 1d3 * broadening)
             end where
         end if
 
@@ -216,7 +239,7 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
             where (Set(:, gas) /= error .and. MeanAbs(1) /= error)
                 Set(:, gas) = (MeanAbs(1) - lDrift(gas)) + &
                     (Set(:, gas) - MeanAbs(1)) &
-                    / (1d0 - lDrift(gas) * Ambient%Pcell * 1d-3)
+                    / (1d0 - lDrift(gas) * Pcell_g * 1d-3)
             end where
         end if
 
@@ -227,12 +250,12 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
         !> Convert density/press back to concentration or density
         if (locCol(gas)%measure_type /= 'molar_density') then
             where (Set(:, gas) /= error)
-                Set(:, gas) = Set(:, gas) * Ru * Ambient%Tcell &
+                Set(:, gas) = Set(:, gas) * Ru * Tcell_g &
                     / abs_scale * broadening
             end where
         else
             where (Set(:, gas) /= error)
-                Set(:, gas) = Set(:, gas) * (Ambient%Pcell / 1d3 * broadening)
+                Set(:, gas) = Set(:, gas) * (Pcell_g / 1d3 * broadening)
             end where
         end if
     end do

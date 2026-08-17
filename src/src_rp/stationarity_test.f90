@@ -64,7 +64,7 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     real(kind = dbl) :: SubUstar
 
 
-    write(*, '(a)', advance = 'no') '  Performing stationarity test..'
+    call LogSayNoAdv('  Performing stationarity test..')
 
     !> Define LocSet with only variables u to gas4
     LocSet(:, u:GHGNumVar) = Set(:, u:GHGNumVar)
@@ -132,5 +132,5 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     end do
 
     deallocate(SubSet)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine StationarityTest

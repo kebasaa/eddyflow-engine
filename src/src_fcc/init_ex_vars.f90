@@ -63,7 +63,10 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
 
     write(*,'(a)') &
         ' Initializing retrieval of EddyFlow-RP results from file: '
+    write(ulog,'(a)') &
+        ' Initializing retrieval of EddyFlow-RP results from file: '
     write(*,'(a)') '  "' // trim(adjustl(AuxFile%ex)) // '"..'
+    write(ulog,'(a)') '  "' // trim(adjustl(AuxFile%ex)) // '"..'
 
     !> Open EX file
     open(udf, file = AuxFile%ex, status = 'old', iostat = open_status)
@@ -71,7 +74,7 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     !> Exit with error in case of problems opening the file
     if (open_status /= 0) call ExceptionHandler(60)
 
-    write(*, '(a)') '  File found, importing content..'
+    call LogSay('  File found, importing content..')
 
     !> Store header to string, for writing it on output
     read(udf, '(a)') fluxnet_header
@@ -136,6 +139,7 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     fcc_var_present = .false.
     FCCMetadata%ru = .false.
     FCCMetadata%ac_freq = -1
+    FCCMetadata%GasAcFreq = error
     DateStep = DateType(0, 0, 0, 0, ierror)
 
     !> Cycle on all records
@@ -231,6 +235,16 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
             !> role of the retired five-wide instrument numbering.
             FCCMetadata%H2oPathType = &
                 lEx%gas_instr(PrimaryWaterOutSlot())%path_type
+            !> And every slot's own, for the routines that must not assume the
+            !> primary's - FitRh2Fco fits one hygrometer per slot now.
+            do gas = firstGas, lastGas
+                FCCMetadata%GasPathType(gas) = &
+                    lEx%gas_instr(gas)%path_type
+                !> And each analyser's own rate, for the checks that must not
+                !> apply the station's Nyquist to a slower instrument.
+                FCCMetadata%GasAcFreq(gas) = &
+                    lEx%gas_instr(gas)%ac_freq
+            end do
         end if
 
         if (all(fcc_var_present) .and. Diag7200%present .and. Diag7500%present .and. Diag7700%present .and. &
@@ -243,5 +257,5 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     !> Adjust start timestamp so that Start/End define the whole period
     !> From beginning of first period to end of last period
     StartTimestamp = StartTimestamp - DateStep
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine InitExVars

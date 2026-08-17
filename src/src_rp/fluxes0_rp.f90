@@ -60,6 +60,8 @@ subroutine Fluxes0_rp(printout)
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating fluxes Level 0..'
+    if (printout) write(ulog,'(a)', advance = 'no') &
+        '  Calculating fluxes Level 0..'
 
     Flux0 = errFlux
 
@@ -288,4 +290,5 @@ subroutine Fluxes0_rp(printout)
         Ambient%Bowen = error
     end if
     if (printout) write(*,'(a)')   ' Done.'
+    if (printout) write(ulog,'(a)')   ' Done.'
 end subroutine Fluxes0_rp

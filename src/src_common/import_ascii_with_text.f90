@@ -57,6 +57,10 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
     integer :: io_status
     character(LongInstringLen) :: dataline
     character(DatumLen) :: datum
+    !> The parser answers one value per RAW column; fRaw holds only the hot
+    !> ones, so the record is compacted on the way in - the same compaction
+    !> ImportAscii does after its own read.
+    real(kind = sgl) :: RawRec(NumCol)
     character(64) :: lab
     type(ColType) :: TmpCol(MaxNumCol)
 
@@ -128,35 +132,18 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
             exit record_loop
         end if
 
-        !> Eliminate multiple separators from dataline, but currently only if it's a space
-        if (FileInterpreter%separator == ' ') &
-            call StripConsecutiveChar(dataline, FileInterpreter%separator)
-
-        !> Parse variables out of the string
+        !> Parse variables out of the string. Shared with ImportAscii, which
+        !> falls back to it when its whole-record read fails - one parser, so
+        !> the two cannot answer differently for the same record. It collapses
+        !> repeated space separators itself.
+        call ParseDataRecord(dataline, LocCol, RawRec, NumCol)
         jj = 0
-        il: do j = 1, NumCol
-            intsep = index(dataline, FileInterpreter%separator)
-            if (intsep == 0) intsep = len_trim(dataline) + 1
-            if (len_trim(dataline) == 0) exit
-            datum = dataline(1:intsep - 1)
-            dataline = dataline(intsep + 1: len_trim(dataline))
-            if (LocCol(j)%var /= 'ignore' .and. LocCol(j)%var /= 'not_numeric') then
-                jj = jj + 1
-                if (EddyFlowProj%col(E2NumVar + DiagAnem) == j &
-                    .and. (index(EddyFlowProj%master_sonic, 'wm') /= 0 &
-                    .or. index(EddyFlowProj%master_sonic, 'hs') /= 0)) then
-                    if (trim(datum) == '0A') datum = '10'
-                    if (trim(datum) == '0B') datum = '11'
-                end if
-                read(datum, *, iostat = io_status) fRaw(N, jj)
-                if (io_status /= 0) then
-                    fRaw(N, jj) = error
-                    cycle il
-                    ! N = N - 1
-                    ! cycle record_loop
-                end if
-            end if
-        end do il
+        do j = 1, NumCol
+            if (LocCol(j)%var == 'ignore' .or. LocCol(j)%var == 'not_numeric') cycle
+            jj = jj + 1
+            if (jj > ncol) exit
+            fRaw(N, jj) = RawRec(j)
+        end do
     end do record_loop
     LocCol = TmpCol
     close(unat)

@@ -48,6 +48,7 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
 
 
     if (printout) write(*,'(a)', advance = 'no') '  Calculating quality flags..'
+    if (printout) write(ulog,'(a)', advance = 'no') '  Calculating quality flags..'
 
     !> Stationarity flags. Every gas slot: the w_* covariance enumeration is
     !> numerically the variable enumeration, so a slot indexes both directly.
@@ -102,6 +103,7 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
     end if
 
     if (printout) write(*, '(a)') ' Done.'
+    if (printout) write(ulog, '(a)') ' Done.'
 end subroutine QualityFlags
 
 !***************************************************************************

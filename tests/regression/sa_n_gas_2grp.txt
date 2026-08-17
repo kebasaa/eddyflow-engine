@@ -4,7 +4,7 @@ Fn:_normalization_parameter
 Water_vapour_TFP_are_calculated_for_9_RH_classes.
 Other_gases_TFP_are_calculated_on_a_monthly_base.
 ------------------------------------------------------------------------------------
-Water vapour TFP              Fn          fc    numerosity
+Water vapour TFP              Fn          fc    numerosity   var=h2o instr=miro_mga4_6_2
 RH class   5 - 15% =     0.20000     0.80000          500
 RH class  15 - 25% =     0.20000     0.80000          500
 RH class  25 - 35% =     0.20000     0.80000          500
@@ -15,7 +15,7 @@ RH class  65 - 75% =     0.20000     0.80000          500
 RH class  75 - 85% =     0.20000     0.80000          500
 RH class  85 - 95% =     0.20000     0.80000          500
 
-CO2_1            TFP            Fn          fc   groups=1-2,3-12
+CO2_1            TFP            Fn          fc   groups=1-2,3-12   var=co2 instr=miro_mga4_6_2
 January            =     0.20000     1.00000 
 February           =     0.20000     1.00000 
 March              =     0.20000     0.05000 
@@ -29,7 +29,7 @@ October            =     0.20000     0.05000
 November           =     0.20000     0.05000 
 December           =     0.20000     0.05000 
  
-CH4            TFP            Fn          fc   groups=1-2,3-12
+CH4            TFP            Fn          fc   groups=1-2,3-12   var=ch4 instr=none
 January            =     0.20000     1.00000 
 February           =     0.20000     1.00000 
 March              =     0.20000     0.05000 
@@ -43,7 +43,7 @@ October            =     0.20000     0.05000
 November           =     0.20000     0.05000 
 December           =     0.20000     0.05000 
  
-COS            TFP            Fn          fc   groups=1-2,3-12
+COS            TFP            Fn          fc   groups=1-2,3-12   var=cos instr=miro_mga4_6_2
 January            =     0.20000     1.00000 
 February           =     0.20000     1.00000 
 March              =     0.20000     0.05000 
@@ -57,7 +57,7 @@ October            =     0.20000     0.05000
 November           =     0.20000     0.05000 
 December           =     0.20000     0.05000 
  
-N2O_1            TFP            Fn          fc   groups=1-2,3-12
+N2O_1            TFP            Fn          fc   groups=1-2,3-12   var=n2o instr=miro_mga4_6_2
 January            =     0.20000     1.00000 
 February           =     0.20000     1.00000 
 March              =     0.20000     0.05000 
@@ -71,7 +71,7 @@ October            =     0.20000     0.05000
 November           =     0.20000     0.05000 
 December           =     0.20000     0.05000 
  
-CO2_2            TFP            Fn          fc   groups=1-2,3-12
+CO2_2            TFP            Fn          fc   groups=1-2,3-12   var=co2 instr=li7200_1
 January            =     0.20000     1.00000 
 February           =     0.20000     1.00000 
 March              =     0.20000     0.05000 
@@ -85,7 +85,7 @@ October            =     0.20000     0.05000
 November           =     0.20000     0.05000 
 December           =     0.20000     0.05000 
  
-N2O_2            TFP            Fn          fc   groups=1-2,3-12
+N2O_2            TFP            Fn          fc   groups=1-2,3-12   var=n2o instr=miro_mga4_6_2
 January            =     0.20000     1.00000 
 February           =     0.20000     1.00000 
 March              =     0.20000     0.05000 

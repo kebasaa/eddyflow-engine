@@ -203,6 +203,9 @@ biomet_subs.o: \
 biomet_units_conversions.o: \
 	biomet_units_conversions.f90 \
 	m_rp_global_var.o
+blank_missing_values.o: \
+	blank_missing_values.f90 \
+	m_common_global_var.o
 bpcf_additional_horst_lenschow_09.o: \
 	bpcf_additional_horst_lenschow_09.f90 \
 	m_common_global_var.o
@@ -261,6 +264,9 @@ change_24_into_00.o: \
 cleanup_e2_set.o: \
 	cleanup_e2_set.f90 \
 	m_rp_global_var.o
+column_sampling.o: \
+	column_sampling.f90 \
+	m_rp_global_var.o
 configure_for_embedded.o: \
 	configure_for_embedded.f90 \
 	m_common_global_var.o
@@ -313,7 +319,9 @@ cross_wind_corr.o: \
 	m_common_global_var.o
 date_subs.o: \
 	date_subs.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	m_index_parameters.o \
+	m_log.o
 def_cross_indx_rng.o: \
 	def_cross_indx_rng.f90 \
 	m_common_global_var.o
@@ -328,7 +336,9 @@ define_all_var_set.o: \
 	m_common_global_var.o
 define_e2_set.o: \
 	define_e2_set.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	m_index_parameters.o \
+	m_log.o
 define_relative_separations.o: \
 	define_relative_separations.f90 \
 	m_common_global_var.o
@@ -388,7 +398,9 @@ ensemble_cospectra_by_stability.o: \
 	ensemble_cospectra_by_stability.f90 \
 	m_fx_global_var_mod.o
 exception_handler.o: \
-	exception_handler.f90
+	exception_handler.f90 \
+	m_index_parameters.o \
+	m_log.o
 extract_column_from_essentials.o: \
 	extract_column_from_essentials.f90 \
 	m_common_global_var.o
@@ -555,6 +567,9 @@ init_outfiles_rp.o: \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_rp_global_var.o
+init_run_log.o: \
+	init_run_log.f90 \
+	m_common_global_var.o
 init_user_outfiles.o: \
 	init_user_outfiles.f90 \
 	m_rp_global_var.o
@@ -587,6 +602,7 @@ m_common_global_var.o: \
 	m_fp2_to_float.o \
 	m_index_parameters.o \
 	m_libdate.o \
+	m_log.o \
 	m_methane_tables.o \
 	m_typedef.o
 m_dates.o: \
@@ -604,6 +620,9 @@ m_levenberg_marquardt.o: \
 	m_levenberg_marquardt.f90
 m_libdate.o: \
 	m_libdate.f90
+m_log.o: \
+	m_log.f90 \
+	m_index_parameters.o
 m_methane_tables.o: \
 	m_methane_tables.f90 \
 	m_numeric_kinds.o
@@ -660,6 +679,9 @@ override_master_sonic_related_settings.o: \
 override_settings.o: \
 	override_settings.f90 \
 	m_rp_global_var.o
+parse_data_record.o: \
+	parse_data_record.f90 \
+	m_common_global_var.o
 parse_file_name_with_prototype.o: \
 	parse_file_name_with_prototype.f90 \
 	m_common_global_var.o
@@ -688,6 +710,8 @@ power_of_two.o: \
 	power_of_two.f90
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
+	m_index_parameters.o \
+	m_log.o \
 	m_rp_global_var.o
 qc_flags_subs.o: \
 	qc_flags_subs.f90 \
@@ -808,7 +832,9 @@ spectral_assessment_diagnostics.o: \
 	spectral_assessment_diagnostics.f90 \
 	interfaces_1.inc \
 	m_common_global_var.o \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	m_index_parameters.o \
+	m_log.o
 spectral_density.o: \
 	spectral_density.f90 \
 	m_common_global_var.o
@@ -880,6 +906,8 @@ timelag_handle.o: \
 	pwb_timelag_handle.o
 timestamp.o: \
 	timestamp.f90 \
+	m_index_parameters.o \
+	m_log.o \
 	m_numeric_kinds.o
 ts_extract_subperiod_indexes.o: \
 	ts_extract_subperiod_indexes.f90 \

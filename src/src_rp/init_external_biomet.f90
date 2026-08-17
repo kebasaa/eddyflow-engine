@@ -59,7 +59,7 @@ subroutine InitExternalBiomet(bFileList, N)
     logical :: excluded_file(N)
 
 
-    write(*, '(a)', advance = 'no') ' Interpreting biomet data..'
+    call LogSayNoAdv(' Interpreting biomet data..')
 
     !> Retrieve list of biomet files
     if (EddyFlowProj%biomet_data == 'ext_file') then
@@ -85,7 +85,9 @@ subroutine InitExternalBiomet(bFileList, N)
         if (failed) then
             excluded_file(nfl) = .true.
             write(*,*)
+            write(ulog,*)
             write(*, '(a)') '  File: ' // trim(adjustl(bFileList(nfl)%path))
+            write(ulog, '(a)') '  File: ' // trim(adjustl(bFileList(nfl)%path))
             call ExceptionHandler(2)
             cycle size_loop
         end if
@@ -97,6 +99,7 @@ subroutine InitExternalBiomet(bFileList, N)
         else
             if (fnbItems /= nbItems) then
                 write(*,*)
+                write(ulog,*)
                 call ExceptionHandler(70)
                 EddyFlowProj%biomet_data = 'none'
                 return
@@ -178,6 +181,7 @@ subroutine InitExternalBiomet(bFileList, N)
                 .or. (any(lbVars(:)%label /= bVars(:)%label) &
                 .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
                 write(*,'(a)')
+                write(ulog,'(a)')
                 call ExceptionHandler(79)
                 EddyFlowProj%biomet_data = 'none'
                 return
@@ -192,6 +196,7 @@ subroutine InitExternalBiomet(bFileList, N)
         !         .or. (any(lbVars(:)%label /= bVars(:)%label) &
         !         .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
         !         write(*,'(a)')
+        !         write(ulog,'(a)')
         !         call ExceptionHandler(79)
         !         EddyFlowProj%biomet_data = 'none'
         !         return
@@ -224,9 +229,14 @@ subroutine InitExternalBiomet(bFileList, N)
     bFileMetadata%time_step = int(tsInferTimestep(bTimestamp(:nRec), nRec) / 60)
     bFileMetadata%tolerance = bFileMetadata%time_step / 2
     write(*, '(a)')
+    write(ulog, '(a)')
     write(*, '(a, i6)')    '  Number of variables: ', nbVars
+    write(ulog, '(a, i6)')    '  Number of variables: ', nbVars
     write(*, '(a, i6)')    '  Number of records:   ', nRec
+    write(ulog, '(a, i6)')    '  Number of records:   ', nRec
     write(*, '(a, i6, a)') '  Inferred time-step:  ', &
+        bFileMetadata%time_step, ' min'
+    write(ulog, '(a, i6, a)') '  Inferred time-step:  ', &
         bFileMetadata%time_step, ' min'
 
     !> Determine nbRecs, the maximum number of biomet data available for
@@ -262,5 +272,5 @@ subroutine InitExternalBiomet(bFileList, N)
     !> NOT DONE FOR THE MOMENT
 !    call BiometOrderVars()
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine InitExternalBiomet

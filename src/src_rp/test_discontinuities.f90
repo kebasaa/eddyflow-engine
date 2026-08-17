@@ -67,7 +67,7 @@ subroutine TestDiscontinuities(Set, N)
     include '../src_common/interfaces_1.inc'
 
 
-    write(*, '(a)', advance = 'no') '   Discontinuities test..'
+    call LogSayNoAdv('   Discontinuities test..')
 
     !> Additional control parameters
     win_len = RPsetup%avrg_len / 6
@@ -181,5 +181,5 @@ subroutine TestDiscontinuities(Set, N)
     end do
     call PackFlagString(hflags, GHGNumVar, CharHF%ds)
     call PackFlagString(sflags, GHGNumVar, CharSF%ds)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine TestDiscontinuities

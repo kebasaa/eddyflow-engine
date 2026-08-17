@@ -34,7 +34,7 @@ subroutine FilterDatasetForWindDirection(Set, nrow, ncol)
     real(kind = dbl) :: wd_rec
     logical :: in_excluded_sector
 
-    write(*, '(a)', advance = 'no') '  Filtering data for wind direction exclusion..'
+    call LogSayNoAdv('  Filtering data for wind direction exclusion..')
     Essentials%m_wdf = 0
     do rec = 1, nrow
         if (any(Set(rec, u:w) == error)) cycle
@@ -52,7 +52,9 @@ subroutine FilterDatasetForWindDirection(Set, nrow, ncol)
             Essentials%m_wdf = Essentials%m_wdf + 1
         end if
     end do
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
     write(*, '(a, i6)') &
+        '   Records eliminated by wind direction filter: ', Essentials%m_wdf
+    write(ulog, '(a, i6)') &
         '   Records eliminated by wind direction filter: ', Essentials%m_wdf
 end subroutine FilterDatasetForWindDirection

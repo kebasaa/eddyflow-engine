@@ -462,6 +462,11 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_RESPONSE_TIME', separator)
         call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_KH2O', separator)
         call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_KO2', separator)
+        !> The rate this analyser samples at, as resolved by RP - its own when
+        !> it states one, the file's when it does not. FCC has no metadata
+        !> file, so this column is the only way a per-analyser rate can reach
+        !> it, and its Nyquist check needs one.
+        call AddDatum(csv_row, trim(FluxnetInstrTags(j)) // '_INSTR_AC_FREQ', separator)
     end do
 
     !> Add biomet variables

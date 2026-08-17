@@ -74,7 +74,7 @@ subroutine TestAmpResDropOut(Set, N)
     real(kind = dbl) :: MinIntX(GHGNumVar)
 
 
-    write(*, '(a)', advance = 'no') '   Amplitude resolution and/or dropouts test..'
+    call LogSayNoAdv('   Amplitude resolution and/or dropouts test..')
 
     !> Initializations
     win_len = RPsetup%avrg_len / 15
@@ -228,5 +228,5 @@ subroutine TestAmpResDropOut(Set, N)
     !>  Pack one digit per variable into the flag strings
     call PackFlagString(ar_hflags, GHGNumVar, CharHF%ar)
     call PackFlagString(do_hflags, GHGNumVar, CharHF%do)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine TestAmpResDropOut

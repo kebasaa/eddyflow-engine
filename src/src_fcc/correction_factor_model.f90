@@ -61,7 +61,7 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords)
     include '../src_common/interfaces.inc'
 
 
-    write(*, '(a)') ' Fitting low-pass correction factor model as from Ibrom et al. (2007)..'
+    call LogSay(' Fitting low-pass correction factor model as from Ibrom et al. (2007)..')
     allocate(DegWT(NumExRecords, Nt + 3))
 
     !> Retrieve "degraded" w'T' covariances from essentials file

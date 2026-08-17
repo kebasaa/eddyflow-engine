@@ -95,10 +95,12 @@ class WaterIsResolvedNotAssumed(unittest.TestCase):
         record naming another species at slot 6 made it 44.01e-3 and scaled
         every LE, E and ET by 2.44.
         """
-        self.assertIn("real(kind = sgl), parameter :: MW_H2O = 18.02e-3",
+        self.assertIn("real(kind = sgl), parameter :: MW_H2O = 18.0153e-3",
                       read("src/src_common/m_common_global_var.f90"),
-                      "MW_H2O must stay `sgl` with that literal, or the "
-                      "promotion to double changes and every flux moves")
+                      "MW_H2O must stay `sgl`, and must carry the same literal "
+                      "as the water entry of the MW data statement - the two "
+                      "are promoted to double side by side and every flux "
+                      "moves if they disagree")
         for path in FLUX_FILES + ("src/src_common/define_all_var_set.f90",
                                   "src/src_rp/set_timelags.f90"):
             self.assertNotIn("MW(h2o)", code(path),
@@ -177,6 +179,40 @@ class SpeciesPropertiesAreKeyedOnSpecies(unittest.TestCase):
                           "%s must give an unrecognised species a usable "
                           "number, never zero" % name)
 
+    def test_no_two_species_share_a_molecular_weight(self):
+        """CO2 and N2O really do weigh nearly the same - 44.0095 against
+        44.0128 - and both were written to two decimals, so the table said
+        they weigh exactly the same. The one place a gas's identity is stated
+        in numbers could not distinguish them, and a table where two entries
+        are literally equal cannot be checked by reading it.
+
+        Asked of the whole table rather than of that pair: any two species
+        colliding is the same defect, and naming only the pair that collided
+        would let the next one through.
+        """
+        source = read("src/src_common/write_processing_project_variables.f90")
+        body = source[source.index("function DefaultMolecularWeight(var)"):]
+        body = body[:body.index("end function DefaultMolecularWeight")]
+
+        weights = {}
+        for line in body.splitlines():
+            if "case (" not in line or "DefaultMolecularWeight =" not in line:
+                continue
+            species = line.split("case (")[1].split(")")[0].strip("' ")
+            value = line.split("DefaultMolecularWeight =")[1].strip()
+            #> H2O names the shared constant rather than a literal, and the
+            #> `default` arm is deliberately a copy of one species' value.
+            if species == "default" or not value[0].isdigit():
+                continue
+            weights.setdefault(value, []).append(species)
+
+        self.assertGreater(len(weights), 10,
+                           "the table was not parsed - the check is empty")
+        collisions = {v: s for v, s in weights.items() if len(s) > 1}
+        self.assertEqual(
+            {}, collisions,
+            "two species cannot carry the same molecular weight: %s" % collisions)
+
     def test_a_gas_converts_with_its_own_records_weight(self):
         """Not with the weight of the first record naming that species.
 
@@ -229,18 +265,21 @@ class EveryHygrometerIsTreatedAsWater(unittest.TestCase):
         self.assertIn("if (.not. GasSlotIsWater(gas)) then", source)
 
     def test_the_rh_cutoff_fit_resolves_its_slot(self):
-        """The fit belongs to the primary water record.
+        """The fit belongs to a water record - to each of them, now.
 
-        Its *result* - the exponential RegPar(dum, dum) - is one set of
-        coefficients for the whole project, so a second hygrometer reuses the
-        primary's RH dependence. That is a data-model limit, not a loop bound,
-        and widening it is a separate change.
+        It used to fit the primary alone and leave one set of exponential
+        coefficients for the whole project, so a second hygrometer reused the
+        primary's RH dependence. That was recorded here as a data-model limit;
+        it is fitted per hygrometer now, and the shared set is only the
+        fallback for one the assessment never reached.
         """
         source = code("src/src_fcc/fit_rh_to_cutoff.f90")
         self.assertNotIn("RegPar(h2o,", source)
-        self.assertIn("wsl = PrimaryWaterSlot()", source)
-        self.assertIn("if (wsl < firstGas) return", source,
+        self.assertIn("primary = PrimaryWaterSlot()", source)
+        self.assertIn("if (primary < firstGas) return", source,
                       "with no water there is nothing to fit")
+        self.assertIn("do wsl = firstGas, lastGas", source,
+                      "every hygrometer is fitted, not just the primary")
 
     def test_the_active_gas_search_window_follows_the_species(self):
         """Water's time-lag window is ten times the transit time, not two.

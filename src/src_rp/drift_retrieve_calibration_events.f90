@@ -73,7 +73,10 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
     !> Open dynamic metadata file
     write(*,'(a)') ' Looking for calibration information &
         &in dynamic metadata file:  '
+    write(ulog,'(a)') ' Looking for calibration information &
+        &in dynamic metadata file:  '
     write(*,'(a)') '  ' // AuxFile%DynMD(1:len_trim(AuxFile%DynMD))
+    write(ulog,'(a)') '  ' // AuxFile%DynMD(1:len_trim(AuxFile%DynMD))
     open(udf, file = AuxFile%DynMD, status = 'old', iostat = open_status)
 
     Calib = CalibType('', '', tsNull, .false., nint(error), &
@@ -206,5 +209,5 @@ subroutine driftRetrieveCalibrationEvents(nCalibEvents)
             Calib(i)%offset(gas) = biased_abs - unbiased_abs
         end do
     end do
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine driftRetrieveCalibrationEvents

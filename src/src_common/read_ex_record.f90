@@ -82,6 +82,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     real(kind = dbl) :: instr_tube_l, instr_tube_d, instr_tube_f
     real(kind = dbl) :: instr_hpath, instr_vpath, instr_tau
     real(kind = dbl) :: instr_kw, instr_ko
+    real(kind = dbl) :: instr_ac_freq
     character(9) :: vm97flags(GHGNumVar)
     character(16000) :: dataline
     character(16000) :: cec_line
@@ -170,7 +171,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> Per-gas analyser block: a count, then this many fields per gas
     !> (slot, firm, model, nsep, esep, vsep, tube_l, tube_d, tube_f,
     !>  hpath, vpath, tau, kw, ko).
-    integer, parameter :: nGasInstrFields = 14
+    !> Slot + 13 instrument fields + the resolved acquisition frequency.
+    integer, parameter :: nGasInstrFields = 15
     include 'interfaces_1.inc'
 
     ! integer, external :: strCharIndex
@@ -755,7 +757,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             read(dataline, *, iostat = read_status) gas, &
                 instr_firm, instr_model, instr_nsep, instr_esep, instr_vsep, &
                 instr_tube_l, instr_tube_d, instr_tube_f, &
-                instr_hpath, instr_vpath, instr_tau, instr_kw, instr_ko
+                instr_hpath, instr_vpath, instr_tau, instr_kw, instr_ko, &
+                instr_ac_freq
             if (read_status /= 0) then
                 call InvalidateRecord()
                 return
@@ -788,6 +791,11 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
                 lEx%gas_instr(gas)%tau = instr_tau
                 lEx%gas_instr(gas)%kw = instr_kw
                 lEx%gas_instr(gas)%ko = instr_ko
+                !> Already resolved by RP: its own rate when the analyser
+                !> states one, the file's when it does not. A file written
+                !> before this column existed leaves it at the error code, and
+                !> the readers below fall back to the station's rate.
+                lEx%gas_instr(gas)%ac_freq = instr_ac_freq
                 lEx%gas_instr(gas)%category = 'irga'
                 select case (IrgaPathTypeFromModel(lEx%gas_instr(gas)%model))
                     case ('open')

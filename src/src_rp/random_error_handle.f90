@@ -40,7 +40,7 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
 
 
-    write(*, '(a)') '  Estimating random uncertainty..'
+    call LogSay('  Estimating random uncertainty..')
 
     !> Calculate random uncertainty
     select case (RUsetup%meth)
@@ -64,7 +64,7 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
             Essentials%rand_uncer_ET = error
             return
     end select
-    write(*, '(a)') '  Done.'
+    call LogSay('  Done.')
 end subroutine RandomUncertaintyHandle
 
 !***************************************************************************

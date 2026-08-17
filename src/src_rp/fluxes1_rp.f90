@@ -42,7 +42,7 @@ subroutine Fluxes1_rp()
     integer :: wsx
     include '../src_common/interfaces_1.inc'
 
-    write(*,'(a)', advance = 'no') '  Calculating fluxes Level 1..'
+    call LogSayNoAdv('  Calculating fluxes Level 1..')
 
     Flux1 = errFlux
 
@@ -159,5 +159,5 @@ subroutine Fluxes1_rp()
     if (Flux0%tau == error) Flux1%tau = error
     Flux1%ustar = Ambient%us
 
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine Fluxes1_rp

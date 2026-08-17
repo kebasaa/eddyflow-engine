@@ -106,6 +106,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                     .or. RegPar(dum, dum)%e3 == error)) then
                     actual_hf_method = 'moncrieff_97'
                     write(*,*)
+                    write(ulog,*)
                     call ExceptionHandler(69)
                 end if
                 if (actual_hf_method /= 'moncrieff_97') then

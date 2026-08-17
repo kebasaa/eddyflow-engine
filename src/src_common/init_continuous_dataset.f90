@@ -54,9 +54,12 @@ subroutine InitContinuousDataset(PathIn, ErrString, hnrow)
         iostat = io_status)
     if (io_status /= 0 ) then
         write(*,'(a)')
+        write(ulog,'(a)')
         write(*,'(a)') '  A problem occurred while opening file: ', &
             PathIn(1:len_trim(PathIn))
-        write(*,'(a)') '   File not imported.'
+        write(ulog,'(a)') '  A problem occurred while opening file: ', &
+            PathIn(1:len_trim(PathIn))
+        call LogSay('   File not imported.')
         return
     end if
 

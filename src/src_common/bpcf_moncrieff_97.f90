@@ -79,6 +79,8 @@ subroutine BPCF_Moncrieff97(measuring_height, displ_height, loc_var_present, &
         !> Add analytic high-pass transfer functions
         if (printout) write(*,'(a)') '   High-pass correction for gas fluxes. &
             &Method: Moncrieff et al. (2004)'
+        if (printout) write(ulog,'(a)') '   High-pass correction for gas fluxes. &
+            &Method: Moncrieff et al. (2004)'
         call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, &
             avrg_length, detrending_method, detrending_time_constant, BPTF)
 
@@ -89,9 +91,12 @@ subroutine BPCF_Moncrieff97(measuring_height, displ_height, loc_var_present, &
                 detrending_time_constant, BPTF)
         end do
         if (printout) write(*,'(a)') '   Done.'
+        if (printout) write(ulog,'(a)') '   Done.'
     end if
 
     if (printout) write(*,'(a)') '   Low-pass correction for gas fluxes. &
+        &Method: Moncrieff et al. (1997)'
+    if (printout) write(ulog,'(a)') '   Low-pass correction for gas fluxes. &
         &Method: Moncrieff et al. (1997)'
 
     !> normalized frequency vector, kf
@@ -120,4 +125,5 @@ subroutine BPCF_Moncrieff97(measuring_height, displ_height, loc_var_present, &
             call SpectralCorrectionFactors(Cospectrum%of(gas), gas, nf, nfreq, BPTF)
     end do
     if (printout) write(*,'(a)') '   Done.'
+    if (printout) write(ulog,'(a)') '   Done.'
 end subroutine BPCF_Moncrieff97

@@ -101,17 +101,22 @@ Program EddyFlowFCC
     !*******************************************************************************
     !*******************************************************************************
 
+    !> Connect the log before anything is said - see the RP main.
+    call LogStart()
+
     app = fcc_app
 
     !> Initialize environment
     write(*, '(a)')
+    write(ulog, '(a)')
     call InitEnv()
 
     !> By detault, create FLUXNET output
     EddyFlowProj%out_fluxnet = .true.
 
-    write(*, '(a)') 'Starting flux computation and correction session..'
+    call LogSay('Starting flux computation and correction session..')
     write(*, '(a)')
+    write(ulog, '(a)')
 
     !> Read ".eddypro" file for both spectral analysis and flux correction
     call ReadIniFCC('FluxCorrection')
@@ -119,6 +124,10 @@ Program EddyFlowFCC
 
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
+
+    !> The run log. The output folder is RP's and already exists by the time
+    !> FCC runs; the timestamp is FCC's own, so the two logs never collide.
+    call InitRunLog()
 
     !> If running in embedded mode, override some settings
     if (EddyFlowProj%run_env == 'embedded') &
@@ -202,10 +211,13 @@ Program EddyFlowFCC
         call ResetSpectralAssessmentDiagnostics()
         if (FCCsetup%do_spectral_assessment) write(*, '(a)') &
             ' Starting "spectral assessment" session..'
+        if (FCCsetup%do_spectral_assessment) write(ulog, '(a)') &
+            ' Starting "spectral assessment" session..'
         if (EddyFlowProj%out_avrg_cosp .or. EddyFlowProj%out_avrg_spec) then
-            write(*, '(a)') ' Reading (co)spectra from:'
+            call LogSay(' Reading (co)spectra from:')
             write(*, '(a)') '  ' // trim(adjustl(Dir%binned))
-            write(*, '(a)') ''
+            write(ulog, '(a)') '  ' // trim(adjustl(Dir%binned))
+            call LogSay('')
         end if
 
         !> Convert start/end to timestamps
@@ -269,23 +281,29 @@ Program EddyFlowFCC
         !> Some logging
         call DateTypeToDateTime(binStartTimestamp - DateStep, sDate, sTime)
         call DateTypeToDateTime(binEndTimestamp, eDate, eTime)
-        write(*, '(a)') ''
-        write(*, '(a)') '  Period covered by available binned (co)spectra files:'
+        call LogSay('')
+        call LogSay('  Period covered by available binned (co)spectra files:')
         write(*, '(a)') '   Start: ' // sDate // ' ' // sTime
+        write(ulog, '(a)') '   Start: ' // sDate // ' ' // sTime
         write(*, '(a)') '   End:   ' // eDate // ' ' // eTime
+        write(ulog, '(a)') '   End:   ' // eDate // ' ' // eTime
 
         if (FCCsetup%SA%subperiod) then
             call DateTypeToDateTime(saStartTimestamp, sDate, sTime)
             call DateTypeToDateTime(saEndTimestamp + Datetype(0, 0, 0, 0, 1), eDate, eTime)
-            write(*, '(a)') ''
-            write(*, '(a)') '  Selected (co)spectra sub-period:'
+            call LogSay('')
+            call LogSay('  Selected (co)spectra sub-period:')
             write(*, '(a)') '   Start: ' // sDate // ' ' // sTime
+            write(ulog, '(a)') '   Start: ' // sDate // ' ' // sTime
             write(*, '(a)') '   End:   ' // eDate // ' ' // eTime
+            write(ulog, '(a)') '   End:   ' // eDate // ' ' // eTime
         end if
 
-        write(*, '(a)') ''
+        call LogSay('')
         write(LogInteger, '(i8)') saEndTimestampIndx - saStartTimestampIndx + 1
         write(*, '(a)') '  Importing, sorting and ensemble-averaging up to ' &
+            // trim(adjustl(LogInteger)) // ' binned (co)spectra from files.. '
+        write(ulog, '(a)') '  Importing, sorting and ensemble-averaging up to ' &
             // trim(adjustl(LogInteger)) // ' binned (co)spectra from files.. '
 
         !> Create an exponentially spaced frequency array in a range \n
@@ -390,7 +408,7 @@ Program EddyFlowFCC
             end if
         end do binned_loop
         close(uex)
-        write(*,'(a)') '  Done.'
+        call LogSay('  Done.')
 
         !> Write number of imported spectra and cospectra on stdout
         if (EddyFlowProj%out_avrg_spec .or. FCCsetup%do_spectral_assessment) &
@@ -438,6 +456,7 @@ Program EddyFlowFCC
         !> Write everything on output files
         call OutputSpectralAssessmentResults(nbins)
         write(*,'(a)')
+        write(ulog,'(a)')
 
 
     else
@@ -590,7 +609,9 @@ Program EddyFlowFCC
     close(uflxnt)
 
     write(*,*)
+    write(ulog,*)
     write(*,*)
+    write(ulog,*)
     call sleep(1)
 
     !> Creating datasets from output files
@@ -619,11 +640,11 @@ Program EddyFlowFCC
         // Timestamp_FilePadding // '.eddyflow')
 
 
-    write(*, '(a)') ''
-    write(*, '(a)') ' ****************************************************'
-    write(*, '(a)') ' Program EddyFlow executed gracefully.'
-    write(*, '(a)') ' Check results in the selected output directory.     '
-    write(*, '(a)') ' ****************************************************'
+    call LogSay('')
+    call LogSay(' ****************************************************')
+    call LogSay(' Program EddyFlow executed gracefully.')
+    call LogSay(' Check results in the selected output directory.     ')
+    call LogSay(' ****************************************************')
     stop ''
 
 contains

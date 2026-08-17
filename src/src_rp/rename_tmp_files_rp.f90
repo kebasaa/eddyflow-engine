@@ -40,7 +40,7 @@ subroutine RenameTmpFilesRP()
     integer :: move_status = 1
     character(PathLen) :: OutPath
 
-    write(*,'(a)', advance = 'no') ' Closing RP output files..'
+    call LogSayNoAdv(' Closing RP output files..')
 
     !> QC details file
     if (RPsetup%out_qc_details) then
@@ -161,5 +161,5 @@ subroutine RenameTmpFilesRP()
         end if
     end if
 
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine RenameTmpFilesRP

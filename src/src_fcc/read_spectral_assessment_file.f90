@@ -38,6 +38,7 @@ subroutine ReadSpectralAssessmentFile()
     implicit none
     logical, external :: GasSlotIsWater
     integer, external :: PrimaryWaterOutSlot
+    integer, external :: SlotFromSpectralStamp
     !> local variables
     integer :: gas
     integer :: cls
@@ -46,6 +47,13 @@ subroutine ReadSpectralAssessmentFile()
     integer :: open_status
     integer :: read_status
     integer :: slot
+    !> The hygrometer the unnamed primary table belongs to, and the header line
+    !> that says so.
+    integer :: water_slot
+    character(ShortInstringLen) :: water_header
+    !> A hygrometer block's `exp=` token, and whether it parsed.
+    character(96) :: exp_text
+    integer :: exp_status
     logical :: short_file
     real(kind = dbl) :: skipFn, skipfc
     !> One block's rows as they sit in the file: indexed by MONTH.
@@ -56,8 +64,9 @@ subroutine ReadSpectralAssessmentFile()
 
 
     !> Open planar fit file and read rotation matrices
-    write(*,'(a)') ' Reading spectral assessment file: '
+    call LogSay(' Reading spectral assessment file: ')
     write(*,'(a)') '  ' // AuxFile%sa(1:len_trim(AuxFile%sa))
+    write(ulog,'(a)') '  ' // AuxFile%sa(1:len_trim(AuxFile%sa))
     open(udf, file = AuxFile%sa, status = 'old', iostat = open_status)
 
     RegPar%Fn = 0d0
@@ -66,11 +75,15 @@ subroutine ReadSpectralAssessmentFile()
     read_status = 0
     short_file = .false.
     if (open_status == 0) then
-        write(*, '(a)') '  Spectral assessment file found, importing content..'
-        !> skip 7 lines
-        do i = 1, 7
+        call LogSay('  Spectral assessment file found, importing content..')
+        !> Six free-text lines, then the primary water table's own header,
+        !> which is kept rather than skipped: it carries the stamp saying
+        !> which hygrometer the nine rows below it were fitted from.
+        do i = 1, 6
             read(udf, *)
         end do
+        read(udf, '(a)', iostat = read_status) water_header
+        if (read_status /= 0) water_header = ''
         !> Read H2O transfer functions for IIR filter.
         !>
         !> Into the slot the writer put them in. OutputSpectralAssessmentResults
@@ -81,10 +94,21 @@ subroutine ReadSpectralAssessmentFile()
         !> record two happened to hold, and the real hygrometer left with no
         !> RH-dependent cutoff at all.
         wsl = PrimaryWaterOutSlot()
+        !> Onto the hygrometer the file says it came from, when it says.
+        !>
+        !> This table is identified by its position, so it landed on whichever
+        !> record this project calls primary - which need not be the one that
+        !> was primary when the file was written. Two hygrometers and a
+        !> re-ordered project is enough to put one analyser's RH-dependent
+        !> cut-offs on the other.
+        water_slot = SlotFromSpectralStamp(water_header)
+        if (water_slot < firstGas) water_slot = wsl
+        if (.not. GasSlotIsWater(water_slot)) water_slot = wsl
         do cls = RH10, RH90
             read(udf, '(a)') dataline
             dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
-            read(dataline, *)  RegPar(wsl, cls)%Fn, RegPar(wsl, cls)%fc
+            read(dataline, *)  RegPar(water_slot, cls)%Fn, &
+                RegPar(water_slot, cls)%fc
         end do
 
         !> One block per configured gas but water, matching what
@@ -156,25 +180,65 @@ subroutine ReadSpectralAssessmentFile()
 
             blockname = adjustl(dataline(1:index(dataline, 'TFP') - 1))
             call uppercase(blockname)
-            slot = 0
-            do gas = firstGas, lastGas
-                !> Only the PRIMARY is excluded - its table is the one
-                !> read above, at the fixed position. Every other
-                !> hygrometer has a named block like any gas, which is
-                !> what lets its fit survive a round trip at all.
-                if (gas == wsl) cycle
-                if (len_trim(sa_tags(gas)) == 0) cycle
-                if (trim(adjustl(sa_tags(gas))) == trim(blockname)) then
-                    slot = gas
-                    exit
-                end if
-            end do
+            !> Files written before the second hygrometer's block was named
+            !> correctly say '<TAG> VAPOUR'. The word was never part of the
+            !> tag, so it matched nothing and the block was discarded; drop it
+            !> and those files resolve as they were always meant to.
+            if (len_trim(blockname) > 7) then
+                if (blockname(len_trim(blockname) - 6:len_trim(blockname)) &
+                    == ' VAPOUR') &
+                    blockname = blockname(1:len_trim(blockname) - 7)
+            end if
+
+            !> What the block says it is for wins over where it sits among
+            !> repeats of its species. A block naming a species and an analyser
+            !> this project measures goes to that record whatever the project's
+            !> record order is now; the name match below is what reads every
+            !> file written before the stamp existed.
+            slot = SlotFromSpectralStamp(dataline)
+            if (slot == water_slot) slot = 0
+            if (slot == 0) then
+                do gas = firstGas, lastGas
+                    !> Only the slot the unnamed table above filled is
+                    !> excluded - not "the primary", which is the same thing
+                    !> only while the file agrees with this project about which
+                    !> hygrometer that is. Every other hygrometer has a named
+                    !> block like any gas, which is what lets its fit survive a
+                    !> round trip at all.
+                    if (gas == water_slot) cycle
+                    if (len_trim(sa_tags(gas)) == 0) cycle
+                    if (trim(adjustl(sa_tags(gas))) == trim(blockname)) then
+                        slot = gas
+                        exit
+                    end if
+                end do
+            end if
 
             !> A hygrometer's block carries nine RH classes, a gas's
             !> twelve months. The header says which: `numerosity` is
             !> the count column only the RH tables have, and it has
             !> been in this format since before the records.
             if (index(dataline, 'numerosity') /= 0) then
+                !> A hygrometer's own RH/cut-off coefficients, where the block
+                !> states them. Without this the fit is read back only as nine
+                !> class cut-offs, and the exponential the correction actually
+                !> evaluates stays the primary's.
+                if (slot > 0) then
+                    call SpectralStampToken(dataline, 'exp=', exp_text)
+                    if (len_trim(exp_text) > 0) then
+                        do i = 1, len_trim(exp_text)
+                            if (exp_text(i:i) == ',') exp_text(i:i) = ' '
+                        end do
+                        read(exp_text, *, iostat = exp_status) &
+                            RegPar(slot, dum)%e1, RegPar(slot, dum)%e2, &
+                            RegPar(slot, dum)%e3
+                        if (exp_status /= 0) then
+                            RegPar(slot, dum)%e1 = error
+                            RegPar(slot, dum)%e2 = error
+                            RegPar(slot, dum)%e3 = error
+                        end if
+                    end if
+                end if
                 do cls = RH10, RH90
                     read(udf, '(a)', iostat = read_status) dataline
                     if (read_status /= 0) exit
@@ -254,7 +318,7 @@ subroutine ReadSpectralAssessmentFile()
         dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
         read(dataline, *)  StPar(1), StPar(2)
         close(udf)
-        write(*, '(a)') ' Done.'
+        call LogSay(' Done.')
     else
         !> If the specified file was not found or is empty,
         !> switches to an analytic method

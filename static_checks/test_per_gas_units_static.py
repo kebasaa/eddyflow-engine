@@ -141,6 +141,43 @@ class GasFullOutputUnitStaticTests(unittest.TestCase):
         self.assertIn("EddyFlowProj%gas(k)%col > 0", source)
         self.assertNotIn("lEx%measure_type_int(gas) /= ierror", source)
 
+    def test_every_unit_conversion_leaves_the_error_code_alone(self):
+        """The error code is a number, so scaling it makes it data.
+
+        `error` is -9999, and three arms of ConvertTraceGasUnits used to scale
+        the whole column: a missing sample in a ppb column came out as -9.999,
+        which is past CleanUpE2Set's -300 test, past every `/= error` check
+        downstream, and into the flux as a plausible mixing ratio. Measured on
+        base_slow_naive, N2O reported a mole fraction of -8954 - the mean of a
+        column nine tenths full of the logger's fill - and a flux computed from
+        it.
+
+        Checked structurally rather than arm by arm: every assignment to fRaw
+        inside the routine must sit under a `where`, so a new unit added later
+        cannot reintroduce the hole.
+        """
+        source = read("src/src_common/define_all_var_set.f90")
+        body = source[source.index("subroutine ConvertTraceGasUnits"):]
+        body = body[:body.index("end subroutine ConvertTraceGasUnits")]
+
+        unguarded = []
+        guard_depth = 0
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("!"):
+                continue
+            if stripped.startswith("where("):
+                guard_depth += 1
+            elif stripped.startswith("end where"):
+                guard_depth = max(0, guard_depth - 1)
+            elif "fRaw(1:N, j) =" in stripped and guard_depth == 0:
+                unguarded.append(stripped)
+
+        #> The one legitimate bare assignment is the round trip through
+        #> LinearConversion, which carries the error code itself.
+        unguarded = [u for u in unguarded if "DumVec" not in u]
+        self.assertEqual(unguarded, [], f"unguarded unit scalings: {unguarded}")
+
 
 if __name__ == "__main__":
     unittest.main()

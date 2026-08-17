@@ -53,6 +53,13 @@ subroutine OutputSpectralAssessmentResults(nbins)
     character(128) :: Filename
     character(64) :: sa_tags(GHGNumVar)
     character(64) :: sa_name
+    !> `var=<species> instr=<analyser>` for the block being written, so a later
+    !> project can resolve it by what it measures rather than by its position
+    !> among repeats of its species.
+    character(96) :: sa_stamp
+    !> `exp=<e1>,<e2>,<e3>` for a hygrometer's block, so its RH dependence
+    !> survives the round trip rather than being refitted or borrowed.
+    character(96) :: sa_exp
     integer :: cosp_slots(1 + MaxNumGases)
     integer :: n_cosp
     integer :: k
@@ -118,7 +125,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
         if (goodj == ierror) then
             call ExceptionHandler(76)
         else
-            write(*,'(a)') ' Writing spectral assessment results on file.. '
+            call LogSay(' Writing spectral assessment results on file.. ')
 
             !> Transfer function parameters
             Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // SA_FilePadding  &
@@ -139,7 +146,15 @@ subroutine OutputSpectralAssessmentResults(nbins)
             write(udf,'(a)') 'Other_gases_TFP_are_calculated_on_a_monthly_base.'
             write(udf,'(a)') '-----------------------------------------------------&
                 &-----------------------------'
-            write(udf,'(a)') 'Water vapour TFP              Fn          fc    numerosity'
+            !> Stamped like every other block. The primary's table has no name
+            !> - it is identified by sitting here, which is fine until a later
+            !> project designates a different hygrometer as primary and this
+            !> table lands on it. The stamp says which analyser measured it, so
+            !> a reader can put it on that one instead of on whichever record
+            !> happens to be first.
+            call SpectralBlockStamp(wsl, sa_stamp)
+            write(udf,'(a)') 'Water vapour TFP              Fn          fc    &
+                &numerosity' // trim(sa_stamp)
             !> Nine classes, one loop. Nine copies of the same three-line
             !> write differing only in the class index and the label they
             !> spell out - and each naming the h2o slot rather than the site's
@@ -168,8 +183,10 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 !> word TFP. So a file written here still parses in an older
                 !> build, and a newer one can check the file's grouping against
                 !> the project's instead of guessing from repeated values.
+                call SpectralBlockStamp(gas, sa_stamp)
                 write(udf,'(a)') trim(sa_name) // '            TFP            &
-                    &Fn          fc   groups=' // trim(MonthGroupingText(gas))
+                    &Fn          fc   groups=' // trim(MonthGroupingText(gas)) &
+                    // trim(sa_stamp)
 
                 if (FCCsetup%SA%class(gas, JAN) /= 0) then
                     write(udf,'(a, 2(f11.5,1x))') 'January            = ', &
@@ -272,14 +289,31 @@ subroutine OutputSpectralAssessmentResults(nbins)
             !> same way, and keeping `numerosity` in the header, which is
             !> what tells the reader these are nine RH rows and not twelve
             !> monthly ones.
+            !>
+            !> The name is the bare tag, with no ' vapour' after it. The reader
+            !> takes everything before the word TFP as the block name, so that
+            !> one word made the name 'H2O_2 VAPOUR', which matches no tag; the
+            !> block was consumed and discarded on every read, and the second
+            !> hygrometer went back to being fitted and thrown away - the very
+            !> thing writing the block was meant to stop.
             do gas = firstGas, lastGas
                 if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
                 if (.not. GasSlotIsWater(gas)) cycle
                 if (gas == wsl) cycle
                 sa_name = sa_tags(gas)
                 call uppercase(sa_name)
-                write(udf,'(a)') trim(sa_name) // ' vapour TFP           &
-                    &   Fn          fc    numerosity'
+                call SpectralBlockStamp(gas, sa_stamp)
+                !> This hygrometer's own RH/cut-off coefficients, alongside the
+                !> stamp and past `numerosity` where readers stop. The primary's
+                !> keep their standalone section below, so no line moves and a
+                !> build that does not know this token is unaffected - the same
+                !> bargain `groups=` made.
+                write(sa_exp, '(a, 3(g0.6, a))') '   exp=', &
+                    RegPar(gas, dum)%e1, ',', RegPar(gas, dum)%e2, ',', &
+                    RegPar(gas, dum)%e3, ''
+                write(udf,'(a)') trim(sa_name) // '            TFP           &
+                    &   Fn          fc    numerosity' // trim(sa_stamp) &
+                    // trim(sa_exp)
                 do cls = RH10, RH90
                     write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
                         10 * cls - 5, ' - ', 10 * cls + 5, '% = '
@@ -801,7 +835,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
         end do
         close(udf)
     end if
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 
 end subroutine OutputSpectralAssessmentResults
 

@@ -47,10 +47,21 @@ subroutine EditIniFile(fname, tag, newval)
     character(64) :: currtag
 
 
-    !> Open file to be edited and temp file
+    !> Open file to be edited and temp file.
+    !>
+    !> Both opens are checked before anything is written, because the close
+    !> below deletes the input. Ignoring the status meant a temp file left by
+    !> an earlier run - status='new' fails on an existing one - was enough to
+    !> destroy the file this routine was asked to edit, having written the
+    !> replacement nowhere.
     open(10, file=trim(fname), iostat=io_error)
+    if (io_error /= 0) return
     tfname = trim(fname) // '.tmp'
     open(11, file=trim(tfname), status='new', iostat=io_error)
+    if (io_error /= 0) then
+        close(10)
+        return
+    end if
 
     !> Copy whole file into temp file including modification
     do

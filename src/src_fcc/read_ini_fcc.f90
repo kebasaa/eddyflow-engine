@@ -41,6 +41,8 @@ subroutine ReadIniFCC(key)
 
     write(*,'(a)') ' Reading EddyFlow project file: ' &
                      // PrjPath(1:len_trim(PrjPath)) // '..'
+    write(ulog,'(a)') ' Reading EddyFlow project file: ' &
+                     // PrjPath(1:len_trim(PrjPath)) // '..'
 
     !> parse processing.eddypro file and store [Project] variables,
     !> common to all programs
@@ -60,7 +62,7 @@ subroutine ReadIniFCC(key)
     !> them in relevant variables
     call WriteVariablesFCC()
 
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine ReadIniFCC
 
 !***************************************************************************

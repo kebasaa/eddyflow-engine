@@ -51,6 +51,8 @@ subroutine TiltCorrection(RotMeth, GoPlanarFit, Set, nrow, ncol, nsec, DirYaw, D
 
     if (printout) write(*, '(a)') '  Performing tilt correction by: ' &
         // RotMeth(1:len_trim(RotMeth))
+    if (printout) write(ulog, '(a)') '  Performing tilt correction by: ' &
+        // RotMeth(1:len_trim(RotMeth))
 
     !> If any wind component is error code, set the others to error too, for the sake of a proper
     !> application of the rotation methods
@@ -86,6 +88,7 @@ subroutine TiltCorrection(RotMeth, GoPlanarFit, Set, nrow, ncol, nsec, DirYaw, D
             continue
     end select
     if (printout) write(*, '(a)') '  Done.'
+    if (printout) write(ulog, '(a)') '  Done.'
 end subroutine TiltCorrection
 
 !***************************************************************************

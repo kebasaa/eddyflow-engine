@@ -21,7 +21,7 @@ subroutine Storage(PrevStats, prevAmbient)
     !> overwrite them.
     wsl = PrimaryWaterSlot()
 
-    write(*, '(a)', advance = 'no') '  Calculating storage terms..'
+    call LogSayNoAdv('  Calculating storage terms..')
 
     !> Check that time periods are consecutive. If not, set storage to error and exit
     call AddDateStep(PrevStats%date, PrevStats%time, tmp_date, tmp_time, DateStep)
@@ -99,5 +99,5 @@ subroutine Storage(PrevStats, prevAmbient)
         end if
     end do
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine Storage

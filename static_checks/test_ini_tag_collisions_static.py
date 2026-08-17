@@ -127,6 +127,11 @@ class IniTagCollisionStaticTests(unittest.TestCase):
             ).group(1)
         )
         accepted |= {("head_corr", f"instr_{k}_head_corr") for k in range(1, n_instr + 2)}
+        # And in the project file: the project-wide 'max_lack' alongside the
+        # per-instrument 'instr_<K>_max_lack'. Same shape, same reason it is
+        # harmless - the two mean the same thing at two scopes, and exact
+        # matching keeps the shorter one from swallowing the longer.
+        accepted |= {("max_lack", f"instr_{k}_max_lack") for k in range(1, n_instr + 1)}
 
         by_scope = defaultdict(set)
         for rel, names in TABLES.items():
@@ -186,6 +191,53 @@ class IniTagCollisionStaticTests(unittest.TestCase):
             f"project tag tables are stale; re-run prj/gen_project_tags.py"
             f"\n{r.stdout}{r.stderr}"
         )
+
+
+    def test_a_new_project_tag_does_not_move_the_record_origin(self):
+        """The generator appends its 1600 per-gas slots at max(index) + 1, so a
+        tag written past the last hand-written one lifts that origin and
+        re-indexes every per-gas setting. Adding instr_1..8_max_lack that way
+        took rpGasOriginN from 425 to 2033 and Nsn from 2024 to 3632 once
+        already; they live in a gap below the origin now.
+        """
+        sn = tag_tables()[("src/src_rp/m_rp_global_var.f90", "SNTags")]
+        common = read("src/src_common/m_common_global_var.f90")
+
+        origin = min(i for i, l in sn.items() if l.startswith("gas_1_"))
+        declared = int(
+            re.search(r"integer, parameter :: rpGasOriginN = (\d+)", common).group(1)
+        )
+        assert declared == origin, (
+            f"rpGasOriginN is {declared} but gas_1_* starts at {origin}; "
+            "read_ini_rp.f90 addresses the records by that parameter"
+        )
+        # The literal, because the structural check above would happily follow
+        # the origin wherever a re-run moved it. Moving it is not wrong in
+        # principle - it is wrong by accident, which is what this catches.
+        assert declared == 425, (
+            f"the per-gas record block moved to {declared}; if that is "
+            "deliberate, say so here, and check nothing appended a tag past "
+            "the last hand-written one"
+        )
+
+        lack = {i for i, l in sn.items() if re.fullmatch(r"instr_\d+_max_lack", l)}
+        n_instr = int(
+            re.search(
+                r"integer, parameter :: MaxNumInstruments = (\d+)",
+                read("src/src_common/m_typedef.f90"),
+            ).group(1)
+        )
+        assert len(lack) == n_instr, sorted(lack)
+        assert max(lack) < origin, (
+            f"instr_<K>_max_lack reaches {max(lack)}, at or past the record "
+            f"origin {origin}"
+        )
+        # Contiguous and addressed from one named parameter, because
+        # read_ini_rp.f90 walks them by stride.
+        first = int(
+            re.search(r"integer, parameter :: rpInstrMaxLackN = (\d+)", common).group(1)
+        )
+        assert sorted(lack) == list(range(first, first + n_instr)), sorted(lack)
 
 
     def test_metadata_group_origins_match_the_generated_layout(self):

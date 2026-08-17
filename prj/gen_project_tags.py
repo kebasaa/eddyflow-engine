@@ -117,6 +117,36 @@ def const(name):
 MAX_GAS_CLASSES = const("MaxGasClasses")
 
 
+# --------------------------------------------------------------------------
+# Hand-placed tags.
+#
+# A new setting is normally appended, which is safe for the record blocks
+# because they are appended too. It is NOT safe for anything else: the record
+# block starts at max(kept) + 1, so a tag written past the last hand-written
+# one lifts that origin and re-emits all 1600 per-gas slots at new indices -
+# rpGasOriginN went 425 -> 2033 and Nsn 2024 -> 3632 the first time these eight
+# were added that way.
+#
+# So they go into slots that were never assigned, BELOW the origin, and
+# process() refuses to write them if that origin moves anyway.
+#
+# 357..369 is the longer of the two free runs in the RP numerical table
+# (the other is 285..289 and 291..299). Eight of the thirteen are used here.
+# --------------------------------------------------------------------------
+INSTR_LACK_ORIGIN = 357
+
+#: How much of its OWN expected data an instrument may be missing, in percent.
+#: Absent means "use the project-wide max_lack", which is every project written
+#: before this key existed. Keyed by the same 1-based index the .metadata uses
+#: for instr_<K>_*, so instr_3_max_lack is the allowance of instr_3_model.
+FIXED_TAGS = {
+    "RP.SNTags": {
+        INSTR_LACK_ORIGIN + k - 1: f"instr_{k}_max_lack"
+        for k in range(1, const("MaxNumInstruments") + 1)
+    },
+}
+
+
 def limits():
     def derived(name, factor_of):
         """MaxNumCellCols / MaxNumDiagCols are declared as multiples."""
@@ -326,7 +356,26 @@ def process(path, table, marker, size_param, lim, check):
         if label in retired:
             kept[i] = ""
 
+    # Where the record block starts before the hand-placed tags go in. Taking
+    # it first is what lets the check below tell "filled a gap" from "appended
+    # past the end", which look identical in the finished table.
+    origin = max(kept) + 1
+    for idx, label in sorted(FIXED_TAGS.get(marker, {}).items()):
+        # Re-placing the tag the previous run wrote is the idempotent case and
+        # has to be allowed; anything else at that index is a live tag being
+        # overwritten.
+        if kept.get(idx) not in (None, "", label):
+            raise SystemExit(
+                f"{marker}: slot {idx} already holds {kept[idx]!r}, so "
+                f"{label} would overwrite a live tag - pick a free slot")
+        kept[idx] = label
+
     base = max(kept) + 1
+    if base != origin:
+        raise SystemExit(
+            f"{marker}: the hand-placed tags moved the record origin from "
+            f"{origin} to {base}, which re-indexes every appended record slot. "
+            f"They must go in slots below {origin}.")
     nxt = base
     for label in appended(marker, lim):
         kept[nxt] = label
@@ -416,6 +465,7 @@ def main():
                          base + g * len(GAS_TEXT) + c * len(CELL_TEXT))]
         elif marker == "RP.SNTags":
             origins.append(("rpGasOriginN", base))
+            origins.append(("rpInstrMaxLackN", INSTR_LACK_ORIGIN))
         elif marker == "RP.SCTags":
             origins.append(("rpGasOriginC", base))
         elif marker == "FCC.SNTags":

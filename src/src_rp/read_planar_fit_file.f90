@@ -50,10 +50,11 @@ subroutine ReadPlanarFitFile()
 
     !> Open planar fit file and read rotation matrices
     write(*,'(a)') ' Reading planar-fit file: ' // AuxFile%pf(1:len_trim(AuxFile%pf))
+    write(ulog,'(a)') ' Reading planar-fit file: ' // AuxFile%pf(1:len_trim(AuxFile%pf))
     open(udf, file = AuxFile%pf, status = 'old', iostat = open_status)
 
     if (open_status == 0) then
-        write(*, '(a)') ' planar fit file found, reading rotation matrices..'
+        call LogSay(' planar fit file found, reading rotation matrices..')
 
         !> Read number of sectors from relevant line
         do
@@ -146,10 +147,11 @@ subroutine ReadPlanarFitFile()
         end do
         write(LogInteger, '(i6)') PFSetup%num_sec
         write(*,'(a)') '  ' // trim(adjustl(LogInteger)) // ' sector(s) found.'
+        write(ulog,'(a)') '  ' // trim(adjustl(LogInteger)) // ' sector(s) found.'
     else
        !> If the specified planar-fit file is not found or is empty, switches to double rotations
         Meth%rot = 'double_rotation'
         call ExceptionHandler(30)
     end if
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine ReadPlanarFitFile

@@ -50,16 +50,18 @@ subroutine CreateDatasetsCommon(TimeSeries, nrow, StartIndx, EndIndx)
 
     !> Full out file
     if (EddyFlowProj%out_full) then
-        write(*,'(a)', advance = 'no') '  Closing Full Output file..'
+        call LogSayNoAdv('  Closing Full Output file..')
         call MakeDataset(FullOut_Path(1:len_trim(FullOut_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 3)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> FLUXNET file - NEVER filled. Only renamed.
     if (EddyFlowProj%out_fluxnet) then
         write(*,'(a)', advance = 'no') &
+            '  Closing FLUXNET output file..'
+        write(ulog,'(a)', advance = 'no') &
             '  Closing FLUXNET output file..'
         tmp_indx = index(FLUXNET_Path, TmpExt)
         OutPath = FLUXNET_Path(1: tmp_indx - 1)
@@ -67,17 +69,19 @@ subroutine CreateDatasetsCommon(TimeSeries, nrow, StartIndx, EndIndx)
             // FLUXNET_Path(1:len_trim(FLUXNET_Path)) // '" "' &
             // OutPath(1:len_trim(OutPath)) // '"' &
             // comm_out_redirect // comm_err_redirect)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
     end if
 
     !> Metadata file
     if (EddyFlowProj%out_md) then
         write(*,'(a)', advance = 'no') &
             '  Closing Metadata file..'
+        write(ulog,'(a)', advance = 'no') &
+            '  Closing Metadata file..'
         call MakeDataset(Metadata_Path(1:len_trim(Metadata_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 1)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> Remove temporary output file

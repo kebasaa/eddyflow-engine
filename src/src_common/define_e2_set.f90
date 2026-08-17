@@ -335,6 +335,9 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
         write(*, '(a)') '  Warning(106)> ' // trim(GasOutputLabel(j)) // ' on ' &
             // trim(E2Col(j)%instr%model) // ' is corrected with the water on ' &
             // trim(E2Col(msl)%instr%model) // '.'
+        write(ulog, '(a)') '  Warning(106)> ' // trim(GasOutputLabel(j)) // ' on ' &
+            // trim(E2Col(j)%instr%model) // ' is corrected with the water on ' &
+            // trim(E2Col(msl)%instr%model) // '.'
         call ExceptionHandler(106)
     end do
 
@@ -441,6 +444,8 @@ end subroutine ApplyCellDiagRecords
 !> moisture reference to an E2Col slot.
 !***************************************************************************
 subroutine ApplyGasRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol)
+    use m_index_parameters
+    use m_log
     implicit none
     integer, intent(in) :: nrow, ncol, e2nrow, e2ncol
     type(ColType), intent(in) :: LocCol(MaxNumCol)
@@ -459,6 +464,9 @@ subroutine ApplyGasRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol)
     !> test used to be `gas_num <= 0`, which refused it.
     if (.not. EddyFlowProj%gas_num_stated) then
         write(*, '(a)') '  Fatal error(99)> Project file states no gas count &
+            &(gas_num). Open and save it in the EddyFlow interface to bring &
+            &it up to the current format.'
+        write(ulog, '(a)') '  Fatal error(99)> Project file states no gas count &
             &(gas_num). Open and save it in the EddyFlow interface to bring &
             &it up to the current format.'
         call ExceptionHandler(99)

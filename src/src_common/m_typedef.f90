@@ -460,6 +460,25 @@ module m_typedef
         real(kind = dbl) :: vsep
         real(kind = dbl) :: kw
         real(kind = dbl) :: ko
+        !> The rate this instrument samples at [Hz], and whether it averages
+        !> over that interval rather than reporting an instant.
+        !>
+        !> An instrument slower than the file's row rate leaves error rows
+        !> between its samples - nineteen of every twenty for a 1 Hz analyser
+        !> in a 20 Hz file - and every test that counted those against the
+        !> whole period read the column as almost entirely missing and dropped
+        !> it. `ac_freq <= 0` means "the file's rate", which is what every
+        !> metadata file written before this says.
+        real(kind = dbl) :: ac_freq
+        logical :: integrates
+        !> Which instr_<K>_* block of the .metadata this was read from.
+        !>
+        !> A column carries a COPY of its instrument, not a reference to it, so
+        !> without this nothing downstream can say which instrument a column
+        !> belongs to - and the project file keys its per-instrument settings
+        !> by exactly that number. 0 is "no instrument matched", which falls
+        !> back to the project-wide setting.
+        integer :: slot
         character(32) :: wref
         character(32) :: wformat
         character(32) :: path_type
@@ -491,6 +510,12 @@ module m_typedef
         real(kind = dbl) :: min_tl
         real(kind = dbl) :: max_tl
         real(kind = dbl) :: flag_thrshld
+        !> What this column writes when it has no reading. `error` means the
+        !> metadata declares nothing, which is every file written before the
+        !> key existed - and needs to declare nothing, because -9999, NaN, an
+        !> unparseable token and an empty field are recognised regardless.
+        !> Only a logger writing something else has to say so.
+        real(kind = dbl) :: err_value
         type (InstrumentType) :: instr
         type (RawFlagType) :: flag
         logical :: useit
@@ -826,6 +851,17 @@ module m_typedef
 
     type :: FCCMetadataType
         character(32)    :: H2oPathType
+        !> The same, per gas slot. H2oPathType is the primary hygrometer's, and
+        !> the RH/cut-off fit needs each hygrometer's own: an open path is
+        !> fitted analytically and a closed one by least squares, and on a site
+        !> with one of each the second was fitted by whichever arm the first
+        !> happened to take.
+        character(32)    :: GasPathType(GHGNumVar)
+        !> The rate each analyser samples at, as RP resolved it. FCC has no
+        !> metadata file, so this comes off the ex record; a record written
+        !> before that column existed leaves it at the error code and every
+        !> reader falls back to ac_freq, the station's own rate.
+        real(kind = dbl) :: GasAcFreq(GHGNumVar)
         real(kind = dbl) :: ac_freq
         logical          :: ru
     end type FCCMetadataType
@@ -1185,7 +1221,15 @@ module m_typedef
         real(kind = dbl) :: wdf_start(MaxNumWdfSectors)
         real(kind = dbl) :: wdf_end(MaxNumWdfSectors)
         real(kind = dbl) :: offset(3)
+        !> How much of the file's own data may be missing, in percent - the
+        !> anemometer's allowance and the whole period's, both measured on the
+        !> row grid.
         real(kind = dbl) :: max_lack
+        !> The same, per instrument, measured against what THAT instrument
+        !> should have produced at its own rate. `error` means the project says
+        !> nothing about this instrument, which is every project written before
+        !> the key existed, and resolves back to max_lack.
+        real(kind = dbl) :: instr_max_lack(MaxNumInstruments)
         character(32) :: tap_win
         character(32) :: bu_corr
         character(32) :: calib_aoa

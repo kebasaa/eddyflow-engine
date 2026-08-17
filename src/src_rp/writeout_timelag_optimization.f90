@@ -138,6 +138,8 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     close(uto)
     write(*,'(a)') '  Results written on file: ' &
         // TimelagOpt_Path(1:len_trim(TimelagOpt_Path))
+    write(ulog,'(a)') '  Results written on file: ' &
+        // TimelagOpt_Path(1:len_trim(TimelagOpt_Path))
 contains
 
 subroutine WritePwbProvenance(unit, gas)

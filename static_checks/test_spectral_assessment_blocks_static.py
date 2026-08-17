@@ -118,7 +118,7 @@ class SecondHygrometerRoundTrip(unittest.TestCase):
             src, r"index\(dataline, 'numerosity'\) /= 0",
             "the block shape must be decided by the header, not assumed")
 
-    def test_the_reader_excludes_only_the_primary(self):
+    def test_the_reader_excludes_only_the_slot_the_unnamed_table_filled(self):
         src = code(READER)
         #: The name-matching loop alone. The shortness loop further down does
         #: skip every water slot, and rightly: a hygrometer absent from the
@@ -127,9 +127,90 @@ class SecondHygrometerRoundTrip(unittest.TestCase):
         body = src[src.index("blockname = adjustl"):src.index("'numerosity'")]
         self.assertNotIn(
             "GasSlotIsWater(gas)) cycle", body,
-            "matching must exclude the primary alone, or a second hygrometer's "
-            "named block can never resolve to a slot")
-        self.assertIn("if (gas == wsl) cycle", body)
+            "matching must exclude one hygrometer alone, or a second "
+            "hygrometer's named block can never resolve to a slot")
+        #: `water_slot`, not `wsl`. The unnamed table at the top of the file
+        #: goes to the hygrometer its stamp names, which is this project's
+        #: primary only while the file agrees about which one that is.
+        #: Excluding `wsl` instead would leave the stamped slot open to a
+        #: second assignment and lock the real primary out of its own block.
+        self.assertIn("if (gas == water_slot) cycle", body)
+
+    def test_a_block_resolves_by_what_it_is_for_before_what_it_is_called(self):
+        """The block name is an ordinal over repeats of a species, so it says
+        nothing about which analyser a block belongs to. Two CO2 records and a
+        re-ordered project is enough to hand one analyser's transfer function
+        to the other - and on CH-LAE the two cells are 943 hPa and 70 hPa."""
+        src = code(READER)
+        body = src[src.index("blockname = adjustl"):src.index("'numerosity'")]
+        self.assertIn("slot = SlotFromSpectralStamp(dataline)", body,
+                      "the stamp the writer puts on every block must be tried")
+        self.assertLess(
+            body.index("SlotFromSpectralStamp"),
+            body.index("trim(adjustl(sa_tags(gas))) == trim(blockname)"),
+            "the stamp has to win over the name, or reordering still misassigns")
+        self.assertIn("if (slot == 0) then", body,
+                      "and the name match has to remain the fallback, since "
+                      "every file written before the stamp relies on it")
+
+    def test_old_files_naming_the_second_hygrometer_still_resolve(self):
+        """`<TAG> vapour TFP` was what the writer emitted, and the reader takes
+        everything before TFP as the name - so the block called itself
+        `H2O_2 VAPOUR`, matched nothing, and was silently discarded."""
+        src = code(READER)
+        self.assertIn("' VAPOUR'", src,
+                      "a file already written with the ' vapour' header must "
+                      "still resolve, or the fix strands the files that "
+                      "needed it")
+
+    def test_every_hygrometer_gets_its_own_rh_relation(self):
+        """The nine RH-class cut-offs are not what the iir correction uses.
+
+        It evaluates exp(A*RH^2 + B*RH + C), and A/B/C used to be one
+        project-wide set fitted from the primary alone. So a second hygrometer
+        was fitted, written, read back - and then given the primary's curve,
+        differing only in the humidity it was evaluated at. On CH-LAE the two
+        read some fourteen points apart, more than an RH class.
+        """
+        fit = code("src/src_fcc/fit_rh_to_cutoff.f90")
+        self.assertNotIn("RegPar(dum, dum)%e1 = EXPPar(1)", fit,
+                         "the fit must land on the hygrometer it fitted")
+        self.assertIn("RegPar(wsl, dum)%e1 = EXPPar(1)", fit)
+        self.assertIn("if (.not. GasSlotIsWater(wsl)) cycle", fit,
+                      "the fit has to run per water slot, not once")
+        #> The primary's copy still has to reach the shared slot: it is what
+        #> the file's standalone section carries and what an unfitted
+        #> hygrometer falls back to.
+        self.assertIn("RegPar(dum, dum)%e1 = RegPar(primary, dum)%e1", fit)
+        self.assertIn("FCCMetadata%GasPathType(wsl)", fit,
+                      "which arm a fit takes is a property of the analyser "
+                      "being fitted, not of the primary")
+
+        aux = code("src/src_common/bpcf_aux_subs.f90")
+        arm = aux[aux.index("case('iir')"):aux.index("case('sigma')")]
+        self.assertIn("A = RegPar(gas, dum)%e1", arm,
+                      "the iir arm must take each hygrometer's own coefficients")
+        self.assertIn("A = RegPar(dum, dum)%e1", arm,
+                      "with the project-wide set as the fallback for a "
+                      "hygrometer the assessment never fitted")
+
+    def test_the_rh_relation_survives_the_file(self):
+        """Fitting it per hygrometer is no use if the file cannot carry it."""
+        self.assertIn("exp=", code(WRITER),
+                      "a hygrometer block must state its own coefficients")
+        self.assertIn("'exp='", code(READER),
+                      "and the reader must take them back off it")
+
+    def test_the_writer_stamps_every_block(self):
+        src = code(WRITER)
+        self.assertEqual(
+            3, src.count("call SpectralBlockStamp("),
+            "all three block kinds are stamped: the unnamed primary water "
+            "table, each gas, and each further hygrometer")
+        self.assertNotIn(
+            "' vapour TFP", src,
+            "the hygrometer block name must be the bare tag - the reader "
+            "slices at TFP, so any word before it becomes part of the name")
 
     def test_the_gate_looks_for_a_hygrometer_fit_in_the_rh_range(self):
         """The gate asked the month range of a slot binned by humidity."""

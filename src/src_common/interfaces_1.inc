@@ -68,6 +68,31 @@ interface
         character(*), intent(out) :: names(GHGNumVar)
     end subroutine SpectralGasNames
 
+    !> The `var=`/`instr=` a spectral assessment block states it is for, and
+    !> the slot such a stamp resolves to. The block name is an ordinal over
+    !> repeats of a species, so it cannot survive a project that lists its
+    !> records in another order; the stamp can.
+    subroutine SpectralBlockStamp(gas_slot, stamp)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+        character(*), intent(out) :: stamp
+    end subroutine SpectralBlockStamp
+
+    integer function SlotFromSpectralStamp(dataline)
+        use m_common_global_var
+        implicit none
+        character(*), intent(in) :: dataline
+    end function SlotFromSpectralStamp
+
+    subroutine SpectralStampToken(dataline, key, value)
+        use m_common_global_var
+        implicit none
+        character(*), intent(in) :: dataline
+        character(*), intent(in) :: key
+        character(*), intent(out) :: value
+    end subroutine SpectralStampToken
+
     !> The slot holding the site's primary water, or 0 if there is none.
     !> For one-per-site quantities only; a gas that needs its own water for
     !> a WPL correction reads E2Col(gas)%moist_ref.

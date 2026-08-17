@@ -53,9 +53,10 @@ subroutine UserBasicStats(UserSet, N, M, nfold)
     real(kind = dbl) :: sumj
 
     if (nfold == 1) then
-        write(*, '(a)', advance = 'no') '  Calculating user statistics..'
+        call LogSayNoAdv('  Calculating user statistics..')
     else
         write(*, '(a,i1,a)', advance = 'no') '  Re-calculating user statistics (',nfold,')..'
+        write(ulog, '(a,i1,a)', advance = 'no') '  Re-calculating user statistics (',nfold,')..'
     end if
 
     !> covariances
@@ -167,5 +168,5 @@ subroutine UserBasicStats(UserSet, N, M, nfold)
             UserStats%Kur(j) = error
         end if
     end do
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine UserBasicStats

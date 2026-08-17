@@ -51,6 +51,18 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
     integer, external :: HistoricGasSlot
     logical, external :: IsHistoricGasVar
 
+    !> Whatever the file says is missing, recognised in the units the file is
+    !> written in and before anything scales it.
+    !>
+    !> Here rather than later because a fill value is only recognisable while it
+    !> still looks like itself: CleanUpE2Set's -300 floor runs on E2Set, after
+    !> conversion, so a -9999 in a nmol mol-1 column reached it as -9.999 and
+    !> walked straight through. This is also the one funnel every importer
+    !> passes through - ASCII, binary, TOB1, SLT - so each of them gets it.
+    do j = 1, NumAllVar
+        call BlankMissingValues(fRaw(1:N, j), N, LocCol(j)%err_value)
+    end do
+
     !> Converts units, according to information in the metadata file
     !> Physical, non-standard units are detected and converted into standard
     !> Volt (or any other "non-physical") are converted as well, using conversion parameters
@@ -517,16 +529,29 @@ subroutine ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, gas_slot)
         select case(LocCol(j)%unit_in(1:len_trim(LocCol(j)%unit_in)))
             case ('mmol_m3', 'ppm')
                 return
-            !> The three scalings below are deliberately left unguarded, as
-            !> they were in the code this was extracted from. Adding a
-            !> `where (/= error)` here would change every existing gas
-            !> result, so it is a separate decision, not a tidy-up.
+            !> Guarded like every other arm here, because the error code is a
+            !> number: `error` is -9999, so scaling it made a missing sample
+            !> into -9.999 - past CleanUpE2Set's -300 test, past every
+            !> `/= error` downstream, and into the flux as a plausible mixing
+            !> ratio. These three were the arms that scaled the whole column.
+            !>
+            !> Measured on tests/regression/base_slow_naive, whose analyser
+            !> writes -9999 on nine rows in ten: N2O reported a mole fraction
+            !> of -8954 - the mean of a column nine tenths full of fill - and a
+            !> flux computed from it, while COS, which that project happens to
+            !> give absolute limits, was correctly dropped.
             case ('ppt')
-                fRaw(1:N, j) = fRaw(1:N, j) * 1e3
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e3
+                end where
             case ('umol_m3', 'ppb')
-                fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
+                end where
             case ('pmol_mol')
-                fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
+                end where
             case ('g_m3')
                 where(fRaw(1:N, j) /= error)
                     fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot)

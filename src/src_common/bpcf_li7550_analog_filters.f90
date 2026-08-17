@@ -60,6 +60,8 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
 
     if (printout) write(*,'(a)', advance='no') &
         '   Calculating correction for LI-7550 analog signals filtering..'
+    if (printout) write(ulog,'(a)', advance='no') &
+        '   Calculating correction for LI-7550 analog signals filtering..'
 
     !> Log natural frequencies in an artificial freq range
     !> f_min = 1 / 2h --> f_max = 10 Hz
@@ -137,5 +139,6 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
     end do
 
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine BPCF_LI7550AnalogFilters
 

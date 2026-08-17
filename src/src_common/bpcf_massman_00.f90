@@ -76,6 +76,7 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
 
 
     if (printout) write(*,'(a)') '   Band-pass correction for all fluxes. Method: Massman (2000, 2001)..'
+    if (printout) write(ulog,'(a)') '   Band-pass correction for all fluxes. Method: Massman (2000, 2001)..'
 
     !> Initialization
     t_e = 1d-10
@@ -193,6 +194,7 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
     end where
 
     if (printout) write(*,'(a)') '   Done.'
+    if (printout) write(ulog,'(a)') '   Done.'
 end subroutine BPCF_Massman00
 
 !***************************************************************************

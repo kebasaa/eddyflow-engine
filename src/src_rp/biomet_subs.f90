@@ -98,6 +98,7 @@ subroutine RetrieveExtBiometVars(row1, row2, nitems)
             ! !> Check validity of biomet variable label
             ! if (.not. BiometValidateVar(bVars(cnt))) then
             !     write(*,'(a)')
+            !     write(ulog,'(a)')
             !     call ExceptionHandler(73)
             !     EddyFlowProj%biomet_data = 'none'
             !     return
@@ -522,6 +523,7 @@ end function BiometVarHasSuffix
 !
 !    do i = 1, size(boVars)
 !        write(*,*) i, trim(boVars(i)%label)
+!        write(ulog,*) i, trim(boVars(i)%label)
 !    end do
 !
 !    stop

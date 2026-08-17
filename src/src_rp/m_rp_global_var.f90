@@ -576,6 +576,14 @@ module m_rp_global_var
          SNTags(354)%Label / '' / &
          SNTags(355)%Label / '' / &
          SNTags(356)%Label / '' / &
+         SNTags(357)%Label / 'instr_1_max_lack' / &
+         SNTags(358)%Label / 'instr_2_max_lack' / &
+         SNTags(359)%Label / 'instr_3_max_lack' / &
+         SNTags(360)%Label / 'instr_4_max_lack' / &
+         SNTags(361)%Label / 'instr_5_max_lack' / &
+         SNTags(362)%Label / 'instr_6_max_lack' / &
+         SNTags(363)%Label / 'instr_7_max_lack' / &
+         SNTags(364)%Label / 'instr_8_max_lack' / &
          SNTags(370)%Label / 'drift_tempsens_b' / &
          SNTags(371)%Label / 'drift_tempsens_c' / &
          SNTags(372)%Label / 'tcell_filter_tconst' / &
@@ -625,16 +633,16 @@ module m_rp_global_var
          SNTags(416)%Label / 'pwb_min_valid_frac' / &
          SNTags(417)%Label / 'pwb_hdi_thresh_s' / &
          SNTags(418)%Label / 'pwb_dev_thresh_s' / &
-         SNTags(419)%Label / 'pwb_hdi_prefilter_s' / &
-         SNTags(420)%Label / 'pwb_smoothing_width' / &
+         SNTags(419)%Label / 'pwb_hdi_prefilter_s' /
+    data SNTags(420)%Label / 'pwb_smoothing_width' / &
          SNTags(421)%Label / 'pwb_random_seed' / &
          SNTags(422)%Label / 'pwb_approx_ccf' / &
          SNTags(423)%Label / 'pwb_max_ar_order' / &
          SNTags(424)%Label / 'pwb_detect_prewpl' / &
          SNTags(425)%Label / 'gas_1_sr_lim' / &
          SNTags(426)%Label / 'gas_1_al_min' / &
-         SNTags(427)%Label / 'gas_1_al_max' /
-    data SNTags(428)%Label / 'gas_1_ds_hf' / &
+         SNTags(427)%Label / 'gas_1_al_max' / &
+         SNTags(428)%Label / 'gas_1_ds_hf' / &
          SNTags(429)%Label / 'gas_1_ds_sf' / &
          SNTags(430)%Label / 'gas_1_tl_def' / &
          SNTags(431)%Label / 'gas_1_to_min_flux' / &
@@ -825,16 +833,16 @@ module m_rp_global_var
          SNTags(616)%Label / 'gas_8_drift_dir_5' / &
          SNTags(617)%Label / 'gas_8_drift_dir_6' / &
          SNTags(618)%Label / 'gas_8_drift_inv_0' / &
-         SNTags(619)%Label / 'gas_8_drift_inv_1' / &
-         SNTags(620)%Label / 'gas_8_drift_inv_2' / &
+         SNTags(619)%Label / 'gas_8_drift_inv_1' /
+    data SNTags(620)%Label / 'gas_8_drift_inv_2' / &
          SNTags(621)%Label / 'gas_8_drift_inv_3' / &
          SNTags(622)%Label / 'gas_8_drift_inv_4' / &
          SNTags(623)%Label / 'gas_8_drift_inv_5' / &
          SNTags(624)%Label / 'gas_8_drift_inv_6' / &
          SNTags(625)%Label / 'gas_9_sr_lim' / &
          SNTags(626)%Label / 'gas_9_al_min' / &
-         SNTags(627)%Label / 'gas_9_al_max' /
-    data SNTags(628)%Label / 'gas_9_ds_hf' / &
+         SNTags(627)%Label / 'gas_9_al_max' / &
+         SNTags(628)%Label / 'gas_9_ds_hf' / &
          SNTags(629)%Label / 'gas_9_ds_sf' / &
          SNTags(630)%Label / 'gas_9_tl_def' / &
          SNTags(631)%Label / 'gas_9_to_min_flux' / &
@@ -1025,16 +1033,16 @@ module m_rp_global_var
          SNTags(816)%Label / 'gas_16_drift_dir_5' / &
          SNTags(817)%Label / 'gas_16_drift_dir_6' / &
          SNTags(818)%Label / 'gas_16_drift_inv_0' / &
-         SNTags(819)%Label / 'gas_16_drift_inv_1' / &
-         SNTags(820)%Label / 'gas_16_drift_inv_2' / &
+         SNTags(819)%Label / 'gas_16_drift_inv_1' /
+    data SNTags(820)%Label / 'gas_16_drift_inv_2' / &
          SNTags(821)%Label / 'gas_16_drift_inv_3' / &
          SNTags(822)%Label / 'gas_16_drift_inv_4' / &
          SNTags(823)%Label / 'gas_16_drift_inv_5' / &
          SNTags(824)%Label / 'gas_16_drift_inv_6' / &
          SNTags(825)%Label / 'gas_17_sr_lim' / &
          SNTags(826)%Label / 'gas_17_al_min' / &
-         SNTags(827)%Label / 'gas_17_al_max' /
-    data SNTags(828)%Label / 'gas_17_ds_hf' / &
+         SNTags(827)%Label / 'gas_17_al_max' / &
+         SNTags(828)%Label / 'gas_17_ds_hf' / &
          SNTags(829)%Label / 'gas_17_ds_sf' / &
          SNTags(830)%Label / 'gas_17_tl_def' / &
          SNTags(831)%Label / 'gas_17_to_min_flux' / &
@@ -1225,16 +1233,16 @@ module m_rp_global_var
          SNTags(1016)%Label / 'gas_24_drift_dir_5' / &
          SNTags(1017)%Label / 'gas_24_drift_dir_6' / &
          SNTags(1018)%Label / 'gas_24_drift_inv_0' / &
-         SNTags(1019)%Label / 'gas_24_drift_inv_1' / &
-         SNTags(1020)%Label / 'gas_24_drift_inv_2' / &
+         SNTags(1019)%Label / 'gas_24_drift_inv_1' /
+    data SNTags(1020)%Label / 'gas_24_drift_inv_2' / &
          SNTags(1021)%Label / 'gas_24_drift_inv_3' / &
          SNTags(1022)%Label / 'gas_24_drift_inv_4' / &
          SNTags(1023)%Label / 'gas_24_drift_inv_5' / &
          SNTags(1024)%Label / 'gas_24_drift_inv_6' / &
          SNTags(1025)%Label / 'gas_25_sr_lim' / &
          SNTags(1026)%Label / 'gas_25_al_min' / &
-         SNTags(1027)%Label / 'gas_25_al_max' /
-    data SNTags(1028)%Label / 'gas_25_ds_hf' / &
+         SNTags(1027)%Label / 'gas_25_al_max' / &
+         SNTags(1028)%Label / 'gas_25_ds_hf' / &
          SNTags(1029)%Label / 'gas_25_ds_sf' / &
          SNTags(1030)%Label / 'gas_25_tl_def' / &
          SNTags(1031)%Label / 'gas_25_to_min_flux' / &
@@ -1425,16 +1433,16 @@ module m_rp_global_var
          SNTags(1216)%Label / 'gas_32_drift_dir_5' / &
          SNTags(1217)%Label / 'gas_32_drift_dir_6' / &
          SNTags(1218)%Label / 'gas_32_drift_inv_0' / &
-         SNTags(1219)%Label / 'gas_32_drift_inv_1' / &
-         SNTags(1220)%Label / 'gas_32_drift_inv_2' / &
+         SNTags(1219)%Label / 'gas_32_drift_inv_1' /
+    data SNTags(1220)%Label / 'gas_32_drift_inv_2' / &
          SNTags(1221)%Label / 'gas_32_drift_inv_3' / &
          SNTags(1222)%Label / 'gas_32_drift_inv_4' / &
          SNTags(1223)%Label / 'gas_32_drift_inv_5' / &
          SNTags(1224)%Label / 'gas_32_drift_inv_6' / &
          SNTags(1225)%Label / 'gas_33_sr_lim' / &
          SNTags(1226)%Label / 'gas_33_al_min' / &
-         SNTags(1227)%Label / 'gas_33_al_max' /
-    data SNTags(1228)%Label / 'gas_33_ds_hf' / &
+         SNTags(1227)%Label / 'gas_33_al_max' / &
+         SNTags(1228)%Label / 'gas_33_ds_hf' / &
          SNTags(1229)%Label / 'gas_33_ds_sf' / &
          SNTags(1230)%Label / 'gas_33_tl_def' / &
          SNTags(1231)%Label / 'gas_33_to_min_flux' / &
@@ -1625,16 +1633,16 @@ module m_rp_global_var
          SNTags(1416)%Label / 'gas_40_drift_dir_5' / &
          SNTags(1417)%Label / 'gas_40_drift_dir_6' / &
          SNTags(1418)%Label / 'gas_40_drift_inv_0' / &
-         SNTags(1419)%Label / 'gas_40_drift_inv_1' / &
-         SNTags(1420)%Label / 'gas_40_drift_inv_2' / &
+         SNTags(1419)%Label / 'gas_40_drift_inv_1' /
+    data SNTags(1420)%Label / 'gas_40_drift_inv_2' / &
          SNTags(1421)%Label / 'gas_40_drift_inv_3' / &
          SNTags(1422)%Label / 'gas_40_drift_inv_4' / &
          SNTags(1423)%Label / 'gas_40_drift_inv_5' / &
          SNTags(1424)%Label / 'gas_40_drift_inv_6' / &
          SNTags(1425)%Label / 'gas_41_sr_lim' / &
          SNTags(1426)%Label / 'gas_41_al_min' / &
-         SNTags(1427)%Label / 'gas_41_al_max' /
-    data SNTags(1428)%Label / 'gas_41_ds_hf' / &
+         SNTags(1427)%Label / 'gas_41_al_max' / &
+         SNTags(1428)%Label / 'gas_41_ds_hf' / &
          SNTags(1429)%Label / 'gas_41_ds_sf' / &
          SNTags(1430)%Label / 'gas_41_tl_def' / &
          SNTags(1431)%Label / 'gas_41_to_min_flux' / &
@@ -1825,16 +1833,16 @@ module m_rp_global_var
          SNTags(1616)%Label / 'gas_48_drift_dir_5' / &
          SNTags(1617)%Label / 'gas_48_drift_dir_6' / &
          SNTags(1618)%Label / 'gas_48_drift_inv_0' / &
-         SNTags(1619)%Label / 'gas_48_drift_inv_1' / &
-         SNTags(1620)%Label / 'gas_48_drift_inv_2' / &
+         SNTags(1619)%Label / 'gas_48_drift_inv_1' /
+    data SNTags(1620)%Label / 'gas_48_drift_inv_2' / &
          SNTags(1621)%Label / 'gas_48_drift_inv_3' / &
          SNTags(1622)%Label / 'gas_48_drift_inv_4' / &
          SNTags(1623)%Label / 'gas_48_drift_inv_5' / &
          SNTags(1624)%Label / 'gas_48_drift_inv_6' / &
          SNTags(1625)%Label / 'gas_49_sr_lim' / &
          SNTags(1626)%Label / 'gas_49_al_min' / &
-         SNTags(1627)%Label / 'gas_49_al_max' /
-    data SNTags(1628)%Label / 'gas_49_ds_hf' / &
+         SNTags(1627)%Label / 'gas_49_al_max' / &
+         SNTags(1628)%Label / 'gas_49_ds_hf' / &
          SNTags(1629)%Label / 'gas_49_ds_sf' / &
          SNTags(1630)%Label / 'gas_49_tl_def' / &
          SNTags(1631)%Label / 'gas_49_to_min_flux' / &
@@ -2025,16 +2033,16 @@ module m_rp_global_var
          SNTags(1816)%Label / 'gas_56_drift_dir_5' / &
          SNTags(1817)%Label / 'gas_56_drift_dir_6' / &
          SNTags(1818)%Label / 'gas_56_drift_inv_0' / &
-         SNTags(1819)%Label / 'gas_56_drift_inv_1' / &
-         SNTags(1820)%Label / 'gas_56_drift_inv_2' / &
+         SNTags(1819)%Label / 'gas_56_drift_inv_1' /
+    data SNTags(1820)%Label / 'gas_56_drift_inv_2' / &
          SNTags(1821)%Label / 'gas_56_drift_inv_3' / &
          SNTags(1822)%Label / 'gas_56_drift_inv_4' / &
          SNTags(1823)%Label / 'gas_56_drift_inv_5' / &
          SNTags(1824)%Label / 'gas_56_drift_inv_6' / &
          SNTags(1825)%Label / 'gas_57_sr_lim' / &
          SNTags(1826)%Label / 'gas_57_al_min' / &
-         SNTags(1827)%Label / 'gas_57_al_max' /
-    data SNTags(1828)%Label / 'gas_57_ds_hf' / &
+         SNTags(1827)%Label / 'gas_57_al_max' / &
+         SNTags(1828)%Label / 'gas_57_ds_hf' / &
          SNTags(1829)%Label / 'gas_57_ds_sf' / &
          SNTags(1830)%Label / 'gas_57_tl_def' / &
          SNTags(1831)%Label / 'gas_57_to_min_flux' / &
@@ -2225,8 +2233,8 @@ module m_rp_global_var
          SNTags(2016)%Label / 'gas_64_drift_dir_5' / &
          SNTags(2017)%Label / 'gas_64_drift_dir_6' / &
          SNTags(2018)%Label / 'gas_64_drift_inv_0' / &
-         SNTags(2019)%Label / 'gas_64_drift_inv_1' / &
-         SNTags(2020)%Label / 'gas_64_drift_inv_2' / &
+         SNTags(2019)%Label / 'gas_64_drift_inv_1' /
+    data SNTags(2020)%Label / 'gas_64_drift_inv_2' / &
          SNTags(2021)%Label / 'gas_64_drift_inv_3' / &
          SNTags(2022)%Label / 'gas_64_drift_inv_4' / &
          SNTags(2023)%Label / 'gas_64_drift_inv_5' / &

@@ -23,11 +23,15 @@
 !
 !***************************************************************************
 !
-! \brief       If a variable as more than 30% values set to error, set it
-!              as not present.
+! \brief       If a variable is missing more of its own data than its
+!              instrument is allowed to, set it as not present.
 ! \author      Gerardo Fratini
-! \note
-! \sa
+! \note        "Its own data" rather than "the file's rows": an instrument
+!              slower than the row rate cannot fill every row, and counting the
+!              rows it was never going to write as missing dropped the column
+!              outright - 95 % missing for a 1 Hz analyser in a 20 Hz file, on
+!              a record that is complete for its own rate.
+! \sa          column_sampling.f90
 ! \bug
 ! \deprecated
 ! \test
@@ -43,14 +47,27 @@ subroutine EliminateCorruptedVariables(LocSet, nrow, ncol, skip_period, logout)
     logical, intent(out) :: skip_period
     !> local variables
     integer :: i
-    logical :: mask(nrow)
+    integer :: expected
+    integer :: full
+    real(kind = dbl) :: freq
+    real(kind = dbl), external :: ColumnAcFreq
+    real(kind = dbl), external :: ColumnMaxLack
 
 
     if (logout) write(*,'(a)', advance = 'no') '  Verifying time series integrity..'
+    if (logout) write(ulog,'(a)', advance = 'no') '  Verifying time series integrity..'
 
     do i = 1, ncol
-        mask(:) = Locset(:, i) == error
-        if (count(mask) > MaxPeriodNumRecords * RPsetup%max_lack/1d2) E2Col(i) = NullCol
+        freq = ColumnAcFreq(i)
+        !> What this column should have produced in the rows at hand, and in a
+        !> whole averaging period. At the file's own rate expected is nrow and
+        !> full is MaxPeriodNumRecords, so this is arithmetically the test it
+        !> replaces: counting what is missing from what was expected is the
+        !> same as counting error rows, until the two rates differ.
+        expected = nint(dble(nrow) * freq / Metadata%ac_freq)
+        full = nint(RPsetup%avrg_len * 60d0 * freq)
+        if (expected - count(LocSet(:, i) /= error) &
+            > full * ColumnMaxLack(i)/1d2) E2Col(i) = NullCol
     end do
 
     skip_period = .false.
@@ -59,4 +76,5 @@ subroutine EliminateCorruptedVariables(LocSet, nrow, ncol, skip_period, logout)
         (.not. E2Col(w)%present)) skip_period = .true.
 
     if (logout) write(*,'(a)') ' Done.'
+    if (logout) write(ulog,'(a)') ' Done.'
 end subroutine EliminateCorruptedVariables

@@ -71,7 +71,7 @@ subroutine DespikeUserSet(UserSet, nrow, ncol)
 
     Mean(:) = 0.d0
     StDev(:) = 0.d0
-    write(*, '(a)', advance = 'no') '  Despiking user set..'
+    call LogSayNoAdv('  Despiking user set..')
     nn = idint(dble(win_len) * Metadata%ac_freq * 60.d0) !win length in samples
     wdw_num = idint(dble(nrow - nn) / 1d2) + 1 !number of wins for the current file
 
@@ -194,5 +194,5 @@ subroutine DespikeUserSet(UserSet, nrow, ncol)
         goto 100
     end if
     deallocate(XX)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine DespikeUserSet

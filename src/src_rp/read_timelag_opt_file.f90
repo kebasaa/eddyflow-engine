@@ -52,10 +52,11 @@ subroutine ReadTimelagOptFile(ncls)
 
     !> Open planar fit file and read rotation matrices
     write(*,'(a)') ' Reading time-lag optimization file: ' // AuxFile%to(1:len_trim(AuxFile%to))
+    write(ulog,'(a)') ' Reading time-lag optimization file: ' // AuxFile%to(1:len_trim(AuxFile%to))
     open(udf, file = AuxFile%to, status = 'old', iostat = open_status)
 
     if (open_status == 0) then
-        write(*, '(a)') ' Time lag optimization file found, retrieving content..'
+        call LogSay(' Time lag optimization file found, retrieving content..')
         do
             read(udf, '(a)', iostat = read_status) strg
             if (read_status /= 0) exit
@@ -117,5 +118,5 @@ subroutine ReadTimelagOptFile(ncls)
         Meth%tlag = 'maxcov'
         call ExceptionHandler(39)
     end if
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine ReadTimelagOptFile

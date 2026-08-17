@@ -75,6 +75,8 @@ subroutine PointByPointToMixingRatio(Set, nrow, ncol, printout)
 
     if (printout) write(*, '(a)', advance = 'no') &
         '  WPL step: converting into mixing ratios wherever possible..'
+    if (printout) write(ulog, '(a)', advance = 'no') &
+        '  WPL step: converting into mixing ratios wherever possible..'
 
     !> Pass 1: each water slot's mole fraction, taken from the *raw* series,
     !> and then that slot's own conversion. Water must be converted before
@@ -254,4 +256,5 @@ subroutine PointByPointToMixingRatio(Set, nrow, ncol, printout)
 
     deallocate(H2Omf)
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine PointByPointToMixingRatio

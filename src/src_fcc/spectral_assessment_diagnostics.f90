@@ -242,6 +242,7 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     end if
     if (open_status == 0) close(report_unit)
     write(*, '(a)') ' Spectral-correction diagnostics written to: ' // trim(FilePath)
+    write(ulog, '(a)') ' Spectral-correction diagnostics written to: ' // trim(FilePath)
 end subroutine ReportSpectralAssessmentDiagnostics
 
 !*******************************************************************************
@@ -365,7 +366,7 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
 
     changes_written = any(SAAutoApplyMin) .or. any(SAAutoApplyMax)
     if (changes_written) then
-        write(*, '(a)') ' Automatic spectral configuration: updating output project file.'
+        call LogSay(' Automatic spectral configuration: updating output project file.')
         do gas = firstGas, lastGas
             do stability = SADiagUnstable, SADiagStable
                 if (.not. SAAutoApplyMin(stability, gas)) cycle
@@ -387,11 +388,12 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
             'Automatic spectral configuration: current FCC results used the original settings; ' // &
             'rerun with this output project.')
         write(*, '(a)') ' Automatic spectral configuration saved to: ' // trim(output_project)
-        write(*, '(a)') ' Current FCC results used the original settings; rerun with this output project.'
+        write(ulog, '(a)') ' Automatic spectral configuration saved to: ' // trim(output_project)
+        call LogSay(' Current FCC results used the original settings; rerun with this output project.')
     else
         call AppendAutomaticSpectralConfigDiagnostic( &
             'Automatic spectral configuration: no qualifying recommendations; output project unchanged.')
-        write(*, '(a)') ' Automatic spectral configuration: no qualifying recommendations; output project unchanged.'
+        call LogSay(' Automatic spectral configuration: no qualifying recommendations; output project unchanged.')
     end if
 end subroutine ApplyAutomaticSpectralConfiguration
 
@@ -415,6 +417,7 @@ subroutine WriteAutomaticSpectralSetting(output_project, tag, original, replacem
         trim(replacement_text) // ' (' // trim(reason) // ').'
     call AppendAutomaticSpectralConfigDiagnostic(trim(line))
     write(*, '(a)') trim(line)
+    write(ulog, '(a)') trim(line)
 end subroutine WriteAutomaticSpectralSetting
 
 !*******************************************************************************
@@ -578,11 +581,14 @@ end subroutine SortSpectralFluxValues
 
 !*******************************************************************************
 subroutine EmitReportLine(report_unit, open_status, line)
+    use m_index_parameters
+    use m_log
     implicit none
     integer, intent(in) :: report_unit
     integer, intent(in) :: open_status
     character(*), intent(in) :: line
     write(*, '(a)') '  ' // trim(line)
+    write(ulog, '(a)') '  ' // trim(line)
     if (open_status == 0) write(report_unit, '(a)') trim(line)
 end subroutine EmitReportLine
 

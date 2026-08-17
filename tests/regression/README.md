@@ -46,8 +46,36 @@ that before trusting a difference.
 | `base_neg.eddyflow` | `base_5gas` with `al_gas4_min` raised to 400, so COS fails the absolute-limits test. The negative fixture: exactly one gas's columns must move. Diff it against the `base_5gas` run, not against a reference. |
 | `base_n_gas_ru.eddyflow` | `base_n_gas` with random uncertainty on. The only fixture that exercises `random_error_handle.f90` and `integral_turbulence_scale.f90` at all - every other one leaves `RUsetup%meth` at `none`, so those files run their `case('none')` arm and nothing else. Expect a real `RANDUNC_HF` for every gas that has a column, and `-9999` for one that does not. |
 | `base_n_gas_sa.eddyflow` | `base_n_gas` with `hf_meth=ibrom_07` and `sa_mode=0`, reading the hand-authored assessment file `sa_n_gas_fitted.txt`. The only fixture where gases 5+ take a **fitted** transfer function rather than an analytic one. The file gives the first three gases `fc=1.00` and the rest `fc=0.05`, so the three resulting correction factors are far apart and cannot be confused: analytic 1.048, fitted-at-1.00 1.551, fitted-at-0.05 2.474. |
+| `base_n_gas_sa.eddyflow` (second gate) | the file's `H2O_2` block carries `exp=-2.0,-1.0,-2.0` against the primary's standalone `0.5,0.5,0.5`, two orders of magnitude apart in cut-off. The iir correction evaluates `exp(A·RH²+B·RH+C)`, so `h2o_2_scf` must land far from `h2o_1_scf` — 2.557 against 1.246. If the two come out within a per-cent of each other the second hygrometer is back on the primary's curve, which is what fitting it per hygrometer exists to stop. Needs `sa_bin_spectra=SELF` here. |
 | `base_n_gas_sa_short.eddyflow` | the same, against `sa_n_gas_short.txt` - an assessment file carrying only the first two blocks, standing in for one written before the range widened. Must fall back to the analytic factors for **every** gas and say so, not correct the missing gases with a cut-off of zero. |
+| `base_n_gas_sa_swapped.eddyflow` | `base_n_gas_sa` with its two CO2 records listed the other way round - the MIRO's and the LI-7200's swap places, columns and all - reading the *same* `sa_n_gas_fitted.txt`. Block names are ordinals over repeats of a species, so with names alone `CO2_1`'s transfer function follows the position and lands on the other analyser; an ordinary re-save in the interface is enough to reorder records. Gate: `co2_1_scf` and `co2_2_scf` must **swap** against `base_n_gas_sa` (1.551 ↔ 2.474). If they stay put, the block followed the column instead of the instrument. Run both with `sa_bin_spectra=SELF` on a machine without the shared binned-cospectra directory - without it the run falls back to Moncrieff and the gate passes vacuously, both sides reading 1.048. |
+| `base_slow*.eddyflow` | the only fixtures with **two acquisition rates**. Built by `gen_slow.py`, which writes a copy of the three hours in which the MIRO's six columns carry `-9999` on nine rows in ten - the shape a 1 Hz instrument writes into a 10 Hz file - and three projects over it. `base_slow_naive` declares nothing: the MIRO's columns are 90 % error against the row grid, over the 40 % global allowance, so `co2_1_flux`, `h2o_1_flux` and `cos_flux` are all `-9999`. That is what the engine did before the per-instrument allowance, reproduced with the current binary. `base_slow_lack` adds `instr_3_max_lack=95` and nothing else, so the columns survive without anything knowing the MIRO is slow - the gate on the project key being read at all. `base_slow` declares `instr_3_ac_freq=1.0` with a deliberately tight `instr_3_max_lack=10`, and must match `base_slow_lack` to the digit: measured against what a 1 Hz instrument owes, the column is complete. `base_slow_integr` is `base_slow` with `instr_3_integrates=1`, and it is the gate on the `w` pairing: only the **cospectra** may move, because the gas's own samples are the same either way. Measured: 32 cospectral bins differ and **not one spectral bin does**. **Data outside the repo**, like every other fixture here; re-run `gen_slow.py` to rebuild it. |
 | `base_n_gas_bin.eddyflow` | `base_n_gas` reading the binned (co)spectra it wrote itself - `run.sh` rewrites the `SELF` token between RP and FCC. Every other fixture points `sa_bin_spectra` at a shared directory that predates the N-gas binned format and carries four gases, which makes those runs the **backward**-compatibility case and is why they are right to leave gases 5+ unassessed. This is the **forward** case: N2O, CO2_2, H2O_2 and N2O_2 go from `accepted periods=0` to `1` and from an ensemble count of 0 to 5. |
+
+> ### `base_slow_naive` found a scaled error code, and fixed it
+>
+> Three of the MIRO's four gases came out `-9999` in that run. N2O did not: it
+> reported `n2o_1_mole_fraction = -8954`, the mean of a column still nine
+> tenths full of `-9999`, and a flux of `-754` computed from it.
+>
+> The mechanism had nothing to do with the acquisition rate. `error` **is a
+> number** - `-9999` - and three arms of `ConvertTraceGasUnits` scaled the whole
+> column unguarded, so a gas declared in `nmol mol-1` had its missing samples
+> converted to `-9.999` along with its data. That is past `CleanUpE2Set`'s
+> `-300` test, past every `/= error` check downstream, and into the flux as a
+> plausible mixing ratio. COS escaped only because `base_n_gas` happens to give
+> it `gas_4_al_min/al_max`; N2O has no absolute limits and nothing else looked.
+>
+> The three arms are guarded now, like the six beside them. The blast radius was
+> wider than fill values: any sample `ImportAscii` left at `error` - an unread
+> row, a short file - was promoted to a reading by the same line, for every gas
+> in ppb, ppt or pmol_mol.
+>
+> **No fixture moved.** The three hours of CH-LAE carry no value at or below
+> `-300` in any of their 216,005 rows, so there was no error code to scale;
+> `base_rec`, `base_n_gas` and `base_n_gas_bin` are byte-identical across the
+> change. Only `base_slow_naive` moves, and it moves to `-9999` - which is what
+> a column nine tenths missing is supposed to say.
 
 > **The `ru_*` keys reach the engine now; they never used to.**
 > `ru_meth`, `ru_its_meth` and `ru_tlag_max` are declared in `EPPrjNTags`, and
@@ -141,6 +169,8 @@ only after every moved cell has been named. So far:
 | spectral tags record-derived | `full_cospectra/*.csv` **header only**, two lines per file: `cov(w_gas4)` -> `cov(w_cos)` and `f_nat*cospec(w_gas4)` -> `...(w_cos)`. SpectralVarTags pinned slots 5-8 to co2/h2o/ch4/gas4, which names a position rather than a species. No numeric cell moved and no other file moved. Readers accept both spellings through LegacySpectralVarTag, so an existing full-cospectra directory still imports |
 | N-gas binned (co)spectra | `binned_cospectra/*.csv` and `binned_ogives/*.csv`, **header line only**, 12 files: the fourth gas goes from `spec(COS)` to `spec(cos)` and the leading space of the list-directed write is gone. The writer named it from `SpecCol%label`, a third spelling - uppercase where every other file is lower. No data row moved and no other file moved. The reader matches case-insensitively, so the shared four-gas directory still imports |
 | metadata header per gas | `eddyflow_*_metadata_*.csv`, **header line only**: the fourth gas's five run-together names become five columns. `cos_irga_tube_flowratecos_irga_kwcos_irga_ko...` was one field where the row writer emits six, so the header was 57 fields against 62 rows. No data row moved and no other file moved |
+| missing values recognised at import | **Every flux moves, and this is the largest re-baselining in this table.** The CH-LAE files carry a quoted `"NAN"` in the MIRO's gas columns - 1202 of 36001 rows in the first file - and a record with one unparseable field was discarded entire. `used_records` per period goes 17474 -> 18000, `SONIC_NR` 17471 -> 17997 and `T_SONIC_NR` 17472 -> 18000: **the engine had been throwing away 3 % of its wind data because a gas column said NAN.** Each gas now loses exactly its own NAN samples and nothing else - CO2 18000 - 1202 - 71 already-despiked = 16727, which is what it reports. Reconciled column by column before this was accepted |
+| per-analyser acquisition frequency | FLUXNET row: **one new column per analyser**, `<TAG>_INSTR_AC_FREQ`, at the end of each gas's instrument block. Purely additive and measured as such: `base_rec` 577 -> 580 columns, `base_n_gas` 917 -> 924, and every pre-existing cell is byte-identical in every row of both. The value is the rate RP resolved for that column - the station's, 10.0000, wherever no instrument declares one - because FCC has no metadata file and its Nyquist check needs a per-analyser rate. `nGasInstrFields` 14 -> 15 with it |
 
 ## The arithmetic cross-check
 
@@ -160,6 +190,12 @@ formula, untested for want of a dataset.
 
 ## Traps that produced false results before
 
+- **The run log is compared too.** `run.sh` normalises `*.log` alongside the
+  CSVs, so the engine's console output is a regression artefact like any other
+  file. Three things in it are run-dependent and are normalised away: the wall
+  clock, the per-period elapsed time, and which of `out_ref`/`out_chk` the run
+  was pointed at. That last rule also settles the long-standing false positive
+  in `base_n_gas_bin`, whose `SELF` token records the same path.
 - **RP only.** FCC recomputes under `fcc_follows`; an RP-only run compares
   files nothing wrote. `run.sh` runs both.
 - **Timestamp normalisation must recurse** into the per-period

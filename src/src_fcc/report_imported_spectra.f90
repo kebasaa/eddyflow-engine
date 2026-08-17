@@ -45,7 +45,7 @@ subroutine ReportImportedSpectra(nbins)
     character(16), external :: GasName
     logical, external :: GasSlotIsWater
 
-    write(*, '(a)') '  Imported gas binned spectra:'
+    call LogSay('  Imported gas binned spectra:')
     !> One line per configured gas, named from its record. This used to be
     !> four fixed lines labelled CO2/H2O/CH4/Gas 4, which on any project
     !> whose records are ordered differently named the wrong species, and
@@ -62,6 +62,7 @@ subroutine ReportImportedSpectra(nbins)
         end if
         name = GasName(gas)
         write(*, '(a, i5)') '   ' // trim(name) // ': ', cnt
+        write(ulog, '(a, i5)') '   ' // trim(name) // ': ', cnt
     end do
-    write(*, '(a)') '  Done.'
+    call LogSay('  Done.')
 end subroutine ReportImportedSpectra

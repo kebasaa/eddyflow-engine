@@ -35,6 +35,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     use m_rp_global_var
     implicit none
     integer, external :: cellPressureSlot
+    real(kind = dbl), external :: ColumnAcFreq
     !> in/out variables
     type(QCType), intent(in) :: StDiff
     type(QCType), intent(in) :: DtDiff
@@ -1063,6 +1064,10 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(E2Col(var)%Instr%tau, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(E2Col(var)%Instr%kw, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(E2Col(var)%Instr%ko, csv_row, EddyFlowProj%err_label)
+        !> Resolved, not raw: an analyser that states no rate of its own runs
+        !> at the file's, and writing the sentinel here would leave FCC to
+        !> repeat that resolution with no metadata to do it from.
+        call AddFloatDatumToDataline(ColumnAcFreq(var), csv_row, EddyFlowProj%err_label)
     end do
 
 

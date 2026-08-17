@@ -55,6 +55,8 @@ subroutine FilesInChronologicalOrder(FileList, nrow, &
 
     write(*,'(a)', advance = 'no') &
         indent // ' Arranging files in chronological order..'
+    write(ulog,'(a)', advance = 'no') &
+        indent // ' Arranging files in chronological order..'
     !> Initialization
     StartTimestamp = datetype(2100, 12, 31, 23, 30)
     EndTimestamp = datetype(1900, 0, 0, 0, 0)
@@ -101,7 +103,7 @@ subroutine FilesInChronologicalOrder(FileList, nrow, &
         FileList(i - mini + 1) = FileList(i)
     end do
     nrow = maxi - mini + 1
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine FilesInChronologicalOrder
 
 !***************************************************************************

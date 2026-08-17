@@ -64,6 +64,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
 
 
     if (printout) write(*, '(a)', advance = 'no') '   Spike detection/removal test..'
+    if (printout) write(ulog, '(a)', advance = 'no') '   Spike detection/removal test..'
     zlim = 7d0
     passes = 0
     nspikes = 0
@@ -223,4 +224,5 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     endwhere
     
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine TestSpikeDetectionMauder13

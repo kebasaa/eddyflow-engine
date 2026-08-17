@@ -206,7 +206,7 @@ subroutine StorePwbTimelagCache(gas, stage, actual_lag, used_lag, row_lag, defau
     integer :: i
 
     if (.not. ValidPwbPeriodTimestamp(PwbPeriodDate, PwbPeriodTime)) then
-        write(*, '(a)') ' Fatal> PWB time-lag cache cannot use an empty or invalid period timestamp.'
+        call LogSay(' Fatal> PWB time-lag cache cannot use an empty or invalid period timestamp.')
         error stop 'Invalid PWB period timestamp.'
     end if
     do i = 1, PwbTimelagCacheN
@@ -255,7 +255,7 @@ subroutine LookupPwbTimelagCache(gas, stage, found, actual_lag, used_lag, row_la
     call InitPwbResult(res)
     if (.not. PwbCacheLoaded) return
     if (.not. ValidPwbPeriodTimestamp(PwbPeriodDate, PwbPeriodTime)) then
-        write(*, '(a)') ' Fatal> PWB time-lag cache cannot use an empty or invalid period timestamp.'
+        call LogSay(' Fatal> PWB time-lag cache cannot use an empty or invalid period timestamp.')
         error stop 'Invalid PWB period timestamp.'
     end if
     do i = 1, PwbTimelagCacheN
@@ -361,7 +361,7 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     end if
     fingerprint = line(13:len_trim(line))
     if (trim(fingerprint) /= trim(PwbCacheFingerprint())) then
-        write(*, '(a)') ' Fatal> PWB time-lag cache is incompatible with the selected PWB settings.'
+        call LogSay(' Fatal> PWB time-lag cache is incompatible with the selected PWB settings.')
         close(u)
         return
     end if
@@ -377,7 +377,7 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     end if
     read(line(16:len_trim(line)), *, iostat=ios) period_seconds
     if (ios /= 0 .or. period_seconds /= RPsetup%avrg_len) then
-        write(*, '(a)') ' Fatal> PWB time-lag cache averaging-period duration is incompatible with this project.'
+        call LogSay(' Fatal> PWB time-lag cache averaging-period duration is incompatible with this project.')
         close(u)
         return
     end if
@@ -482,9 +482,12 @@ subroutine WritePwbTimelagCache()
     PwbCacheLoaded = .true.
     PwbCacheDirty = .false.
     write(*, '(a)') ' PWB per-period time-lag cache written to: ' // trim(path)
+    write(ulog, '(a)') ' PWB per-period time-lag cache written to: ' // trim(path)
 end subroutine WritePwbTimelagCache
 
 subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
+    use m_index_parameters
+    use m_log
     implicit none
     integer, intent(in) :: nrow, ncol, gas
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
@@ -521,6 +524,9 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
         .and. PWBSetup%min_lag(gas) < 0d0 .and. PWBSetup%max_lag(gas) > 0d0 &
         .and. PWBSetup%max_lag(gas) - PWBSetup%min_lag(gas) > 20d0) then
         write(*, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: broad symmetric PWB lag window for ', &
+            trim(GasLabel(gas)), ' [', PWBSetup%min_lag(gas), ', ', &
+            PWBSetup%max_lag(gas), '] s on a closed-path gas; consider physical positive bounds.'
+        write(ulog, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: broad symmetric PWB lag window for ', &
             trim(GasLabel(gas)), ' [', PWBSetup%min_lag(gas), ', ', &
             PWBSetup%max_lag(gas), '] s on a closed-path gas; consider physical positive bounds.'
         pwb_bounds_warned(gas) = .true.
@@ -798,6 +804,10 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, gas, combo, res, ok)
     res%block_length_clamped = .false.
     if (requested_block_len < 2 * full_max_rl .and. .not. pwb_block_warned(gas)) then
         write(*, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: PWB block length for ', &
+            trim(GasLabel(gas)), ' (', &
+            dble(requested_block_len) / Metadata%ac_freq, ' s) is shorter than 2*lag_max (', &
+            dble(2 * full_max_rl) / Metadata%ac_freq, ' s).'
+        write(ulog, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: PWB block length for ', &
             trim(GasLabel(gas)), ' (', &
             dble(requested_block_len) / Metadata%ac_freq, ' s) is shorter than 2*lag_max (', &
             dble(2 * full_max_rl) / Metadata%ac_freq, ' s).'
@@ -1112,7 +1122,7 @@ subroutine WritePwbDiagnostic(gas, res)
 
     call CountPwbDiagnostic(gas, res)
     if (.not. ValidPwbPeriodTimestamp(PwbPeriodDate, PwbPeriodTime)) then
-        write(*, '(a)') ' Fatal> PWB diagnostics cannot use an empty or invalid period timestamp.'
+        call LogSay(' Fatal> PWB diagnostics cannot use an empty or invalid period timestamp.')
         error stop 'Invalid PWB period timestamp.'
     end if
     if (Dir%main_out == 'none') return
@@ -1185,10 +1195,21 @@ subroutine ReportPwbDiagnostics()
     total_fallback_other = sum(pwb_fallback_other(firstGas:lastGas))
 
     write(*, '(a)')
-    write(*, '(a)') ' PWB time-lag detection summary:'
+    write(ulog, '(a)')
+    call LogSay(' PWB time-lag detection summary:')
     do gas = firstGas, lastGas
         if (pwb_attempts(gas) > 0) then
             write(*, '(a, a, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a)') &
+                '  ', trim(GasLabel(gas)), &
+                ': attempts=', pwb_attempts(gas), &
+                ', S1/S2=', pwb_successes(gas), &
+                ', S4_shared=', pwb_instrument_shared(gas), &
+                ', S3=', pwb_carryforwards(gas), &
+                ', fallback=', pwb_fallbacks(gas), &
+                ' (maxcov/default=', pwb_fallback_maxcov(gas), &
+                ', nominal/default=', pwb_fallback_nominal(gas), &
+                ', other=', pwb_fallback_other(gas), ')'
+            write(ulog, '(a, a, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a, i0, a)') &
                 '  ', trim(GasLabel(gas)), &
                 ': attempts=', pwb_attempts(gas), &
                 ', S1/S2=', pwb_successes(gas), &
@@ -1205,7 +1226,10 @@ subroutine ReportPwbDiagnostics()
         write(*, '(a, i0, a, i0, a, i0, a)') '  WARNING: all PWB detections fell back: maxcov/default=', &
             total_fallback_maxcov, ', nominal/default=', total_fallback_nominal, &
             ', other=', total_fallback_other, '.'
-        write(*, '(a)') '  Review the PWB diagnostics file before interpreting method 5 as native PWB.'
+        write(ulog, '(a, i0, a, i0, a, i0, a)') '  WARNING: all PWB detections fell back: maxcov/default=', &
+            total_fallback_maxcov, ', nominal/default=', total_fallback_nominal, &
+            ', other=', total_fallback_other, '.'
+        call LogSay('  Review the PWB diagnostics file before interpreting method 5 as native PWB.')
     end if
 
     if (Dir%main_out == 'none') return

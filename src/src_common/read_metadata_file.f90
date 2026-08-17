@@ -107,6 +107,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     if (Metadata%alt < -428d0 .or. Metadata%alt > 8850d0) then
         if (printout) then
             write(*, '(a)')
+            write(ulog, '(a)')
             call ExceptionHandler(80)
         end if
         Metadata%alt = 0d0
@@ -123,6 +124,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     if (Metadata%lat < -90d0 .or. Metadata%lat > 90d0) then
         if (printout) then
             write(*, '(a)')
+            write(ulog, '(a)')
             call ExceptionHandler(81)
         end if
         Metadata%lat = 0.001d0
@@ -135,6 +137,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     if (Metadata%lon < -180d0 .or. Metadata%lon > 180d0) then
         if (printout) then
             write(*, '(a)')
+            write(ulog, '(a)')
             call ExceptionHandler(82)
         end if
         Metadata%lon = 0.001d0
@@ -147,6 +150,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     if (Metadata%canopy_height < 0d0) then
         if (printout) then
             write(*, '(a)')
+            write(ulog, '(a)')
             call ExceptionHandler(83)
         end if
         Metadata%canopy_height = 0d0
@@ -159,6 +163,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     if (Metadata%d <= 0d0 .or. Metadata%d > Metadata%canopy_height) then
         if (printout) then
             write(*, '(a)')
+            write(ulog, '(a)')
             call ExceptionHandler(84)
         end if
         Metadata%d = Metadata%canopy_height * 0.67d0
@@ -171,6 +176,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     if (Metadata%z0 <= 0d0 .or. Metadata%z0 > Metadata%canopy_height) then
         if (printout) then
             write(*, '(a)')
+            write(ulog, '(a)')
             call ExceptionHandler(85)
         end if
         Metadata%z0 = max(Metadata%canopy_height * 0.15d0, 0.001d0)
@@ -211,6 +217,11 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     do i = 1, MaxNumInstruments
         if(ACTagFound(init_ac_instr + i*leap_ac_instr)) then
             NumInstruments = NumInstruments + 1
+            !> Which block this came from, kept because a column stores a copy
+            !> of its instrument and so loses the index otherwise. Not the same
+            !> as NumInstruments: that counts blocks found, this names them, and
+            !> the two differ the moment a file describes instr_1 and instr_3.
+            Instr(i)%slot = i
             Instr(i)%firm = ACTags(init_ac_instr + i*leap_ac_instr)%value &
                 (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr)%value))
 
@@ -244,6 +255,17 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                     Instr(i)%kw = dble(ANTags(init_an_instr + i*leap_an_instr + 11)%value)
                     Instr(i)%ko = dble(ANTags(init_an_instr + i*leap_an_instr + 12)%value)
             end select
+
+            !> Sampling rate and sampling mode, for every category.
+            !>
+            !> Read outside the select above because they are not a property of
+            !> what the instrument measures - a sonic, an analyser and a
+            !> krypton hygrometer can each run slower than the file's row rate.
+            !> Offsets 13 and 14 were reserved and unread; naming them costs no
+            !> change to the 15-slot stride and so shifts nothing after it.
+            Instr(i)%ac_freq = dble(ANTags(init_an_instr + i*leap_an_instr + 13)%value)
+            Instr(i)%integrates = &
+                nint(ANTags(init_an_instr + i*leap_an_instr + 14)%value) == 1
 
             !> If instrument firm is empty, retrieve it from the instrument model
             if (len(Instr(i)%firm) == 0 .or. Instr(i)%firm == 'none') then
@@ -382,7 +404,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
 
     FileInterpreter%file_with_text = .false.
     leap_ac_col = 7
-    leap_an_col = 8
+    leap_an_col = 9
     init_ac_col = 90 - leap_ac_col
     init_an_col = 130 - leap_an_col
     LocCol%var = 'none'
@@ -445,6 +467,14 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 (1:len_trim(ACTags(init_ac_col + i*leap_ac_col + 5)%value))
             LocCol(i)%unit_out = ACTags(init_ac_col + i*leap_ac_col + 6)%value &
                 (1:len_trim(ACTags(init_ac_col + i*leap_ac_col + 6)%value))
+            !> What this column writes for "no reading", on top of the values
+            !> that always mean it. Absent leaves it at the error code, which
+            !> BlankMissingValues reads as "this column declares nothing" -
+            !> every metadata file written before this key says exactly that.
+            LocCol(i)%err_value = &
+                dble(ANTags(init_an_col + i*leap_an_col + 8)%value)
+            if (.not. ANTagFound(init_an_col + i*leap_an_col + 8)) &
+                LocCol(i)%err_value = error
             LocCol(i)%min    = dble(ANTags(init_an_col + i*leap_an_col)%value)
             LocCol(i)%max    = dble(ANTags(init_an_col + i*leap_an_col + 1)%value)
             LocCol(i)%a      = dble(ANTags(init_an_col + i*leap_an_col + 2)%value)

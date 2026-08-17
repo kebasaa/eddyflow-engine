@@ -76,6 +76,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
 
 
     if (printout) write(*, '(a)', advance = 'no') '   Spike detection/removal test..'
+    if (printout) write(ulog, '(a)', advance = 'no') '   Spike detection/removal test..'
 
     if (.not. RPsetup%filter_sr) max_pass = 1
 
@@ -304,5 +305,6 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
         Essentials%m_despiking(u:pe) = ierror
     endwhere
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 
 end subroutine TestSpikeDetectionVickers97

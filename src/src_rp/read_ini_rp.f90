@@ -45,6 +45,8 @@ subroutine ReadIniRP(key)
 
     write(*,'(a)') ' Reading EddyFlow project file: ' &
                      // PrjPath(1:len_trim(PrjPath)) // '..'
+    write(ulog,'(a)') ' Reading EddyFlow project file: ' &
+                     // PrjPath(1:len_trim(PrjPath)) // '..'
 
     !> parse processing.eddypro file and store [Project] variables,
     !> common to all programs
@@ -64,7 +66,7 @@ subroutine ReadIniRP(key)
     !> them in relevant variables
     call WriteVariablesRP()
 
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine ReadIniRP
 
 !*******************************************************************************
@@ -641,6 +643,17 @@ subroutine WriteVariablesRP()
 
     !> max acceptable lack of data lines in a raw file
     RPsetup%max_lack = SNTags(49)%value
+
+    !> The same allowance per instrument, for an instrument that samples slower
+    !> than the file's rows and so cannot fill them. Absent - which is every
+    !> project written before this key - stays at `error` and resolves back to
+    !> the setting above, so the global one is the anemometer's without a
+    !> special case anywhere.
+    RPsetup%instr_max_lack = error
+    do i = 1, MaxNumInstruments
+        if (SNTagFound(rpInstrMaxLackN + i - 1)) &
+            RPsetup%instr_max_lack(i) = SNTags(rpInstrMaxLackN + i - 1)%value
+    end do
 
     !> read wind speed offsets
     RPsetup%offset(u) = 0d0

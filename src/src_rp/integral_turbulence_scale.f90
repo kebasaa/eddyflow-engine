@@ -48,7 +48,7 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
     logical :: w_cross_corr_failed(ncol)
     real(kind = dbl), external :: LaggedCovarianceNoError
 
-    write(*, '(a)', advance = 'no') '   Estimating integral turbulence scale..'
+    call LogSayNoAdv('   Estimating integral turbulence scale..')
 
     !> Initializations
     LagMax = nint(RUsetup%tlag_max * Metadata%ac_freq)
@@ -144,5 +144,5 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
     where (ITS(u:lastGas) > 2. * RUsetup%tlag_max .or. ITS(u:lastGas) == error)
        ITS(u:lastGas) = ITS_bill
     end where
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine IntegralTurbulenceScale

@@ -52,6 +52,8 @@ subroutine FluxParams(printout)
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating auxiliary variables..'
+    if (printout) write(ulog,'(a)', advance = 'no') &
+        '  Calculating auxiliary variables..'
 
     !> The scalar humidity, and everything derived from it, comes from the
     !> designated water record - not from the h2o slot, which is record two and
@@ -506,5 +508,6 @@ subroutine FluxParams(printout)
     end if
 
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine FluxParams
 

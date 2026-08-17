@@ -134,6 +134,9 @@ module m_index_parameters
     !> logical file units
     integer ::  udf
     integer ::  udf2
+    !> The run log. Everything the engine prints goes here as well as to the
+    !> console - see m_log.f90.
+    integer, parameter :: ulog  = 163
     integer, parameter ::  uqc  = 106
     integer, parameter :: uspk  = 107
     integer, parameter ::  umd  = 108

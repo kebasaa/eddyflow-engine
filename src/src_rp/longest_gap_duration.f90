@@ -32,11 +32,23 @@ subroutine LongestGapDuration(Set, nrow, ncol)
     integer, intent(in) :: nrow, ncol
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
     integer :: icol
+    integer :: spacing
     integer, external :: LongestVariableGap
+    real(kind = dbl), external :: ColumnAcFreq
 
     do icol = u, GHGNumVar
         if (E2Col(icol)%present) then
-            Essentials%LGD(icol) = LongestVariableGap(Set(:, icol), nrow) / Metadata%ac_freq
+            !> The rows between one sample of a slow column and the next are
+            !> error rows by construction - nine of every ten for a 1 Hz column
+            !> in a 10 Hz file - and they are not a gap in the record. Subtract
+            !> that spacing, so a run no longer than one of the column's own
+            !> sampling intervals reports zero rather than a permanent 0.9 s
+            !> gap. A column at the file's rate has no spacing to subtract and
+            !> reports exactly what it did before.
+            spacing = nint(Metadata%ac_freq / ColumnAcFreq(icol)) - 1
+            Essentials%LGD(icol) = &
+                max(0, LongestVariableGap(Set(:, icol), nrow) - spacing) &
+                / Metadata%ac_freq
         else
             Essentials%LGD(icol) = error
         end if

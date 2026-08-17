@@ -42,7 +42,7 @@ subroutine InitDynamicMetadata(N)
     integer :: io_status
 
 
-    write(*, '(a)', advance = 'no') ' Initializing dynamic metadata usage..'
+    call LogSayNoAdv(' Initializing dynamic metadata usage..')
 
     !> Open file
     open(udf, file = AuxFile%DynMD, status = 'old', iostat = open_status)
@@ -65,7 +65,7 @@ subroutine InitDynamicMetadata(N)
     end do countloop
     close(udf)
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine InitDynamicMetadata
 
 !***************************************************************************

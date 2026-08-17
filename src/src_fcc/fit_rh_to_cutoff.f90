@@ -52,6 +52,8 @@ subroutine FitRh2Fco()
     real(kind = dbl) :: tol = 1d-04
     real(kind = dbl) :: mean_fc
     integer :: wsl
+    integer :: primary
+    real(kind = dbl) :: nyquist
     include '../src_common/interfaces.inc'
 
 
@@ -60,26 +62,51 @@ subroutine FitRh2Fco()
     if (.not. allocated(yFit)) allocate(yFit(10))
     if (.not. allocated(ddum)) allocate(ddum(10))
 
-    !> The RH-class cut-offs belong to the project's primary water record,
-    !> not to the h2o slot. Note the *result* of this fit - the exponential
-    !> RegPar(dum, dum) - is a single set of coefficients for the whole
-    !> project, so a second hygrometer necessarily reuses the primary's RH
-    !> dependence. That is a limit of the data model, not of this loop, and
-    !> widening it is a separate change.
-    wsl = PrimaryWaterSlot()
-    if (wsl < firstGas) return
+    !> One fit per hygrometer, each into its own RegPar(wsl, dum)%e1..e3.
+    !>
+    !> This used to fit the primary alone and leave one set of coefficients for
+    !> the whole project, so a second hygrometer's RH dependence was the
+    !> primary's however far apart the two read - on CH-LAE, some fourteen
+    !> points, more than an RH class. Its own RH-class cut-offs were fitted by
+    !> FitTFModels, written to the assessment file and read back, and then
+    !> overridden by the primary's exponential; the round trip existed and did
+    !> nothing.
+    !>
+    !> RegPar(wsl, dum) is safe to write: e1..e3 are components of the element,
+    !> distinct from the %fc and %Fn that RH class dum holds.
+    primary = PrimaryWaterSlot()
+    if (primary < firstGas) return
 
-    !> Preliminary validation of calculated cut-offs for water vapour
-    where (RegPar(wsl, RH10:RH90)%fc > FCCMetadata%ac_freq / 2d0 .or. &
+    do wsl = firstGas, lastGas
+    if (.not. GasSlotIsWater(wsl)) cycle
+
+    !> Preliminary validation of calculated cut-offs for water vapour, against
+    !> THIS hygrometer's Nyquist rather than the station's.
+    !>
+    !> A hygrometer slower than the station resolves nothing above its own
+    !> half-rate, so the station's Nyquist accepts fitted cut-offs it cannot
+    !> have measured - by exactly the ratio of the two rates. An ex record
+    !> written before the analyser block carried a rate leaves GasAcFreq at the
+    !> error code, and then the station's rate is the best answer there is.
+    nyquist = FCCMetadata%ac_freq / 2d0
+    if (FCCMetadata%GasAcFreq(wsl) > 0d0) &
+        nyquist = min(FCCMetadata%GasAcFreq(wsl), FCCMetadata%ac_freq) / 2d0
+    where (RegPar(wsl, RH10:RH90)%fc > nyquist .or. &
         RegPar(wsl, RH10:RH90)%fc < 0d0) &
         RegPar(wsl, RH10:RH90)%fc = error
 
-    if (FCCMetadata%H2oPathType == 'open') then
-        !> If the instrument associated to the first H2O reading is an open path
+    !> This hygrometer's own path type, not the primary's. Which arm a fit
+    !> takes is a property of the analyser being fitted; on a site with one
+    !> open path and one closed, the second used to be fitted by whichever arm
+    !> the first happened to need.
+    if (FCCMetadata%GasPathType(wsl) == 'open') then
+        !> If the instrument associated to this H2O reading is an open path
         !> fit exponential model analytically, such that the exponential function
         !> provides a constant value, equal to the mean value of f_cutoff among all
         !> RH classes
         write(*, '(a)', advance = 'no') ' Open-path H2O analyser: analytic &
+            &fitting of cut-off frequencies vs. RH.. '
+        write(ulog, '(a)', advance = 'no') ' Open-path H2O analyser: analytic &
             &fitting of cut-off frequencies vs. RH.. '
         mean_fc = 0d0
         cnt2 = 0
@@ -90,12 +117,14 @@ subroutine FitRh2Fco()
             end if
         end do
         mean_fc = mean_fc / cnt2
-        RegPar(dum, dum)%e1 = 1d-15
-        RegPar(dum, dum)%e2 = 1d-15
-        RegPar(dum, dum)%e3 = dlog(mean_fc)
+        RegPar(wsl, dum)%e1 = 1d-15
+        RegPar(wsl, dum)%e2 = 1d-15
+        RegPar(wsl, dum)%e3 = dlog(mean_fc)
     else
         !> Fit exponential model by least squares minimization
         write(*, '(a)', advance = 'no') ' Fitting in-situ assessment of &
+            &cut-off frequencies vs. RH.. '
+        write(ulog, '(a)', advance = 'no') ' Fitting in-situ assessment of &
             &cut-off frequencies vs. RH.. '
 
         !> Initialization of function parameters (see Ibrom et al. 2007, AFM)
@@ -125,9 +154,9 @@ subroutine FitRh2Fco()
                 EXPPar(1:3) = error
             end if
             deallocate(fvec, fjac)
-            RegPar(dum, dum)%e1 = EXPPar(1)
-            RegPar(dum, dum)%e2 = EXPPar(2)
-            RegPar(dum, dum)%e3 = EXPPar(3)
+            RegPar(wsl, dum)%e1 = EXPPar(1)
+            RegPar(wsl, dum)%e2 = EXPPar(2)
+            RegPar(wsl, dum)%e3 = EXPPar(3)
         elseif(m == 3 .or. m == 2) then
             cnt = 0
             mean_fc = 0d0
@@ -138,9 +167,9 @@ subroutine FitRh2Fco()
                     if (cnt == m) then
                         mean_fc = mean_fc / cnt
                         RegPar(wsl, RH10:RH90)%fc = mean_fc
-                        RegPar(dum, dum)%e1 = 1d-15
-                        RegPar(dum, dum)%e2 = 1d-15
-                        RegPar(dum, dum)%e3 = dlog(mean_fc)
+                        RegPar(wsl, dum)%e1 = 1d-15
+                        RegPar(wsl, dum)%e2 = 1d-15
+                        RegPar(wsl, dum)%e3 = dlog(mean_fc)
                         exit
                     end if
                 end if
@@ -149,16 +178,16 @@ subroutine FitRh2Fco()
             do cls = RH10, RH90
                 if (RegPar(wsl, cls)%fc /= error) then
                     RegPar(wsl, RH10:RH90)%fc = RegPar(wsl, cls)%fc
-                    RegPar(dum, dum)%e1 = 1d-15
-                    RegPar(dum, dum)%e2 = 1d-15
-                    RegPar(dum, dum)%e3 = dlog(RegPar(wsl, cls)%fc)
+                    RegPar(wsl, dum)%e1 = 1d-15
+                    RegPar(wsl, dum)%e2 = 1d-15
+                    RegPar(wsl, dum)%e3 = dlog(RegPar(wsl, cls)%fc)
                     exit
                 end if
             end do
         elseif(m == 0) then
-            RegPar(dum, dum)%e1 = error
-            RegPar(dum, dum)%e2 = error
-            RegPar(dum, dum)%e3 = error
+            RegPar(wsl, dum)%e1 = error
+            RegPar(wsl, dum)%e2 = error
+            RegPar(wsl, dum)%e3 = error
         endif
 
         !> Now that the regression is done, sets Fc which are at -9999, to the closest valid value.
@@ -190,9 +219,21 @@ subroutine FitRh2Fco()
         end if
     end if
 
+    end do
+
+    !> The primary's coefficients are also the project's.
+    !>
+    !> RegPar(dum, dum) is what the assessment file's standalone exponential
+    !> section carries and what a hygrometer with no fit of its own falls back
+    !> to, so it keeps holding the primary's - which is exactly what it held
+    !> when this routine fitted nothing else.
+    RegPar(dum, dum)%e1 = RegPar(primary, dum)%e1
+    RegPar(dum, dum)%e2 = RegPar(primary, dum)%e2
+    RegPar(dum, dum)%e3 = RegPar(primary, dum)%e3
+
     if (allocated(xFit)) deallocate(xFit)
     if (allocated(yFit)) deallocate(yFit)
     if (allocated(ddum)) deallocate(ddum)
 
-    write(*, '(a)') 'Done.'
+    call LogSay('Done.')
 end subroutine FitRh2Fco

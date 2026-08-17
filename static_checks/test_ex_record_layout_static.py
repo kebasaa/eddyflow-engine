@@ -475,3 +475,46 @@ class TheCellWaterBlockCountsEveryHygrometer(unittest.TestCase):
         self.assertIn("GasSlotIsWater(exSlots(jx))) cycle", body[:400],
                       "the scatter must skip water the same way the writer "
                       "does, and walk the layout the writer emitted it in")
+
+    def test_the_self_describing_analyser_block_counts_its_own_fields(self):
+        """Three files write or read this block and all three must agree.
+
+        It is the one per-gas block that carries its own slot number, so it is
+        read by slot rather than by position - but the reader still steps over
+        it a fixed number of commas at a time. A field added to the writers and
+        not to nGasInstrFields shifts everything after the block: the
+        per-hygrometer fluxes, the CEC descriptor anchored to the end of the
+        row, and the biomet chunk between them.
+        """
+        text = _reader_text()
+        m = re.search(r"integer, parameter :: nGasInstrFields = (\d+)", text)
+        self.assertIsNotNone(m, "nGasInstrFields is gone or renamed")
+        declared = int(m.group(1))
+
+        def emitted(path, anchor):
+            body = (SRC / path).read_text(encoding="utf-8", errors="replace")
+            body = body[body.index(anchor):]
+            body = body[:body.index("end do")]
+            return len(re.findall(r"call Add\w*DatumToDataline\(", body))
+
+        rp = emitted("src_rp/write_out_fluxnet.f90",
+                     "do j = 1, nFluxnetInstrSlots")
+        fcc = emitted("src_fcc/write_out_fluxnet_fcc.f90",
+                      "do i = 1, lEx%n_gas_instr")
+        self.assertEqual(rp, declared,
+                         f"RP writes {rp} fields per analyser, reader steps "
+                         f"over {declared}")
+        self.assertEqual(fcc, declared,
+                         f"FCC re-emits {fcc} fields per analyser, reader "
+                         f"steps over {declared}")
+
+        header = (SRC / ".." / "src" / "src_rp" / "init_fluxnet_file_rp.f90")
+        htext = header.read_text(encoding="utf-8", errors="replace")
+        hblock = htext[htext.index("'NUM_GAS_INSTR'"):]
+        hblock = hblock[:hblock.index("end do")]
+        names = re.findall(r"_INSTR_\w+", hblock)
+        #: The header names every field the row carries except the slot index,
+        #: which it calls _INSTR_SLOT - so the two counts match exactly.
+        self.assertEqual(len(names), declared,
+                         f"the header names {len(names)} fields per analyser, "
+                         f"the row carries {declared}")

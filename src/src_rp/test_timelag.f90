@@ -58,7 +58,7 @@ subroutine TestTimeLag(Set, N)
     real(kind = dbl) :: DefCov(GHGNumVar)
     real(kind = dbl) :: MaxCov(GHGNumVar)
 
-    write(*, '(a)', advance = 'no') '   Time lag test..'
+    call LogSayNoAdv('   Time lag test..')
 
     !> Initializations
     hflags = 0
@@ -110,7 +110,7 @@ subroutine TestTimeLag(Set, N)
     !> the writers slice from firstGas + 1 rather than from the end.
     call PackFlagString(hflags, GHGNumVar, CharHF%tl)
     call PackFlagString(sflags, GHGNumVar, CharSF%tl)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine TestTimeLag
 
 !***************************************************************************

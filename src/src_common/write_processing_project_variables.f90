@@ -55,6 +55,10 @@ subroutine WriteProcessingProjectVariables()
                     // trim(adjustl(EPPrjCTags(2)%value)) &
                     // ' is newer than this engine supports (' &
                     // MaxSupportedIniVer // ').'
+                write(ulog, '(a)') '  Fatal error(96)> Project file format version ' &
+                    // trim(adjustl(EPPrjCTags(2)%value)) &
+                    // ' is newer than this engine supports (' &
+                    // MaxSupportedIniVer // ').'
                 call ExceptionHandler(96)
             end if
         end if
@@ -424,6 +428,7 @@ subroutine WriteProcessingProjectVariables()
         Dir%main_out = EPPrjCTags(35)%value
         if (len_trim(Dir%main_out) == 0) then
             write(*, *)
+            write(ulog, *)
             call ExceptionHandler(36)
         end if
         call AdjDir(Dir%main_out, slash)
@@ -695,10 +700,16 @@ real(kind = sgl) function DefaultMolecularWeight(var)
     species = var
     call uppercase(species)
     select case (trim(adjustl(species)))
-        case ('CO2'); DefaultMolecularWeight = 44.01e-3
+        !> Carbon dioxide and nitrous oxide weigh nearly the same and were
+        !> written to the same two decimals, so the table said they weigh
+        !> *exactly* the same. On a site measuring both, that made the two
+        !> indistinguishable by eye in the one place their identity is stated.
+        !> Six figures on the atomic weights the rest of this table already
+        !> uses - C 12.0107, N 14.0067, O 15.9994, H 1.00794 - separates them.
+        case ('CO2'); DefaultMolecularWeight = 44.0095e-3
         case ('H2O'); DefaultMolecularWeight = MW_H2O
-        case ('CH4'); DefaultMolecularWeight = 16.04e-3
-        case ('N2O'); DefaultMolecularWeight = 44.01e-3
+        case ('CH4'); DefaultMolecularWeight = 16.0425e-3
+        case ('N2O'); DefaultMolecularWeight = 44.0128e-3
         case ('CO');  DefaultMolecularWeight = 28.0101e-3
         case ('SO2'); DefaultMolecularWeight = 64.066e-3
         case ('NH3'); DefaultMolecularWeight = 17.0305e-3
@@ -709,7 +720,7 @@ real(kind = sgl) function DefaultMolecularWeight(var)
         case ('O2');  DefaultMolecularWeight = 31.9988e-3
         case ('AR');  DefaultMolecularWeight = 39.948e-3
         case ('COS'); DefaultMolecularWeight = 60.075e-3
-        case default; DefaultMolecularWeight = 44.01e-3
+        case default; DefaultMolecularWeight = 44.0128e-3
     end select
 end function DefaultMolecularWeight
 

@@ -196,11 +196,18 @@ program EddyFlowRP
     !****** INITIALIZATION PART COMMON TO ALL SW COMPONENTS ********************
     !***************************************************************************
     !***************************************************************************
-    write(*, '(a)') ''
-    write(*, '(a)') ' *******************'
-    write(*, '(a)') '  Executing EddyFlow '
-    write(*, '(a)') ' *******************'
-    write(*, '(a)') ''
+    !> Connect the log before anything is said. It has no name yet - the
+    !> output folder is not known until the project is read - so it starts on a
+    !> scratch file, and LogInit copies it across once there is somewhere to
+    !> put it. Late instead, and every line up to that point would write to a
+    !> stray fort.163 in whatever directory the run started in.
+    call LogStart()
+
+    call LogSay('')
+    call LogSay(' *******************')
+    call LogSay('  Executing EddyFlow ')
+    call LogSay(' *******************')
+    call LogSay('')
 
     app = rp_app
 
@@ -279,6 +286,11 @@ program EddyFlowRP
     !> Create output directory if it does not exist, otherwise is silent
     mkdir_status = CreateDir('"' //trim(adjustl(Dir%main_out)) // '"')
 
+    !> The run log, as soon as there is a folder to put it in. Everything said
+    !> before this - the banner, the project file, any exception raised while
+    !> reading it - was buffered and is flushed here.
+    call InitRunLog()
+
     !> Check on filename template
     call tsValidateTemplate(EddyFlowProj%fname_template)
 
@@ -304,9 +316,12 @@ program EddyFlowRP
         !> explicitly selects an alternative metadata file
         write(*,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
             // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
+        write(ulog,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
+            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
         call ReadMetadataFile(Col, AuxFile%metadata, IniFileNotFound, .true.)
         if (IniFileNotFound) then
             write(*, *)
+            write(ulog, *)
             call ExceptionHandler(22)
         end if
         !> Retrieve variables to be used (from EddyFlow project file) \n
@@ -316,10 +331,11 @@ program EddyFlowRP
         call MetadataFileValidation(Col, passed, faulty_col)
         if (.not. passed(1)) then
             write(*, *)
+            write(ulog, *)
             call InformOfMetadataProblem(passed, faulty_col)
             call ExceptionHandler(23)
         end if
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     else
         !> In case of standard GHG processing, without alternative metadata \n
         !> file one GHG file must be opened to read the metadata content for \n
@@ -380,8 +396,9 @@ program EddyFlowRP
     !> Initialize external biomet data
     if (index(EddyFlowProj%biomet_data, 'ext_') /= 0) then
         if (EddyFlowProj%biomet_data == 'ext_dir') then
-            write(*,'(a)') ' Reading external biomet file(s) from:'
+            call LogSay(' Reading external biomet file(s) from:')
             write(*,'(a)') '  ' // trim(adjustl(Dir%biomet))
+            write(ulog,'(a)') '  ' // trim(adjustl(Dir%biomet))
             call NumberOfFilesInDir(Dir%biomet, &
                 trim(adjustl(EddyFlowProj%biomet_tail)), &
                 .false., 'none', TotNumFile, NumFileNoRecurse)
@@ -390,7 +407,7 @@ program EddyFlowRP
             else
                 NumBiometFiles = NumFileNoRecurse
             end if
-            write(*, '(a)') ' Done.'
+            call LogSay(' Done.')
         else
             NumBiometFiles = 1
         end if
@@ -469,12 +486,12 @@ program EddyFlowRP
     !***************************************************************************
 
     if (AssessmentOnly) then
-        write(*,'(a)') ' Auxiliary assessment-only session requested.'
+        call LogSay(' Auxiliary assessment-only session requested.')
         if (RPsetup%tlag_assessment_only) &
-            write(*,'(a)') '  Time-lag optimization will be created.'
+            call LogSay('  Time-lag optimization will be created.')
         if (RPsetup%pf_assessment_only) &
-            write(*,'(a)') '  Planar-fit file will be created.'
-        write(*,'(a)') ''
+            call LogSay('  Planar-fit file will be created.')
+        call LogSay('')
     end if
 
     !> Method 5 uses a per-period cache when an existing time-lag file was
@@ -483,19 +500,19 @@ program EddyFlowRP
         call ReadPwbTimelagCache(AuxFile%to, PwbCacheRecognized, PwbCacheValid)
         if (PwbCacheRecognized) then
             if (.not. PwbCacheValid) error stop 'PWB time-lag cache could not be read safely.'
-            write(*, '(a)') ' PWB per-period time-lag cache found, retrieving content..'
-            write(*, '(a)') ' PWB mode: exact per-period cache reuse; missing entries will be detected.'
+            call LogSay(' PWB per-period time-lag cache found, retrieving content..')
+            call LogSay(' PWB mode: exact per-period cache reuse; missing entries will be detected.')
         else
             TimeLagOptSelected = .true.
             Meth%tlag = 'tlag_opt'
-            write(*, '(a)') ' PWB mode: aggregate/RH-class time-lag reuse; PWB detection is disabled.'
+            call LogSay(' PWB mode: aggregate/RH-class time-lag reuse; PWB detection is disabled.')
         end if
     elseif (PwbCacheGenerate) then
         call InitPwbTimelagCache()
-        write(*, '(a)') ' PWB mode: pre-generation followed by cache-backed production processing.'
+        call LogSay(' PWB mode: pre-generation followed by cache-backed production processing.')
     elseif (trim(adjustl(Meth%tlag)) == 'pwb') then
         call InitPwbTimelagCache()
-        write(*, '(a)') ' PWB mode: live detection during production processing.'
+        call LogSay(' PWB mode: live detection during production processing.')
     end if
     if (Meth%tlag == 'pwb') then
         PwbTimelagOptSize = size(RawTimeSeries) - 1
@@ -510,7 +527,7 @@ program EddyFlowRP
             if (TOSetup%h2o_nclass > 1) &
                 TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)
         else
-            write(*,'(a)') ' Performing time-lag optimization:'
+            call LogSay(' Performing time-lag optimization:')
 
             if (PwbCacheGenerate .and. EddyFlowProj%subperiod) then
                 !> PWB caches cover the actual requested output range, not the
@@ -545,6 +562,9 @@ program EddyFlowRP
             !> Count maximum number of periods for timelag optimization
             write(TmpString1, '(i7)') toEndTimestampIndx - toStartTimestampIndx
             write(*, '(a)') '  Maximum number of flux averaging periods &
+                &available for time-lag optimization: ' &
+                // trim(adjustl(TmpString1))
+            write(ulog, '(a)') '  Maximum number of flux averaging periods &
                 &available for time-lag optimization: ' &
                 // trim(adjustl(TmpString1))
 
@@ -597,7 +617,7 @@ program EddyFlowRP
                 !> Averaging period advancement
                  if (day /= 0) then
                     if (EddyFlowProj%caller == 'console') then
-                        write(*, '(a)', advance = 'no') '#'
+                        call LogSayNoAdv('#')
                     else
                         call DisplayProgress('avrg_interval', &
                             '   another small step to the time-lag: ', &
@@ -612,6 +632,7 @@ program EddyFlowRP
                     day   = tsStart%day
                     if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)')
+                        write(ulog, '(a)')
                         call DisplayProgress('daily','  Importing data for ', &
                             tsStart, 'no')
                     else
@@ -905,7 +926,8 @@ program EddyFlowRP
 
             end do to_periods_loop
             write(*, '(a)')
-            write(*, '(a)') ' Done.'
+            write(ulog, '(a)')
+            call LogSay(' Done.')
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.    *************************
@@ -936,7 +958,7 @@ program EddyFlowRP
                 end if
                 call ReportPwbDiagnostics()
                 call ResetPwbDiagnostics()
-                write(*,'(a)') ' PWB time-lag cache generation session terminated.'
+                call LogSay(' PWB time-lag cache generation session terminated.')
             else
             !> Adjust time-lag opt dataset to eliminate errors,
             !> so that it's easier to treat them later
@@ -958,9 +980,10 @@ program EddyFlowRP
                     toH2On, TOSetup%h2o_nclass, TOSetup%h2o_class_size)
 
             if (allocated(toH2On)) deallocate(toH2On)
-            write(*,'(a)') ' Time-lag optimization session terminated.'
+            call LogSay(' Time-lag optimization session terminated.')
             end if
             write(*,'(a)')
+            write(ulog,'(a)')
         end if
     end if
 
@@ -987,7 +1010,7 @@ program EddyFlowRP
                 end do
             end do secloop2
         else
-            write(*,'(a)') ' Performing planar-fit assessment:'
+            call LogSay(' Performing planar-fit assessment:')
 
             !> If zero sectors were selected, set to 1 sector by
             !> default and inform
@@ -1026,6 +1049,9 @@ program EddyFlowRP
             write(TmpString1, '(i7)') &
                 pfEndTimestampIndx - pfStartTimestampIndx
             write(*, '(a)') '  Maximum number of &
+                &flux averaging periods available for planar-fit: ' &
+                // trim(adjustl(TmpString1))
+            write(ulog, '(a)') '  Maximum number of &
                 &flux averaging periods available for planar-fit: ' &
                 // trim(adjustl(TmpString1))
 
@@ -1073,7 +1099,7 @@ program EddyFlowRP
                 !> Averaging period advancement
                 if (day /= 0) then
                     if (EddyFlowProj%caller == 'console') then
-                        write(*, '(a)', advance = 'no') '#'
+                        call LogSayNoAdv('#')
                     else
                         call DisplayProgress('avrg_interval', &
                             '   another small step to the planar-fit: ', &
@@ -1088,6 +1114,7 @@ program EddyFlowRP
                     day   = tsStart%day
                     if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)')
+                        write(ulog, '(a)')
                         call DisplayProgress('daily', &
                             '  Importing wind data for ', tsStart, 'no')
                     else
@@ -1236,7 +1263,8 @@ program EddyFlowRP
                 pfWind(pfn, w) = Stats4%Mean(w)
             end do pf_periods_loop
             write(*, '(a)')
-            write(*, '(a)') ' Done.'
+            write(ulog, '(a)')
+            call LogSay(' Done.')
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.  ***************************
@@ -1279,11 +1307,14 @@ program EddyFlowRP
             write(LogInteger, '(i6)') PFSetup%num_sec
             write(*, '(a)') ' Calculating planar fit rotation matrices for ' &
                                   // trim(adjustl(LogInteger)) // ' sector(s).'
+            write(ulog, '(a)') ' Calculating planar fit rotation matrices for ' &
+                                  // trim(adjustl(LogInteger)) // ' sector(s).'
 
             !> Loop over wind sectors
             GoPlanarFit = .true.
             secloop: do sec = 1, PFSetup%num_sec
                 write(*, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
+                write(ulog, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
                 if (PFSetup%wsect_exclude(sec)) then
                     GoPlanarFit(sec) = .false.
                     PFb(:, sec) = error
@@ -1362,7 +1393,7 @@ program EddyFlowRP
                 !> Update sector-wise rotation matrix
                 PFMat(:, :, sec) = PP
 
-                write(*, '(a)') ' Done.'
+                call LogSay(' Done.')
             end do secloop
 
             !> Fix sectors without calculations, using closest
@@ -1376,8 +1407,9 @@ program EddyFlowRP
 
             if (allocated (pfWindBySect)) deallocate(pfWindBySect)
             if (allocated (pfNumElem)) deallocate(pfNumElem)
-            write(*,'(a)') ' Planar Fit session terminated.'
+            call LogSay(' Planar Fit session terminated.')
             write(*,'(a)')
+            write(ulog,'(a)')
         end if
     elseif (.not. AssessmentOnly) then
         if (.not. allocated(GoPlanarFit)) allocate(GoPlanarFit(PFSetup%num_sec))
@@ -1386,8 +1418,8 @@ program EddyFlowRP
     if (AssessmentOnly) then
         if (allocated(bf)) deallocate(bf)
         if (allocated(Raw)) deallocate(Raw)
-        write(*,'(a)') ' Auxiliary assessment-only session completed.'
-        write(*,'(a)') ' Normal raw-data processing and flux calculation were not run.'
+        call LogSay(' Auxiliary assessment-only session completed.')
+        call LogSay(' Normal raw-data processing and flux calculation were not run.')
         stop ''
     end if
 
@@ -1432,7 +1464,7 @@ program EddyFlowRP
     !***************************************************************************
     !***************************************************************************
     if (DriftCorr%method /= 'none' .and. nCalibEvents > 0) then
-        write(*,'(a)') ' Elaborating IRGA calibration-check history..'
+        call LogSay(' Elaborating IRGA calibration-check history..')
 
         !> Loop on periods to be processed
         pcount = rpStartTimestampIndx - 1
@@ -1499,6 +1531,8 @@ program EddyFlowRP
                 call DateTypeToDateTime(tsStart, date, time)
                 if (date /= loggedDate) then
                     write(*, '(a)') &
+                        '  Calibration-check data found on: ' // date(1:10)
+                    write(ulog, '(a)') &
                         '  Calibration-check data found on: ' // date(1:10)
                     loggedDate = date
                 end if
@@ -1625,18 +1659,23 @@ program EddyFlowRP
             else
                 call hms_delta_print(' Start metadata retrieving: ', '')
             end if
-            write(*, '(a)') ' Processing time period:'
+            call LogSay(' Processing time period:')
             call DateTypeToDateTime(MasterTimeSeries(rpStartTimestampIndx), &
                 tmpDate, tmpTime)
             write(*, '(a)') '  Start: ' // tmpDate // ' ' // tmpTime
+            write(ulog, '(a)') '  Start: ' // tmpDate // ' ' // tmpTime
             call DateTypeToDateTime(MasterTimeSeries(rpEndTimestampIndx - 1) &
                 + DateStep , tmpDate, tmpTime)
             write(*, '(a)') '    End: ' // tmpDate // ' ' // tmpTime
+            write(ulog, '(a)') '    End: ' // tmpDate // ' ' // tmpTime
             write(TmpString1, '(i7)') &
                 rpEndTimestampIndx - rpStartTimestampIndx
             write(*, '(a)') '  Total number of flux averaging periods: ' &
                 // trim(adjustl(TmpString1))
+            write(ulog, '(a)') '  Total number of flux averaging periods: ' &
+                // trim(adjustl(TmpString1))
             write(*, '(a)')
+            write(ulog, '(a)')
         end if
         pcount = pcount + 1
 
@@ -1668,11 +1707,16 @@ program EddyFlowRP
         !> Some logging
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
             write(*, '(a)')
+            write(ulog, '(a)')
             call hms_current_print(' ',': processing new &
                 &flux averaging period', .true.)
             write(*, '(a)') ' From: ' &
                 // trim(date)   // ' ' // trim(time)
+            write(ulog, '(a)') ' From: ' &
+                // trim(date)   // ' ' // trim(time)
             write(*, '(a)') '   To: ' &
+                // trim(Stats%date) // ' ' // trim(Stats%time)
+            write(ulog, '(a)') '   To: ' &
                 // trim(Stats%date) // ' ' // trim(Stats%time)
         end if
 
@@ -1789,6 +1833,7 @@ program EddyFlowRP
 
             !> Some logging
             write(*, '(a, i6)') '  Number of valid records available for this period: ', Essentials%n_in
+            write(ulog, '(a, i6)') '  Number of valid records available for this period: ', Essentials%n_in
 
             !> Period skip control
             MissingRecords = dfloat(MaxPeriodNumRecords - Essentials%n_in) &
@@ -1907,7 +1952,7 @@ program EddyFlowRP
                 if(allocated(UserSet)) deallocate(UserSet)
                 if(allocated(UserPrimes)) deallocate(UserPrimes)
                 call ExceptionHandler(58)
-                write(*,*)''
+                call LogSayList('')
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
             end if
@@ -1981,7 +2026,7 @@ program EddyFlowRP
                 if(allocated(UserSet)) deallocate(UserSet)
                 if(allocated(UserPrimes)) deallocate(UserPrimes)
                 call ExceptionHandler(59)
-                write(*,*)''
+                call LogSayList('')
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
             end if
@@ -2040,6 +2085,8 @@ program EddyFlowRP
                     size(E2Set, 1), size(E2Set, 2), .true.)
             else
                 write(*,'(a)') '  Cross-wind correction not requested &
+                    &or not applicable'
+                write(ulog,'(a)') '  Cross-wind correction not requested &
                     &or not applicable'
             end if
 
@@ -2247,17 +2294,17 @@ program EddyFlowRP
 
             !> ===== 7. DETRENDING =============================================
             !> Calculate fluctuations based on chosen detrending method
-            write(*, '(a)', advance = 'no') '  Detrending..'
+            call LogSayNoAdv('  Detrending..')
             call Fluctuations(E2Set, E2Primes, &
                 size(E2Set, 1), size(E2Set, 2), RPsetup%Tconst, Stats, E2Col)
             if (allocated(E2Set)) deallocate(E2Set)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
             if (NumUserVar > 0) then
-                write(*, '(a)', advance = 'no') '  Detrending user set..'
+                call LogSayNoAdv('  Detrending user set..')
                 call UserFluctuations(UserSet, UserPrimes, &
                     size(UserSet, 1), size(UserSet, 2), &
                     RPsetup%Tconst, UserStats, UserCol)
-                write(*,'(a)') ' Done.'
+                call LogSay(' Done.')
             end if
 
             !> Output raw dataset seventh level
@@ -2299,7 +2346,7 @@ program EddyFlowRP
 
             !> Extract CEC before spectral processing interpolates E2Primes.
             if (EddyFlowProj%do_cec > 0) then
-                write(*, '(a)', advance='no') '  Calculating CEC partitioning..'
+                call LogSayNoAdv('  Calculating CEC partitioning..')
                 cec_co2_signal_col = 0
                 cec_h2o_signal_col = 0
                 do j = 1, NumUserVar
@@ -2325,7 +2372,7 @@ program EddyFlowRP
                 end if
                 CECFlux%r_ET_cec = CECDescriptor%r_ET
                 CECFlux%r_Fc_cec = CECDescriptor%r_Fc
-                write(*, '(a)') ' Done.'
+                call LogSay(' Done.')
             end if
             if (allocated(UserSet)) deallocate(UserSet)
 
@@ -2355,6 +2402,10 @@ program EddyFlowRP
                 end if
 
                 Nmin = - Nmin
+                !> Which row of E2Primes the spectral set starts at. A slower
+                !> column's samples are located relative to E2Primes, and this
+                !> is what carries that phase across the trim.
+                SpecRowOffset = Nmin
                 !> Recalculate basic statistics with PeriodRecords=SpecRow
                 !> as number of observations
                 allocate(SpecSet(SpecRow, E2NumVar))
@@ -2566,6 +2617,7 @@ program EddyFlowRP
             call hms_delta_print('  Metadata retrieving time: ','')
         end if
         write(*, *)
+        write(ulog, *)
 
         if (allocated(UserCol))  deallocate(UserCol)
         if (allocated(E2Set))    deallocate(E2Set)
@@ -2633,12 +2685,16 @@ program EddyFlowRP
 
         !> Alerting and closing run
         write(*,'(a)')
+        write(ulog,'(a)')
         call ExceptionHandler(35)
     end if
 
     !> Creating datasets from output files
     write(*, '(a)')
+    write(ulog, '(a)')
     write(*, '(a)') ' Raw data processing terminated. &
+        &Creating continuous datasets if necessary..'
+    write(ulog, '(a)') ' Raw data processing terminated. &
         &Creating continuous datasets if necessary..'
 
     if (make_dataset_common) then
@@ -2653,7 +2709,7 @@ program EddyFlowRP
     else
         call RenameTmpFilesRP()
     end if
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 
     !> Edit .eddypro file updating path to ex_file
     call ForceSlash(FLUXNET_Path, .false.)
@@ -2662,6 +2718,8 @@ program EddyFlowRP
 
     if (EddyFlowProj%run_env /= 'embedded') &
         write(*, '(a)') ' FLUXNET file path: ' &
+            // trim(FLUXNET_Path(1:index(FLUXNET_Path, '.tmp')-1))
+        write(ulog, '(a)') ' FLUXNET file path: ' &
             // trim(FLUXNET_Path(1:index(FLUXNET_Path, '.tmp')-1))
 
     !> Copy ".eddypro" file into output folder
@@ -2677,11 +2735,11 @@ program EddyFlowRP
         // trim(adjustl(TmpDir)) // '"')
 
     if (.not. EddyFlowProj%fcc_follows) then
-        write(*, '(a)') ''
-        write(*, '(a)') ' ****************************************************'
-        write(*, '(a)') ' Program EddyFlow executed gracefully.'
-        write(*, '(a)') ' Check results in the selected output directory.     '
-        write(*, '(a)') ' ****************************************************'
+        call LogSay('')
+        call LogSay(' ****************************************************')
+        call LogSay(' Program EddyFlow executed gracefully.')
+        call LogSay(' Check results in the selected output directory.     ')
+        call LogSay(' ****************************************************')
     end if
     stop ''
 end program EddyFlowRP

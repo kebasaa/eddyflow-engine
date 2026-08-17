@@ -1038,6 +1038,105 @@ end subroutine SpectralGasNames
 
 !***************************************************************************
 !
+!> \brief       The species and analyser a spectral assessment block belongs to
+!> \author      Jonathan Muller
+!> \note        The block name alone cannot say which analyser a block is for.
+!>              It is an ordinal over repeats of a label - CO2_1 is whichever
+!>              CO2 record came first - so the moment a project lists its
+!>              records in a different order, the same file hands CO2_1's
+!>              transfer function to the other analyser. On CH-LAE that
+!>              happened on an ordinary re-save: the first CO2 record went from
+!>              the LI-7200 to the MIRO, and the two cells are 943 hPa and
+!>              70 hPa apart.
+!>
+!>              So the block states what it is for. Written past `fc`, where
+!>              every reader of this format stops - the block name is sliced at
+!>              the word TFP - so a file carrying it still parses in a build
+!>              that knows nothing about it, exactly as `groups=` does.
+!
+!***************************************************************************
+subroutine SpectralBlockStamp(gas_slot, stamp)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    character(*), intent(out) :: stamp
+    integer :: rec
+
+    stamp = ''
+    rec = gas_slot - firstGas + 1
+    if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    stamp = '   var=' // trim(adjustl(EddyFlowProj%gas(rec)%var)) // &
+            ' instr=' // trim(adjustl(EddyFlowProj%gas(rec)%instr))
+end subroutine SpectralBlockStamp
+
+!***************************************************************************
+!
+!> \brief       The gas slot a stamped assessment block names, or 0
+!> \author      Jonathan Muller
+!> \note        Answers only when the line carries both tokens and exactly one
+!>              record matches them. Anything else - an unstamped file, a
+!>              species this project does not measure, or two records that
+!>              genuinely declare the same species on the same analyser - is
+!>              left to the caller's name match, which is what every file
+!>              written before the stamp relies on.
+!
+!***************************************************************************
+integer function SlotFromSpectralStamp(dataline)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: dataline
+    character(64) :: want_var, want_instr
+    integer :: gas, rec, hits
+
+    SlotFromSpectralStamp = 0
+    call SpectralStampToken(dataline, 'var=', want_var)
+    call SpectralStampToken(dataline, 'instr=', want_instr)
+    if (len_trim(want_var) == 0 .or. len_trim(want_instr) == 0) return
+
+    hits = 0
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (trim(adjustl(EddyFlowProj%gas(rec)%var)) /= trim(want_var)) cycle
+        if (trim(adjustl(EddyFlowProj%gas(rec)%instr)) /= trim(want_instr)) cycle
+        hits = hits + 1
+        SlotFromSpectralStamp = gas
+    end do
+    if (hits /= 1) SlotFromSpectralStamp = 0
+end function SlotFromSpectralStamp
+
+!***************************************************************************
+!
+!> \brief       The value of one `key=value` token on a block header line
+!> \author      Jonathan Muller
+!> \note        Case-insensitive on the value, since the writer uppercases the
+!>              block name and a hand-edited file may uppercase anything else.
+!
+!***************************************************************************
+subroutine SpectralStampToken(dataline, key, value)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: dataline
+    character(*), intent(in) :: key
+    character(*), intent(out) :: value
+    integer :: at, stop_at
+
+    value = ''
+    at = index(dataline, key)
+    if (at == 0) return
+    at = at + len_trim(key)
+    stop_at = at
+    do while (stop_at <= len_trim(dataline))
+        if (dataline(stop_at:stop_at) == ' ') exit
+        stop_at = stop_at + 1
+    end do
+    if (stop_at <= at) return
+    value = dataline(at:stop_at - 1)
+    call lowercase(value)
+end subroutine SpectralStampToken
+
+!***************************************************************************
+!
 ! \brief       Full-output scales and labels for every configured gas slot.
 ! \author      Jonathan Muller
 ! \note        One call fills the header and the row writer alike, so the

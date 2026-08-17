@@ -23,8 +23,27 @@ RH = ['  5 - 15', ' 15 - 25', ' 25 - 35', ' 35 - 45', ' 45 - 55', ' 55 - 65',
 # left unfitted, and the file read as short - which sent the whole run to the
 # analytic fallback. Every fixture in this family was therefore exercising
 # Moncrieff, not the fitted path it exists to cover.
-BLOCKS = [('CO2_1', 0.20, 1.00), ('CH4', 0.20, 1.00), ('COS', 0.20, 1.00),
-          ('N2O_1', 0.20, 0.05), ('CO2_2', 0.20, 0.05), ('N2O_2', 0.20, 0.05)]
+#
+# Each block also states the species and analyser it was fitted for. The name
+# is an ordinal over repeats - CO2_1 is whichever CO2 record came first - so it
+# cannot survive a project that lists its records in another order, and handing
+# CO2_1's transfer function to the other analyser is not a small error when the
+# two cells are 943 hPa and 70 hPa apart. The stamp goes past `fc`, where the
+# reader stops, so an older build ignores it.
+#
+# N2O_1 and N2O_2 deliberately carry the SAME stamp: base_n_gas declares n2o on
+# the MIRO twice. A stamp matching two records identifies neither, so those two
+# fall back to the name match - which is the case the fallback exists for.
+BLOCKS = [('CO2_1', 0.20, 1.00, 'co2', 'miro_mga4_6_2'),
+          ('CH4', 0.20, 1.00, 'ch4', 'none'),
+          ('COS', 0.20, 1.00, 'cos', 'miro_mga4_6_2'),
+          ('N2O_1', 0.20, 0.05, 'n2o', 'miro_mga4_6_2'),
+          ('CO2_2', 0.20, 0.05, 'co2', 'li7200_1'),
+          ('N2O_2', 0.20, 0.05, 'n2o', 'miro_mga4_6_2')]
+
+
+def stamp(var, instr):
+    return '   var=%s instr=%s' % (var, instr)
 
 L = []
 L.append('Transfer_function_parameters_(TFP)_for_IIR-shaped_filter_'
@@ -34,12 +53,14 @@ L.append('Fn:_normalization_parameter')
 L.append('Water_vapour_TFP_are_calculated_for_9_RH_classes.')
 L.append('Other_gases_TFP_are_calculated_on_a_monthly_base.')
 L.append('-' * 84)
-L.append('Water vapour TFP              Fn          fc    numerosity')
+L.append('Water vapour TFP              Fn          fc    numerosity'
+         + stamp('h2o', 'miro_mga4_6_2'))
 for r in RH:
     L.append('RH class %s%% = %11.5f %11.5f %12d' % (r, 0.20, 0.80, 500))
 L.append('')
-for name, fn, fc in BLOCKS:
-    L.append('%s            TFP            Fn          fc' % name)
+for name, fn, fc, var, instr in BLOCKS:
+    L.append('%s            TFP            Fn          fc%s'
+             % (name, stamp(var, instr)))
     for m in MONTHS:
         L.append('%-18s = %11.5f %11.5f ' % (m, fn, fc))
     L.append(' ')
@@ -52,9 +73,25 @@ for name, fn, fc in BLOCKS:
 # the header - that word is what tells the reader these are nine RH rows and
 # not twelve monthly ones.
 #
+# The name is the bare tag. It used to read `H2O_2 vapour TFP`, and the reader
+# takes everything before the word TFP as the name - so the block called itself
+# `H2O_2 VAPOUR`, matched no tag, and was consumed and thrown away on every
+# read. The block existed, the round trip did not.
+#
 # Given a cut-off far from the primary's 0.80 so that a second hygrometer
 # reading its own row cannot be mistaken for one falling back to the first's.
-L.append('H2O_2 vapour TFP              Fn          fc    numerosity')
+#
+# It also carries its own RH/cut-off coefficients. The standalone
+# `RH/fc_exponential_fit_parameters` section below is the PRIMARY's, and the
+# iir correction evaluates exp(A*RH^2 + B*RH + C) - so without a per-hygrometer
+# triple the second hygrometer takes the primary's curve however far apart the
+# two read, which is what made its nine fitted cut-offs decorative.
+#
+# -2,-1,-2 against the primary's 0.5,0.5,0.5 puts the two cut-offs about two
+# orders of magnitude apart, so a hygrometer reading its own row cannot be
+# mistaken for one falling back.
+L.append('H2O_2            TFP              Fn          fc    numerosity'
+         + stamp('h2o', 'li7200_1') + '   exp=-2.0,-1.0,-2.0')
 for r in RH:
     L.append('RH class %s%% = %11.5f %11.5f %12d' % (r, 0.20, 0.05, 500))
 L.append('')
@@ -78,7 +115,7 @@ with open(sa_path, 'w') as fh:
 
 # A short file: the historical three blocks only, to prove the reader notices
 # the count mismatch instead of consuming the next section as parameters.
-cut = L.index('COS            TFP            Fn          fc')
+cut = next(i for i, ln in enumerate(L) if ln.startswith('COS            TFP'))
 short = L[:cut] + L[L.index(
     'RH/fc_exponential_fit_parameters_for_water_vapour_spectral_corrections'):]
 with open(os.path.join(here, 'sa_n_gas_short.txt'), 'w') as fh:
@@ -101,9 +138,9 @@ FC_GROUP2 = 0.05
 
 G = list(L[:L.index('')])          # header + RH table, up to the blank line
 G.append('')
-for name, fn, _ in BLOCKS:
-    G.append('%s            TFP            Fn          fc   groups=%s'
-             % (name, GROUPING))
+for name, fn, _, var, instr in BLOCKS:
+    G.append('%s            TFP            Fn          fc   groups=%s%s'
+             % (name, GROUPING, stamp(var, instr)))
     for i, m in enumerate(MONTHS, start=1):
         fc = FC_GROUP1 if i <= 2 else FC_GROUP2
         G.append('%-18s = %11.5f %11.5f ' % (m, fn, fc))
@@ -168,5 +205,34 @@ variant('base_n_gas_sa_permonth.eddyflow', grp_path,
 # continues for the other seven gases rather than stopping.
 variant('base_n_gas_sa_bad.eddyflow', sa_path, months='1-13,junk', only=[1])
 
+
+# The same file, read by a project that lists its two CO2 records the other way
+# round.
+#
+# This is the case the stamps exist for. Block names are ordinals over repeats
+# of a species - CO2_1 is whichever CO2 record came first - so with names alone
+# the MIRO's transfer function lands on the LI-7200 and vice versa the moment
+# the records are re-ordered, which an ordinary re-save in the interface is
+# enough to do. The two analysers' cells are 943 hPa and 70 hPa apart, so this
+# is not a rounding-level error.
+#
+# The two CO2 blocks carry cut-offs an order of magnitude apart (1.00 and 0.05),
+# so co2_1_scf and co2_2_scf must simply *swap* between this fixture and
+# base_n_gas_sa. If they stay put, the block followed the position.
+swapped = []
+for ln in open(os.path.join(here, 'base_n_gas_sa.eddyflow')).read().splitlines():
+    if ln.startswith('gas_1_instr='):
+        swapped.append('gas_1_instr=li7200_1')
+    elif ln.startswith('gas_1_col='):
+        swapped.append('gas_1_col=21')
+    elif ln.startswith('gas_6_instr='):
+        swapped.append('gas_6_instr=miro_mga4_6_2')
+    elif ln.startswith('gas_6_col='):
+        swapped.append('gas_6_col=7')
+    else:
+        swapped.append(ln)
+with open(os.path.join(here, 'base_n_gas_sa_swapped.eddyflow'), 'w') as fh:
+    fh.write('\n'.join(swapped) + '\n')
+
 print('wrote %d-line assessment file, %d-line short file, %d-line two-group '
-      'file, 5 projects' % (len(L), len(short), len(G)))
+      'file, 6 projects' % (len(L), len(short), len(G)))
