@@ -154,6 +154,31 @@
 	       fast column's pass writes the error code from a slower column's missing rows into
 	       that column's trend, and only the last column present survives it. Affects the 'ew'
 	       detrending option alone
+	- New feature: The spectral assessment succeeds per gas. It was all or nothing: the file was
+	               written only if the primary hygrometer had a usable RH class, so a site whose water
+	               could not be fitted lost the blocks of the gases that had been - and at correction time
+	               one unfitted gas, or an unfitted RH regression, demoted every gas to Moncrieff. On a
+	               one-day CH-LAE assessment that cost CO2, N2O and COS their in-situ corrections because
+	               nine RH classes cannot be filled from 48 half-hours. The file is now written whenever
+	               any gas was fitted, each gas is corrected by the method its own data supports, and the
+	               gases that cannot be corrected in situ go through the analytic method instead of
+	               dragging the rest down with them
+	- Fix: The high-frequency method no longer sticks. The per-period fallback to Moncrieff was
+	       written back into the project's own setting, so the first period that could not be
+	       corrected in situ demoted every period after it for the rest of the run, whatever their
+	       own data looked like. The decision is now local to the period that makes it
+	- New feature: Warning(110) when the assessment file covers some gases and not others, raised
+	               whether the file was just written or read from disk. A file covering four gases out of
+	               six looks exactly like a file covering all six, and the difference decides whether half
+	               the fluxes carry an in-situ correction
+	- New feature: The readiness report says what each gas actually gets - in situ or analytically
+	               - and reports PARTIAL as its own outcome rather than calling it SUCCESS or FAILED
+	- Fix: The report stops recommending a flux limit that cannot help. A gas rejected for small
+	       fluxes is fixed by lowering the floor; a gas whose classes are too thinly populated is
+	       not, and the suggested floor - a percentile of what is already there - removes records
+	       when it lands above the current one, which is what it did for water at CH-LAE. The two
+	       failures now read differently: the second names the best class occupancy reached and
+	       points at the assessment window or sa_min_smpl
 
 7.2.5 (2026-07-27)
 

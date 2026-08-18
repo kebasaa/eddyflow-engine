@@ -61,8 +61,14 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     !> local variables
     integer :: month
     integer :: gas
-    integer :: wsl
     character(32) :: actual_hf_method
+    !> Which gases the in-situ method can be applied to this period, and
+    !> how many are left over for the analytic one.
+    logical :: insitu_ok(GHGNumVar)
+    logical :: analytic_only(GHGNumVar)
+    logical :: rh_ok
+    logical, external :: GasHasSpectralFit
+    integer :: n_analytic
     type(SpectralType) :: tmpBPCF
     include 'interfaces_1.inc'
 
@@ -83,55 +89,66 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     !> Spectral correction factors for all gases
     BPCF%of(firstGas:lastGas)  = 1d0
 
-    !> Relevant only to FCC - Before entering correction method,
-    !> check if the selected method can be implemented in the current situation
-    !> (defined by RH for H2O and by the month for other gases).
-    !> If not, sets the method to Moncrieff et al. 1997. Note that even if
-    !> only one condition fails, the method is set to Moncrieff for all gases
+    !> Relevant only to FCC - before entering the correction method, work out
+    !> which gases the method can actually be applied to. A gas is corrected in
+    !> situ only if the class it falls in this month got a cut-off frequency,
+    !> and a hygrometer additionally needs the RH regression that predicts its
+    !> cut-off from humidity.
+    !>
+    !> This used to be all-or-nothing, and said so: one unfitted gas, or an
+    !> unfitted RH regression, demoted every gas to Moncrieff. At CH-LAE that
+    !> cost CO2, N2O and COS their in-situ corrections because the two
+    !> hygrometers could not be fitted from a single day of data. Each gas now
+    !> answers for itself; the ones that cannot be corrected in situ are
+    !> collected and passed through the analytic method afterwards.
     actual_hf_method = trim(adjustl(EddyFlowProj%hf_meth))
+    insitu_ok = loc_var_present
+    n_analytic = 0
     if (app == 'EddyFlow-FCC') then
-        select case (trim(adjustl(EddyFlowProj%hf_meth)))
+        select case (trim(adjustl(actual_hf_method)))
             case('horst_97', 'ibrom_07', 'fratini_12')
                 call char2int(lEx%end_date(6:7), month, 2)
-                !> Asked of the site's water rather than of slot 6: the gate
-                !> is "this project has a hygrometer whose RH regression was
-                !> never fitted", and a project declaring its water elsewhere
+                !> Asked of each record rather than of slot 6, which is water
+                !> only by convention: a project declaring its water elsewhere
                 !> skipped the check entirely and then used unfitted
                 !> coefficients.
-                !> PrimaryWaterOutSlot is PrimaryWaterSlot with exactly this
-                !> fallback; the two lines it replaces were a copy of it.
-                wsl = PrimaryWaterOutSlot()
-                if(lEx%var_present(wsl) .and. (RegPar(dum, dum)%e1 == error &
-                    .or. RegPar(dum, dum)%e2 == error &
-                    .or. RegPar(dum, dum)%e3 == error)) then
+                rh_ok = RegPar(dum, dum)%e1 /= error &
+                    .and. RegPar(dum, dum)%e2 /= error &
+                    .and. RegPar(dum, dum)%e3 /= error
+                do gas = firstGas, lastGas
+                    if (.not. loc_var_present(gas)) cycle
+                    if (GasSlotIsWater(gas)) then
+                        !> A hygrometer needs both: the RH regression turns
+                        !> humidity into a cut-off, and its own RH classes are
+                        !> what the regression was fitted through. The old test
+                        !> asked only for the regression, so a hygrometer with
+                        !> no fitted class at all still counted as correctable.
+                        !> Same test the readiness report prints, so the report
+                        !> and the correction cannot disagree.
+                        insitu_ok(gas) = GasHasSpectralFit(gas)
+                        if (.not. rh_ok) insitu_ok(gas) = .false.
+                    else if (LocSetup%SA%class(gas, month) < 1 .or. &
+                        LocSetup%SA%class(gas, month) > MaxGasClasses) then
+                        !> An unclassified gas has no fitted cutoff to look up,
+                        !> and class 0 is not a valid RegPar index. Treat it as
+                        !> the missing fit it is.
+                        insitu_ok(gas) = .false.
+                    else if (RegPar(gas, LocSetup%SA%class(gas, month))%fc == error) then
+                        insitu_ok(gas) = .false.
+                    end if
+                    if (.not. insitu_ok(gas)) n_analytic = n_analytic + 1
+                end do
+                !> Nothing left for the in-situ method to do - say so with the
+                !> message that has always meant it, and switch wholesale.
+                if (.not. any(insitu_ok(firstGas:lastGas))) then
                     actual_hf_method = 'moncrieff_97'
+                    n_analytic = 0
                     write(*,*)
                     write(ulog,*)
                     call ExceptionHandler(69)
                 end if
-                if (actual_hf_method /= 'moncrieff_97') then
-                    do gas = firstGas, lastGas
-                        if(.not. GasSlotIsWater(gas) .and. lEx%var_present(gas)) then
-                            !> An unclassified gas has no fitted cutoff to
-                            !> look up, and class 0 is not a valid RegPar
-                            !> index. Treat it as the missing fit it is.
-                            if (LocSetup%SA%class(gas, month) < 1 .or. &
-                                LocSetup%SA%class(gas, month) > MaxGasClasses) then
-                                actual_hf_method = 'moncrieff_97'
-                                call ExceptionHandler(69)
-                                exit
-                            end if
-                            if(RegPar(gas,  LocSetup%SA%class(gas, month))%fc == error) then
-                                actual_hf_method = 'moncrieff_97'
-                                call ExceptionHandler(69)
-                                exit
-                            end if
-                        end if
-                    end do
-                end if
         end select
     end if
-    EddyFlowProj%hf_meth = actual_hf_method
 
     select case(trim(adjustl(actual_hf_method)))
         case('none', 'not')
@@ -156,7 +173,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
             if (app == 'EddyFlow-FCC') then
                 !> Correction after Horst (1997, BLM), in-situ/analytical
                 call BPCF_Horst97(measuring_height, displ_height, &
-                    loc_var_present, wind_speed, zL, ac_frequency, avrg_length, &
+                    insitu_ok, wind_speed, zL, ac_frequency, avrg_length, &
                     detrending_time_constant, detrending_method, lEx, LocSetup)
 
                 if (LocSetup%SA%horst_lens09 /= 'none') then
@@ -171,7 +188,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
             if (app == 'EddyFlow-FCC') then
                 !> Correction after Ibrom et al (2007, AFM), fully in-situ
                 call BPCF_Ibrom07(measuring_height, displ_height, &
-                    loc_var_present, wind_speed, zL, ac_frequency, avrg_length, &
+                    insitu_ok, wind_speed, zL, ac_frequency, avrg_length, &
                     detrending_time_constant, detrending_method, lEx, LocSetup)
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
@@ -184,7 +201,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
         case('fratini_12')
             if (app == 'EddyFlow-FCC') then
                 !> Correction after Fratini et al. 2012, AFM
-                call BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, &
+                call BPCF_Fratini12(insitu_ok, LocInstr, wind_speed, &
                     t_air, ac_frequency, avrg_length, detrending_time_constant, &
                     detrending_method, nfull, nrow_full, LocFileList, lEx, LocSetup)
 
@@ -196,6 +213,20 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 end if
             end if
     end select
+
+    !> The gases the in-situ method could not take. Moncrieff writes BPCF%of
+    !> only for the gases its mask names, so running it after the in-situ pass
+    !> leaves the fitted gases' factors standing and replaces only the rest -
+    !> including anything the in-situ routines wrote across the whole gas range
+    !> on their way past.
+    if (n_analytic > 0) then
+        analytic_only = loc_var_present
+        analytic_only(firstGas:lastGas) = loc_var_present(firstGas:lastGas) &
+            .and. .not. insitu_ok(firstGas:lastGas)
+        call BPCF_Moncrieff97(measuring_height, displ_height, &
+            analytic_only, LocInstr, wind_speed, t_air, zL, ac_frequency, &
+            avrg_length, detrending_time_constant, detrending_method, .false.)
+    end if
 
     !> Based on logger software version, decide whether to override
     !> user settings about BA and ZOH corrections to sonic data

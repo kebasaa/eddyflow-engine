@@ -42,6 +42,10 @@ subroutine OutputSpectralAssessmentResults(nbins)
     integer :: i
     integer :: pick
     integer :: goodj
+    !> Gases with a fit of their own, and whether any gas is missing one.
+    !> The file is written for the first; the second is what makes it partial.
+    integer :: n_fitted
+    integer :: n_unfitted
     integer :: cls
     integer :: gas
     integer :: month
@@ -74,6 +78,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum
     logical :: proceed
+    logical, external :: GasHasSpectralFit
     include '../src_common/interfaces_1.inc'
 
     !> Create output directory
@@ -99,6 +104,25 @@ subroutine OutputSpectralAssessmentResults(nbins)
         end do il
     end do ol
 
+    !> Whether the assessment has anything to say, asked of every gas rather
+    !> than of water alone. goodj is water's first usable RH class and stays
+    !> that, because the H2O spectra file below is written from it - but it
+    !> used to decide whether the assessment file existed at all, so a site
+    !> whose hygrometers could not be fitted lost the CO2, N2O and COS blocks
+    !> that had been fitted perfectly well, and every gas fell back to the
+    !> analytic correction.
+    n_fitted = 0
+    n_unfitted = 0
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (.not. fcc_var_present(gas)) cycle
+        if (GasHasSpectralFit(gas)) then
+            n_fitted = n_fitted + 1
+        else
+            n_unfitted = n_unfitted + 1
+        end if
+    end do
+
     !> Species names for every block header written below. Hoisted: the
     !> passive-gas spectra file further down is written under its own
     !> condition and is reachable without the assessment block.
@@ -122,9 +146,13 @@ subroutine OutputSpectralAssessmentResults(nbins)
     !> SPECTRAL ASSESSMENT
     if (FCCsetup%do_spectral_assessment) then
 
-        if (goodj == ierror) then
+        if (n_fitted == 0) then
             call ExceptionHandler(76)
         else
+            !> Some gases fitted and some not: the file is written and covers
+            !> only the first group. Said once, here, because this is where it
+            !> is decided - the correction then falls back per gas.
+            if (n_unfitted > 0) call ExceptionHandler(110)
             call LogSay(' Writing spectral assessment results on file.. ')
 
             !> Transfer function parameters

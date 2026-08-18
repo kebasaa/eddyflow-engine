@@ -213,13 +213,60 @@ class SecondHygrometerRoundTrip(unittest.TestCase):
             "slices at TFP, so any word before it becomes part of the name")
 
     def test_the_gate_looks_for_a_hygrometer_fit_in_the_rh_range(self):
-        """The gate asked the month range of a slot binned by humidity."""
-        src = code(GATE)
-        body = src[src.index("assessment_ready = h2o_ok"):]
-        arm = body[body.index("if (GasSlotIsWater(gas)) then"):]
+        """The gate asked the month range of a slot binned by humidity.
+
+        The test now reads GasHasSpectralFit, which is where that question
+        moved when the writer and the report stopped each answering it their
+        own way. The requirement is unchanged.
+        """
+        src = code("src/src_common/gas_slot_resolution.f90")
+        body = src[src.index("logical function GasHasSpectralFit"):]
+        body = body[:body.index("end function GasHasSpectralFit")]
+        arm = body[body.index("if (GasSlotIsWater(gas_slot)) then"):]
         self.assertLess(
             arm.index("do cls = RH10, RH90"), arm.index("else"),
             "a hygrometer's fit lives in RH10..RH90, not 1..MaxGasClasses")
+
+    def test_the_file_is_written_for_any_fitted_gas_not_only_for_water(self):
+        """Water failing used to discard the blocks of gases that had been
+        fitted perfectly well, and every gas then fell back to analytic."""
+        src = code(WRITER)
+        self.assertIn("if (n_fitted == 0) then", src,
+                      "the assessment file is gated on some gas being fitted")
+        gate = src[src.index("if (FCCsetup%do_spectral_assessment) then"):]
+        gate = gate[:gate.index("call LogSay(' Writing spectral assessment")]
+        self.assertNotIn(
+            "goodj == ierror", gate,
+            "the file is gated on water's RH classes again; goodj is water's "
+            "first usable class and belongs to the H2O spectra file below")
+        self.assertIn("call ExceptionHandler(110)", src,
+                      "a partial file must announce itself on the console")
+
+    def test_the_partial_warning_exists_and_names_both_outcomes(self):
+        src = code("src/src_common/exception_handler.f90")
+        self.assertIn("case(110)", src)
+        block = src[src.index("case(110)"):]
+        block = block[:block.index("end select")]
+        for phrase in ("analytical", "readiness report"):
+            self.assertIn(phrase, block,
+                          "Warning(110) must say what the unfitted gases got "
+                          "and where to read which gas is which")
+
+    def test_the_method_is_chosen_per_gas_and_does_not_stick(self):
+        """One gas without a fit used to demote every gas, and the demotion
+        was written back into project state so it lasted the whole run."""
+        src = code("src/src_common/bpcf_bandpass_spectral_corrections.f90")
+        self.assertNotIn(
+            "EddyFlowProj%hf_meth = actual_hf_method", src,
+            "the per-period fallback is written back into project state "
+            "again, which makes one bad period demote every later one")
+        self.assertIn("insitu_ok", src, "the in-situ mask is gone")
+        self.assertIn("call BPCF_Moncrieff97", src)
+        body = src[src.index("select case(trim(adjustl(actual_hf_method)))"):]
+        self.assertIn(
+            "analytic_only", body,
+            "the gases the in-situ method could not take must still be "
+            "corrected, by the analytic method, after the in-situ pass")
 
 
 if __name__ == "__main__":

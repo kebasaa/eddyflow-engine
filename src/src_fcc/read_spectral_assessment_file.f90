@@ -37,6 +37,7 @@ subroutine ReadSpectralAssessmentFile()
     use m_fx_global_var
     implicit none
     logical, external :: GasSlotIsWater
+    logical, external :: GasHasSpectralFit
     integer, external :: PrimaryWaterOutSlot
     integer, external :: SlotFromSpectralStamp
     !> local variables
@@ -55,6 +56,9 @@ subroutine ReadSpectralAssessmentFile()
     character(96) :: exp_text
     integer :: exp_status
     logical :: short_file
+    !> Gases this file actually carries a fit for.
+    integer :: n_fitted
+    integer :: n_configured
     real(kind = dbl) :: skipFn, skipfc
     !> One block's rows as they sit in the file: indexed by MONTH.
     real(kind = dbl) :: monthFn(12), monthfc(12)
@@ -297,6 +301,23 @@ subroutine ReadSpectralAssessmentFile()
             return
         end if
         if (short_file) call ExceptionHandler(65)
+
+        !> A file read from disk can be partial for the same reason a file
+        !> written on the fly can: some gases were fitted and some were not.
+        !> The writer says so as it writes; this is the other way in, and
+        !> without it a stored partial assessment would mix in-situ and
+        !> analytic corrections without a word.
+        !> Counted over every configured gas, water included, rather than off
+        !> short_file: that flag deliberately skips hygrometers, and water
+        !> unfitted while the gases are fitted is exactly the common case.
+        n_fitted = 0
+        n_configured = 0
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            n_configured = n_configured + 1
+            if (GasHasSpectralFit(gas)) n_fitted = n_fitted + 1
+        end do
+        if (n_fitted > 0 .and. n_fitted < n_configured) call ExceptionHandler(110)
 
         !> skip 4 lines
         do i = 1, 4

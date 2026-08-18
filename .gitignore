@@ -39,6 +39,7 @@ src/src_rp/deprecated
 /tests/regression/*
 !/tests/regression/README.md
 !/tests/regression/run.sh
+!/tests/regression/sweep.sh
 !/tests/regression/base*.eddyflow
 # Track the harness by pattern, not by name, for the reason spelled out below
 # for static_checks - and for the same reason twice over: this list had already
@@ -48,6 +49,10 @@ src/src_rp/deprecated
 !/tests/regression/gen_*.py
 !/tests/regression/check_*.py
 !/tests/regression/migrate_*.py
+# The hand-written spectral assessment files the sa_mode=0 fixtures read. The
+# three that exist were force-added one at a time; a fixture committed without
+# the file it reads is a fixture nobody else can run.
+!/tests/regression/sa_*.txt
 !/tests/regression/sa_*.txt
 !/tests/regression/*.metadata
 /_temp

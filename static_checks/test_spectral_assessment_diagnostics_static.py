@@ -45,6 +45,38 @@ class SpectralAssessmentDiagnosticsStaticTests(unittest.TestCase):
         ):
             self.assertIn(phrase, source)
 
+    def test_the_report_states_what_each_gas_will_actually_get(self):
+        """PASS/FAIL says whether the assessment covered a gas; it does not say
+        what that means for the flux. A gas marked FAIL is still corrected -
+        analytically - and a run where half the gases are is not the same run
+        as one where none are."""
+        source = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        self.assertIn("Spectral assessment: PARTIAL", source,
+                      "a file covering some gases must not report as SUCCESS")
+        self.assertIn("OutcomeLabel", source,
+                      "each gas line must say in situ or analytically")
+        self.assertIn("assessment_ready = n_insitu > 0", source,
+                      "readiness is 'any gas fitted', not 'every gas fitted'")
+
+    def test_the_suggestion_says_when_a_flux_limit_cannot_help(self):
+        """A gas rejected for small fluxes is fixed by lowering the floor. A
+        gas whose classes are too thinly populated is not, and the suggested
+        floor - a percentile of what is already there - removes records when it
+        lands above the current one. The two used to print identically."""
+        source = read("src/src_fcc/spectral_assessment_diagnostics.f90")
+        fn = source[source.index("subroutine ReportFluxLimitSuggestions"):]
+        fn = fn[:fn.index("end subroutine ReportFluxLimitSuggestions")]
+        self.assertIn("Not a flux-limit problem", fn)
+        self.assertIn("sa_min_smpl", fn)
+        self.assertIn("maxval(class_counts)", fn,
+                      "say how far the best class actually got")
+        self.assertIn("suggested_min > current_min", fn,
+                      "a suggestion above the current floor discards records "
+                      "and must be flagged as such")
+        #> The auto-apply guard is what kept water's unusable 33.2 out of the
+        #> project file. It is not part of the wording change and must stay.
+        self.assertIn("suggested_min < current_min .and. valid_classes >= 1", fn)
+
     def test_qaqc_tracks_flux_vm_foken_and_accepted_records(self):
         source = read("src/src_fcc/cospectra_qaqc.f90")
         for counter in (

@@ -143,6 +143,44 @@ end function GasSlotIsWater
 
 !***************************************************************************
 !
+! \brief       Whether a gas has a fitted transfer function to correct it with.
+! \author      Jonathan Muller
+! \note        A gas is corrected in situ only if some class of its own got a
+!              cut-off frequency. Water is binned by relative humidity and
+!              every other gas by the month group, so the range to search
+!              differs - asking for water's fit in the month range demands
+!              something no hygrometer ever has.
+!
+!              Asked by both the writer, which decides whether the assessment
+!              file has anything to say, and the diagnostics, which reports it.
+!              The two disagreed before: the writer tested whether water's
+!              ensemble spectra existed and the report tested whether each gas
+!              had been fitted, so the file could be refused while the report
+!              called four gases PASS.
+!***************************************************************************
+logical function GasHasSpectralFit(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    integer :: cls
+    logical, external :: GasSlotIsWater
+
+    GasHasSpectralFit = .false.
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+
+    if (GasSlotIsWater(gas_slot)) then
+        do cls = RH10, RH90
+            if (RegPar(gas_slot, cls)%fc /= error) GasHasSpectralFit = .true.
+        end do
+    else
+        do cls = 1, MaxGasClasses
+            if (RegPar(gas_slot, cls)%fc /= error) GasHasSpectralFit = .true.
+        end do
+    end if
+end function GasHasSpectralFit
+
+!***************************************************************************
+!
 ! \brief       The gas slot holding the site's primary water measurement.
 ! \author      Jonathan Muller
 ! \note        The hygrometer whose H, LE and ET carry the bare column names,

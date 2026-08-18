@@ -94,10 +94,14 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     character(128) :: Filename
     character(32) :: method
     logical :: gas_ok
+    integer :: n_insitu
+    integer :: n_analytic
     logical :: h2o_ok
     character(32), external :: IntToText
     character(16), external :: GasName
     character(12), external :: StatusLabel
+    character(12), external :: OutcomeLabel
+    logical, external :: GasHasSpectralFit
     include '../src_common/interfaces_1.inc'
 
     assessment_ready = .true.
@@ -112,30 +116,32 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         end do
     end if
 
+    !> Computed here rather than inside the assessment branch below, because
+    !> the per-gas lines read it whether or not an assessment is being made.
+    h2o_ok = h2o_classes >= 1 .and. &
+        RegPar(dum, dum)%e1 /= error .and. RegPar(dum, dum)%e2 /= error .and. &
+        RegPar(dum, dum)%e3 /= error
+
     if (FCCsetup%do_spectral_assessment) then
-        h2o_ok = h2o_classes >= 1 .and. &
-            RegPar(dum, dum)%e1 /= error .and. RegPar(dum, dum)%e2 /= error .and. &
-            RegPar(dum, dum)%e3 /= error
-        assessment_ready = h2o_ok
+        !> The file is worth writing when any gas got a fit, not when every
+        !> one did. It used to be h2o_ok .and. (every gas ok), so a site whose
+        !> hygrometers could not be fitted lost the blocks of the gases that
+        !> had been - and the report called them PASS on the way past.
+        n_insitu = 0
+        n_analytic = 0
         do gas = firstGas, lastGas
-            if (gas == wsl .or. .not. fcc_var_present(gas)) cycle
-            gas_ok = .false.
-            if (GasSlotIsWater(gas)) then
-                !> A hygrometer is binned by relative humidity, not by
-                !> month, so its fit lives in the RH range. Looking for it
-                !> in the month range demanded something no hygrometer ever
-                !> has - and, until the file could carry a second one at
-                !> all, something the round trip could not have supplied.
-                do cls = RH10, RH90
-                    if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
-                end do
+            if (.not. fcc_var_present(gas)) cycle
+            gas_ok = GasHasSpectralFit(gas)
+            !> A hygrometer needs the RH regression on top of its own fit:
+            !> that is what turns humidity into a cut-off frequency.
+            if (GasSlotIsWater(gas)) gas_ok = gas_ok .and. h2o_ok
+            if (gas_ok) then
+                n_insitu = n_insitu + 1
             else
-                do cls = 1, MaxGasClasses
-                    if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
-                end do
+                n_analytic = n_analytic + 1
             end if
-            assessment_ready = assessment_ready .and. gas_ok
         end do
+        assessment_ready = n_insitu > 0
     end if
 
     mkdir_status = CreateDir('"' // Dir%main_out(1:len_trim(Dir%main_out)) // '"')
@@ -203,6 +209,11 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
                 if (MeanBinSpecAvailable(cls, gas)) gas_classes = gas_classes + 1
             end do
         end if
+        !> What this gas will actually get. A count of ensemble classes is not
+        !> the same question: the correction needs a fitted cut-off, and a
+        !> hygrometer needs the RH regression on top of it.
+        gas_ok = GasHasSpectralFit(gas)
+        if (GasSlotIsWater(gas)) gas_ok = gas_ok .and. h2o_ok
         if (.not. fcc_var_present(gas)) then
             call EmitReportLine(report_unit, open_status, trim(GasName(gas)) // ': unavailable... NOT APPLIED')
         else
@@ -212,8 +223,9 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
                 trim(IntToText(SADiagRejectedFoken(gas))) // ', groups=' // &
                 trim(IntToText(FCCsetup%SA%nclass(gas))) // ', valid classes=' // &
                 trim(IntToText(gas_classes)) // '... ' // &
-                trim(StatusLabel(gas_classes > 0, 'FAIL')))
-            if (gas_classes == 0 .and. SADiagRejectedFlux(gas) > 0) &
+                trim(StatusLabel(gas_ok, 'FAIL')) // &
+                '  -> corrected ' // trim(OutcomeLabel(gas_ok)))
+            if (.not. gas_ok .and. SADiagRejectedFlux(gas) > 0) &
                 call ReportFluxLimitSuggestions(report_unit, open_status, gas)
         end if
     end do
@@ -230,14 +242,31 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         trim(StatusLabel(SADiagDegradedUnstable + SADiagDegradedStable > 0, 'WARNING')))
 
     if (FCCsetup%do_spectral_assessment) then
-        if (assessment_ready) then
-            call EmitReportLine(report_unit, open_status, 'Spectral assessment: SUCCESS - assessment file will be created.')
-        else
-            call EmitReportLine(report_unit, open_status, 'Spectral assessment: FAILED - assessment file will not be created.')
+        if (.not. assessment_ready) then
+            call EmitReportLine(report_unit, open_status, &
+                'Spectral assessment: FAILED - no gas was fitted, so no assessment file is created.')
             call EmitReportLine(report_unit, open_status, &
                 'Standard EddyFlow errors and Moncrieff fallback will follow during output/correction.')
             call EmitReportLine(report_unit, open_status, &
                 'Adjust the reported QA thresholds/filters or select more qualifying periods.')
+        else if (n_analytic == 0) then
+            call EmitReportLine(report_unit, open_status, &
+                'Spectral assessment: SUCCESS - assessment file will be created, all ' // &
+                trim(IntToText(n_insitu)) // ' gases corrected in situ.')
+        else
+            !> The case this report exists for. Naming both counts is the point:
+            !> a file covering four gases out of six looks exactly like a file
+            !> covering all six unless the difference is stated.
+            call EmitReportLine(report_unit, open_status, &
+                'Spectral assessment: PARTIAL - assessment file will be created. ' // &
+                trim(IntToText(n_insitu)) // ' gas(es) corrected in situ, ' // &
+                trim(IntToText(n_analytic)) // ' with the analytical method instead.')
+            call EmitReportLine(report_unit, open_status, &
+                'The per-gas lines above say which is which; a gas marked FAIL is corrected analytically.')
+            call EmitReportLine(report_unit, open_status, &
+                'That is not an error - it is the best available for those gases - but their')
+            call EmitReportLine(report_unit, open_status, &
+                'correction reads instrument geometry rather than their own measured spectra.')
         end if
     end if
     if (open_status == 0) close(report_unit)
@@ -345,6 +374,31 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
         call EmitReportLine(report_unit, open_status, '  Projected accepted records=' // trim(IntToText(projected)) // &
             ', valid classes=' // trim(IntToText(valid_classes)) // ' at sa_min_smpl=' // &
             trim(IntToText(FCCsetup%SA%min_smpl)) // '.')
+
+        !> Two different failures wear the same report line, and the flux limit
+        !> only answers one of them. A gas rejected for small fluxes is fixed by
+        !> lowering the floor - that is the N2O and COS case, and the projection
+        !> above shows classes appearing. A gas whose classes are simply too
+        !> thinly populated is not: no floor produces a tenth sample in a class
+        !> that only ever held four, and the suggested floor is derived as a
+        !> percentile of what is already there, so applying it removes records.
+        !> Saying which one this is saves the reader from trying the lever that
+        !> cannot move.
+        if (valid_classes == 0) then
+            call EmitReportLine(report_unit, open_status, &
+                '  Not a flux-limit problem: no class reaches sa_min_smpl=' // &
+                trim(IntToText(FCCsetup%SA%min_smpl)) // ' at any flux limit. Best class holds ' // &
+                trim(IntToText(maxval(class_counts))) // ' record(s).')
+            call EmitReportLine(report_unit, open_status, &
+                '  Widen the assessment period so the classes fill, or lower sa_min_smpl.')
+        else if (suggested_min > current_min) then
+            call EmitReportLine(report_unit, open_status, &
+                '  Note: the suggested ' // trim(min_label) // ' is above the current one, so it')
+            call EmitReportLine(report_unit, open_status, &
+                '  discards records rather than admitting them. It raises the class count only')
+            call EmitReportLine(report_unit, open_status, &
+                '  because weak fluxes fit poorly; keep the current limit if records are scarce.')
+        end if
         deallocate(values)
     end do
 end subroutine ReportFluxLimitSuggestions
@@ -641,3 +695,19 @@ function StatusLabel(passed, failed_label) result(label)
         label = failed_label
     end if
 end function StatusLabel
+
+!*******************************************************************************
+!> Which correction a gas ends up with, in the report's own words. Kept beside
+!> StatusLabel so the two read as a pair: PASS/FAIL says whether the assessment
+!> covered the gas, this says what that means for its flux.
+!*******************************************************************************
+character(12) function OutcomeLabel(in_situ)
+    implicit none
+    logical, intent(in) :: in_situ
+
+    if (in_situ) then
+        OutcomeLabel = 'in situ'
+    else
+        OutcomeLabel = 'analytically'
+    end if
+end function OutcomeLabel
