@@ -333,7 +333,18 @@ subroutine ExpWeightAvrg(Set, Primes, Tconst, LocCol, N, M)
                 if (Set(i, k) /= error) then
                     do back = 1, Rconst
                         if (Trend(i - back, k) /= error) then
-                            Trend(i, :) = b * Trend(i - back, :) + (1.d0 - b) * Set(i, :)
+                            !> Column k, not every column. The test is on k, so
+                            !> writing `:` gave every other column k's choice of
+                            !> `back` and folded in `Set(i, :)` - including the
+                            !> error code, where a column carried one at this
+                            !> row. With every column at the file's rate the
+                            !> assignment was identical on each pass of the k
+                            !> loop and the mistake was invisible; once columns
+                            !> sample at different rates, a fast column's pass
+                            !> writes -9999 into a slower one's trend, and only
+                            !> the last present column survives it.
+                            Trend(i, k) = b * Trend(i - back, k) &
+                                + (1.d0 - b) * Set(i, k)
                             exit
                         end if
                     end do

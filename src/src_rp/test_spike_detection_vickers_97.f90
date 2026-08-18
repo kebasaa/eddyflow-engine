@@ -54,6 +54,15 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     integer :: imin = 0
     integer :: imax = 0
     integer :: cnt = 0
+    !> The open run's row extent. `cnt` counts spiky samples; these locate them,
+    !> because the flagging and the interpolation address rows and a column
+    !> slower than the file has error rows in between. `prev_good` is the last
+    !> good sample before the run, which the interpolation starts from.
+    integer :: run_start = 0
+    integer :: run_last = 0
+    integer :: prev_good = 0
+    !> How many samples the column really carries, for the spike percentage
+    integer :: nsample = 0
     integer :: passes = 0
     integer :: wdw_num = 0
     integer :: wdw = 0
@@ -73,6 +82,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     real(kind = dbl), allocatable :: XX(:, :)
     logical :: again = .false.
     logical :: new_spike
+    real(kind = dbl), external :: ColumnAcFreq
 
 
     if (printout) write(*, '(a)', advance = 'no') '   Spike detection/removal test..'
@@ -175,80 +185,108 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
                     end if
             end if
             !> Following lines
+            !>
+            !> `cnt` counts spiky SAMPLES. It used to count rows, which is the
+            !> same number only for a column sampled at the file's rate: a
+            !> slower column carries the error code on the rows between its
+            !> samples, and those rows extended the run
+            !> (`if (cnt /= 0) cnt = cnt + 1`) until it passed sr%num_spk and
+            !> was discarded as a physical excursion. A single-sample spike in a
+            !> 1 Hz analyser on a 10 Hz file counted as ten, so with the default
+            !> allowance of three the column was never despiked at all - and it
+            !> reported no spikes rather than "not assessed".
+            !>
+            !> An error row now neither counts towards the run nor breaks it:
+            !> consecutive samples are what the setting is about. The run's rows
+            !> are tracked alongside, because the flagging and the interpolation
+            !> address rows.
+            prev_good = 0
+            if (Set(1, j) /= error) prev_good = 1
+            run_start = 0
+            run_last = 0
             if (RPsetup%filter_sr) then
                 do i = 2, N
-                    if (Set(i, j) == error) then
-                        if (cnt /= 0) cnt = cnt + 1
-                    elseif(Set(i, j) > &
+                    if (Set(i, j) == error) cycle
+                    if (Set(i, j) > &
                         LocMean(i, j) + adv_lim(j) * LocStDev(i, j) .or. &
                         Set(i, j) < &
                         LocMean(i, j) - adv_lim(j) * LocStDev(i, j)) then
+                        if (cnt == 0) run_start = i
+                        run_last = i
                         cnt = cnt + 1
                     else
                         if ((cnt /= 0) .and. (cnt <= sr%num_spk)) then
                             !> check whether it was a spike already, if
                             !> not increment the number of spikes found
-                            new_spike = .true.
-                            do k = 1, cnt
-                                if (IsSpike(i-k, j)) new_spike = .false.
-                                exit
-                            enddo
+                            new_spike = .not. IsSpike(run_last, j)
                             if (new_spike) then
                                 nspikes(j) = nspikes(j) + 1
                                 nspikes_sng(j) = nspikes_sng(j) + cnt
                             end if
-                            !> update spike flags
-                            do k = 1, cnt
-                            IsSpike(i-k, j) = .true.
+                            !> update spike flags, on the samples only
+                            do k = run_start, i - 1
+                                if (Set(k, j) /= error) IsSpike(k, j) = .true.
                             enddo
 
                             !> replace with linear interpolation if requested
-                            !> and if possible, i.e. if the last non-spiky point
-                            !> was not an error value
-                            if (Set(i - (cnt + 1), j) /= error) then
-                                m = (Set(i, j) &
-                                    - Set(i - (cnt + 1), j)) / (dble(cnt + 1))
-                                q = Set(i - (cnt + 1), j)
-                                do k = i - cnt, i - 1
-                                    Set(k, j) = (m * (dble(k - (i - cnt - 1))) + q)
+                            !> and if possible, i.e. if there is a good sample
+                            !> behind the run to draw the line from.
+                            !>
+                            !> The line is drawn in rows, not in samples, so it
+                            !> is the same line as before for a column at the
+                            !> file rate and the right one for a slower column.
+                            !> It writes the sample rows only: filling the error
+                            !> rows in between would manufacture samples the
+                            !> instrument never reported, and those rows are
+                            !> what tells the rest of the run how much of the
+                            !> column is real.
+                            if (prev_good /= 0) then
+                                m = (Set(i, j) - Set(prev_good, j)) &
+                                    / dble(i - prev_good)
+                                q = Set(prev_good, j)
+                                do k = run_start, i - 1
+                                    if (Set(k, j) /= error) &
+                                        Set(k, j) = m * dble(k - prev_good) + q
                                 end do
                             end if
                             cnt = 0
                         else if (cnt > sr%num_spk) then
                             cnt = 0
                         end if
+                        prev_good = i
                     end if
                 end do
             else
+                !> Detection only, no removal - but counted the same way, so
+                !> that a flag-only run reports the same spikes a despiking run
+                !> would remove. See the comment above on samples versus rows.
                 do i = 2, N
-                    if (Set(i, j) == error) then
-                        if (cnt /= 0) cnt = cnt + 1
-                    elseif(Set(i, j) > &
+                    if (Set(i, j) == error) cycle
+                    if (Set(i, j) > &
                             LocMean(i, j) + adv_lim(j) * LocStDev(i, j) .or. &
                             Set(i, j) < &
                             LocMean(i, j) - adv_lim(j) * LocStDev(i, j)) then
+                            if (cnt == 0) run_start = i
+                            run_last = i
                             cnt = cnt + 1
                     else
                         if ((cnt /= 0) .and. (cnt <= sr%num_spk)) then
                             !> check whether it was a spike already,
                             !> if not increment the number of spikes found
-                            new_spike = .true.
-                            do k = 1, cnt
-                                if (IsSpike(i-k, j)) new_spike = .false.
-                                exit
-                            enddo
+                            new_spike = .not. IsSpike(run_last, j)
                             if (new_spike) then
                                 nspikes(j) = nspikes(j) + 1
                                 nspikes_sng(j) = nspikes_sng(j) + cnt
                             end if
-                            !> update spike flags
-                            do k = 1, cnt
-                            IsSpike(i-k, j) = .true.
+                            !> update spike flags, on the samples only
+                            do k = run_start, i - 1
+                                if (Set(k, j) /= error) IsSpike(k, j) = .true.
                             enddo
                             cnt = 0
                         else if (cnt > sr%num_spk) then
                             cnt = 0
                         end if
+                        prev_good = i
                     end if
                 end do
             end if
@@ -281,10 +319,17 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     !> exactly the string it did before; but bounding the loop at gas4 meant a
     !> fifth gas's spike outcome was never computed, and the FLUXNET and full
     !> outputs reported it as "test not performed" however it had gone.
+    !>
+    !> The percentage is of the column's own samples, not of the file's rows.
+    !> Dividing by N diluted a slower column's spike count by its stride, so a
+    !> 1 Hz analyser on a 10 Hz file needed ten times the spikes to reach
+    !> sr%hf_lim as the sonic beside it did.
     hflags = 9
     do j = u, lastGas
         if (E2Col(j)%present) then
-            if(100.d0 * (dble(tot_spikes(j)) / dble(N)) >= sr%hf_lim) then
+            nsample = nint(dble(N) * ColumnAcFreq(j) / Metadata%ac_freq)
+            if (nsample <= 0) nsample = N
+            if(100.d0 * (dble(tot_spikes(j)) / dble(nsample)) >= sr%hf_lim) then
                 hflags(j) = 1
             else
                 hflags(j) = 0

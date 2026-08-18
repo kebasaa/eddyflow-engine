@@ -132,6 +132,28 @@
 	               "the project-wide max_lack", so no existing project moves - every regression
 	               fixture is byte-identical. The project-wide setting now means the anemometer's
 	               allowance and the file's own completeness
+	- Fix: Spike detection counts consecutive samples, not consecutive rows. A run was
+	       extended across the error rows a slower column carries between its samples, and the
+	       total compared against sr_num_spk, so a single-sample spike in a 1 Hz analyser in a
+	       10 Hz file counted as ten: with the default allowance of three, every run in a column
+	       at a quarter of the file's rate or slower was discarded as a physical excursion and
+	       the column was never despiked, reporting no spikes rather than "not assessed". An
+	       accepted run's interpolation also wrote its whole row span, turning the error rows
+	       inside it into fabricated samples - which let a period with under 90% real data pass
+	       the CEC validity gate. The interpolation now draws its line in row distance from the
+	       last good sample and writes sample rows only, and the sr_hf_lim percentage is taken
+	       over the column's own samples instead of the file's rows. A column with no missing
+	       values is byte-identical; on CH-LAE, where the gas columns carry NAN, a spike beside
+	       a gap was detected and then left in the record - CO2 kurtosis 1638 against 8.07 once
+	       it is removed
+	- Fix: The exponential running mean computes the trend for its own column. The
+	       assignment inside the loop over columns subscripted every column, guarded on one of
+	       them, so each pass overwrote the others using that column's choice of lag and folded
+	       in whatever the row held elsewhere. At a single rate the assignment was identical on
+	       every pass and the mistake was idempotent; once columns sample at different rates, a
+	       fast column's pass writes the error code from a slower column's missing rows into
+	       that column's trend, and only the last column present survives it. Affects the 'ew'
+	       detrending option alone
 
 7.2.5 (2026-07-27)
 
