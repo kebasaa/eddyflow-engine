@@ -335,6 +335,14 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     do jg = firstGas, nRowVar
         gas = rowVar(jg)
         if (Meth%tlag == 'pwb' .and. E2Col(gas)%present) then
+            !> Where this period's time lag came from. 0 means the period
+            !> detected it; 1, 5 and 6 mean the gas's OWN lag reached here
+            !> from a period that did; 2 borrows it from another gas on the
+            !> same analyser; 3, 4 and 7 are the last resorts.
+            !>
+            !> 5, 6 and 7 were added with the gap-filling rework and used to
+            !> fall through to the default arm, so a period settled by
+            !> interpolation reported no source at all.
             select case(trim(PWBResult(gas)%fallback_source))
             case('native')
                 call AddDatum(csv_row, '0', separator)
@@ -346,6 +354,12 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
                 call AddDatum(csv_row, '3', separator)
             case('maxcov_default')
                 call AddDatum(csv_row, '4', separator)
+            case('interpolated')
+                call AddDatum(csv_row, '5', separator)
+            case('backfilled')
+                call AddDatum(csv_row, '6', separator)
+            case('median')
+                call AddDatum(csv_row, '7', separator)
             case default
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             end select

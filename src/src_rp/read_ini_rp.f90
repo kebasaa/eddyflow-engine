@@ -547,6 +547,13 @@ subroutine WriteVariablesRP()
     PWBSetup%hdi_prefilter_s = 1.0d0
     PWBSetup%smoothing_width = 5
     PWBSetup%random_seed = 2024
+    !> Twenty-four hours. dyco leaves its equivalent unlimited, which is the
+    !> paper's rule, and notes what that means: once an optimal lag exists,
+    !> every later period without one inherits it however distant, so a single
+    !> good half hour can supply days. A tube delay that drifts with pump
+    !> temperature or age does not stay put for days, so a default that says
+    !> "a day" is closer to the physics than one that says "forever".
+    PWBSetup%max_carry_h = 24d0
     !> Per-gas search windows, from the records (offsets 9 and 10: pwb_min_lag,
     !> pwb_max_lag). lag_bounds_provided distinguishes a window the project
     !> stated from the default range above, so the detector knows whether it
@@ -573,18 +580,22 @@ subroutine WriteVariablesRP()
     if (SNTagFound(419)) PWBSetup%hdi_prefilter_s = SNTags(419)%value
     if (SNTagFound(420)) PWBSetup%smoothing_width = max(1, nint(SNTags(420)%value))
     if (SNTagFound(421)) PWBSetup%random_seed = max(1, nint(SNTags(421)%value))
-    !> 422, 423 and 424 were pwb_approx_ccf, pwb_max_ar_order and
-    !> pwb_detect_prewpl. The first two were offered as speed options and
-    !> were not: skipping the CCF normalisation saved two passes out of
-    !> nlags, under one percent, while leaving the four pre-whitening
+    if (SNTagFound(422)) PWBSetup%max_carry_h = max(0d0, SNTags(422)%value)
+    !> 423 and 424 were pwb_max_ar_order and pwb_detect_prewpl, and 422 was
+    !> pwb_approx_ccf before pwb_max_carry_h took the slot above. Reusing a
+    !> blanked slot is safe where retiring one is: the parser matches a tag by
+    !> its label, so a project still stating pwb_approx_ccf finds no label and
+    !> is ignored, and nothing reads index 422 expecting the old meaning.
+    !>
+    !> All three were retired rather than fixed. The two speed options were
+    !> not speed options: skipping the CCF normalisation saved two passes out
+    !> of nlags, under one percent, while leaving the four pre-whitening
     !> combinations compared on unnormalised covariances in different
     !> physical units - so the winner was decided by the units of w against
-    !> those of sonic temperature. Capping the AR order saved about as
-    !> little and under-fits the pre-whitener, which is what sharpens the
-    !> peak in the first place. The third chose between detecting before and
-    !> after the WPL conversion; detection is pre-WPL now, so there is
-    !> nothing left to choose. The labels are blanked in the tag table
-    !> rather than removed, because that table is positional.
+    !> those of sonic temperature. Capping the AR order saved about as little
+    !> and under-fits the pre-whitener, which is what sharpens the peak in the
+    !> first place. The third chose between detecting before and after the WPL
+    !> conversion; detection is pre-WPL now, so there is nothing to choose.
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.

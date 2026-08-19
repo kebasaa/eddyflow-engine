@@ -35,7 +35,7 @@
 !***************************************************************************
 subroutine ReadTimelagOptFile(ncls)
     use m_rp_global_var
-    use m_pwb_timelag, only: GasLabel
+    use m_pwb_timelag, only: GasLabel, SameAnalyser
     implicit none
     integer, external :: PrimaryWaterSlot
     !> in/out variables
@@ -44,10 +44,13 @@ subroutine ReadTimelagOptFile(ncls)
     integer :: open_status
     integer :: read_status
     integer :: gas
+    integer :: donor
     logical :: matched
     character(32) :: gname
     logical, external :: GasSlotIsWater
     character(500) :: strg
+    !> Gases whose stored window this file says came from another analyser.
+    logical :: foreign(E2NumVar)
 
 
     !> Open planar fit file and read rotation matrices
@@ -55,6 +58,7 @@ subroutine ReadTimelagOptFile(ncls)
     write(ulog,'(a)') ' Reading time-lag optimization file: ' // AuxFile%to(1:len_trim(AuxFile%to))
     open(udf, file = AuxFile%to, status = 'old', iostat = open_status)
 
+    foreign = .false.
     if (open_status == 0) then
         call LogSay(' Time lag optimization file found, retrieving content..')
         do
@@ -71,8 +75,37 @@ subroutine ReadTimelagOptFile(ncls)
             !> determinations is written as needs nine characters, and a fixed
             !> f6.2 read of it returns garbage rather than failing. This also
             !> reads a file written by the previous, narrower format.
+            !> A PWB summary records where each gas's window came from. A
+            !> file written before that borrowing was restricted can state a
+            !> donor on a different analyser, and a time lag belongs to one
+            !> sampling tube - so the window is refused rather than taken, and
+            !> SetTimelags falls back to this gas's own instrument geometry.
+            !>
+            !> The provenance line precedes the three values it describes, so
+            !> the flag set here is in place before they are read.
             matched = .false.
             do gas = firstGas, lastGas
+                if (index(strg, 'PWB_summary_source_for_' &
+                    // trim(GasLabel(gas)) // ':') == 0) cycle
+                matched = .true.
+                if (index(strg, 'inferred_from_') == 0) exit
+                do donor = firstGas, lastGas
+                    if (index(strg, 'inferred_from_' // trim(GasLabel(donor))) == 0) cycle
+                    if (SameAnalyser(gas, donor)) exit
+                    foreign(gas) = .true.
+                    call LogSay(' Alert> The time-lag file states ' // trim(GasLabel(gas)) &
+                        // ' took its window from ' // trim(GasLabel(donor)) &
+                        // ', on another analyser.')
+                    call LogSay('        That window is ignored; the instrument geometry is used instead.')
+                    exit
+                end do
+                exit
+            end do
+            if (matched) cycle
+
+            matched = .false.
+            do gas = firstGas, lastGas
+                if (foreign(gas)) cycle
                 gname = GasLabel(gas)
                 if (index(strg, 'Median_' // trim(gname) // '_timelag_[s]') /= 0) then
                     read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%def

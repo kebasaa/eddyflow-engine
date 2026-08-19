@@ -78,9 +78,9 @@ class PwbTimelagStaticTests(unittest.TestCase):
         #> Versions 1 and 2 carried a pre_wpl/post_wpl stage column for a
         #> choice that no longer exists, and predate the retired speed
         #> settings, so their fingerprint could not match this build anyway.
-        self.assertIn("PWB_TIMELAG_CACHE_VERSION=3", module_source)
-        self.assertNotIn("PWB_TIMELAG_CACHE_VERSION=2", module_source)
-        self.assertNotIn("PWB_TIMELAG_CACHE_VERSION=1", module_source)
+        self.assertIn("PWB_TIMELAG_CACHE_VERSION=4", module_source)
+        for stale in (1, 2, 3):
+            self.assertNotIn("PWB_TIMELAG_CACHE_VERSION=%d" % stale, module_source)
         self.assertIn("fingerprint=", module_source)
         self.assertIn("period_seconds=", module_source)
         self.assertIn("date,time,gas,", module_source)

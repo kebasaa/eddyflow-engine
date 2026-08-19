@@ -636,7 +636,7 @@ module m_rp_global_var
          SNTags(419)%Label / 'pwb_hdi_prefilter_s' /
     data SNTags(420)%Label / 'pwb_smoothing_width' / &
          SNTags(421)%Label / 'pwb_random_seed' / &
-         SNTags(422)%Label / '' / &
+         SNTags(422)%Label / 'pwb_max_carry_h' / &
          SNTags(423)%Label / '' / &
          SNTags(424)%Label / '' / &
          SNTags(425)%Label / 'gas_1_sr_lim' / &

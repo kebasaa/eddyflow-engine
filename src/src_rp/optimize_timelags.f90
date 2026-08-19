@@ -213,10 +213,29 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
         end if
     end do
 
-    !> If time-lag optimization failed, switch to covariance maximization
+    !> If time-lag optimization failed, switch to covariance maximization.
+    !>
+    !> Not under PWB. There the aggregate table is a by-product - a summary of
+    !> per-gas windows and H2O relative-humidity classes written for the next
+    !> run to read - while the method's actual output is the half-hourly
+    !> table, one settled lag per period per gas, already complete by the time
+    !> this runs. Switching the method here threw all of that away and
+    !> processed with covariance maximization instead, reporting every
+    !> _TLAG_PWB_SOURCE column as missing.
+    !>
+    !> What made it fire is water. The classes below need reliable water
+    !> detections, and a hygrometer that has few or none leaves them empty -
+    !> which says nothing at all about the other gases' lags, and used to be
+    !> masked by the summary borrowing a donor from another analyser.
     if (toH2O(1)%def == error .and. toH2O(MM)%def == error) then
-        call ExceptionHandler(43)
-        Meth%tlag = 'maxcov'
-        TimeLagOptSelected = .false.
+        if (Meth%tlag == 'pwb') then
+            call LogSay(' Alert> No H2O relative-humidity classes could be filled for the')
+            call LogSay('        aggregate time-lag summary. The half-hourly PWB table is')
+            call LogSay('        unaffected and is what this run uses.')
+        else
+            call ExceptionHandler(43)
+            Meth%tlag = 'maxcov'
+            TimeLagOptSelected = .false.
+        end if
     end if
 end subroutine OptimizeTimelags

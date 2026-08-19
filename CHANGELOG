@@ -1,3 +1,95 @@
+7.3.2 (2026-08-19)
+
+	Engine:
+	- New feature: PWB's arithmetic is pinned to the original R implementation. dyco ships the
+	               fixtures and the frozen output of RFlux v3.2.0's tlag_detection() for two
+	               cases, one on each branch of the unit-root test; a new driver runs this
+	               engine's own chain over them and static_checks/test_pwb_reference_static.py
+	               compares the AR order chosen by AIC, the AR coefficients, the peak of the
+	               pre-whitened cross-correlation and the raw cross-covariance. The expected
+	               values are read out of dyco's test module rather than copied into ours, so
+	               the two cannot drift. Every one of them now agrees to twelve significant
+	               digits. The bootstrap is deliberately not compared - it shares no RNG stream
+	               with R - which is how dyco treats it too.
+	               Running it for the first time found three defects, none of which any
+	               text-matching check could have seen, and all of which are fixed below
+	- Fix: The raw cross-covariance is read off the UNDIFFERENCED series, linearly detrended.
+	       Differencing feeds the AR filters only; taken off the differenced arrays the number
+	       is a covariance of increments, which on a drifting record is smaller by two orders of
+	       magnitude and free to carry the opposite sign. dyco had this bug and fixed it. The
+	       branch is not the rare one it sounds: it fires whenever sonic temperature drifts over
+	       an averaging period, which is most of them
+	- Fix: The cross-covariance divides by N, as R's ccf(type="covariance") does, and centres
+	       each series once on its own full-length mean. Dividing by each lag's overlap count
+	       instead inflated it by N/(N-|lag|) - 2.9% at lag 169 of 6000
+	- Fix: Differencing returns N-1 values. It wrote them back over 2..N and set the first to
+	       zero, keeping the length at N and feeding the AR fit one fabricated sample; at
+	       N = 6000 that moved the first AR coefficient in the sixth significant digit
+	- Fix: The full-data pre-whitened CCF drops the AR-initialisation samples, as R's
+	       na.action = na.omit does. Kept as zeros they shifted every mean and sum that
+	       followed, which at an AR order of 67 moved the correlation in the fourth significant
+	       digit. The bootstrap still keeps them, which is also what R does
+	- Fix: A time lag is never borrowed across instruments. It is a property of one sampling
+	       tube, so sharing one between analysers is not an approximation of the right answer
+	       but a different measurement. The identity test now requires that BOTH records name an
+	       instrument and that the names match: there is no fall-back to the model string, which
+	       cannot tell two LI-7200s at one site apart, and a record naming no instrument neither
+	       donates nor receives, because nothing then proves it shares a tube. The run log says
+	       so when a gas is in that position.
+	       Three places could hand a lag from one gas to another and only two of them asked any
+	       question at all: the aggregate summary had no instrument test whatsoever, so on a
+	       multi-analyser site it could give one tube's optimised window to a gas measured down
+	       another - and that file is read back by the next run
+	- Fix: A failed H2O relative-humidity class table no longer switches the whole run to
+	       covariance maximization when the method is PWB. Under PWB that aggregate table is a
+	       by-product; the method's output is the half-hourly table, already complete when the
+	       switch fired. It discarded all of it, processed every period with covariance
+	       maximization and reported every _TLAG_PWB_SOURCE column as missing. The classes need
+	       reliable water detections, and a hygrometer that has none says nothing about the
+	       other gases' lags
+	- Fix: The applied time lag reported for a period is the one the data actually moved by,
+	       measured back off the record shift. Interpolation makes fractional lags ordinary and
+	       the data can only move by whole records, so the requested and the applied value now
+	       differ by up to half a sample as a matter of course
+	- Change: The bootstrap block length is derived per gas as max(configured, 2 x widest search
+	          bound), following R's l = 2*LAG.MAX coupling and dyco's floor on it. A block
+	          shorter than the lag range cannot contain the structure the bootstrap exists to
+	          preserve; this warned about exactly that and then used the short block anyway. On
+	          a project with a 25 s window and the default 20 s block every gas was resampling
+	          under-blocked while the log said so and nothing acted on it. Detections improve
+	          markedly as a result
+	- Change: A period with no detection of its own takes the gas's OWN lag first, in all three
+	          of its forms - interpolated between the reliable lags either side, carried
+	          forward, or filled backward - and only then a lag borrowed from another gas on the
+	          same analyser, and only then the gas's median. The order was the other way round.
+	          dyco argues the point and is right: two gases down one tube still have measurably
+	          different delays, a systematic 0.35 s between CH4 and N2O being ordinary, so
+	          borrowing trades a stale number for a biased one
+	- New feature: pwb_max_carry_h bounds how far a lag may travel to a period that detected
+	               none, defaulting to 24 hours; zero restores the published rule, under which
+	               one reliable half hour can supply days. It bounds interpolation, the forward
+	               carry and the backward fill with one value, because bounding a single
+	               direction achieves nothing - with detections either side of a long unusable
+	               stretch the later one would fill from the future exactly the span the earlier
+	               was forbidden to cross. Past it the period falls to a same-analyser donor,
+	               and the row is classed S3_expired.
+	               Measured in elapsed hours where dyco counts averaging periods: our table has
+	               a row only where a period was processed, so a period count would reach
+	               straight across a gap in the raw files
+	- Change: The half-hourly table gains carry_hours, the pre-whitened diagnostics tlag_pw_s,
+	          corr_pw and cv_99 - R's Bartlett 99% band, below which the pre-whitened
+	          correlation is not distinguishable from noise however narrow the bootstrap
+	          interval is - and the unit-root decision with the three AR orders it produced. It
+	          is version 4; earlier versions predate settings that are now in the fingerprint
+	          and could not have matched this build in any case
+	- Change: The FLUXNET _TLAG_PWB_SOURCE column has codes for the gap-filling arms added last
+	          release. Interpolated, back-filled and median-filled periods fell through to the
+	          default arm and reported no source at all
+	- Change: The arithmetic moved to m_pwb_core, which depends on nothing but the kinds module.
+	          The reference driver links it and two objects; if a routine in the chain ever
+	          reaches for PWBSetup or the column table again, that driver stops linking, which
+	          is what keeps the numbers reproducible outside a full run
+
 7.3.1 (2026-08-19)
 
 	Engine:

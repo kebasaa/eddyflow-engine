@@ -27,6 +27,7 @@ ifeq ($(OS), Windows_NT)
 	MV = if exist FILE move FILE DESTINATION
 	RP_EXE = eddyflow_rp.exe
 	FCC_EXE = eddyflow_fcc.exe
+	PWBREF_EXE = pwb_reference.exe
 	OS_DIR = win
 	FC = gfortran.exe
 	MAKE_DIR = if not exist DIR mkdir DIR
@@ -38,6 +39,7 @@ else
 	MV = mv FILE DESTINATION || true
 	RP_EXE = eddyflow_rp
 	FCC_EXE = eddyflow_fcc
+	PWBREF_EXE = pwb_reference
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
@@ -62,6 +64,8 @@ RP_SRC_DIR_Fd2 = ../src/src_rp/fft4/
 FCC_SRC_DIR_f90d1 = ../src/src_fcc/
 ##Common
 COMMON_SRC_DIR_f90d1 = ../src/src_common/
+##Tools - not part of either shipped executable
+TOOLS_SRC_DIR_f90d1 = ../src/src_tools/
 OBJS_DIR = ../obj/$(OS_DIR)/
 EXE_DIR = ../bin/$(OS_DIR)/
 
@@ -115,6 +119,21 @@ rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1)
 fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(FCC_EXE) $(FCC_OBJS)
+	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
+
+# The PWB reference driver. Deliberately NOT in `all`, and deliberately linked
+# against two objects only: it is what proves the pre-whitening chain does not
+# depend on engine state, and it stops linking the moment that stops being
+# true. static_checks/test_pwb_reference_static.py builds and runs it.
+#
+# Linked -static, unlike the two executables. It is run by a test harness that
+# has no reason to know where libgfortran lives, and a driver that reports the
+# wrong numbers is a worse failure than one that is a megabyte larger.
+pwbref : m_numeric_kinds.o m_pwb_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
+	$(FC) -static -o $(EXE_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
 	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 #Compilation
@@ -636,6 +655,9 @@ m_methane_tables.o: \
 	m_numeric_kinds.o
 m_numeric_kinds.o: \
 	m_numeric_kinds.f90
+m_pwb_core.o: \
+	m_pwb_core.f90 \
+	m_numeric_kinds.o
 m_rp_global_var.o: \
 	m_rp_global_var.f90 \
 	m_common_global_var.o
@@ -720,6 +742,7 @@ pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \
 	m_log.o \
+	m_pwb_core.o \
 	m_rp_global_var.o
 qc_flags_subs.o: \
 	qc_flags_subs.f90 \

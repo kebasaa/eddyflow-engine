@@ -33,6 +33,7 @@
 !***************************************************************************
 module m_pwb_timelag
     use m_rp_global_var
+    use m_pwb_core
     implicit none
     private
     public :: PwbDetectGas, ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbResult, GasLabel
@@ -52,7 +53,6 @@ module m_pwb_timelag
     integer :: pwb_instrument_shared(E2NumVar) = 0
     integer :: pwb_outside_window(E2NumVar) = 0
     logical :: pwb_bounds_warned(E2NumVar) = .false.
-    logical :: pwb_block_warned(E2NumVar) = .false.
 
     !> Scratch shared by the four combinations of one gas, reused across gases
     !> and periods. These were allocated and freed inside the bootstrap loop -
@@ -79,7 +79,6 @@ subroutine ResetPwbDiagnostics()
     pwb_instrument_shared = 0
     pwb_outside_window = 0
     pwb_bounds_warned = .false.
-    pwb_block_warned = .false.
 end subroutine ResetPwbDiagnostics
 
 subroutine ResetPwbAggregateSummary()
@@ -140,8 +139,16 @@ subroutine ResolvePwbAggregateSummary(actn)
             !> project whose water sits elsewhere that excluded whichever gas
             !> occupied slot six from ever donating, and let the real
             !> hygrometer donate to everything.
+            !>
+            !> And never across analysers. This summary had no instrument test
+            !> of any kind, so on a multi-analyser site it could hand one
+            !> tube's optimised window to a gas measured down another - the
+            !> per-period rule two functions down refuses exactly that, and
+            !> the aggregate file feeds the same windows back into a later
+            !> run through SetTimelags.
             if (candidate == gas) cycle
             if (GasSlotIsWater(candidate)) cycle
+            if (.not. SameAnalyser(gas, candidate)) cycle
             if (PwbSummarySource(candidate) == 0) cycle
             if (PwbSummaryDonorCount(gas, candidate) > best_count) then
                 donor = candidate
@@ -281,12 +288,13 @@ character(2048) function PwbCacheFingerprint()
     !> legacy gases with the rest appended: the fingerprint's shape used to
     !> depend on how many gases a project had relative to four.
     write(PwbCacheFingerprint, &
-        '(a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,i0,a,i0)') &
+        '(a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,f8.4,a,i0,a,i0,a,f8.3)') &
         'n=', PWBSetup%n_bootstrap, '_block=', PWBSetup%block_length_s, &
         '_valid=', PWBSetup%min_valid_frac, &
         '_hdi=', PWBSetup%hdi_thresh_s, '_dev=', PWBSetup%dev_thresh_s, &
         '_prefilter=', PWBSetup%hdi_prefilter_s, &
-        '_smooth=', PWBSetup%smoothing_width, '_seed=', PWBSetup%random_seed
+        '_smooth=', PWBSetup%smoothing_width, '_seed=', PWBSetup%random_seed, &
+        '_carry=', PWBSetup%max_carry_h
 
     do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
@@ -311,7 +319,9 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     character(2) :: combo
     real(kind = dbl) :: actual_lag, used_lag, selected_lag, hdi_low, hdi_high, hdi_range
     real(kind = dbl) :: unrestricted_lag, raw_cov, eff_min, eff_max, eff_block
-    logical :: default_used, edge_pinned, outside, clamped, prefiltered
+    logical :: default_used, edge_pinned, outside, clamped, prefiltered, differenced
+    real(kind = dbl) :: carry_hours, tlag_pw, corr_pw, cv_99
+    integer :: ar_s, ar_w, ar_t
     type(PWBResultType) :: res
 
     recognized = .false.
@@ -324,12 +334,11 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
         close(u)
         return
     end if
-    !> Versions 1 and 2 are not read. Both carried a pre_wpl/post_wpl stage
-    !> column for a choice that no longer exists, and both predate the two
-    !> retired speed settings - so their fingerprint could not match this
-    !> build in any case. Refusing them outright says so plainly, instead of
-    !> letting the fingerprint say it obscurely.
-    if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=3') then
+    !> Only the current version is read. Every earlier one predates a
+    !> setting that is now in the fingerprint, so none of them could have
+    !> matched this build in any case; refusing them by version says so
+    !> plainly rather than letting the fingerprint say it obscurely.
+    if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=4') then
         close(u)
         return
     end if
@@ -382,7 +391,8 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
             unrestricted_lag, outside, raw_cov, &
             actual_lag, used_lag, row_lag, default_used, &
             reliability, fill_method, donor, origin_label, fallback, &
-            eff_min, eff_max, eff_block, clamped, prefiltered
+            eff_min, eff_max, eff_block, clamped, prefiltered, carry_hours, &
+            tlag_pw, corr_pw, cv_99, differenced, ar_s, ar_w, ar_t
         if (ios /= 0 .or. .not. ValidPwbPeriodTimestamp(date, time)) then
             close(u)
             return
@@ -418,6 +428,14 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
         res%effective_block_length_s = eff_block
         res%block_length_clamped = clamped
         res%hdi_prefiltered = prefiltered
+        res%carry_hours = carry_hours
+        res%tlag_pw = tlag_pw
+        res%corr_pw = corr_pw
+        res%cv_99 = cv_99
+        res%differenced = differenced
+        res%ar_order_scalar = ar_s
+        res%ar_order_w = ar_w
+        res%ar_order_t = ar_t
         res%applied_lag = used_lag
         res%applied_row_lag = row_lag
         res%fallback_used = default_used .or. trim(reliability) == 'fallback'
@@ -461,7 +479,7 @@ subroutine WritePwbTimelagCache()
         // PwbTimelag_FilePadding // Timestamp_FilePadding // CsvExt
     open(newunit=u, file=path, status='replace', iostat=ios, encoding='utf-8')
     if (ios /= 0) return
-    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=3'
+    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=4'
     write(u, '(a)') 'fingerprint=' // trim(PwbCacheFingerprint())
     write(u, '(a)') 'project_id=' // trim(EddyFlowProj%id)
     write(u, '(a,i0)') 'period_seconds=', RPsetup%avrg_len
@@ -472,12 +490,14 @@ subroutine WritePwbTimelagCache()
         // 'actual_lag_s,used_lag_s,used_row_lag,default_used,' &
         // 'reliability_class,fill_method,donor_gas,origin_gas,fallback_source,' &
         // 'effective_min_lag_s,effective_max_lag_s,effective_block_length_s,block_length_clamped,' &
-        // 'hdi_prefiltered'
+        // 'hdi_prefiltered,carry_hours,' &
+        // 'tlag_pw_s,corr_pw,cv_99,differenced,ar_order_scalar,ar_order_w,ar_order_t'
     do i = 1, PwbTimelagCacheN
         write(u, '(a,",",a,",",a,",",f12.6,",",i0,",",f12.6,",",f12.6,",",f12.6,",",a,",",l1,' &
             // '",",f12.6,",",l1,",",f14.6,",",f12.6,",",f12.6,",",i0,",",l1,' &
             // '",",a,",",a,",",a,",",a,",",a,' &
-            // '",",f12.6,",",f12.6,",",f12.6,",",l1,",",l1)') &
+            // '",",f12.6,",",f12.6,",",f12.6,",",l1,",",l1,",",f12.6,' &
+            // '",",f12.6,",",f12.8,",",f12.8,",",l1,",",i0,",",i0,",",i0)') &
             trim(PwbTimelagCache(i)%date), trim(PwbTimelagCache(i)%time), &
             trim(GasLabel(PwbTimelagCache(i)%gas)), &
             PwbTimelagCache(i)%result%selected_lag, PwbTimelagCache(i)%result%row_lag, &
@@ -497,7 +517,12 @@ subroutine WritePwbTimelagCache()
             PwbTimelagCache(i)%result%effective_min_lag, PwbTimelagCache(i)%result%effective_max_lag, &
             PwbTimelagCache(i)%result%effective_block_length_s, &
             PwbTimelagCache(i)%result%block_length_clamped, &
-            PwbTimelagCache(i)%result%hdi_prefiltered
+            PwbTimelagCache(i)%result%hdi_prefiltered, &
+            PwbTimelagCache(i)%result%carry_hours, &
+            PwbTimelagCache(i)%result%tlag_pw, PwbTimelagCache(i)%result%corr_pw, &
+            PwbTimelagCache(i)%result%cv_99, PwbTimelagCache(i)%result%differenced, &
+            PwbTimelagCache(i)%result%ar_order_scalar, PwbTimelagCache(i)%result%ar_order_w, &
+            PwbTimelagCache(i)%result%ar_order_t
     end do
     close(u)
     PwbTimelagCache_Path = path
@@ -535,15 +560,14 @@ subroutine PostProcessPwbTimelagCache()
     integer(8), allocatable :: tmin(:)
     real(kind = dbl), allocatable :: lag(:), fallback_lag(:), sorted(:)
     logical, allocatable :: settled(:)
-    real(kind = dbl) :: median_lag, t0, t1, span, previous
+    real(kind = dbl) :: median_lag, t0, t1, span, previous, dist, limit
     integer :: prev, nxt, shared
     logical, external :: GasSlotIsWater
-    logical :: any_shared
 
     if (PwbTimelagCacheN <= 0) return
 
     !> Chronological order over the whole table. The pass appends in period
-    !> order already, but the interpolation below reads a time axis off these
+    !> order already, but everything below reads a real time axis off these
     !> rows and must not depend on that being true.
     allocate(ord(PwbTimelagCacheN), tmin(PwbTimelagCacheN))
     do i = 1, PwbTimelagCacheN
@@ -551,6 +575,10 @@ subroutine PostProcessPwbTimelagCache()
         tmin(i) = PeriodMinutes(PwbTimelagCache(i)%date, PwbTimelagCache(i)%time)
     end do
     call SortByMinutes(ord, tmin, PwbTimelagCacheN)
+
+    !> How far a lag may travel to a period that detected none, in minutes.
+    !> Zero disables the limit, which is the paper's unbounded carry.
+    limit = PWBSetup%max_carry_h * 60d0
 
     !> Step 1, over every row: the HDI pre-filter. A detection wider than the
     !> pre-filter is discarded before classification, so temporal continuity
@@ -569,10 +597,14 @@ subroutine PostProcessPwbTimelagCache()
     end do
 
     allocate(idx(PwbTimelagCacheN), lag(PwbTimelagCacheN), &
-        fallback_lag(PwbTimelagCacheN), settled(PwbTimelagCacheN), sorted(PwbTimelagCacheN))
+        fallback_lag(PwbTimelagCacheN), settled(PwbTimelagCacheN), &
+        sorted(PwbTimelagCacheN))
 
     !> Steps 2 and 3: S1 accepts a narrow HDI outright; S2 accepts a wider one
-    !> that stays close to the last accepted lag.
+    !> that stays close to the last accepted lag. An S2 acceptance updates the
+    !> reference, so a run of S2 periods can drift away from the S1 that
+    !> anchored it - the paper's section 2.3 is ambiguous and its S3 wording
+    !> implies this reading, which is dyco's too.
     do gas = firstGas, lastGas
         n = 0
         do k = 1, PwbTimelagCacheN
@@ -615,93 +647,29 @@ subroutine PostProcessPwbTimelagCache()
                 PwbTimelagCache(i)%result%fallback_used = .false.
                 PwbTimelagCache(i)%result%origin_gas = gas
                 PwbTimelagCache(i)%result%donor_gas = 'none'
+                PwbTimelagCache(i)%result%carry_hours = 0d0
             end if
         end do
         do j = 1, n
             if (.not. settled(j)) PwbTimelagCache(idx(j))%result%reliability_class = 'pending'
         end do
-    end do
 
-    !> Step 4: a gas with no detection of its own in a period takes the lag of
-    !> another gas measured by the same analyser in that same period. They
-    !> share a tube, so they share a delay.
-    !>
-    !> Two things this asks that the streaming version did not. It matches on
-    !> instrument identity rather than on the model string, because two
-    !> analysers of the same model are two tubes and sharing a lag between
-    !> them is wrong - the same distinction timelag_handle already draws for
-    !> the water covariance. And it never accepts water as the donor: water's
-    !> lag is RH-dependent in a way the trace gases' is not, which is exactly
-    !> why ResolvePwbAggregateSummary above refuses it. The per-period rule
-    !> allowed it, so the two halves of one rule disagreed.
-    !>
-    !> The outer loop repeats because a gas that has just adopted a lag does
-    !> not itself become a donor - only S1 and S2 rows donate - so one pass is
-    !> enough in fact; the loop simply makes that explicit and terminates on
-    !> the first pass that shares nothing.
-    any_shared = .true.
-    do while (any_shared)
-        any_shared = .false.
-        do i = 1, PwbTimelagCacheN
-            gas = PwbTimelagCache(i)%gas
-            if (gas < firstGas .or. gas > lastGas) cycle
-            if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending') cycle
-            shared = 0
-            do j = 1, PwbTimelagCacheN
-                if (j == i) cycle
-                if (PwbTimelagCache(j)%date /= PwbTimelagCache(i)%date) cycle
-                if (PwbTimelagCache(j)%time /= PwbTimelagCache(i)%time) cycle
-                g = PwbTimelagCache(j)%gas
-                if (g < firstGas .or. g > lastGas) cycle
-                if (GasSlotIsWater(g)) cycle
-                if (.not. SameAnalyser(gas, g)) cycle
-                if (trim(PwbTimelagCache(j)%result%reliability_class) /= 'S1_optimal' &
-                    .and. trim(PwbTimelagCache(j)%result%reliability_class) /= 'S2_optimal') cycle
-                shared = j
-                exit
-            end do
-            if (shared == 0) cycle
-            PwbTimelagCache(i)%used_lag = PwbTimelagCache(shared)%used_lag
-            PwbTimelagCache(i)%result%reliability_class = 'S4_instrument_shared'
-            PwbTimelagCache(i)%result%fill_method = 'instrument_shared'
-            PwbTimelagCache(i)%result%fallback_source = 'instrument_shared'
-            PwbTimelagCache(i)%result%fallback_used = .false.
-            PwbTimelagCache(i)%result%donor_gas = GasLabel(PwbTimelagCache(shared)%gas)
-            PwbTimelagCache(i)%result%origin_gas = PwbTimelagCache(shared)%gas
-            any_shared = .true.
-        end do
-    end do
-
-    !> Steps 5 to 8, per gas: fill whatever is still open.
-    do gas = firstGas, lastGas
-        n = 0
-        do k = 1, PwbTimelagCacheN
-            i = ord(k)
-            if (PwbTimelagCache(i)%gas /= gas) cycle
-            n = n + 1
-            idx(n) = i
-            !> Whatever the streaming pass settled on stands as this period's
-            !> last resort - covariance maximisation where it fell back, the
-            !> detection itself otherwise. Read before it is overwritten.
-            fallback_lag(n) = PwbTimelagCache(i)%used_lag
-            settled(n) = trim(PwbTimelagCache(i)%result%reliability_class) == 'S1_optimal' &
-                .or. trim(PwbTimelagCache(i)%result%reliability_class) == 'S2_optimal' &
-                .or. trim(PwbTimelagCache(i)%result%reliability_class) == 'S4_instrument_shared'
-            if (settled(n)) then
-                lag(n) = PwbTimelagCache(i)%used_lag
-            else
-                lag(n) = error
-            end if
-        end do
-        if (n == 0) cycle
-
-        !> Step 5: an interior gap is interpolated between the reliable lags
-        !> that bracket it, on the real time axis rather than on row number -
-        !> a run with missing files has periods that are not equally spaced.
-        !> Carrying a lag forward holds it flat across a drifting pump;
-        !> interpolating tracks the drift.
+        !> Step 4: the gas's OWN lag, in its three forms, best first.
+        !>
+        !> All three come before any borrowing, and that is the order dyco
+        !> argues for: two gases down one tube still have different delays - a
+        !> systematic 0.35 s between CH4 and N2O is ordinary - so taking a
+        !> neighbour's lag trades a stale number for a biased one. What
+        !> decides when staleness has become the larger error is max_carry_h,
+        !> which bounds every one of these three and past which the donor
+        !> below takes over. This engine used to share from the analyser
+        !> first, which had that argument backwards.
+        !>
+        !> Interpolation leads because it is the only form that follows a
+        !> drifting pump rather than holding its lag flat across the drift.
         do j = 1, n
             if (settled(j)) cycle
+            i = idx(j)
             prev = 0
             do k = j - 1, 1, -1
                 if (settled(k)) then
@@ -717,9 +685,13 @@ subroutine PostProcessPwbTimelagCache()
                 end if
             end do
             if (prev == 0 .or. nxt == 0) cycle
-            i = idx(j)
             t0 = dble(tmin(idx(prev)))
             t1 = dble(tmin(idx(nxt)))
+            !> Bounded by the distance to the NEARER anchor: an interpolation
+            !> spanning more than the limit in both directions is no better
+            !> informed than a carry that would have expired.
+            dist = min(dble(tmin(i)) - t0, t1 - dble(tmin(i)))
+            if (limit > 0d0 .and. dist > limit) cycle
             span = t1 - t0
             if (span <= 0d0) then
                 PwbTimelagCache(i)%used_lag = lag(prev)
@@ -731,51 +703,125 @@ subroutine PostProcessPwbTimelagCache()
             PwbTimelagCache(i)%result%fill_method = 'interpolated'
             PwbTimelagCache(i)%result%fallback_source = 'interpolated'
             PwbTimelagCache(i)%result%origin_gas = gas
+            PwbTimelagCache(i)%result%fallback_used = .false.
+            PwbTimelagCache(i)%result%carry_hours = dist / 60d0
         end do
 
-        nxt = 0
+        !> Carried forward, then filled backward. Both bounded by the same
+        !> limit, which they have to be: with detections either side of a long
+        !> unusable stretch, an unbounded backward fill would cover from the
+        !> later detection precisely the span the forward carry was just
+        !> forbidden to cross, and the limit would achieve nothing.
         do j = 1, n
-            if (settled(j)) then
-                nxt = j
-                exit
-            end if
-        end do
-        if (nxt > 0) then
-            !> Step 6: periods before the first reliable detection have
-            !> nothing behind them, so they take the first one ahead. This is
-            !> the case a streaming classifier cannot serve at all, and it is
-            !> why a PWB run used to open on covariance maximisation.
-            do j = 1, nxt - 1
-                i = idx(j)
-                if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending') cycle
-                PwbTimelagCache(i)%used_lag = lag(nxt)
-                PwbTimelagCache(i)%result%reliability_class = 'S3_backfilled'
-                PwbTimelagCache(i)%result%fill_method = 'backfilled'
-                PwbTimelagCache(i)%result%fallback_source = 'backfilled'
-                PwbTimelagCache(i)%result%origin_gas = gas
-            end do
-            !> And anything after the last reliable detection carries it
-            !> forward; there is nothing ahead of it to interpolate towards.
+            i = idx(j)
+            if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending') cycle
             prev = 0
-            do j = n, 1, -1
-                if (settled(j)) then
-                    prev = j
+            do k = j - 1, 1, -1
+                if (settled(k)) then
+                    prev = k
                     exit
                 end if
             end do
-            do j = prev + 1, n
-                i = idx(j)
-                if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending') cycle
-                PwbTimelagCache(i)%used_lag = lag(prev)
-                PwbTimelagCache(i)%result%reliability_class = 'S3_carryforward'
-                PwbTimelagCache(i)%result%fill_method = 'carryforward'
-                PwbTimelagCache(i)%result%fallback_source = 'S3_carryforward'
-                PwbTimelagCache(i)%result%origin_gas = gas
-            end do
-        end if
+            if (prev == 0) cycle
+            dist = dble(tmin(i)) - dble(tmin(idx(prev)))
+            if (limit > 0d0 .and. dist > limit) cycle
+            PwbTimelagCache(i)%used_lag = lag(prev)
+            PwbTimelagCache(i)%result%reliability_class = 'S3_carryforward'
+            PwbTimelagCache(i)%result%fill_method = 'carryforward'
+            PwbTimelagCache(i)%result%fallback_source = 'S3_carryforward'
+            PwbTimelagCache(i)%result%origin_gas = gas
+            PwbTimelagCache(i)%result%fallback_used = .false.
+            PwbTimelagCache(i)%result%carry_hours = dist / 60d0
+        end do
 
-        !> Step 7: with no reliable detection anywhere, the median of what was
-        !> detected at all is still better than the nominal window.
+        do j = 1, n
+            i = idx(j)
+            if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending') cycle
+            nxt = 0
+            do k = j + 1, n
+                if (settled(k)) then
+                    nxt = k
+                    exit
+                end if
+            end do
+            if (nxt == 0) cycle
+            dist = dble(tmin(idx(nxt))) - dble(tmin(i))
+            if (limit > 0d0 .and. dist > limit) cycle
+            PwbTimelagCache(i)%used_lag = lag(nxt)
+            PwbTimelagCache(i)%result%reliability_class = 'S3_backfilled'
+            PwbTimelagCache(i)%result%fill_method = 'backfilled'
+            PwbTimelagCache(i)%result%fallback_source = 'backfilled'
+            PwbTimelagCache(i)%result%origin_gas = gas
+            PwbTimelagCache(i)%result%fallback_used = .false.
+            PwbTimelagCache(i)%result%carry_hours = dist / 60d0
+        end do
+
+        !> A period the gas could not reach at all, with a limit in force.
+        do j = 1, n
+            i = idx(j)
+            if (trim(PwbTimelagCache(i)%result%reliability_class) == 'pending' &
+                .and. limit > 0d0) &
+                PwbTimelagCache(i)%result%reliability_class = 'S3_expired'
+        end do
+    end do
+
+    !> Step 5: a period no form of the gas's own lag could reach takes the lag
+    !> of another gas measured by the same analyser in that same period. They
+    !> share a tube, so they share a delay - approximately, which is why this
+    !> comes after all three of the gas's own forms rather than before them.
+    !>
+    !> The donor is decided by analyser identity, not by the model string: two
+    !> analysers of the same model are two tubes, and matching on the model
+    !> made them one - the same distinction timelag_handle already draws for
+    !> the water covariance. And never from water, whose lag is
+    !> humidity-dependent in a way the trace gases' is not, which is exactly
+    !> why ResolvePwbAggregateSummary refuses it.
+    do i = 1, PwbTimelagCacheN
+        gas = PwbTimelagCache(i)%gas
+        if (gas < firstGas .or. gas > lastGas) cycle
+        if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
+            .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
+        shared = 0
+        do j = 1, PwbTimelagCacheN
+            if (j == i) cycle
+            if (PwbTimelagCache(j)%date /= PwbTimelagCache(i)%date) cycle
+            if (PwbTimelagCache(j)%time /= PwbTimelagCache(i)%time) cycle
+            g = PwbTimelagCache(j)%gas
+            if (g < firstGas .or. g > lastGas) cycle
+            if (GasSlotIsWater(g)) cycle
+            if (.not. SameAnalyser(gas, g)) cycle
+            if (trim(PwbTimelagCache(j)%result%reliability_class) /= 'S1_optimal' &
+                .and. trim(PwbTimelagCache(j)%result%reliability_class) /= 'S2_optimal') cycle
+            shared = j
+            exit
+        end do
+        if (shared == 0) cycle
+        PwbTimelagCache(i)%used_lag = PwbTimelagCache(shared)%used_lag
+        PwbTimelagCache(i)%result%reliability_class = 'S4_instrument_shared'
+        PwbTimelagCache(i)%result%fill_method = 'instrument_shared'
+        PwbTimelagCache(i)%result%fallback_source = 'instrument_shared'
+        PwbTimelagCache(i)%result%fallback_used = .false.
+        PwbTimelagCache(i)%result%donor_gas = GasLabel(PwbTimelagCache(shared)%gas)
+        PwbTimelagCache(i)%result%origin_gas = PwbTimelagCache(shared)%gas
+        PwbTimelagCache(i)%result%carry_hours = 0d0
+    end do
+
+    !> Steps 6 and 7, per gas: the median of what was detected, then whatever
+    !> the streaming pass settled on.
+    do gas = firstGas, lastGas
+        n = 0
+        do k = 1, PwbTimelagCacheN
+            i = ord(k)
+            if (PwbTimelagCache(i)%gas /= gas) cycle
+            n = n + 1
+            idx(n) = i
+            !> Whatever the streaming pass settled on stands as this period's
+            !> last resort - covariance maximisation where it fell back, the
+            !> detection itself otherwise. Read before it is overwritten.
+            fallback_lag(n) = PwbTimelagCache(i)%used_lag
+        end do
+        if (n == 0) cycle
+
         nsel = 0
         do j = 1, n
             i = idx(j)
@@ -786,19 +832,23 @@ subroutine PostProcessPwbTimelagCache()
             sorted(nsel) = PwbTimelagCache(i)%result%selected_lag
         end do
         median_lag = error
-        if (nsel > 0) median_lag = Median(sorted, nsel)
+        if (nsel > 0) median_lag = MedianOf(sorted, nsel)
+
         do j = 1, n
             i = idx(j)
-            if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending') cycle
+            if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
+                .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
             if (median_lag /= error) then
+                !> Every one of the lags being averaged here is one the rule
+                !> has just rejected, so this is a last resort and is labelled
+                !> as one.
                 PwbTimelagCache(i)%used_lag = median_lag
                 PwbTimelagCache(i)%result%reliability_class = 'S3_median'
                 PwbTimelagCache(i)%result%fill_method = 'median'
                 PwbTimelagCache(i)%result%fallback_source = 'median'
                 PwbTimelagCache(i)%result%origin_gas = gas
+                PwbTimelagCache(i)%result%fallback_used = .false.
             else
-                !> Step 8: nothing was detected for this gas in the whole run.
-                !> Whatever the pass settled on for this period stands.
                 PwbTimelagCache(i)%used_lag = fallback_lag(j)
                 PwbTimelagCache(i)%result%reliability_class = 'fallback'
                 PwbTimelagCache(i)%result%fill_method = 'maxcov_default'
@@ -808,8 +858,21 @@ subroutine PostProcessPwbTimelagCache()
         end do
     end do
 
+    !> fallback_used means "no evidence reached this period", and only the
+    !> terminal arm above leaves it set. It is raised at detection time for a
+    !> period that produced no usable lag of its own, so every arm that later
+    !> finds one - interpolated, carried, filled backward, shared, median -
+    !> has to lower it again, or the run summary reports a period that WAS
+    !> settled from evidence as a fallback.
+    !>
     !> Row lag, applied lag and the "default used" flag follow the settled
     !> time-lag, so the production pass reads one consistent set of numbers.
+    !>
+    !> applied_lag is the lag measured back off the record shift, not the one
+    !> that was asked for. Interpolation makes fractional lags ordinary and
+    !> the data can only move by whole records, so the two now differ by up to
+    !> half a sample as a matter of course - and it is the shifted one that
+    !> reached the fluxes.
     do i = 1, PwbTimelagCacheN
         if (PwbTimelagCache(i)%used_lag == error) cycle
         PwbTimelagCache(i)%row_lag = nint(PwbTimelagCache(i)%used_lag * Metadata%ac_freq)
@@ -818,7 +881,8 @@ subroutine PostProcessPwbTimelagCache()
             PwbTimelagCache(i)%actual_lag = PwbTimelagCache(i)%used_lag
         PwbTimelagCache(i)%default_used = &
             trim(PwbTimelagCache(i)%result%fill_method) == 'maxcov_default'
-        PwbTimelagCache(i)%result%applied_lag = PwbTimelagCache(i)%used_lag
+        PwbTimelagCache(i)%result%applied_lag = &
+            dble(PwbTimelagCache(i)%row_lag) / Metadata%ac_freq
         PwbTimelagCache(i)%result%applied_row_lag = PwbTimelagCache(i)%row_lag
     end do
     PwbCacheDirty = .true.
@@ -834,21 +898,32 @@ subroutine PostProcessPwbTimelagCache()
 end subroutine PostProcessPwbTimelagCache
 
 !***************************************************************************
-!> Two gas slots measured by the same physical analyser.
+!> Two gas slots measured by the same physical analyser - proven, not assumed.
 !>
-!> The instrument name is the identity where a project states one. The model
-!> string is a fallback for projects that do not, and cannot tell two
-!> analysers of the same model apart - which is why matching on it alone let
-!> two LI-7200s at one site share a time lag across two different tubes.
+!> A time lag is a property of one tube. Borrowing one across analysers is
+!> not an approximation, it is a different measurement, so this answers false
+!> unless both records NAME an instrument and the names are the same.
+!>
+!> In particular there is no fall-back to the model string. Two LI-7200s at
+!> one site share a model and nothing else; matching on it handed one
+!> analyser's lag to the other's gases. And a record that names no instrument
+!> cannot be shown to share anything, so it neither donates nor receives -
+!> absence of evidence is not identity. A project that wants sharing states
+!> instr_<K>_name, and ReportPwbDiagnostics says so when it does not.
+!>
+!> The model is compared as well as the name: equal names with unequal models
+!> is a malformed project, not a shared analyser.
 !***************************************************************************
 logical function SameAnalyser(a, b)
     integer, intent(in) :: a, b
 
-    if (len_trim(E2Col(a)%instr_name) > 0 .and. len_trim(E2Col(b)%instr_name) > 0) then
-        SameAnalyser = E2Col(a)%instr_name == E2Col(b)%instr_name
-    else
-        SameAnalyser = E2Col(a)%instr%model == E2Col(b)%instr%model
-    end if
+    SameAnalyser = .false.
+    if (a < 1 .or. b < 1) return
+    if (len_trim(E2Col(a)%instr_name) == 0) return
+    if (len_trim(E2Col(b)%instr_name) == 0) return
+    if (E2Col(a)%instr_name /= E2Col(b)%instr_name) return
+    if (E2Col(a)%instr%model /= E2Col(b)%instr%model) return
+    SameAnalyser = .true.
 end function SameAnalyser
 
 !***************************************************************************
@@ -909,29 +984,6 @@ subroutine SortByMinutes(ord, tmin, n)
     end do
 end subroutine SortByMinutes
 
-real(kind = dbl) function Median(x, n)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(inout) :: x(n)
-    integer :: i, j
-    real(kind = dbl) :: tmp
-
-    do i = 2, n
-        tmp = x(i)
-        j = i - 1
-        do while (j >= 1)
-            if (x(j) <= tmp) exit
-            x(j+1) = x(j)
-            j = j - 1
-        end do
-        x(j+1) = tmp
-    end do
-    if (mod(n, 2) == 1) then
-        Median = x((n + 1) / 2)
-    else
-        Median = 0.5d0 * (x(n/2) + x(n/2 + 1))
-    end if
-end function Median
-
 subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     use m_index_parameters
     use m_log
@@ -943,14 +995,13 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
 
     integer :: min_rl, max_rl, lag, margin, eval_lo, eval_hi
     integer :: nvalid_w, nvalid_t, nvalid_s
-    integer :: p_scalar, p_w, p_t
     real(kind = dbl) :: min_valid
     real(kind = dbl), allocatable :: ww(:), tt(:), ss(:)
-    real(kind = dbl), allocatable :: phi_s(:), phi_w(:), phi_t(:)
     real(kind = dbl), allocatable :: s_fs(:), w_fs(:), t_fs(:)
     real(kind = dbl), allocatable :: s_fw(:), w_fw(:)
     real(kind = dbl), allocatable :: s_ft(:), t_ft(:)
     real(kind = dbl), allocatable :: raw_ccov(:)
+    type(PwbPreWhitenType) :: pw
     type(PWBResultType) :: candidate(4)
     character(2) :: combo(4)
     logical :: ok(4)
@@ -993,9 +1044,11 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     !> indistinguishable from an ordinary edge-pinned failure, and is now
     !> reported. The applied lag is still taken from inside the declared
     !> window - the guard band informs, it does not widen the search.
+    !> One sample of headroom below nrow, because the differencing branch
+    !> leaves n_eff = nrow - 1 and the evaluated range has to stay inside it.
     margin = max(max(1, PWBSetup%smoothing_width) / 2, nint(2d0 * Metadata%ac_freq))
-    eval_lo = max(min_rl - margin, -(nrow - 2))
-    eval_hi = min(max_rl + margin, nrow - 2)
+    eval_lo = max(min_rl - margin, -(nrow - 3))
+    eval_hi = min(max_rl + margin, nrow - 3)
     if (eval_lo >= eval_hi) then
         LocResult%fallback_used = .true.
         return
@@ -1020,52 +1073,55 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     call FillMissingLinear(tt, nrow)
     call FillMissingLinear(ss, nrow)
 
-    if (.not. IsStationary(ww, nrow) .or. .not. IsStationary(tt, nrow) .or. .not. IsStationary(ss, nrow)) then
-        call DifferenceSeries(ww, nrow)
-        call DifferenceSeries(tt, nrow)
-        call DifferenceSeries(ss, nrow)
-    end if
-
-    call FitArAic(ss, nrow, phi_s, p_scalar)
-    call FitArAic(ww, nrow, phi_w, p_w)
-    call FitArAic(tt, nrow, phi_t, p_t)
+    call EnsurePwbScratch(nrow, eval_lo, eval_hi, max(1, PWBSetup%n_bootstrap))
 
     allocate(s_fs(nrow), w_fs(nrow), t_fs(nrow))
     allocate(s_fw(nrow), w_fw(nrow), s_ft(nrow), t_ft(nrow))
-    call ApplyArFilter(ss, nrow, phi_s, p_scalar, s_fs)
-    call ApplyArFilter(ww, nrow, phi_s, p_scalar, w_fs)
-    call ApplyArFilter(tt, nrow, phi_s, p_scalar, t_fs)
-    call ApplyArFilter(ss, nrow, phi_w, p_w, s_fw)
-    call ApplyArFilter(ww, nrow, phi_w, p_w, w_fw)
-    call ApplyArFilter(ss, nrow, phi_t, p_t, s_ft)
-    call ApplyArFilter(tt, nrow, phi_t, p_t, t_ft)
+    allocate(raw_ccov(min_rl:max_rl))
 
-    call EnsurePwbScratch(nrow, eval_lo, eval_hi, max(1, PWBSetup%n_bootstrap))
+    !> Stationarity, the AR fits, the filtered series, the raw
+    !> cross-covariance and the full-data pre-whitened CCF, in one place with
+    !> no engine state - which is what lets the reference test drive exactly
+    !> this arithmetic against RFlux's frozen output.
+    call PwbPreWhiten(ss, ww, tt, nrow, min_rl, max_rl, error, pw, &
+        s_fs, w_fs, t_fs, s_fw, w_fw, s_ft, t_ft, raw_ccov, sc_xc, sc_yc)
 
+    LocResult%differenced = pw%differenced
+    LocResult%ar_order_scalar = pw%p_scalar
+    LocResult%ar_order_w = pw%p_w
+    LocResult%ar_order_t = pw%p_t
+    LocResult%tlag_pw = dble(pw%tlag_pw_rl) / Metadata%ac_freq
+    LocResult%corr_pw = pw%corr_pw
+    LocResult%cv_99 = BartlettCv99(pw%n_eff)
+
+    !> The bootstrap runs over n_eff, not nrow: the differencing branch
+    !> returns one sample fewer, and resampling the stale tail would feed it a
+    !> value no difference produced.
     combo = (/'cw', 'wc', 'ct', 'tc'/)
-    call RunPwbCombination(w_fs, s_fs, nrow, min_rl, max_rl, eval_lo, eval_hi, &
+    call RunPwbCombination(w_fs, s_fs, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
         gas, combo(1), candidate(1), ok(1))
-    call RunPwbCombination(w_fw, s_fw, nrow, min_rl, max_rl, eval_lo, eval_hi, &
+    call RunPwbCombination(w_fw, s_fw, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
         gas, combo(2), candidate(2), ok(2))
-    call RunPwbCombination(t_fs, s_fs, nrow, min_rl, max_rl, eval_lo, eval_hi, &
+    call RunPwbCombination(t_fs, s_fs, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
         gas, combo(3), candidate(3), ok(3))
-    call RunPwbCombination(t_ft, s_ft, nrow, min_rl, max_rl, eval_lo, eval_hi, &
+    call RunPwbCombination(t_ft, s_ft, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
         gas, combo(4), candidate(4), ok(4))
 
     call SelectBestCandidate(candidate, ok, LocResult, success)
+    !> SelectBestCandidate copies a candidate wholesale, so the per-period
+    !> diagnostics above have to be restored onto the winner.
+    LocResult%differenced = pw%differenced
+    LocResult%ar_order_scalar = pw%p_scalar
+    LocResult%ar_order_w = pw%p_w
+    LocResult%ar_order_t = pw%p_t
+    LocResult%tlag_pw = dble(pw%tlag_pw_rl) / Metadata%ac_freq
+    LocResult%corr_pw = pw%corr_pw
+    LocResult%cv_99 = BartlettCv99(pw%n_eff)
     if (LocResult%peak_outside_window) pwb_outside_window(gas) = pwb_outside_window(gas) + 1
-    if (success) then
-        allocate(raw_ccov(min_rl:max_rl))
-        call ComputeCcovWindow(ww, ss, nrow, min_rl, max_rl, raw_ccov)
-        lag = LocResult%row_lag
-        if (lag >= min_rl .and. lag <= max_rl) LocResult%raw_covariance = raw_ccov(lag)
-        deallocate(raw_ccov)
-    end if
+    lag = LocResult%row_lag
+    if (success .and. lag >= min_rl .and. lag <= max_rl) LocResult%raw_covariance = raw_ccov(lag)
 
-    deallocate(ww, tt, ss)
-    if (allocated(phi_s)) deallocate(phi_s)
-    if (allocated(phi_w)) deallocate(phi_w)
-    if (allocated(phi_t)) deallocate(phi_t)
+    deallocate(ww, tt, ss, raw_ccov)
     deallocate(s_fs, w_fs, t_fs, s_fw, w_fw, s_ft, t_ft)
 end subroutine PwbDetectGas
 
@@ -1095,6 +1151,14 @@ subroutine InitPwbResult(res)
     res%unrestricted_peak_lag = error
     res%peak_outside_window = .false.
     res%hdi_prefiltered = .false.
+    res%carry_hours = 0d0
+    res%tlag_pw = error
+    res%corr_pw = error
+    res%cv_99 = error
+    res%differenced = .false.
+    res%ar_order_scalar = 0
+    res%ar_order_w = 0
+    res%ar_order_t = 0
 end subroutine InitPwbResult
 
 subroutine FillMissingLinear(x, n)
@@ -1139,131 +1203,6 @@ subroutine FillMissingLinear(x, n)
     end do
 end subroutine FillMissingLinear
 
-logical function IsStationary(x, n)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(in) :: x(n)
-    integer :: i
-    real(kind = dbl) :: meanx, sse, cum, rho
-    real(kind = dbl), parameter :: cv_1pct = 0.00537748023783321d0
-
-    meanx = sum(x) / dble(n)
-    sse = 0d0
-    cum = 0d0
-    rho = 0d0
-    do i = 1, n
-        sse = sse + (x(i) - meanx)**2
-    end do
-    if (sse <= 0d0) then
-        IsStationary = .true.
-        return
-    end if
-    do i = 1, n
-        cum = cum + x(i) - meanx
-        rho = rho + cum**2
-    end do
-    rho = rho / (dble(n)**2 * sse)
-    IsStationary = rho < cv_1pct
-end function IsStationary
-
-subroutine DifferenceSeries(x, n)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(inout) :: x(n)
-    integer :: i
-    do i = n, 2, -1
-        x(i) = x(i) - x(i-1)
-    end do
-    x(1) = 0d0
-end subroutine DifferenceSeries
-
-!***************************************************************************
-!> AR(p) by AIC, with p searched up to floor(100*log10(N)).
-!>
-!> There was a cap on that search, offered as a speed option. It saved very
-!> little - the autocovariance pass here is a percent or so of a PWB period,
-!> against the bootstrap cross-correlations - and it works against the whole
-!> point of pre-whitening: an order below the optimum leaves autocorrelation
-!> in the residuals, which is exactly what broadens the CCF peak the method
-!> exists to sharpen. The reference says so in as many words.
-!***************************************************************************
-subroutine FitArAic(x, n, phi_best, p_best)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(in) :: x(n)
-    real(kind = dbl), allocatable, intent(out) :: phi_best(:)
-    integer, intent(out) :: p_best
-    integer :: max_lag, p, i
-    real(kind = dbl) :: meanx, sigma2, kappa, best_aic, aic
-    real(kind = dbl), allocatable :: acf(:), phi(:), phi_old(:)
-
-    max_lag = min(int(floor(100d0 * log10(dble(max(n, 2))))), n - 1)
-    if (max_lag < 1) then
-        allocate(phi_best(0))
-        p_best = 0
-        return
-    end if
-    allocate(acf(0:max_lag))
-    meanx = sum(x) / dble(n)
-    do p = 0, max_lag
-        acf(p) = 0d0
-        do i = 1, n - p
-            acf(p) = acf(p) + (x(i) - meanx) * (x(i+p) - meanx)
-        end do
-        acf(p) = acf(p) / dble(n)
-    end do
-    if (acf(0) <= 0d0) then
-        allocate(phi_best(0))
-        p_best = 0
-        deallocate(acf)
-        return
-    end if
-
-    allocate(phi(1:max_lag), phi_old(1:max_lag), phi_best(0))
-    p_best = 0
-    best_aic = dble(n) * log(acf(0))
-    sigma2 = acf(0)
-    phi = 0d0
-    do p = 1, max_lag
-        if (p == 1) then
-            kappa = acf(1) / sigma2
-        else
-            kappa = (acf(p) - dot_product(phi(1:p-1), acf(p-1:1:-1))) / sigma2
-        end if
-        phi_old = phi
-        if (p > 1) phi(1:p-1) = phi_old(1:p-1) - kappa * phi_old(p-1:1:-1)
-        phi(p) = kappa
-        sigma2 = sigma2 * (1d0 - kappa**2)
-        if (sigma2 <= 0d0) exit
-        aic = dble(n) * log(sigma2) + 2d0 * dble(p)
-        if (aic < best_aic) then
-            best_aic = aic
-            p_best = p
-            if (allocated(phi_best)) deallocate(phi_best)
-            allocate(phi_best(p_best))
-            phi_best = phi(1:p_best)
-        end if
-    end do
-    deallocate(acf, phi, phi_old)
-end subroutine FitArAic
-
-subroutine ApplyArFilter(x, n, phi, p, y)
-    integer, intent(in) :: n, p
-    real(kind = dbl), intent(in) :: x(n)
-    real(kind = dbl), intent(in) :: phi(:)
-    real(kind = dbl), intent(out) :: y(n)
-    integer :: i, j
-    real(kind = dbl) :: meanx
-
-    meanx = sum(x) / dble(n)
-    y = x - meanx
-    if (p <= 0) return
-    do i = n, 1, -1
-        y(i) = x(i) - meanx
-        do j = 1, min(p, i - 1)
-            y(i) = y(i) - phi(j) * (x(i-j) - meanx)
-        end do
-        if (i <= p) y(i) = 0d0
-    end do
-end subroutine ApplyArFilter
-
 !> Size the shared scratch to this gas's period, reallocating only on change.
 subroutine EnsurePwbScratch(n, lo, hi, nboot)
     integer, intent(in) :: n, lo, hi, nboot
@@ -1300,19 +1239,18 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
     widest = max(abs(min_rl), abs(max_rl))
     requested_block_len = nint(PWBSetup%block_length_s * Metadata%ac_freq)
     if (requested_block_len <= 0) requested_block_len = max(1, 2 * widest)
-    block_len = requested_block_len
-    res%block_length_clamped = .false.
-    if (requested_block_len < 2 * widest .and. .not. pwb_block_warned(gas)) then
-        write(*, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: PWB block length for ', &
-            trim(GasLabel(gas)), ' (', &
-            dble(requested_block_len) / Metadata%ac_freq, ' s) is shorter than 2*lag_max (', &
-            dble(2 * widest) / Metadata%ac_freq, ' s).'
-        write(ulog, '(a,a,a,f8.2,a,f8.2,a)') '  WARNING: PWB block length for ', &
-            trim(GasLabel(gas)), ' (', &
-            dble(requested_block_len) / Metadata%ac_freq, ' s) is shorter than 2*lag_max (', &
-            dble(2 * widest) / Metadata%ac_freq, ' s).'
-        pwb_block_warned(gas) = .true.
-    end if
+
+    !> The block is derived per gas, not taken as given.
+    !>
+    !> A resampling block shorter than the lag range cannot contain the lag
+    !> structure the bootstrap exists to preserve, so R couples the two as
+    !> l = 2*LAG.MAX and dyco floors that coupling at the configured value:
+    !> block = max(configured, 2*widest bound). This used to warn and then use
+    !> the short block anyway, which on a project with a 25 s window and the
+    !> default 20 s block meant every gas resampled under-blocked while the
+    !> log said so and nothing acted on it.
+    block_len = max(requested_block_len, 2 * widest)
+    res%block_length_clamped = block_len > requested_block_len
     block_len = min(max(1, block_len), n)
     res%effective_block_length_s = dble(block_len) / Metadata%ac_freq
     nblocks = (n + block_len - 1) / block_len
@@ -1329,7 +1267,7 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
             call CopyBlock(x, y, n, start, block_len, sc_xb, sc_yb, pos)
             if (pos > n) exit
         end do
-        call ComputeCcfWindow(sc_xb, sc_yb, n, eval_lo, eval_hi, sc_ccf)
+        call ComputeCcfWindow(sc_xb, sc_yb, n, eval_lo, eval_hi, sc_ccf, sc_xc, sc_yc)
         call SmoothAndFill(sc_ccf, eval_lo, eval_hi, max(1, PWBSetup%smoothing_width), sc_smooth)
         best_idx = ArgmaxAbs(sc_smooth(min_rl:max_rl), min_rl, max_rl)
         sc_boot(b) = best_idx
@@ -1358,58 +1296,6 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
     res%reliability_class = 'detected'
     ok = .not. res%edge_pinned
 end subroutine RunPwbCombination
-
-integer function MapLagEstimate(samples, n)
-    integer, intent(in) :: n
-    integer, intent(in) :: samples(n)
-    integer :: i, grid, lo, hi, best
-    real(kind = dbl) :: mean_s, var_s, sd_s, bw, dens, best_dens, z
-
-    lo = minval(samples)
-    hi = maxval(samples)
-    if (lo == hi) then
-        MapLagEstimate = lo
-        return
-    end if
-
-    mean_s = sum(dble(samples)) / dble(n)
-    var_s = 0d0
-    do i = 1, n
-        var_s = var_s + (dble(samples(i)) - mean_s)**2
-    end do
-    sd_s = sqrt(max(0d0, var_s / max(1d0, dble(n - 1))))
-    bw = max(1d0, 1.06d0 * sd_s * dble(n)**(-0.2d0))
-
-    best = lo
-    best_dens = -1d0
-    do grid = lo, hi
-        dens = 0d0
-        do i = 1, n
-            z = (dble(grid) - dble(samples(i))) / bw
-            dens = dens + exp(-0.5d0 * z * z)
-        end do
-        if (dens > best_dens) then
-            best_dens = dens
-            best = grid
-        end if
-    end do
-    MapLagEstimate = best
-end function MapLagEstimate
-
-subroutine CopyBlock(x, y, n, start, block_len, xb, yb, pos)
-    integer, intent(in) :: n, start, block_len
-    integer, intent(inout) :: pos
-    real(kind = dbl), intent(in) :: x(n), y(n)
-    real(kind = dbl), intent(inout) :: xb(n), yb(n)
-    integer :: j, src
-    do j = 0, block_len - 1
-        if (pos > n) exit
-        src = min(n, start + j)
-        xb(pos) = x(src)
-        yb(pos) = y(src)
-        pos = pos + 1
-    end do
-end subroutine CopyBlock
 
 !***************************************************************************
 !> The bootstrap stream for one gas and one pre-whitening combination in one
@@ -1441,204 +1327,6 @@ integer(8) function PwbStreamSeed(gas, combo)
     end do
     if (PwbStreamSeed == 0_8) PwbStreamSeed = 88172645463325252_8
 end function PwbStreamSeed
-
-!> One xorshift round over an absorbed value. Shifts and exclusive-or only,
-!> so there is no multiplication to overflow.
-subroutine MixIn(state, val)
-    integer(8), intent(inout) :: state
-    integer(8), intent(in) :: val
-
-    state = ieor(state, val)
-    state = ieor(state, ishft(state, 13))
-    state = ieor(state, ishft(state, -7))
-    state = ieor(state, ishft(state, 17))
-end subroutine MixIn
-
-!***************************************************************************
-!> A uniform integer in [0, upper).
-!>
-!> This was a linear congruential generator carrying glibc's multiplier and
-!> increment - which are chosen for modulus 2^31 - applied with modulus
-!> 2^31-1, and then reduced with mod() straight off the low bits. The low
-!> bits of any LCG are its worst, and a bootstrap replicate here draws about
-!> ninety block starts in a row from them; correlated starts make replicates
-!> resemble one another, which narrows the HDI and hands out S1 to detections
-!> that have not earned it.
-!>
-!> xorshift64 has no multiplication, so nothing can overflow, and the value
-!> is taken from the top bits. ISHFT is a logical shift, so the shifted
-!> result is non-negative whatever the sign of the state.
-!***************************************************************************
-integer function RandBelow(state, upper)
-    integer(8), intent(inout) :: state
-    integer, intent(in) :: upper
-
-    state = ieor(state, ishft(state, 13))
-    state = ieor(state, ishft(state, -7))
-    state = ieor(state, ishft(state, 17))
-    RandBelow = int(mod(ishft(state, -33), int(max(1, upper), 8)), 4)
-end function RandBelow
-
-!***************************************************************************
-!> Normalised cross-correlation over [min_rl, max_rl].
-!>
-!> There was an option to skip the normalisation. It saved two passes over
-!> the series against one per lag - well under a percent - and the divisor is
-!> constant across lags, so within one combination it changed nothing. Across
-!> combinations it changed everything: SelectBestCandidate compares the four
-!> at their modes, and the four pair the scalar against vertical wind and
-!> against sonic temperature, whose covariances carry different physical
-!> units. Unnormalised, the winner was decided by that unit scale.
-!***************************************************************************
-subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf)
-    integer,  intent(in) :: n, min_rl, max_rl
-    real(kind = dbl), intent(in)  :: x(n), y(n)
-    real(kind = dbl), intent(out) :: ccf(min_rl:max_rl)
-    integer :: lag, i, nn
-    real(kind = dbl) :: mx, my, vx, vy, denom, cov
-
-    mx = sum(x) / dble(n)
-    my = sum(y) / dble(n)
-    sc_xc = x - mx
-    sc_yc = y - my
-    vx = sum(sc_xc * sc_xc)
-    vy = sum(sc_yc * sc_yc)
-    denom = sqrt(vx * vy)
-    if (denom <= 0d0) then
-        ccf = 0d0
-        return
-    end if
-
-    do lag = min_rl, max_rl
-        nn = n - abs(lag)
-        if (nn <= 1) then
-            ccf(lag) = 0d0
-            cycle
-        end if
-        cov = 0d0
-        if (lag >= 0) then
-            do i = 1, nn
-                cov = cov + sc_xc(i) * sc_yc(i + lag)
-            end do
-        else
-            do i = 1, nn
-                cov = cov + sc_xc(i - lag) * sc_yc(i)
-            end do
-        end if
-        ccf(lag) = cov / denom
-    end do
-end subroutine ComputeCcfWindow
-
-subroutine ComputeCcovWindow(x, y, n, min_rl, max_rl, ccov)
-    integer, intent(in) :: n, min_rl, max_rl
-    real(kind = dbl), intent(in) :: x(n), y(n)
-    real(kind = dbl), intent(out) :: ccov(min_rl:max_rl)
-    integer :: lag, i, nn, s1, s2
-    real(kind = dbl) :: mx, my
-    do lag = min_rl, max_rl
-        nn = n - abs(lag)
-        if (nn <= 1) then
-            ccov(lag) = error
-            cycle
-        end if
-        mx = 0d0; my = 0d0
-        do i = 1, nn
-            if (lag >= 0) then
-                s1 = i; s2 = i + lag
-            else
-                s1 = i - lag; s2 = i
-            end if
-            mx = mx + x(s1)
-            my = my + y(s2)
-        end do
-        mx = mx / dble(nn); my = my / dble(nn)
-        ccov(lag) = 0d0
-        do i = 1, nn
-            if (lag >= 0) then
-                s1 = i; s2 = i + lag
-            else
-                s1 = i - lag; s2 = i
-            end if
-            ccov(lag) = ccov(lag) + (x(s1) - mx) * (y(s2) - my)
-        end do
-        ccov(lag) = ccov(lag) / dble(nn)
-    end do
-end subroutine ComputeCcovWindow
-
-!***************************************************************************
-!> Centred rolling mean, with the edges carried in from the nearest computed
-!> value (the reference's na.locf).
-!>
-!> The divisor is the number of terms actually summed. It was the requested
-!> width, while the loop sums 2*(width/2)+1 of them - so an even width, which
-!> the interface allowed, scaled every smoothed value by (width+1)/width. A
-!> uniform scale does not move an argmax, but it is still not the mean it
-!> claims to be, and it fed the cross-combination comparison.
-!***************************************************************************
-subroutine SmoothAndFill(x, min_rl, max_rl, width, y)
-    integer, intent(in) :: min_rl, max_rl, width
-    real(kind = dbl), intent(in) :: x(min_rl:max_rl)
-    real(kind = dbl), intent(out) :: y(min_rl:max_rl)
-    integer :: i, j, half, first_valid, last_valid
-    half = width / 2
-    first_valid = min_rl + half
-    last_valid = max_rl - half
-    do i = first_valid, last_valid
-        y(i) = 0d0
-        do j = i - half, i + half
-            y(i) = y(i) + x(j)
-        end do
-        y(i) = y(i) / dble(2 * half + 1)
-    end do
-    if (first_valid <= last_valid) then
-        y(min_rl:first_valid - 1) = y(first_valid)
-        y(last_valid + 1:max_rl) = y(last_valid)
-    else
-        y = x
-    end if
-end subroutine SmoothAndFill
-
-integer function ArgmaxAbs(x, min_rl, max_rl)
-    integer, intent(in) :: min_rl, max_rl
-    real(kind = dbl), intent(in) :: x(min_rl:max_rl)
-    integer :: i
-    ArgmaxAbs = min_rl
-    do i = min_rl, max_rl
-        if (abs(x(i)) > abs(x(ArgmaxAbs))) ArgmaxAbs = i
-    end do
-end function ArgmaxAbs
-
-subroutine Hdi95(x, n, lo, hi)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(inout) :: x(n)
-    real(kind = dbl), intent(out) :: lo, hi
-    integer :: i, j, m, best
-    real(kind = dbl) :: tmp, width
-    do i = 2, n
-        tmp = x(i)
-        j = i - 1
-        do while (j >= 1)
-            if (x(j) <= tmp) exit
-            x(j+1) = x(j)
-            j = j - 1
-        end do
-        x(j+1) = tmp
-    end do
-    m = max(1, int(floor(0.95d0 * dble(n))))
-    if (m >= n) then
-        lo = x(1); hi = x(n); return
-    end if
-    best = 1
-    width = x(1+m) - x(1)
-    do i = 2, n - m
-        if (x(i+m) - x(i) < width) then
-            best = i
-            width = x(i+m) - x(i)
-        end if
-    end do
-    lo = x(best)
-    hi = x(best + m)
-end subroutine Hdi95
 
 subroutine SelectBestCandidate(candidate, ok, res, success)
     type(PWBResultType), intent(in) :: candidate(4)
@@ -1752,6 +1440,23 @@ subroutine ReportPwbDiagnostics()
                 ' (maxcov/default=', pwb_fallback_maxcov(gas), &
                 ', nominal/default=', pwb_fallback_nominal(gas), &
                 ', other=', pwb_fallback_other(gas), ')'
+        end if
+    end do
+
+    !> A gas whose record does not name its instrument can neither donate a
+    !> time lag nor receive one, because nothing proves it shares a tube with
+    !> anything. That is deliberate - a lag belongs to one tube, and the model
+    !> string cannot tell two analysers of the same model apart - but a user
+    !> whose gas fell through to the median instead of borrowing deserves to
+    !> know it was the missing name that decided it.
+    do gas = firstGas, lastGas
+        if (pwb_attempts(gas) > 0 .and. len_trim(E2Col(gas)%instr_name) == 0) then
+            write(*, '(a,a,a)') '  NOTE: ', trim(GasLabel(gas)), &
+                ' names no instrument, so it neither donates a time lag to' &
+                // ' nor takes one from another gas.'
+            write(ulog, '(a,a,a)') '  NOTE: ', trim(GasLabel(gas)), &
+                ' names no instrument, so it neither donates a time lag to' &
+                // ' nor takes one from another gas.'
         end if
     end do
 

@@ -1535,6 +1535,19 @@ module m_typedef
         real(kind = dbl) :: hdi_prefilter_s
         integer :: smoothing_width
         integer :: random_seed
+        !> Furthest a lag may travel to a period that detected none, in hours
+        !> of elapsed time; 0 is unlimited, which is the paper's behaviour.
+        !> It bounds interpolation, forward carry and backward fill alike -
+        !> bounding one direction only would achieve nothing, since with
+        !> detections either side of a long unusable stretch the later one
+        !> would fill from the future exactly the span the earlier one was
+        !> just forbidden to cross.
+        !>
+        !> dyco counts averaging periods here. This counts hours, because our
+        !> table has a row only where a period was processed: across a week of
+        !> missing raw files a period count measures rows present rather than
+        !> time passed, and would quietly reach across the outage.
+        real(kind = dbl) :: max_carry_h
     end type PWBSetupType
 
     type :: PWBResultType
@@ -1572,6 +1585,22 @@ module m_typedef
         logical :: peak_outside_window
         !> Discarded by the HDI pre-filter before S1/S2 ran.
         logical :: hdi_prefiltered
+        !> Hours the settled lag travelled to reach this period: 0 where it
+        !> was detected here, the elapsed distance where it was carried,
+        !> interpolated or filled backward.
+        real(kind = dbl) :: carry_hours
+        !> The deterministic pre-whitening diagnostics. tlag_pw is the peak of
+        !> the unsmoothed full-data pre-whitened CCF (R: tl_pww) and corr_pw
+        !> its value there (R: cor_pww); cv_99 is R's Bartlett 99% band, so a
+        !> |corr_pw| below it means the pre-whitened correlation is not
+        !> distinguishable from noise however narrow the bootstrap HDI is.
+        real(kind = dbl) :: tlag_pw
+        real(kind = dbl) :: corr_pw
+        real(kind = dbl) :: cv_99
+        logical :: differenced
+        integer :: ar_order_scalar
+        integer :: ar_order_w
+        integer :: ar_order_t
     end type PWBResultType
 
     !> One PWB result as persisted in a per-period time-lag cache.

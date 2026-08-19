@@ -69,12 +69,16 @@ class PwbStaticIntegrationTests(unittest.TestCase):
 
     def test_native_detector_and_diagnostics_are_wired_without_python_runtime(self):
         source = read("src/src_rp/pwb_timelag_handle.f90")
+        #> The arithmetic lives in m_pwb_core, which the reference test drives
+        #> directly; this module is the engine glue around it.
+        core = read("src/src_common/m_pwb_core.f90")
         self.assertIn("module m_pwb_timelag", source)
+        self.assertIn("use m_pwb_core", source)
         self.assertIn("subroutine PwbDetectGas", source)
-        self.assertIn("FitArAic", source)
+        self.assertIn("FitArAic", core)
         self.assertIn("RunPwbCombination", source)
-        self.assertIn("MapLagEstimate", source)
-        self.assertIn("Hdi95", source)
+        self.assertIn("MapLagEstimate", core)
+        self.assertIn("Hdi95", core)
         self.assertIn("edge_pinned", source)
         self.assertIn("fallback_used", source)
         self.assertIn("block_length_clamped", source)
@@ -119,11 +123,16 @@ class PwbStaticIntegrationTests(unittest.TestCase):
             source = code(rel)
             self.assertNotIn("PWBSetup%approx_ccf", source, rel)
             self.assertNotIn("PWBSetup%max_ar_order", source, rel)
-        #> Blanked in the positional tag table, not removed from it.
+        #> Blanked in the positional tag table, not removed from it - and 422
+        #> has since been reused for pwb_max_carry_h, which is safe for the
+        #> same reason retiring it was: the parser matches a tag by its label,
+        #> so a project still stating pwb_approx_ccf finds nothing.
         globals_ = read("src/src_rp/m_rp_global_var.f90")
         for tag in (422, 423, 424):
             self.assertIn("SNTags(%d)" % tag, globals_)
+        for tag in (423, 424):
             self.assertNotIn("SNTags(%d)%%Label / 'pwb_" % tag, globals_)
+        self.assertIn("SNTags(422)%Label / 'pwb_max_carry_h' /", globals_)
 
     def test_detection_runs_pre_wpl_without_a_choice(self):
         """Both alternatives ran on rotated 20 Hz data.
@@ -164,13 +173,20 @@ class PwbStaticIntegrationTests(unittest.TestCase):
                 "the default window is back to naming slots")
 
     def test_bounds_sensitive_loops_do_not_rely_on_short_circuiting(self):
-        source = read("src/src_rp/pwb_timelag_handle.f90")
-        self.assertNotIn("j >= 1 .and. x(j)", source)
-        self.assertNotIn("k <= n .and. x(k)", source)
-        self.assertIn("do while (j >= 1)", source)
-        self.assertIn("if (x(j) <= tmp) exit", source)
-        self.assertIn("if (k > n) exit", source)
-        self.assertIn("if (x(k) /= error) exit", source)
+        #> Fortran does not promise to stop evaluating .and., so an index test
+        #> guarding a subscript has to be its own statement. The insertion
+        #> sorts that need this moved into the core with everything else.
+        core = read("src/src_common/m_pwb_core.f90")
+        self.assertNotIn("j >= 1 .and. x(j)", core)
+        self.assertIn("do while (j >= 1)", core)
+        self.assertIn("if (x(j) <= tmp) exit", core)
+        #> FillMissingLinear stayed behind: it is the one loop here that knows
+        #> the engine's missing-value code, so it is engine glue rather than
+        #> arithmetic.
+        handler = read("src/src_rp/pwb_timelag_handle.f90")
+        self.assertNotIn("k <= n .and. x(k)", handler)
+        self.assertIn("if (k > n) exit", handler)
+        self.assertIn("if (x(k) /= error) exit", handler)
 
     def test_timelag_handle_falls_back_and_makefile_references_source(self):
         handler = read("src/src_rp/timelag_handle.f90")
