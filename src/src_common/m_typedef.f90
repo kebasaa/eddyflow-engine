@@ -1535,9 +1535,6 @@ module m_typedef
         real(kind = dbl) :: hdi_prefilter_s
         integer :: smoothing_width
         integer :: random_seed
-        logical :: approx_ccf      !< skip CCF normalisation in bootstrap (faster, minor approximation)
-        integer :: max_ar_order    !< cap on AR model order in FitArAic (0 = unlimited)
-        logical :: detect_prewpl   !< run PWB detection on despiked+rotated, pre-WPL data
     end type PWBSetupType
 
     type :: PWBResultType
@@ -1563,6 +1560,18 @@ module m_typedef
         real(kind = dbl) :: effective_block_length_s
         real(kind = dbl) :: raw_covariance
         real(kind = dbl) :: ccf_at_mode
+        !> How this period's lag was arrived at: 'native', 'instrument_shared',
+        !> 'interpolated', 'backfilled', 'median', 'nominal', 'maxcov_default'.
+        !> Distinct from reliability_class, which says how good the detection
+        !> was; this says which arm of the gap-filling produced the number.
+        character(24) :: fill_method
+        !> The peak the detector saw over the evaluated range, which extends a
+        !> guard band beyond the declared window. The applied lag is always the
+        !> restricted one; this is what says whether the window was well chosen.
+        real(kind = dbl) :: unrestricted_peak_lag
+        logical :: peak_outside_window
+        !> Discarded by the HDI pre-filter before S1/S2 ran.
+        logical :: hdi_prefiltered
     end type PWBResultType
 
     !> One PWB result as persisted in a per-period time-lag cache.
@@ -1570,7 +1579,6 @@ module m_typedef
         character(10) :: date
         character(5) :: time
         integer :: gas
-        character(8) :: stage
         real(kind = dbl) :: actual_lag
         real(kind = dbl) :: used_lag
         integer :: row_lag

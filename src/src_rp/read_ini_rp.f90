@@ -573,12 +573,18 @@ subroutine WriteVariablesRP()
     if (SNTagFound(419)) PWBSetup%hdi_prefilter_s = SNTags(419)%value
     if (SNTagFound(420)) PWBSetup%smoothing_width = max(1, nint(SNTags(420)%value))
     if (SNTagFound(421)) PWBSetup%random_seed = max(1, nint(SNTags(421)%value))
-    PWBSetup%approx_ccf   = .false.
-    PWBSetup%max_ar_order = 0
-    if (SNTagFound(422)) PWBSetup%approx_ccf   = nint(SNTags(422)%value) /= 0
-    if (SNTagFound(423)) PWBSetup%max_ar_order = max(0, nint(SNTags(423)%value))
-    PWBSetup%detect_prewpl = .false.
-    if (SNTagFound(424)) PWBSetup%detect_prewpl = nint(SNTags(424)%value) /= 0
+    !> 422, 423 and 424 were pwb_approx_ccf, pwb_max_ar_order and
+    !> pwb_detect_prewpl. The first two were offered as speed options and
+    !> were not: skipping the CCF normalisation saved two passes out of
+    !> nlags, under one percent, while leaving the four pre-whitening
+    !> combinations compared on unnormalised covariances in different
+    !> physical units - so the winner was decided by the units of w against
+    !> those of sonic temperature. Capping the AR order saved about as
+    !> little and under-fits the pre-whitener, which is what sharpens the
+    !> peak in the first place. The third chose between detecting before and
+    !> after the WPL conversion; detection is pre-WPL now, so there is
+    !> nothing left to choose. The labels are blanked in the tag table
+    !> rather than removed, because that table is positional.
 
     !> Time lag optimizer extra settings
     RPsetup%to_onthefly = .false.

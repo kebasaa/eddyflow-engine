@@ -9,6 +9,17 @@ def read(path):
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def code(rel):
+    """Source with full-line comments removed.
+
+    A retirement leaves a note behind saying what was retired and why, so a
+    plain `assertNotIn` against the raw source matches the explanation rather
+    than the code and reports the removal as a failure.
+    """
+    return (chr(10)).join(ln for ln in read(rel).splitlines()
+                          if not ln.lstrip().startswith("!"))
+
+
 class PwbStaticIntegrationTests(unittest.TestCase):
     def test_method_id_five_maps_to_pwb_without_moving_existing_ids(self):
         source = read("src/src_rp/read_ini_rp.f90")
@@ -69,11 +80,71 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertIn("block_length_clamped", source)
         self.assertIn("effective_block_length_s", source)
         self.assertIn("EddyFlowProj%id(1:len_trim(EddyFlowProj%id))", source)
-        self.assertIn("PwbTimelagDiag_FilePadding", source)
+        self.assertIn("PwbTimelag_FilePadding", source)
         self.assertIn("Timestamp_FilePadding", source)
         globals_ = read("src/src_common/m_common_global_var.f90")
-        self.assertIn("PwbTimelagDiag_FilePadding = '_pwb_diagnostics'", globals_)
+        self.assertIn("PwbTimelag_FilePadding  = '_pwb_timelag'", globals_)
         self.assertNotIn("import scipy", source.lower())
+
+    def test_pwb_writes_two_files_and_not_four(self):
+        """The half-hourly table and the aggregate summary, nothing else.
+
+        _pwb_diagnostics repeated the per-period table one column apart, and
+        _pwb_summary held per-gas tallies the run log already prints. Both are
+        folded away, so a reader has one file to open per question.
+        """
+        globals_ = code("src/src_common/m_common_global_var.f90")
+        self.assertNotIn("_pwb_diagnostics", globals_)
+        self.assertNotIn("_pwb_summary", globals_)
+        for rel in ("src/src_rp/pwb_timelag_handle.f90",
+                    "src/src_rp/timelag_handle.f90",
+                    "src/src_rp/eddyflow-rp_main.f90"):
+            source = code(rel)
+            self.assertNotIn("PwbTimelagDiag_FilePadding", source, rel)
+            self.assertNotIn("PwbSummary_FilePadding", source, rel)
+            self.assertNotIn("WritePwbDiagnostic", source, rel)
+
+    def test_the_two_speed_options_are_gone(self):
+        """Both cost accuracy for well under a percent of runtime.
+
+        Skipping the CCF normalisation left the four pre-whitening
+        combinations compared on unnormalised covariances carrying different
+        physical units, so the winner was decided by unit scale rather than by
+        peak prominence. Capping the AR order under-fits the pre-whitener,
+        which is the step that sharpens the peak in the first place.
+        """
+        for rel in ("src/src_common/m_typedef.f90",
+                    "src/src_rp/read_ini_rp.f90",
+                    "src/src_rp/pwb_timelag_handle.f90"):
+            source = code(rel)
+            self.assertNotIn("PWBSetup%approx_ccf", source, rel)
+            self.assertNotIn("PWBSetup%max_ar_order", source, rel)
+        #> Blanked in the positional tag table, not removed from it.
+        globals_ = read("src/src_rp/m_rp_global_var.f90")
+        for tag in (422, 423, 424):
+            self.assertIn("SNTags(%d)" % tag, globals_)
+            self.assertNotIn("SNTags(%d)%%Label / 'pwb_" % tag, globals_)
+
+    def test_detection_runs_pre_wpl_without_a_choice(self):
+        """Both alternatives ran on rotated 20 Hz data.
+
+        The only difference was whether the gas series had been through the
+        pointwise mixing-ratio conversion, and that conversion runs before
+        time-lag compensation - so after it, cell temperature and water sit in
+        the gas series at the wrong relative lag, and the gas series is what
+        is being cross-correlated.
+        """
+        for rel in ("src/src_common/m_typedef.f90",
+                    "src/src_rp/read_ini_rp.f90",
+                    "src/src_rp/eddyflow-rp_main.f90"):
+            self.assertNotIn("detect_prewpl", code(rel), rel)
+        main_source = code("src/src_rp/eddyflow-rp_main.f90")
+        #> Detection sits between the rotation and the WPL conversion.
+        rot = main_source.index("call TiltCorrection(Meth%rot")
+        det = main_source.index("if (Meth%tlag == 'pwb') then", rot)
+        wpl = main_source.index("call PointByPointToMixingRatio", rot)
+        self.assertLess(rot, det)
+        self.assertLess(det, wpl)
 
     def test_the_default_lag_window_covers_every_gas(self):
         """A gas with no window searches nothing and returns the default lag.

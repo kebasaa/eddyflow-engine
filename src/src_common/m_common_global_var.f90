@@ -135,8 +135,14 @@ module m_common_global_var
     character(12), parameter :: FullOut_FilePadding     = '_full_output'
     character(11), parameter :: PlanarFit_FilePadding   = '_planar_fit'
     character(12), parameter :: TimelagOpt_FilePadding  = '_timelag_opt'
-    character(16), parameter :: PwbTimelagDiag_FilePadding = '_pwb_diagnostics'
-    character(12), parameter :: PwbSummary_FilePadding     = '_pwb_summary'
+    !> The half-hourly PWB table. It is also the re-readable cache, so a run
+    !> that wrote it can be replayed exactly from it.
+    character(12), parameter :: PwbTimelag_FilePadding  = '_pwb_timelag'
+    !> _pwb_diagnostics and _pwb_summary stood here. The first repeated the
+    !> per-period cache one column apart and is folded into it; the second
+    !> held per-gas tallies the run log already prints. PWB writes two files
+    !> now: the half-hourly table (which is also the cache) and the aggregate
+    !> _pwb_timelag_opt.
     character(8),  parameter :: FLUXNET_FilePadding     = '_fluxnet'
     character(7),  parameter  :: Biomet_FilePadding     = '_biomet'
     character(14), parameter :: Quality_FilePadding     = '_quality_check'

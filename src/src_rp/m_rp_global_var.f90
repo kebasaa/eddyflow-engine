@@ -636,9 +636,9 @@ module m_rp_global_var
          SNTags(419)%Label / 'pwb_hdi_prefilter_s' /
     data SNTags(420)%Label / 'pwb_smoothing_width' / &
          SNTags(421)%Label / 'pwb_random_seed' / &
-         SNTags(422)%Label / 'pwb_approx_ccf' / &
-         SNTags(423)%Label / 'pwb_max_ar_order' / &
-         SNTags(424)%Label / 'pwb_detect_prewpl' / &
+         SNTags(422)%Label / '' / &
+         SNTags(423)%Label / '' / &
+         SNTags(424)%Label / '' / &
          SNTags(425)%Label / 'gas_1_sr_lim' / &
          SNTags(426)%Label / 'gas_1_al_min' / &
          SNTags(427)%Label / 'gas_1_al_max' / &

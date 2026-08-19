@@ -38,6 +38,7 @@ program EddyFlowRP
     use m_cec
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
+        PostProcessPwbTimelagCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     !use netcdf
     !use iso_c_binding
@@ -499,9 +500,10 @@ program EddyFlowRP
     if (trim(adjustl(Meth%tlag)) == 'pwb' .and. PwbCacheUpdateRequested) then
         call ReadPwbTimelagCache(AuxFile%to, PwbCacheRecognized, PwbCacheValid)
         if (PwbCacheRecognized) then
-            if (.not. PwbCacheValid) error stop 'PWB time-lag cache could not be read safely.'
-            call LogSay(' PWB per-period time-lag cache found, retrieving content..')
-            call LogSay(' PWB mode: exact per-period cache reuse; missing entries will be detected.')
+            if (.not. PwbCacheValid) &
+                error stop 'PWB half-hourly time-lag table could not be used; see the message above.'
+            call LogSay(' PWB half-hourly time-lag table found, retrieving content..')
+            call LogSay(' PWB mode: exact per-period reuse; missing periods will be detected.')
         else
             TimeLagOptSelected = .true.
             Meth%tlag = 'tlag_opt'
@@ -509,7 +511,7 @@ program EddyFlowRP
         end if
     elseif (PwbCacheGenerate) then
         call InitPwbTimelagCache()
-        call LogSay(' PWB mode: pre-generation followed by cache-backed production processing.')
+        call LogSay(' PWB mode: whole-run time-lag pre-pass, then production processing from its table.')
     elseif (trim(adjustl(Meth%tlag)) == 'pwb') then
         call InitPwbTimelagCache()
         call LogSay(' PWB mode: live detection during production processing.')
@@ -825,7 +827,15 @@ program EddyFlowRP
                     size(E2Set, 1), size(E2Set, 2), 5, .false.)
                 Stats5 = Stats
 
-                if (PwbCacheGenerate .and. PWBSetup%detect_prewpl) then
+                !> PWB detection on rotated, pre-WPL data. This used to be
+                !> optional; both alternatives ran on rotated 20 Hz data, so
+                !> the choice was only ever whether the gas series had been
+                !> through the pointwise mixing-ratio conversion first. That
+                !> conversion runs before time-lag compensation, so after it
+                !> the cell temperature and water signals sit in the gas
+                !> series at the wrong relative lag - which is the one series
+                !> being cross-correlated here.
+                if (PwbCacheGenerate) then
                     call RetrieveSensorParams()
                     call SetTimelags()
                     pwb_detect_only_mode = .true.
@@ -935,6 +945,10 @@ program EddyFlowRP
             !*******************************************************************
 
             if (PwbCacheGenerate) then
+                !> Every period has been read, so the gap-filling can look
+                !> forwards as well as back. This is what the streaming
+                !> classifier in timelag_handle cannot do.
+                call PostProcessPwbTimelagCache()
                 call WritePwbTimelagCache()
                 if (PwbTimelagN > 0) then
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
@@ -958,7 +972,7 @@ program EddyFlowRP
                 end if
                 call ReportPwbDiagnostics()
                 call ResetPwbDiagnostics()
-                call LogSay(' PWB time-lag cache generation session terminated.')
+                call LogSay(' PWB time-lag pre-pass finished.')
             else
             !> Adjust time-lag opt dataset to eliminate errors,
             !> so that it's easier to treat them later
@@ -2140,7 +2154,7 @@ program EddyFlowRP
             !> ===== 5. TILT CORRECTION ========================================
             !> Apply rotations for tilt correction, if requested.
             !> NOTE: rotation is applied BEFORE the WPL mixing-ratio conversion so
-            !> that (optional) pre-WPL PWB time-lag detection sees despiked + rotated
+            !> that pre-WPL PWB time-lag detection sees despiked + rotated
             !> concentrations, matching the Python/RFlux reference. TiltCorrection
             !> only touches wind (u,v,w) and PointByPointToMixingRatio only touches
             !> gas columns, so the two operations commute and the final E2Set is
@@ -2149,9 +2163,14 @@ program EddyFlowRP
                 size(E2Set, 1), size(E2Set, 2), PFSetup%num_sec, &
                 Essentials%yaw, Essentials%pitch, Essentials%roll, .true.)
 
-            !> Optional PWB time-lag detection on despiked + rotated, pre-WPL data.
-            !> Lags are stored now and applied later at the normal timelag stage.
-            if (Meth%tlag == 'pwb' .and. PWBSetup%detect_prewpl) then
+            !> PWB time-lag detection on despiked + rotated, pre-WPL data.
+            !> Lags are stored now and applied later at the normal timelag
+            !> stage. Detecting before PointByPointToMixingRatio matters
+            !> because that conversion runs before time-lag compensation: after
+            !> it, cell temperature and water sit in the gas series at the
+            !> wrong relative lag, and the gas series is what is being
+            !> cross-correlated here.
+            if (Meth%tlag == 'pwb') then
                 call RetrieveSensorParams()
                 call SetTimelags()
                 pwb_detect_only_mode = .true.

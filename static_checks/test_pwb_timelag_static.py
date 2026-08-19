@@ -41,15 +41,15 @@ class PwbTimelagStaticTests(unittest.TestCase):
         main_source = read("src/src_rp/eddyflow-rp_main.f90")
         globals_source = read("src/src_common/m_common_global_var.f90")
 
-        self.assertIn("PwbSummary_FilePadding", globals_source)
+        #> The tallies are a run-log report now, not a file of their own.
+        self.assertNotIn("PwbSummary_FilePadding", globals_source)
         for token in ("PreparePwbBatch", "FinalizePwbBatch", "StorePwbRawResult", "GetPwbFinalResult"):
             self.assertNotIn(token, module_source)
             self.assertNotIn(token, main_source)
         self.assertIn("WARNING: all PWB detections fell back", module_source)
-        self.assertIn("raw_selected_lag_s,raw_row_lag,applied_lag_s,applied_row_lag", module_source)
+        self.assertIn("raw_lag_s,raw_row_lag,hdi_low_s", module_source)
         self.assertIn("effective_block_length_s", module_source)
         self.assertIn("donor_gas", module_source)
-        self.assertIn("maxcov_default,nominal_default,other_fallback", module_source)
         self.assertIn("call ResetPwbDiagnostics()", main_source)
         self.assertIn("if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()", main_source)
 
@@ -75,17 +75,21 @@ class PwbTimelagStaticTests(unittest.TestCase):
         module_source = read("src/src_rp/pwb_timelag_handle.f90")
         handle_source = read("src/src_rp/timelag_handle.f90")
 
-        self.assertIn("PWB_TIMELAG_CACHE_VERSION=2", module_source)
-        self.assertIn("PWB_TIMELAG_CACHE_VERSION=1", module_source)
+        #> Versions 1 and 2 carried a pre_wpl/post_wpl stage column for a
+        #> choice that no longer exists, and predate the retired speed
+        #> settings, so their fingerprint could not match this build anyway.
+        self.assertIn("PWB_TIMELAG_CACHE_VERSION=3", module_source)
+        self.assertNotIn("PWB_TIMELAG_CACHE_VERSION=2", module_source)
+        self.assertNotIn("PWB_TIMELAG_CACHE_VERSION=1", module_source)
         self.assertIn("fingerprint=", module_source)
         self.assertIn("period_seconds=", module_source)
-        self.assertIn("date,time,gas,stage,actual_lag_s,used_lag_s", module_source)
+        self.assertIn("date,time,gas,", module_source)
+        self.assertIn("fill_method", module_source)
         self.assertIn("subroutine ReadPwbTimelagCache", module_source)
         self.assertIn("subroutine WritePwbTimelagCache", module_source)
         self.assertIn("call LookupPwbTimelagCache", handle_source)
         self.assertIn("call StorePwbTimelagCache", handle_source)
-        self.assertIn("cache_stage = 'pre_wpl'", handle_source)
-        self.assertIn("cache_stage = 'post_wpl'", handle_source)
+        self.assertNotIn("cache_stage", handle_source)
         self.assertIn("PWBResult = pwb_raw_Result", handle_source)
         self.assertIn("SetPwbPeriodTimestamp", module_source)
         self.assertIn("PwbPeriodDate", module_source)
@@ -115,7 +119,7 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("PwbCacheUpdateRequested = len_trim(AuxFile%to) > 0", parser_source)
         self.assertIn("PWB mode: live detection during production processing.", main_source)
         self.assertIn("aggregate/RH-class time-lag reuse; PWB detection is disabled.", main_source)
-        self.assertIn("PWB mode: exact per-period cache reuse", main_source)
+        self.assertIn("PWB mode: exact per-period reuse", main_source)
         self.assertIn("'_pwb_timelag_opt'", writer_source)
         self.assertIn("PwbAggregateSummary", writer_source)
 
@@ -126,8 +130,12 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("PwbCacheGenerate = .true.", parser_source)
         self.assertIn("PwbCacheUpdateRequested = len_trim(AuxFile%to) > 0", parser_source)
         self.assertIn("call WritePwbTimelagCache()", main_source)
-        self.assertIn("PWB time-lag cache generation session terminated.", main_source)
-        self.assertIn("PwbCacheGenerate .and. PWBSetup%detect_prewpl", main_source)
+        self.assertIn("PWB time-lag pre-pass finished.", main_source)
+        #> The whole record is settled before it is written, which is the
+        #> point of having a pre-pass at all.
+        self.assertIn("call PostProcessPwbTimelagCache()", main_source)
+        self.assertLess(main_source.index("call PostProcessPwbTimelagCache()"),
+                        main_source.index("call WritePwbTimelagCache()"))
         self.assertIn("Meth%tlag == 'pwb' .and. PwbCacheDirty", main_source)
         self.assertIn("PwbTimelagN", main_source)
         self.assertIn("WriteOutTimelagOptimization(tlagn, E2NumVar, toH2On", main_source)

@@ -1,3 +1,82 @@
+7.3.1 (2026-08-19)
+
+	Engine:
+	- New feature: PWB settles every averaging period's time lag with the whole run in hand.
+	               The classifier ran while periods streamed past, so it could only look
+	               backwards: a period before the first reliable detection had nothing to carry
+	               forward and fell back to covariance maximisation, and a gap in the middle
+	               carried the last good lag forward flat for as long as the gap lasted - which
+	               is exactly wrong for the pumps whose lag drifts with temperature or age.
+	               Neither was a limit of the method, only of not having read the rest of the run.
+	               The pre-pass has read it. It now settles each period from the stored evidence
+	               in the reference's own order: the HDI pre-filter, then S1, then S2, then the
+	               same-analyser share, then interpolation between the reliable lags either side
+	               on the real time axis, then the nearest reliable lag at the start or end of the
+	               run, then the gas's median, and only then the fallback the pass recorded.
+	               A new fill_method column names which of those settled each row, so the file
+	               says how every half-hour was decided and not only what it decided.
+	               Live detection (no pre-pass) keeps the causal classifier; nothing better is
+	               possible when the future has not been read
+	- Fix: pwb_hdi_prefilter_s does something. It has been in the interface, in the project file
+	       and in the settings fingerprint since PWB was added, and no computation has ever read
+	       it - so a detection with a very wide HDI could still be accepted by S2 merely for
+	       landing near the previous period's lag. It is applied before classification now, which
+	       is what the reference does and what its name has always promised
+	- Fix: Gases share a detected lag by analyser identity, not by model string. Two analysers of
+	       the same model are two tubes, and the rule handed one's lag to the other's gases - the
+	       same distinction timelag_handle already drew for the water covariance. And water no
+	       longer donates: its lag is humidity-dependent in a way the trace gases' is not, which
+	       is precisely why the aggregate summary has always refused it as a donor. The two halves
+	       of one rule disagreed
+	- Fix: The bootstrap draws an independent resampling per period. The seed was built from the
+	       gas and the combination only, so every half-hour drew the identical sequence of block
+	       start positions - one fixed template applied to the whole run rather than a draw. The
+	       generator itself was glibc's LCG constants (chosen for modulus 2^31) used with modulus
+	       2^31-1 and then reduced off the low bits, which are the worst-correlated bits an LCG
+	       has; a replicate draws about ninety starts in a row from them, so replicates resembled
+	       one another, the HDI came out too narrow, and S1 was handed to detections that had not
+	       earned it. It is xorshift64 read from the top bits now, seeded from the period as well,
+	       so a period stays reproducible while periods are independent of each other
+	- Fix: The smoothed cross-correlation divides by the number of terms it actually sums. It
+	       divided by the requested width while summing 2*(width/2)+1 of them, so an even width -
+	       which the interface allowed - scaled every value by (width+1)/width
+	- Change: The two PWB "speed options" are retired. Neither was one. Skipping the CCF
+	          normalisation saved two passes over the series against one per lag, well under a
+	          percent, and the divisor is constant across lags - so within a combination it
+	          changed nothing, while ACROSS combinations it changed everything: the four are
+	          compared at their modes, and they pair the scalar against vertical wind and against
+	          sonic temperature, whose covariances carry different physical units. Unnormalised,
+	          the winner was decided by that unit scale rather than by peak prominence, on every
+	          period. Capping the AR order saved about as little and under-fits the pre-whitener,
+	          which is the step that sharpens the peak the method exists to find
+	- Change: The cross-correlation is evaluated over the declared window plus a guard band, not
+	          over the mirrored symmetric range the window sits inside. Half the smoothing width
+	          is what the centred rolling mean consumes; the two seconds on top exist because the
+	          window is a guess, and a peak just outside it used to be indistinguishable from an
+	          ordinary edge-pinned failure. The applied lag still comes from inside the declared
+	          window - the guard band informs, it does not widen the search - and two new columns
+	          plus a run-log warning report when the peak keeps landing outside, which says the
+	          window is wrong rather than the detector.
+	          With that and the bootstrap scratch buffers hoisted out of the resampling loop, a
+	          three-hour eight-gas run with [-5, 25] s windows takes 70 s against 97 s, measured
+	          best-of-two on the same input
+	- Change: PWB detection runs on rotated, pre-WPL data, and the choice is retired. Both
+	          alternatives ran on rotated 20 Hz data; the only difference was whether the gas
+	          series had been through the pointwise mixing-ratio conversion, and that conversion
+	          runs BEFORE time-lag compensation - so after it the cell temperature and water
+	          signals sit in the gas series at the wrong relative lag, and the gas series is the
+	          one being cross-correlated. Checked rather than assumed: over a three-hour run every
+	          one of the thirteen reliable (S1/S2) detections is bit-identical either way, and the
+	          rows that move are the ones PWB itself rejected as unreliable
+	- Change: PWB writes two files instead of four. The per-period diagnostics repeated the cache
+	          one column apart and the per-gas summary held tallies the run log already prints;
+	          both are folded away. What remains is the half-hourly table - which is also the file
+	          a later run reads back, so a run can be replayed exactly from it - and the aggregate
+	          _pwb_timelag_opt. The table names its gases rather than numbering their slots, and
+	          is version 3: versions 1 and 2 carried a pre/post-WPL stage column for a choice that
+	          no longer exists and predate the retired settings, so their fingerprint could not
+	          have matched in any case
+
 7.3.0 (2026-07-28)
 
     Engine:

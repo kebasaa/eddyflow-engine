@@ -408,8 +408,7 @@ class TheHandshake(unittest.TestCase):
                     "tlag_assessment_only", "biom_rh_override",
                     "pwb_n_bootstrap", "pwb_block_length_s", "pwb_min_valid_frac",
                     "pwb_hdi_thresh_s", "pwb_dev_thresh_s", "pwb_hdi_prefilter_s",
-                    "pwb_smoothing_width", "pwb_random_seed", "pwb_approx_ccf",
-                    "pwb_max_ar_order", "pwb_detect_prewpl"):
+                    "pwb_smoothing_width", "pwb_random_seed"):
             self.assertIn("'%s" % key, src, "%s is not written" % key)
 
     def test_a_setting_whose_absence_is_a_decision_is_left_absent(self):
@@ -465,9 +464,6 @@ class TheProjectDefaults(unittest.TestCase):
         "pwb_hdi_prefilter_s": "PWBSetup%hdi_prefilter_s = 1.0d0",
         "pwb_smoothing_width": "PWBSetup%smoothing_width = 5",
         "pwb_random_seed": "PWBSetup%random_seed = 2024",
-        "pwb_approx_ccf": "PWBSetup%approx_ccf   = .false.",
-        "pwb_max_ar_order": "PWBSetup%max_ar_order = 0",
-        "pwb_detect_prewpl": "PWBSetup%detect_prewpl = .false.",
         "automatic_spectra_config": "FCCsetup%SA%automatic_config = .false.",
     }
 
@@ -528,22 +524,26 @@ class TheProjectDefaults(unittest.TestCase):
         #> initialises before it looks for the tag.
         for key in ("cec_meth", "automatic_spectra_config", "flux_run_mode",
                     "rot_pf_assessment_only", "tlag_assessment_only",
-                    "biom_rh_override", "pwb_approx_ccf", "pwb_max_ar_order",
-                    "pwb_detect_prewpl"):
+                    "biom_rh_override"):
             self.assertEqual(table[key], "0", "%s should be off" % key)
 
-    def test_the_pwb_pre_pass_is_written_under_the_name_that_is_read(self):
-        #> This was a cross-repo defect: the interface wrote the setting as
-        #> `pwb_detect_on_raw` and this engine declares `pwb_detect_prewpl`.
-        #> SearchLocalTags matches labels by exact equality, so the two never
-        #> met - the checkbox had no effect and the pass was off for every
-        #> project ever saved. The interface writes this spelling now and
-        #> removes the old one on save, so writing the old one here would put
-        #> a key in the file that one side deletes and the other ignores.
+    def test_the_retired_pwb_keys_are_not_written(self):
+        #> pwb_detect_prewpl chose whether detection saw the gas series before
+        #> or after the pointwise mixing-ratio conversion. Both alternatives
+        #> ran on rotated 20 Hz data and the conversion runs before time-lag
+        #> compensation, so detecting after it puts cell temperature and water
+        #> into the gas series at the wrong relative lag. There is no choice
+        #> left to write.
+        #>
+        #> pwb_approx_ccf and pwb_max_ar_order were speed options that bought
+        #> under a percent of runtime and cost accuracy for it.
+        #>
+        #> A converted project simply does not carry them, which is what
+        #> absent has always meant in this table.
         table = self.written()
-        self.assertIn("pwb_detect_prewpl", table)
-        self.assertEqual(table["pwb_detect_prewpl"], "0")
-        self.assertNotIn("pwb_detect_on_raw", table)
+        for key in ("pwb_detect_prewpl", "pwb_detect_on_raw",
+                    "pwb_approx_ccf", "pwb_max_ar_order"):
+            self.assertNotIn(key, table)
 
 
 class TheMetadataAdditions(unittest.TestCase):
@@ -655,8 +655,7 @@ class TheFixtures(unittest.TestCase):
         for key in ("cec_meth=0", "automatic_spectra_config=0",
                     "flux_run_mode=0", "rot_pf_assessment_only=0",
                     "tlag_assessment_only=0", "biom_rh_override=0",
-                    "pwb_n_bootstrap=99", "pwb_smoothing_width=5",
-                    "pwb_detect_prewpl=0"):
+                    "pwb_n_bootstrap=99", "pwb_smoothing_width=5"):
             self.assertIn(key, native)
         self.assertIn("[RawProcess_PWBTimelag_Settings]", native)
         for key in ("pf_sect_1_width=", "wdf_sect_1_start=",

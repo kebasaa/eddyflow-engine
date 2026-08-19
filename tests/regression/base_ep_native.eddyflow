@@ -408,6 +408,3 @@ pwb_dev_thresh_s=0.50
 pwb_hdi_prefilter_s=1.00
 pwb_smoothing_width=5
 pwb_random_seed=2024
-pwb_approx_ccf=0
-pwb_max_ar_order=0
-pwb_detect_prewpl=0

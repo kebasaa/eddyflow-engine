@@ -139,7 +139,7 @@ module m_eddypro_import
     !>   automatic_spectra_config read_ini_fcc.f90:334
     !>   rot_pf_assessment_only   read_ini_rp.f90:500
     !>   tlag_assessment_only     read_ini_rp.f90:589
-    !>   pwb_*                    read_ini_rp.f90:542-549, 576-580
+    !>   pwb_*                    read_ini_rp.f90:542-549
     !> static_checks/test_eddypro_import_static.py reads them back out of
     !> those files, so a default that moves there fails the check here.
     !>
@@ -149,12 +149,13 @@ module m_eddypro_import
     !>
     !> flux_run_mode and biom_rh_override are in no tag table here and are
     !> written for the interface alone, so that a converted project opens
-    !> there with nothing missing. pwb_detect_prewpl is the opposite case and
-    !> was, until recently, a defect: the interface wrote that setting as
-    !> `pwb_detect_on_raw`, which no reader here has ever declared, so the
-    !> pre-processing pass was off for every project regardless of the
-    !> checkbox. The interface writes this spelling now and removes the old
-    !> one, so only this spelling belongs in a file we produce.
+    !> there with nothing missing.
+    !>
+    !> pwb_approx_ccf, pwb_max_ar_order and pwb_detect_prewpl stood here and
+    !> are retired: the first two were speed options that cost accuracy for
+    !> under a percent of runtime, and the third chose a detection stage that
+    !> is no longer a choice. A converted project simply does not carry them,
+    !> which is what absent has always meant here.
     !>
     !> Deliberately NOT here, because for these "absent" is itself a decision
     !> and no value reproduces it:
@@ -172,7 +173,7 @@ module m_eddypro_import
     !> pf_sect_* and wdf_sect_* are EddyPro keys in any case, present since
     !> the fork, and are copied through whenever the source states them.
     !***********************************************************************
-    integer, parameter :: nProjectDefaults = 24
+    integer, parameter :: nProjectDefaults = 21
     !> The type spec pads: these section names are parameters of their own
     !> natural lengths, and an array constructor needs them equal.
     character(40), parameter :: defaultSect(nProjectDefaults) = [ &
@@ -183,7 +184,7 @@ module m_eddypro_import
         sectTilt, &
         sectTimelag, &
         sectPwb, sectPwb, sectPwb, sectPwb, sectPwb, sectPwb, &
-        sectPwb, sectPwb, sectPwb, sectPwb, sectPwb, &
+        sectPwb, sectPwb, &
         sectBiomet]
     character(26), parameter :: defaultKey(nProjectDefaults) = [ &
         'cec_meth                  ', 'cec_h                     ', &
@@ -197,8 +198,6 @@ module m_eddypro_import
         'pwb_min_valid_frac        ', 'pwb_hdi_thresh_s          ', &
         'pwb_dev_thresh_s          ', 'pwb_hdi_prefilter_s       ', &
         'pwb_smoothing_width       ', 'pwb_random_seed           ', &
-        'pwb_approx_ccf            ', 'pwb_max_ar_order          ', &
-        'pwb_detect_prewpl         ', &
         'biom_rh_override          ']
     character(8), parameter :: defaultValue(nProjectDefaults) = [ &
         '0       ', '0.000   ', '20.0    ', '5.0     ', &
@@ -208,7 +207,6 @@ module m_eddypro_import
         '0       ', &
         '99      ', '20.0    ', '0.300   ', '0.50    ', &
         '0.50    ', '1.00    ', '5       ', '2024    ', &
-        '0       ', '0       ', '0       ', &
         '0       ']
 
     !> One key=value line of an INI file, with the section it was found in.

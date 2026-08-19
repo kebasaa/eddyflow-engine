@@ -55,6 +55,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     logical :: cache_found
     logical :: cache_default_used
     logical :: cache_hit(E2NumVar)
+    logical :: donor_ok
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
     integer :: max_rl(ncol)
@@ -64,7 +65,6 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: TmpSet(nrow, ncol)
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
-    character(8) :: cache_stage
     real(kind = dbl) :: cache_actual_lag
     real(kind = dbl) :: cache_used_lag
     integer :: cache_row_lag
@@ -138,15 +138,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 PWBResult = pwb_raw_Result
                 pwb_raw_detection_done = .false.
             else
-            if (skip_apply) then
-                cache_stage = 'pre_wpl'
-            else
-                cache_stage = 'post_wpl'
-            end if
             !> Pass 1: Run PWB detection and S1/S2 classification for all gases
             do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
-                call LookupPwbTimelagCache(j, cache_stage, cache_found, cache_actual_lag, &
+                call LookupPwbTimelagCache(j, cache_found, cache_actual_lag, &
                     cache_used_lag, cache_row_lag, cache_default_used, lPwbResult)
                 if (cache_found) then
                     cache_hit(j) = .true.
@@ -169,6 +164,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 if (pwb_success .and. .not. lPwbResult%edge_pinned) then
                     if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
                         lPwbResult%reliability_class = 'S1_optimal'
+                        lPwbResult%fill_method = 'native'
                         RowLags(j) = lPwbResult%row_lag
                         TLag(j) = lPwbResult%selected_lag
                         ActTLag(j) = lPwbResult%selected_lag
@@ -181,6 +177,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         abs(lPwbResult%selected_lag - pwb_last_optimal_lag(j)) &
                         <= PWBSetup%dev_thresh_s) then
                         lPwbResult%reliability_class = 'S2_optimal'
+                        lPwbResult%fill_method = 'native'
                         RowLags(j) = lPwbResult%row_lag
                         TLag(j) = lPwbResult%selected_lag
                         ActTLag(j) = lPwbResult%selected_lag
@@ -203,18 +200,32 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 PWBResult(j) = lPwbResult
             end do
 
-            !> Pass 2: Same-instrument lag sharing for gases that didn't get S1/S2
+            !> Pass 2: gases on one analyser share a tube, so they share a
+            !> delay. A gas with no detection of its own takes its neighbour's.
+            !>
+            !> The neighbour is decided by analyser identity, not by the model
+            !> string: two LI-7200s at one site are two tubes, and matching on
+            !> the model made them one - the same distinction this file already
+            !> draws below for the water covariance.
+            !>
+            !> And never from water. Its lag is RH-dependent in a way the trace
+            !> gases' is not, which is exactly why the aggregate summary in
+            !> ResolvePwbAggregateSummary refuses it as a donor. The per-period
+            !> rule allowed it, so the two halves of one rule disagreed.
             do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
                 do k = firstGas, lastGas
                     if (k == j) cycle
                     if (.not. E2Col(k)%present) cycle
-                    if (E2Col(k)%instr%model /= E2Col(j)%instr%model) cycle
+                    if (GasSlotIsWater(k)) cycle
+                    donor_ok = SameAnalyser(j, k)
+                    if (.not. donor_ok) cycle
                     if (trim(PWBResult(k)%reliability_class) /= 'S1_optimal' &
                         .and. trim(PWBResult(k)%reliability_class) /= 'S2_optimal') cycle
                     PWBResult(j)%reliability_class = 'S4_instrument_shared'
                     PWBResult(j)%fallback_used = .false.
+                    PWBResult(j)%fill_method = 'instrument_shared'
                     PWBResult(j)%fallback_source = 'instrument_shared'
                     PWBResult(j)%donor_gas = GasLabel(k)
                     PWBResult(j)%origin_gas = merge(PWBResult(k)%origin_gas, k, &
@@ -238,6 +249,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
                 if (pwb_has_previous(j)) then
                     PWBResult(j)%reliability_class = 'S3_carryforward'
+                    PWBResult(j)%fill_method = 'carryforward'
                     PWBResult(j)%fallback_source = 'S3_carryforward'
                     PWBResult(j)%origin_gas = pwb_last_optimal_origin(j)
                     if (PWBResult(j)%origin_gas > 0) &
@@ -255,6 +267,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         .true., def_rl(j), min_rl(j), max_rl(j), &
                         ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
                     PWBResult(j)%reliability_class = 'fallback'
+                    PWBResult(j)%fill_method = 'maxcov_default'
                     PWBResult(j)%fallback_used = .true.
                 end if
                 if (PWBResult(j)%applied_lag == error) then
@@ -270,9 +283,13 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     PWBResult(j)%fallback_source = 'maxcov_default'
                 if (.not. PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
                     PWBResult(j)%fallback_source = 'native'
+                if (trim(PWBResult(j)%fill_method) == 'none') PWBResult(j)%fill_method = 'native'
                 if (.not. cache_hit(j)) then
-                    call WritePwbDiagnostic(j, PWBResult(j))
-                    call StorePwbTimelagCache(j, cache_stage, ActTLag(j), TLag(j), &
+                    !> Counted here for the live path. A pre-generation run
+                    !> recounts from the settled table afterwards, so these
+                    !> streaming guesses never reach the summary.
+                    call CountPwbDiagnostic(j, PWBResult(j))
+                    call StorePwbTimelagCache(j, ActTLag(j), TLag(j), &
                         RowLags(j), DefTlagUsed(j), PWBResult(j))
                 end if
             end do
