@@ -168,10 +168,15 @@ subroutine WriteVariablesFCC()
     if (EddyFlowProj%hf_meth == 'fratini_12') then
         inquire(file = Dir%full, exist=dirExists)
         if (.not. dirExists) then
-            call ExceptionHandler(88)
-            EddyFlowProj%hf_meth = 'moncrieff_97'
-            FCCsetup%SA%in_situ = .false.
-            FCCsetup%import_full_cospectra = .false.
+            !> Fratini needs measured full cospectra. Silently demoting to
+            !> Moncrieff produced a full set of fluxes under the wrong method's
+            !> name, which is what this used to do.
+            call AbortOnMissingPath('sa_full_spectra', Dir%full, &
+                'Correct the path to the full co-spectra directory, or choose ' &
+                // '"Full w/Ts cospectra files not available", which makes ' &
+                // 'EddyFlow write them during this run, or select an analytic ' &
+                // 'high-frequency correction (Moncrieff 1997, Massman 2000), ' &
+                // 'which needs no measured spectra.')
         end if
     end if
 
@@ -192,15 +197,16 @@ subroutine WriteVariablesFCC()
     if (FCCsetup%pass_thru_spectral_assessment) then
         inquire(file = Dir%binned, exist=dirExists)
         if (.not. dirExists) then
-            EddyFlowProj%out_avrg_cosp = .false.
-            EddyFlowProj%out_avrg_spec = .false.
-            FCCsetup%do_spectral_assessment = .false.
-            FCCsetup%pass_thru_spectral_assessment = .false.
-            if (FCCsetup%SA%in_situ) then
-                EddyFlowProj%hf_meth = 'moncrieff_97'
-                FCCsetup%SA%in_situ = .false.
-            end if
-            call ExceptionHandler(87)
+            !> The spectral assessment reads its binned (co)spectra from here.
+            !> Without them the assessment cannot run, and this used to answer
+            !> that by turning the in-situ method into Moncrieff and switching
+            !> off the ensemble outputs the project had asked for.
+            call AbortOnMissingPath('sa_bin_spectra', Dir%binned, &
+                'Correct the path to the binned co-spectra directory, or ' &
+                // 'select an analytic high-frequency correction (Moncrieff ' &
+                // '1997, Massman 2000), which needs no measured spectra. The ' &
+                // 'directory is written by a run with the binned spectra ' &
+                // 'output enabled, so an earlier run of this dataset supplies it.')
         end if
     end if
 

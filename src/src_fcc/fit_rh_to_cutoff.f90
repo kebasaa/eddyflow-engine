@@ -57,10 +57,6 @@ subroutine FitRh2Fco()
     include '../src_common/interfaces.inc'
 
 
-    !> Allocate arrays for fits
-    if (.not. allocated(xFit)) allocate(xFit(10))
-    if (.not. allocated(yFit)) allocate(yFit(10))
-    if (.not. allocated(ddum)) allocate(ddum(10))
 
     !> One fit per hygrometer, each into its own RegPar(wsl, dum)%e1..e3.
     !>
@@ -76,6 +72,19 @@ subroutine FitRh2Fco()
     !> distinct from the %fc and %Fn that RH class dum holds.
     primary = PrimaryWaterSlot()
     if (primary < firstGas) return
+
+    !> Allocated after the guard, not before it. xFit, yFit and ddum are one
+    !> global set shared with FitTFModels, which sizes them to its own
+    !> maxval(nlong) under the same "only if not already allocated" test. This
+    !> routine claimed them at 10 and then returned here on a project with no
+    !> primary water, without freeing them - so the next FitTFModels found them
+    !> allocated, skipped its own sizing, and ran off the end of a
+    !> ten-element array. Only projects with no water ever reached it, and
+    !> those never got this far while a missing binned-spectra directory was
+    !> quietly demoting the run to Moncrieff.
+    if (.not. allocated(xFit)) allocate(xFit(10))
+    if (.not. allocated(yFit)) allocate(yFit(10))
+    if (.not. allocated(ddum)) allocate(ddum(10))
 
     do wsl = firstGas, lastGas
     if (.not. GasSlotIsWater(wsl)) cycle

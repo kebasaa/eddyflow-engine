@@ -190,6 +190,12 @@ formula, untested for want of a dataset.
 
 ## Traps that produced false results before
 
+- **Both run logs are compared, and for a long time only one survived.** RP and
+  FCC each write one, and normalising the run timestamp out of the filenames
+  left them with the same name - so FCC's overwrote RP's, and every RP-side
+  message was absent from the comparison. `run.sh` now sets RP's aside as
+  `*_log_adv_rp.log` before FCC starts, and a static check holds it there. The
+  claim below was true only of FCC's until then.
 - **The run log is compared too.** `run.sh` normalises `*.log` alongside the
   CSVs, so the engine's console output is a regression artefact like any other
   file. Three things in it are run-dependent and are normalised away: the wall
@@ -200,6 +206,15 @@ formula, untested for want of a dataset.
   files nothing wrote. `run.sh` runs both.
 - **Timestamp normalisation must recurse** into the per-period
   subdirectories, or every one reads as an added/removed file.
+- **Every fixture named a path that did not exist, and none of them said so.**
+  All 39 pointed `sa_bin_spectra`, `sa_full_spectra` and `to_file` at a
+  directory outside the repo. The engine answered a missing path by computing
+  something else and carrying on, so the suite ran covariance maximisation in
+  place of PWB and Moncrieff in place of Fratini - the two methods most of the
+  fixtures configure - and passed, because a degraded run still matches its own
+  headers. 29 fixtures ask for Fratini and not one was running it. They use
+  `SELF` now, a stated path that is missing is fatal, and `run.sh` rewrites
+  `sa_full_spectra` as well as `sa_bin_spectra`, which it never did.
 - **A fixture that is under-specified silently tests the old path.** An
   earlier `base_rec` carried gas records only, so cell temperature, cell
   pressure and the diagnostic were still arriving through the legacy tags

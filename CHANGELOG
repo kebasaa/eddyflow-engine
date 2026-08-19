@@ -179,6 +179,26 @@
 	       when it lands above the current one, which is what it did for water at CH-LAE. The two
 	       failures now read differently: the second names the best class occupancy reached and
 	       points at the assessment window or sa_min_smpl
+	- New feature: A path the project states, which does not exist, now stops the run. Five settings
+	               used to answer a missing path by quietly computing something else: a missing planar
+	               fit file became double rotation, a missing time-lag file became covariance
+	               maximisation, and a missing spectral assessment file, binned co-spectra directory or
+	               full co-spectra directory became Moncrieff 1997. The run finished and the numbers
+	               were labelled as the method that had been asked for, which is what made it dangerous
+	               - the first two change every flux in the run. The engine already stopped for three
+	               other missing inputs (the project file, the alternative metadata file, the raw data
+	               directory); these five now do the same. The message names the setting, the path as
+	               given, and what to change - either correct the path, or choose the interface option
+	               that makes EddyFlow produce the thing itself. A path the project does not state is
+	               unaffected
+	- Fix: The spectral fit arrays no longer overrun on a project with no water. xFit, yFit
+	       and ddum are one global set shared by FitRHtoCutoff and FitTFModels, sized
+	       differently by each under the same "only if not already allocated" test.
+	       FitRHtoCutoff claimed them at a fixed 10 and then returned early when the project
+	       had no primary water, without freeing them, so the next FitTFModels found them
+	       allocated, skipped its own sizing and indexed past the end - a crash. It could only
+	       bite a project with no water, and those never reached it while a missing
+	       binned-spectra directory was quietly demoting every run to Moncrieff
 
 7.2.5 (2026-07-27)
 

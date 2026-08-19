@@ -149,9 +149,13 @@ subroutine ReadPlanarFitFile()
         write(*,'(a)') '  ' // trim(adjustl(LogInteger)) // ' sector(s) found.'
         write(ulog,'(a)') '  ' // trim(adjustl(LogInteger)) // ' sector(s) found.'
     else
-       !> If the specified planar-fit file is not found or is empty, switches to double rotations
-        Meth%rot = 'double_rotation'
-        call ExceptionHandler(30)
+        !> The project asked for planar fit and named a file that is not there.
+        !> This used to fall back to double rotation and carry on, which moves
+        !> every flux in the run and says so only in an alert nobody reads.
+        call AbortOnMissingPath('pf_file', AuxFile%pf, &
+            'Correct the path to the planar fit file, or choose ' &
+            // '"Planar fit file not available" so the rotation matrices are ' &
+            // 'computed from this dataset instead of being read.')
     end if
     call LogSay(' Done.')
 end subroutine ReadPlanarFitFile

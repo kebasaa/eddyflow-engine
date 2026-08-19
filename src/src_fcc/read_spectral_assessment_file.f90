@@ -341,9 +341,13 @@ subroutine ReadSpectralAssessmentFile()
         close(udf)
         call LogSay(' Done.')
     else
-        !> If the specified file was not found or is empty,
-        !> switches to an analytic method
-        EddyFlowProj%hf_meth = 'moncrieff_97'
-        call ExceptionHandler(65)
+        !> The project named an assessment file that will not open. Only this
+        !> branch is fatal - a file that opens but is truncated is a different
+        !> diagnosis and keeps ExceptionHandler(65) above, because there the
+        !> path is right and the contents are not.
+        call AbortOnMissingPath('sa_file', AuxFile%sa, &
+            'Correct the path to the spectral assessment file, or choose ' &
+            // '"Spectral assessment file not available" so the assessment is ' &
+            // 'computed on the fly from this dataset.')
     end if
 end subroutine ReadSpectralAssessmentFile

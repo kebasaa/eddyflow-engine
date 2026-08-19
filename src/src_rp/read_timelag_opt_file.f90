@@ -114,9 +114,13 @@ subroutine ReadTimelagOptFile(ncls)
             end if
         end do
     else
-       !> If the specified file is not found or is empty, switches to covariance maximization without default
-        Meth%tlag = 'maxcov'
-        call ExceptionHandler(39)
+        !> The project asked for time-lag optimisation and named a file that is
+        !> not there. This used to fall back to covariance maximisation, which
+        !> changes every flux in the run.
+        call AbortOnMissingPath('to_file', AuxFile%to, &
+            'Correct the path to the time lag file, or choose ' &
+            // '"Time lag file not available" so the optimisation is performed ' &
+            // 'on this dataset, or select Covariance maximization as the method.')
     end if
     call LogSay(' Done.')
 end subroutine ReadTimelagOptFile

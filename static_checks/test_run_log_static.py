@@ -157,5 +157,53 @@ class RunLogStaticTests(unittest.TestCase):
             assert piece in body, piece
 
 
+class BothRunLogsSurviveTests(unittest.TestCase):
+    """Writing the log is half of it; keeping it is the other half.
+
+    Both binaries write one, and the regression harness strips the run
+    timestamp from output filenames so two runs can be diffed - which left RP's
+    log and FCC's log with the same name, so FCC's overwrote RP's. Every
+    RP-side message was therefore absent from the compared artefacts, the
+    README's "the run log is compared too" was only ever true of FCC's, and
+    nothing failed: the sweep compares the files that are there.
+
+    That is the same shape as the defect this whole change was about - a thing
+    that looks covered and is not - so it gets a check rather than a comment.
+    """
+
+    HARNESS = ROOT / "tests/regression/run.sh"
+
+    def setUp(self):
+        if not self.HARNESS.exists():
+            self.skipTest("regression harness not present")
+        self.body = self.HARNESS.read_text(encoding="utf-8", errors="replace")
+
+    def test_rp_log_is_set_aside_before_fcc_runs(self):
+        """Anchored on the rename itself, not on the string "_rp.log" - the
+        harness already had a file by that name, the shell capture of RP's
+        stdout, which is deleted before the comparison and is not this."""
+        self.assertIn(
+            'mv "$rplog"', self.body,
+            "run.sh no longer moves RP's own log aside, so FCC's overwrites "
+            "it and every RP-side message - the new Fatal error(111) among "
+            "them - leaves the compared output")
+        self.assertIn(
+            '*_log_*.log', self.body,
+            "the rename no longer matches the engine's log filename pattern")
+        rename = self.body.index('mv "$rplog"')
+        fcc = self.body.index("eddyflow_fcc.exe")
+        self.assertLess(
+            rename, fcc,
+            "the rename has to happen before FCC runs, or there is nothing "
+            "left to rename")
+
+    def test_the_engine_log_is_still_compared(self):
+        """The normalisation glob is what makes the log a regression artefact
+        at all. Dropping .log from it would silently stop comparing both."""
+        self.assertIn("*.log", self.body,
+                      "run.sh no longer normalises the engine logs, so they "
+                      "are not compared between runs")
+
+
 if __name__ == "__main__":
     unittest.main()

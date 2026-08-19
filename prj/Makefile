@@ -151,6 +151,10 @@ clean_fcc :
 # date the moment it exists, so an edit to its source is silently
 # linked against the previous compile - which has happened twice.
 #> BEGIN GENERATED dependencies - edit gen_makefile_deps.py, not this block
+abort_on_missing_path.o: \
+	abort_on_missing_path.f90 \
+	m_index_parameters.o \
+	m_log.o
 add_to_cospectra_fit_dataset.o: \
 	add_to_cospectra_fit_dataset.f90 \
 	m_fx_global_var_mod.o

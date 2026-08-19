@@ -40,18 +40,37 @@ echo "== RP =="
 "$BIN/eddyflow_rp.exe" "$(cygpath -w "$HERE/run_$WHICH.eddyflow")" -e "$(cygpath -w "$HOME_DIR")/" > "$OUT/_rp.log" 2>&1 \
     || { echo "RP FAILED"; tail -30 "$OUT/_rp.log"; exit 1; }
 
+# Keep RP's own log. Both binaries write one, and normalisation strips the
+# timestamp that distinguishes them - so FCC's overwrote RP's and every
+# RP-side message, errors included, was absent from the compared artefacts.
+# The README's "the run log is compared too" only ever held for FCC.
+for rplog in "$OUT"/*_log_*.log; do
+    [ -e "$rplog" ] || continue
+    mv "$rplog" "${rplog%.log}_rp.log"
+done
+
 # FCC reads the ex (FLUXNET) file RP just wrote.
 EXFILE="$(find "$OUT" -name "*fluxnet*.csv" | head -1)"
 [ -n "$EXFILE" ] || { echo "no fluxnet file from RP"; tail -30 "$OUT/_rp.log"; exit 1; }
 sed -i "s|^ex_file=.*|ex_file=$(cygpath -w "$EXFILE" | sed 's|\\|/|g')|" "$HERE/run_$WHICH.eddyflow"
 
-# A fixture whose sa_bin_spectra is the token SELF reads the binned files this
-# run just wrote, rather than the shared directory the other fixtures point
-# at. That shared directory predates the N-gas binned format and has four
-# gases, which is what makes it the backward-compatibility case; SELF is the
-# forward one, and there is no other way to get it without a second run.
+# SELF means "the (co)spectra this run just wrote", which is the only way to
+# get them without a second run. Every fixture uses it now. They used to name a
+# shared directory outside the repo instead - which did not exist on any
+# machine, so the engine hit Error(87), demoted the in-situ method to Moncrieff
+# and finished, and the sweep passed it because a degraded run still matches its
+# own headers. 29 of the fixtures configure Fratini and none of them was
+# running it. A missing path is fatal now, so that cannot recur silently.
 if grep -q '^sa_bin_spectra=SELF' "$HERE/run_$WHICH.eddyflow"; then
     sed -i "s|^sa_bin_spectra=SELF|sa_bin_spectra=$WIN_OUT/eddyflow_binned_cospectra|"         "$HERE/run_$WHICH.eddyflow"
+fi
+# The full cospectra directory needs the same treatment, and did not get it.
+# Fratini reads it, 29 of the fixtures ask for Fratini, and a path that is not
+# there is now fatal rather than a silent demotion to Moncrieff - so this line
+# is the difference between the suite running the method it configures and not
+# running at all.
+if grep -q '^sa_full_spectra=SELF' "$HERE/run_$WHICH.eddyflow"; then
+    sed -i "s|^sa_full_spectra=SELF|sa_full_spectra=$WIN_OUT/eddyflow_full_cospectra|"         "$HERE/run_$WHICH.eddyflow"
 fi
 
 echo "== FCC =="

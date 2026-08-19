@@ -87,7 +87,24 @@ subroutine FitTFModels(nbins, printout)
     if (printout) write(ulog, '(a)', advance = 'no') &
         ' Assessing spectral attenuations..'
 
-    !> Allocate vectors for fit
+    !> Allocate vectors for fit, re-sizing an existing one that is too small
+    !> rather than trusting it. These are global and shared with FitRHtoCutoff,
+    !> which sizes them to a fixed 10 under the same "only if not allocated"
+    !> test - so an array left behind by that routine silently caps this one,
+    !> and the overrun is a crash rather than a wrong number. Whoever needs
+    !> more asks for more.
+    if (allocated(xFit)) then
+        if (size(xFit) < maxval(nlong)) deallocate(xFit)
+    end if
+    if (allocated(yFit)) then
+        if (size(yFit) < maxval(nlong)) deallocate(yFit)
+    end if
+    if (allocated(zFit)) then
+        if (size(zFit) < maxval(nlong)) deallocate(zFit)
+    end if
+    if (allocated(ddum)) then
+        if (size(ddum) < maxval(nlong)) deallocate(ddum)
+    end if
     if (.not. allocated(xFit)) allocate(xFit(maxval(nlong)))
     if (.not. allocated(yFit)) allocate(yFit(maxval(nlong)))
     if (.not. allocated(zFit)) allocate(zFit(maxval(nlong)))
