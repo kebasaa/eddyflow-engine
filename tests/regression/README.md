@@ -14,6 +14,26 @@ To run every fixture rather than one, and be told which broke:
 
     bash sweep.sh chk
 
+The EddyPro import pair is diffed the same way, and is the one comparison with
+a permitted difference:
+
+    BASE=base_ep_native.eddyflow bash run.sh ref
+    BASE=base_ep.eddypro         bash run.sh chk
+    diff -r -x '*_log_*' out_ref out_chk        # must be empty
+
+Every output file must be byte-identical. The run **log** differs by exactly
+three lines, and they are the import announcing itself: the two `Importing` /
+`Imported as` lines, and the name of the metadata file each run read. Anything
+else in the log is a real difference. Excluding the log is why the diff has
+that `-x`; do not widen it.
+
+That pair-diff proves the two halves agree with *each other*. It does not prove
+a change to the import left the numbers alone — for that, keep a copy of
+`out_ref` from before the change and diff the new run against it too. When the
+EddyFlow-only settings were added to both files, the only output that moved was
+`processing_TIMESTAMP_adv.eddyflow`, the copy of the project the run leaves
+behind, which is the change itself. Anything else moving is a real regression.
+
 `run.sh` takes a single fixture, which is right for diffing one case but meant
 nothing ever ran the whole set. `base_no_gas` sat failing at the FCC stage
 because of that, and was not in the table below either. `sweep.sh` gates on two
@@ -51,6 +71,9 @@ that before trusting a difference.
 | `base_n_gas_sa_swapped.eddyflow` | `base_n_gas_sa` with its two CO2 records listed the other way round - the MIRO's and the LI-7200's swap places, columns and all - reading the *same* `sa_n_gas_fitted.txt`. Block names are ordinals over repeats of a species, so with names alone `CO2_1`'s transfer function follows the position and lands on the other analyser; an ordinary re-save in the interface is enough to reorder records. Gate: `co2_1_scf` and `co2_2_scf` must **swap** against `base_n_gas_sa` (1.551 ↔ 2.474). If they stay put, the block followed the column instead of the instrument. Run both with `sa_bin_spectra=SELF` on a machine without the shared binned-cospectra directory - without it the run falls back to Moncrieff and the gate passes vacuously, both sides reading 1.048. |
 | `base_slow*.eddyflow` | the only fixtures with **two acquisition rates**. Built by `gen_slow.py`, which writes a copy of the three hours in which the MIRO's six columns carry `-9999` on nine rows in ten - the shape a 1 Hz instrument writes into a 10 Hz file - and three projects over it. `base_slow_naive` declares nothing: the MIRO's columns are 90 % error against the row grid, over the 40 % global allowance, so `co2_1_flux`, `h2o_1_flux` and `cos_flux` are all `-9999`. That is what the engine did before the per-instrument allowance, reproduced with the current binary. `base_slow_lack` adds `instr_3_max_lack=95` and nothing else, so the columns survive without anything knowing the MIRO is slow - the gate on the project key being read at all. `base_slow` declares `instr_3_ac_freq=1.0` with a deliberately tight `instr_3_max_lack=10`, and must match `base_slow_lack` to the digit: measured against what a 1 Hz instrument owes, the column is complete. `base_slow_integr` is `base_slow` with `instr_3_integrates=1`, and it is the gate on the `w` pairing: only the **cospectra** may move, because the gas's own samples are the same either way. Measured: 32 cospectral bins differ and **not one spectral bin does**. **Data outside the repo**, like every other fixture here; re-run `gen_slow.py` to rebuild it. |
 | `base_n_gas_bin.eddyflow` | `base_n_gas` reading the binned (co)spectra it wrote itself - `run.sh` rewrites the `SELF` token between RP and FCC. Every other fixture points `sa_bin_spectra` at a shared directory that predates the N-gas binned format and carries four gases, which makes those runs the **backward**-compatibility case and is why they are right to leave gases 5+ unassessed. This is the **forward** case: N2O, CO2_2, H2O_2 and N2O_2 go from `accepted periods=0` to `1` and from an ensemble count of 0 to 5. |
+| `base_ep.eddypro` | **an EddyPro project**, not an EddyFlow one. The engine imports it on the way in and runs the result, so this is the only fixture where that path runs end to end. Its twin `base_ep_native.eddyflow` describes the same site in this format, and the two must produce **identical output** - that is the whole gate, and it is the same standard `base_rec` is held to. `run.sh` notices the extension and, after RP, switches to the `run_<which>_ep_imported.eddyflow` the engine wrote. |
+| `base_ep.metadata` | the EddyPro metadata beside it, and the reason the anemometer is a **CSAT-3B**. The Campbell keys are the only ones that were renamed (`csat3b` to `csi_csat3b`), and they appear in three places: `instr_1_model`, `col_1..4_instrument` and the project's `master_sonic`. Only the first is canonicalised by the reader, so a Gill fixture would pass whether or not the import rewrote the other two - and a real Campbell site would then lose its anemometer and be reported as a metadata fault with no cause named. |
+| `base_ep_native.eddyflow` | what the import must produce, checked in, and a **complete** EddyFlow project: it carries the `cec_*` block, the `[RawProcess_PWBTimelag_Settings]` group and the rest of the settings no EddyPro file can state, each at the value this engine already applies when the key is absent. It carries none of the keys whose *absence* is a decision - `pf_sect_*`, `gas_<i>_pwb_*_lag`, `gas_<i>_drift_*`, `instr_<K>_max_lack`, `gas_<i>_fluxnet_default` - because no value reproduces what the engine does without them. Anything here the import does not write would make the pair diff for a reason that is not the conversion. |
 
 > ### `base_slow_naive` found a scaled error code, and fixed it
 >

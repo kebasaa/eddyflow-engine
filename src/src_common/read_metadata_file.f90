@@ -263,9 +263,26 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             !> krypton hygrometer can each run slower than the file's row rate.
             !> Offsets 13 and 14 were reserved and unread; naming them costs no
             !> change to the 15-slot stride and so shifts nothing after it.
-            Instr(i)%ac_freq = dble(ANTags(init_an_instr + i*leap_an_instr + 13)%value)
-            Instr(i)%integrates = &
-                nint(ANTags(init_an_instr + i*leap_an_instr + 14)%value) == 1
+            !> Guarded, unlike every other numeric read here was not.
+            !>
+            !> SearchLocalTags clears CharTags%value before it searches but
+            !> NOT NumTags%value, so an unmatched numeric tag keeps whatever
+            !> the module-level array already held. Read blind, "absent" was
+            !> therefore not "the default" but "the last value anything put
+            !> there" - and this reader is called once per raw file for a GHG
+            !> archive, all through the same ANTags, so file N inherited file
+            !> N-1's rate and sampling mode.
+            !>
+            !> Nothing needs defaulting on the false arm: Instr =
+            !> NullInstrument above leaves ac_freq at the error code, which
+            !> ColumnAcFreq reads as "the file's rate" like any value <= 0,
+            !> and integrates at .false., which is instantaneous.
+            if (ANTagFound(init_an_instr + i*leap_an_instr + 13)) &
+                Instr(i)%ac_freq = &
+                    dble(ANTags(init_an_instr + i*leap_an_instr + 13)%value)
+            if (ANTagFound(init_an_instr + i*leap_an_instr + 14)) &
+                Instr(i)%integrates = &
+                    nint(ANTags(init_an_instr + i*leap_an_instr + 14)%value) == 1
 
             !> If instrument firm is empty, retrieve it from the instrument model
             if (len(Instr(i)%firm) == 0 .or. Instr(i)%firm == 'none') then

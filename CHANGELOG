@@ -1,6 +1,121 @@
 7.3.0 (2026-07-28)
 
     Engine:
+	- New feature: The EddyPro import writes complete EddyFlow files, not merely readable
+	               ones. It used to produce a project and a metadata the engine accepts but
+	               which are not in this format: the interface would migrate both on open and
+	               mark them modified before anyone had touched them.
+	               The metadata gains the three key families EddyFlow added and nothing else -
+	               diffed against the interface's EddyPro 6.2.2 base, those three ARE the whole
+	               delta: instr_<K>_ac_freq, instr_<K>_integrates and col_<N>_error_value, for
+	               every instrument and column the source describes. The project gains the
+	               settings no EddyPro file can state: the eight cec_*, automatic_spectra_config,
+	               rot_pf_assessment_only, tlag_assessment_only, the whole
+	               [RawProcess_PWBTimelag_Settings] block, and the three keys only the interface
+	               reads. The section a key lands in matters even though ReadIniRP sweeps every
+	               RawProcess* group as one scope, because the interface reads through QSettings,
+	               which groups by section.
+	               Every added key carries THE VALUE THIS ENGINE ALREADY APPLIES WHEN THE KEY IS
+	               ABSENT - not the interface's default, not a fresh opinion - so stating it is a
+	               no-op. Verified rather than asserted: the imported project and its hand-checked
+	               native twin produce output byte-identical to each other AND to what they
+	               produced before this change. The only file that moves is the copy of the
+	               project the run leaves in its output folder, which is the change itself.
+	               A key whose ABSENCE is a decision is deliberately still absent, because no
+	               value reproduces it: pf_sect_* and wdf_sect_* because presence CREATES a wind
+	               sector, gas_<i>_pwb_min_lag/_max_lag because presence sets
+	               lag_bounds_provided and set_timelags takes the window from instrument geometry
+	               without it, gas_<i>_drift_dir_*/_inv_* because absent means the gas is not
+	               drift-corrected and there is no default curve, instr_<K>_max_lack because
+	               absent means "follow max_lack", and gas_<i>_fluxnet_default because absent
+	               means the lowest record of the species is designated. pf_sect_* and wdf_sect_*
+	               are EddyPro keys in any case, present since the fork, and are copied through
+	               whenever the source states them
+	- Fix: The per-instrument sampling rate and sampling mode are read only when the metadata
+	       states them. SearchLocalTags clears CharTags%value before it searches but not
+	       NumTags%value, so an unmatched numeric tag keeps whatever the module-level array
+	       already held - and instr_<K>_ac_freq and instr_<K>_integrates were the only two
+	       numeric reads in that routine taking the value unguarded. "Absent" therefore did not
+	       mean "the default", it meant "whatever was last put there". Harmless for a standalone
+	       metadata, which is parsed once; for a GHG archive, where one metadata is parsed per
+	       raw file through the same ANTags, file N inherited file N-1's rate and sampling mode.
+	       Nothing needed defaulting on the new false arm - Instr = NullInstrument already
+	       leaves ac_freq at the error code, which ColumnAcFreq reads as "the file's rate" like
+	       any value <= 0, and integrates at .false., which is instantaneous. No fixture moves
+	- Fix: The imported metadata states ;GHG_METADATA rather than carrying the source's first
+	       line through. That is what DlProject::saveProject emits unconditionally; the
+	       EDDYFLOW spelling is accepted on read and never written
+	- Fix: The PWB pre-processing pass can be switched on. It never could: the engine declares
+	       pwb_detect_prewpl and the interface wrote the same setting as pwb_detect_on_raw, and
+	       SearchLocalTags matches tag labels by exact equality - so the "Detect time lag on raw
+	       data" checkbox reached nothing and the pass was off for every project ever saved,
+	       whatever the box said. Fixed on the interface side, which now writes the engine's
+	       spelling; this repository's half is that the EddyPro import writes that spelling and
+	       not the retired one.
+	       The retired key is deliberately NOT read as an alias anywhere. The interface wrote it
+	       unconditionally with a default of 1, so every project on disk carries
+	       pwb_detect_on_raw=1, and honouring that would switch on - for everybody at once - a
+	       pass that has never actually run. The interface's default is 0 now, matching this
+	       engine and matching that dialog's own tooltip, which has said "Default: Unchecked"
+	       throughout. So no result moves: the pass stays off until somebody ticks the box, and
+	       from now on ticking it works
+	- Fix: pwb_smoothing_width agreed on 5. The engine applies 5 when the key is absent and the
+	       interface defaulted to 6 - and since the interface writes the key unconditionally,
+	       every project it saved carried a 6 while a project without the key got a 5, with
+	       nothing anywhere to say the two disagreed. The interface defaults to 5 now. A project
+	       already saved keeps whatever it states; only a new one changes
+	- New feature: A check on the interface side reads BOTH repositories and fails if a PWB key
+	               it writes is absent from this engine's tag table, or if a shared default
+	               disagrees. Nothing at build time connects the two, so a name or a default can
+	               drift with both sides compiling and running - which is exactly how both of the
+	               two fixes above went unnoticed
+	- New feature: An EddyPro project can be run directly. Hand `eddyflow_rp` a *.eddypro
+	               file - or any project whose first line says `;EDDYPRO_PROCESSING` - and it
+	               is converted into an ordinary EddyFlow pair beside the file it came from,
+	               `<name>_ep_imported.eddyflow` and `<name>_ep_imported.metadata`, and run.
+	               Nothing downstream knows an import happened. The source files are never
+	               written, and the import runs once: RP edits the project it ran and FCC
+	               reads that edit back, so a second import on the FCC run would send FCC to
+	               the EddyPro file's stale ex_file. An imported project already on disk is
+	               reused, and the run says so.
+	               Two things could not be read before. InitEnv discarded a positional path
+	               that was not *.eddyflow, and a project stating no gas_num has been refused
+	               outright since format 5.0.0 - which is the shape of every EddyPro file
+	               there is. Of the keys in one, all but about ninety are read verbatim under
+	               the same name; those ninety are the four fixed gas slots with their
+	               per-species settings, which become records. The mapping is the interface's,
+	               not a new one, and a static check reads the interface's own tables so the
+	               two repositories cannot drift apart unnoticed.
+	               The fourth slot's species is recoverable only from the metadata - the
+	               project states col_n2o and nothing else - so a COS column declared there
+	               would otherwise be given nitrous oxide's molecular weight, wrong by a
+	               third, with nothing in the output looking unusual. EddyPro also spells that
+	               slot two ways within one file (n2o in the parameter settings and in
+	               out_full_sp_*/out_full_cosp_w_*, gas4 in the spectral, time-lag and
+	               out_raw_* families); both are accepted everywhere.
+	               A setting the project does not state is not written, because the engine
+	               applies a record override whenever the tag is present and 0 is a
+	               meaningful absolute limit, default time lag and minimum flux. Nothing
+	               EddyFlow-only is invented either - cec_*, the PWB block, the planar-fit
+	               sectors are all *TagFound-guarded with defaults, and writing those defaults
+	               would dress them up as decisions somebody made.
+	- Fix: A Campbell site's instrument key is rewritten everywhere it appears, not only where
+	       the reader already handles it. `csat3` and `csat3b` became `csi_csat3` and
+	       `csi_csat3b`, and a model key sits in three places: the metadata's instr_<K>_model,
+	       the metadata's col_<N>_instrument, and the project's master_sonic. Only the first is
+	       canonicalised on read; the other two are compared by index() against a model that
+	       has been, so index('csat3_1', 'csi_csat3_1') is zero. The columns keep a null
+	       instrument and metadata validation rejects the file - for a GHG archive, every file
+	       in the run - and no column is flagged master_sonic, taking the sonic axis
+	       adjustment, the angle-of-attack and w-boost overrides and the anemometric block of
+	       DefineE2Set with it. The import rewrites all three. The regression fixture is a
+	       CSAT-3B for exactly this reason: a Gill one would pass either way.
+	       Scoped to the import: the same mismatch is still reachable by a hand-written
+	       native .metadata that spells a Campbell model the old way, which is a reader
+	       fix rather than an import one
+	- New feature: The import names any instrument model this engine does not know, once per
+	               file. That used to surface only as ExceptionHandler(25) per raw file, with
+	               nothing to say which key was at fault
 	- New feature: Gas/cell/diagnostic column records (EddyFlowProj%gas, %cell, %diag) replace the four fixed gas slots, so the same species can be measured by more than one instrument
 	- New feature: Project and metadata tag tables are now generated by prj/gen_project_tags.py and prj/gen_metadata_tags.py instead of hand-numbered
 	- New feature: Overflow sentinel detects metadata describing more instruments than the engine can hold, instead of silently dropping them

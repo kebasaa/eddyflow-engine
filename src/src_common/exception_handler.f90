@@ -503,5 +503,18 @@ subroutine ExceptionHandler(error_code)
             call LogSayList(' Warning(110)> spectra. Which gas got which is listed per gas in the')
             call LogSayList(' Warning(110)> spectral corrections readiness report, in the')
             call LogSayList(' Warning(110)> spectral analysis sub-directory of the output folder.')
+        case(112)
+            call LogSayList('  Fatal error(112)> An EddyPro project was read, but the EddyFlow')
+            call LogSayList('  Fatal error(112)> project it converts to could not be written. The')
+            call LogSayList('  Fatal error(112)> path it was to be written to is named on the line')
+            call LogSayList('  Fatal error(112)> above.')
+            call LogSayList('  Fatal error(112)> The imported pair is written beside the .eddypro')
+            call LogSayList('  Fatal error(112)> file, so this is a folder that cannot be written')
+            call LogSayList('  Fatal error(112)> to - a read-only medium, a network share, or a')
+            call LogSayList('  Fatal error(112)> file of that name already open elsewhere.')
+            call LogSayList('  Fatal error(112)> Copy the .eddypro file and its .metadata to a')
+            call LogSayList('  Fatal error(112)> writable folder and run it from there.')
+            call LogSayList('  Fatal error(112)> Program execution aborted.')
+            stop 1
     end select
 end subroutine ExceptionHandler

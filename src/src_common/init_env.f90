@@ -35,6 +35,7 @@
 !***************************************************************************
 subroutine InitEnv()
     use m_common_global_var
+    use m_eddypro_import
     implicit none
     include 'version_and_date.inc'
     !> local variables
@@ -118,7 +119,12 @@ subroutine InitEnv()
                 if (iachar(lowerPath(i:i)) >= 65 .and. iachar(lowerPath(i:i)) <= 90) &
                     lowerPath(i:i) = achar(iachar(lowerPath(i:i)) + 32)
             end do
-            if (index(lowerPath, '.eddyflow') == 0) projPath = ''
+            !> An EddyPro project is accepted here so that it reaches
+            !> ImportEddyProProject below. Without this it is discarded
+            !> silently and the run falls back to ini/processing.eddyflow -
+            !> which either does not exist, or is somebody else's project.
+            if (index(lowerPath, '.eddyflow') == 0 .and. &
+                index(lowerPath, '.eddypro') == 0) projPath = ''
         end if
     end do arg_loop
 
@@ -144,6 +150,16 @@ subroutine InitEnv()
     else
         PrjPath = projPath
     end if
+
+    !> An EddyPro project is imported into our own format, once, beside the
+    !> file it came from, and PrjPath is repointed at the result. Everything
+    !> downstream then reads an ordinary project and knows nothing of this.
+    !>
+    !> Called on whatever path was resolved rather than only on a .eddypro
+    !> one, so a project renamed to our extension is recognised too: it
+    !> decides by the file's own first line and returns untouched for
+    !> anything that is not an EddyPro project.
+    call ImportEddyProProject(PrjPath, sw_ver)
 
     !> Define TmpDir differently if it's in desktop or embedded mode
     if (EddyFlowProj%run_env == 'desktop') then

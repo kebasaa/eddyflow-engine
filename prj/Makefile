@@ -549,7 +549,8 @@ init_dynamic_medata.o: \
 init_env.o: \
 	init_env.f90 \
 	version_and_date.inc \
-	m_common_global_var.o
+	m_common_global_var.o \
+	m_eddypro_import.o
 init_ex_vars.o: \
 	init_ex_vars.f90 \
 	interfaces_1.inc \
@@ -611,6 +612,9 @@ m_common_global_var.o: \
 	m_typedef.o
 m_dates.o: \
 	m_dates.f90
+m_eddypro_import.o: \
+	m_eddypro_import.f90 \
+	m_common_global_var.o
 m_fp2_to_float.o: \
 	m_fp2_to_float.f90 \
 	m_numeric_kinds.o

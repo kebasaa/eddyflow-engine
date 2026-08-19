@@ -55,6 +55,12 @@ src/src_rp/deprecated
 !/tests/regression/sa_*.txt
 !/tests/regression/sa_*.txt
 !/tests/regression/*.metadata
+# The EddyPro fixture, tracked by the same pattern rule as its native twin.
+!/tests/regression/base*.eddypro
+# ...but not what a run leaves behind. run.sh writes run_<which>.eddy* and, for
+# an EddyPro fixture, the pair the engine imports beside it - and one of those
+# is a .metadata, which the line above would otherwise pull straight back in.
+/tests/regression/run_*
 /_temp
 /static_checks
 !/static_checks/

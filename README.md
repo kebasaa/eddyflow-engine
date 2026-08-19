@@ -65,6 +65,34 @@ Command line arguments:
 - `-e`, `--environment`: EddyFlow environment directory containing folders such as `ini` and `tmp`; if omitted, the engine defaults to `..`.
 - Final positional argument: path to the EddyFlow project file (`*.eddyflow`).
 
+### Running an EddyPro project
+
+A project written by EddyPro can be given to either engine as it stands:
+
+```bash
+eddyflow_rp -c gui -s win /path/to/project.eddypro
+```
+
+It is converted into an ordinary EddyFlow project and metadata pair beside the
+file it came from - `project_ep_imported.eddyflow` and
+`project_ep_imported.metadata` - and that pair is what runs. The EddyPro files
+are only read; nothing is written back to them. A project whose first line is
+`;EDDYPRO_PROCESSING` is recognised whatever its extension.
+
+The conversion happens once. Run `eddyflow_fcc` afterwards against the same
+`.eddypro` path and it reuses the imported pair rather than rebuilding it,
+which is what lets it pick up the FLUXNET file `eddyflow_rp` recorded there.
+Delete the imported pair to convert again after editing the EddyPro project.
+
+The metadata is taken from the path the project's `proj_file` names, or - when
+that path is not on this machine, which is usual for a project copied from
+elsewhere - from the `.metadata` file of the project's own name beside it.
+
+Both imported files are complete EddyFlow files, not merely readable ones: they
+carry the settings EddyFlow added and EddyPro has no way to state, each at the
+value the engine already applies when the key is absent. So the conversion
+changes no result, and the GUI has nothing left to migrate when it opens them.
+
 For a full Advanced mode run, run `eddyflow_rp` first. Run `eddyflow_fcc` afterwards only when the project requires flux/cospectral correction outputs.
 
 

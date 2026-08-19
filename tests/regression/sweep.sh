@@ -70,6 +70,8 @@ base_slow_naive
 base_slow_lack
 base_slow_integr
 base_n_gas_sa_partial
+base_ep
+base_ep_native
 "
 
 [ -n "$NAMED" ] && FIXTURES="$NAMED"
@@ -79,12 +81,22 @@ fail=0
 failed=""
 
 for f in $FIXTURES; do
-    [ -f "$HERE/$f.eddyflow" ] || { printf '%-22s SKIP  (no such fixture)\n' "$f"; continue; }
+    #> A fixture is normally a .eddyflow. base_ep is an EddyPro project,
+    #> which run.sh hands to the engine as it stands so the import runs for
+    #> real; the extension is how run.sh knows to look for the imported file
+    #> afterwards, and this is the only place that path runs end to end.
+    if [ -f "$HERE/$f.eddyflow" ]; then
+        fixture="$f.eddyflow"
+    elif [ -f "$HERE/$f.eddypro" ]; then
+        fixture="$f.eddypro"
+    else
+        printf '%-22s SKIP  (no such fixture)\n' "$f"; continue
+    fi
     rm -rf "$HERE/out_$WHICH"
     #> Log outside the output directory: run.sh clears that directory as its
     #> first act, so a redirect into it has nowhere to land.
     log="${TMPDIR:-/tmp}/sweep_$f.log"
-    if ! BIN="$BIN" BASE="$f.eddyflow" bash "$HERE/run.sh" "$WHICH" \
+    if ! BIN="$BIN" BASE="$fixture" bash "$HERE/run.sh" "$WHICH" \
             > "$log" 2>&1; then
         printf '%-22s FAIL  (run.sh exited non-zero)\n' "$f"
         tail -3 "$HERE/out_$WHICH/_fcc.log" 2>/dev/null \
