@@ -429,7 +429,7 @@ end subroutine StripFilename
 ! \test
 ! \todo
 !***************************************************************************
-subroutine scanCsvFile(fpath, separator, cols_from_header, nrow, ncol, failed)
+subroutine scanCsvFile(fpath, separator, cols_from_header, nrow, ncol, failed, missing)
     use m_typedef
     implicit none
     !> in/out variables
@@ -439,6 +439,10 @@ subroutine scanCsvFile(fpath, separator, cols_from_header, nrow, ncol, failed)
     integer, intent(out) :: ncol
     integer, intent(out) :: nrow
     logical, intent(out) :: failed
+    !> Set when the file is not there, as opposed to being there and
+    !> unusable. Without it the caller cannot tell a wrong path from a bad
+    !> file, and every message it writes has to hedge between the two.
+    logical, intent(out), optional :: missing
     !> Local variables
     integer :: i
     integer :: tncol
@@ -450,11 +454,21 @@ subroutine scanCsvFile(fpath, separator, cols_from_header, nrow, ncol, failed)
 
 
     failed = .false.
+    if (present(missing)) missing = .false.
 
     !> Open file
-    open(10, file=fpath, iostat=io_status)
+    !>
+    !> status='old', because a scanner must never create what it came to
+    !> read. Without it a path that does not exist was CREATED here, empty:
+    !> the open then succeeded, the scan found no rows, and the guard below
+    !> reported the file as unusable - so a wrong path was announced as a
+    !> content problem, and an empty file was left behind in the working
+    !> directory. That is how a corrupted biomet path cost a run its biomet
+    !> data with nothing in the log naming the real fault.
+    open(10, file=fpath, status='old', iostat=io_status)
     if (io_status /=0) then
         failed = .true.
+        if (present(missing)) missing = .true.
         return
     end if
 

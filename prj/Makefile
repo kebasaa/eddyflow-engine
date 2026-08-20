@@ -129,11 +129,14 @@ fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1)
 # Linked -static, unlike the two executables. It is run by a test harness that
 # has no reason to know where libgfortran lives, and a driver that reports the
 # wrong numbers is a worse failure than one that is a megabyte larger.
+#
+# It lands in the object directory, not in bin/. bin/ holds what a user runs;
+# this is a test fixture, and one unshipped binary sitting beside the two real
+# ones invites somebody to ship it.
 pwbref : m_numeric_kinds.o m_pwb_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
-	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
-	$(FC) -static -o $(EXE_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
+	$(FC) -static -o $(OBJS_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
 	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 #Compilation

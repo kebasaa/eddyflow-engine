@@ -38,6 +38,45 @@
 !              departure from it. Where a comment here says "R does X", dyco
 !              is where that was read.
 !
+! \par Deliberate departures from dyco and RFlux
+!
+!              Kept in one place, as dyco keeps its own, because a difference
+!              nobody wrote down is indistinguishable from a defect the next
+!              time somebody compares the two.
+!
+!              1. The cross-correlation is evaluated a guard band beyond the
+!                 declared search window; dyco and R evaluate the mirrored
+!                 symmetric range and carry values in from its edge with
+!                 na.locf. Inside the window the smoothed values are then
+!                 genuine here and partly carried there, so a true peak at the
+!                 upper bound stays a peak instead of being flattened into a
+!                 tie with its neighbours - which matters because a peak on
+!                 the boundary is what marks a detection undetermined.
+!
+!              2. SelectBestCandidate prefers a combination whose mode did not
+!                 land on the window edge before it compares magnitudes. The
+!                 reference compares magnitude alone and only then asks
+!                 whether the winner is edge-pinned, discarding the period
+!                 even when an unpinned combination was available. Where no
+!                 combination is unpinned the two agree.
+!
+!              3. The carry limit is elapsed hours; dyco counts averaging
+!                 periods. This engine's table holds a row only where a period
+!                 was processed, so a period count would measure rows present
+!                 rather than time passed and reach across a gap in the raw
+!                 files.
+!
+!              4. A smoothing width wider than the evaluated range returns the
+!                 input unsmoothed. dyco returns all-NaN, which its argmax
+!                 then has to be told to tolerate; there is no such range in
+!                 practice, and passing the input through keeps the argmax
+!                 meaningful either way.
+!
+!              5. The block bootstrap is moving, with starts in 0..n-L, which
+!                 is dyco's choice. R's tsboot wraps its blocks around by
+!                 default, joining the end of a turbulence record to its
+!                 start.
+!
 ! \author      Jonathan Muller
 ! \note
 ! \sa
@@ -368,23 +407,31 @@ end subroutine ComputeCcovWindow
 !> boundary of the search window is still a candidate for the argmax rather
 !> than being skipped as missing.
 !>
-!> The divisor is the number of terms actually summed, which for an even
-!> width is width+1 - a centred window has no midpoint otherwise.
+!> The window is zoo's rollapply(align = "center") and holds exactly `width`
+!> terms. An odd width is symmetric; an even one puts the extra sample AFTER
+!> the centre, so the head keeps (width-1)/2 positions and the tail width/2.
+!>
+!> Both parities have to be right, because the paper's smoothing width is
+!> hz/2 + 1 - which is even at 10 Hz. This once summed 2*(width/2)+1 terms and
+!> divided by that, making an even width a symmetric window one sample WIDER
+!> than asked for: a different filter, not a rescaling, and free to move an
+!> argmax. dyco verified the convention below against R for widths 4, 5 and 6.
 !***************************************************************************
 subroutine SmoothAndFill(x, min_rl, max_rl, width, y)
     integer, intent(in) :: min_rl, max_rl, width
     real(kind = dbl), intent(in) :: x(min_rl:max_rl)
     real(kind = dbl), intent(out) :: y(min_rl:max_rl)
-    integer :: i, j, half, first_valid, last_valid
-    half = width / 2
-    first_valid = min_rl + half
-    last_valid = max_rl - half
+    integer :: i, j, lead, trail, first_valid, last_valid
+    lead = (width - 1) / 2
+    trail = width / 2
+    first_valid = min_rl + lead
+    last_valid = max_rl - trail
     do i = first_valid, last_valid
         y(i) = 0d0
-        do j = i - half, i + half
+        do j = i - lead, i + trail
             y(i) = y(i) + x(j)
         end do
-        y(i) = y(i) / dble(2 * half + 1)
+        y(i) = y(i) / dble(width)
     end do
     if (first_valid <= last_valid) then
         y(min_rl:first_valid - 1) = y(first_valid)

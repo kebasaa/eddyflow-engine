@@ -1,3 +1,69 @@
+7.3.4 (2026-08-20)
+
+	Engine:
+	- Fix: A biomet file that is not there is reported instead of created. scanCsvFile opened its
+	       input without status='old', so a path that did not exist was CREATED, empty; the open then
+	       succeeded, the scan found no rows, and its own "too few rows or columns" guard fired. The
+	       run announced a content problem for a file that was simply absent, carried on without
+	       biomet data, and left an empty file behind in the working directory.
+	       That is not hypothetical: a project whose biomet path had been corrupted upstream produced
+	       exactly this, and the only trace was a stray file named after the wreckage of the path.
+	       Two further biomet opens had the same shape and are closed with it; the fourth already had
+	       status='old', which is what showed the other three to be oversights rather than policy
+	- Fix: A project that NAMES a biomet file and cannot open it stops, through the same
+	       AbortOnMissingPath every other user-named path already uses - pf_file, to_file, sa_file
+	       and proj_file all abort, and biomet was the one that degraded quietly. The message names
+	       the setting, quotes the path as the project gave it, and says what to do about it. Only
+	       for an explicitly named file: one that came from a biomet DIRECTORY listing existed a
+	       moment ago, so its disappearance is a different and much rarer event and is reported
+	       without taking the run down
+	- Change: scanCsvFile can say whether a file was absent or merely unusable. Without that the
+	          caller cannot tell a wrong path from a bad file, which is why the original message had
+	          to hedge between them and ended up describing the wrong one
+	- Change: Thirty-eight regression fixtures declared an external biomet file on a drive that does
+	          not exist. They were never reading biomet - the run logged Error(2), then Error(71),
+	          then continued without it - so they now state use_biom=0, which is what they actually
+	          do. The two fixtures that genuinely exercise biomet name a file that is present and are
+	          untouched. A new static check keeps the two in step: a fixture either names a biomet
+	          file it can open, or says it uses none
+
+7.3.3 (2026-08-20)
+
+	Engine:
+	- Fix: An even PWB smoothing width uses the window it names. The centred rolling mean summed
+	       2*(width/2)+1 terms and divided by that, so an even width became a symmetric window one
+	       sample WIDER than asked for - a different filter, not a rescaling, and free to move the
+	       argmax it feeds. R, zoo and dyco all take exactly `width` terms, an odd window being
+	       symmetric and an even one putting its extra sample after the centre; dyco verified that
+	       against R for widths 4, 5 and 6.
+	       This is not a corner: the paper's smoothing width is hz/2 + 1, which is 6 at 10 Hz. An
+	       odd width is unaffected, so the default of 5 and every project using it produce
+	       identical numbers
+	- Fix: S2 no longer accepts a detection for sitting close to a lag the carry limit has already
+	       expired. S2 exists to accept an uncertain detection that agrees with a trusted
+	       neighbour, and leaning on an anchor judged too old to hand out walks the series along on
+	       evidence that no longer counts - which reintroduced the unbounded carry through the
+	       classifier while the fills below it expired correctly. With pwb_max_carry_h defaulting
+	       to 24 h this was live on every run
+	- Change: The PWB reference driver builds into the object directory rather than bin/. It is a
+	          test fixture, not something to run, and one unshipped binary sitting beside the two
+	          real ones invites somebody to ship it. It stays a separate program deliberately: it
+	          links m_pwb_core and the kinds module and nothing else, so it stops linking the
+	          moment a routine in the chain reaches for engine state, which no scan of the source
+	          can promise as firmly
+	- New feature: The reference test covers the smoother. No frozen R value touches it - the
+	               pinned quantities come from the unsmoothed cross-correlation and from the raw
+	               cross-covariance - which is exactly how the width bug above survived a check
+	               that agrees with RFlux to twelve significant digits. The driver gained a mode
+	               that smooths a synthetic series, and the test compares it against zoo's rule
+	               written out independently, at widths 4, 5 and 6
+	- Change: m_pwb_core states its deliberate departures from dyco and RFlux in one place, as
+	          dyco states its own: the guard band against their na.locf edge fill, the preference
+	          for a combination that did not land on the window edge, the carry limit counted in
+	          elapsed hours rather than averaging periods, the degenerate-width fallback, and the
+	          moving-block bootstrap against R's wrapping one. A difference nobody wrote down is
+	          indistinguishable from a defect the next time the two are compared
+
 7.3.2 (2026-08-19)
 
 	Engine:

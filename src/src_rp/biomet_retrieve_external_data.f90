@@ -103,7 +103,7 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
         !> Open current biomet file
         inquire(udf, opened=isopen)
         if (isopen) close(udf)
-        open(udf, file = bFileList(nfl)%path, iostat = io_status)
+        open(udf, file = bFileList(nfl)%path, status = 'old', iostat = io_status)
         if (io_status /= 0) cycle file_loop
 
         !> Skip header if necessary

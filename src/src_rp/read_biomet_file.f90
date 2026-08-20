@@ -57,7 +57,7 @@ subroutine ReadBiometFile(BiometFile, skip_file)
     call scanCsvFile(BiometFile, sepa, 0, nrow, ncol, skip_file)
     if (skip_file) return
 
-    open(udf, file = BiometFile, iostat = open_status)
+    open(udf, file = BiometFile, status = 'old', iostat = open_status)
     if (open_status /= 0) then
         skip_file = .true.
         close(udf)

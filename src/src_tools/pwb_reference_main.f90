@@ -37,7 +37,15 @@
 !              the numbers stop being reproducible outside a full run.
 !
 !              Usage:  pwb_reference <csv> <hz> <lag_max_s>
+!                      pwb_reference smooth <width> <n>
+!
 !              The CSV has a header line and three columns, scalar,tsonic,w.
+!
+!              The second mode smooths a fixed synthetic series and prints it.
+!              It exists because no frozen R value touches the smoother: the
+!              pinned quantities come from the UNSMOOTHED cross-correlation and
+!              from the raw cross-covariance, which is how a wrong window for
+!              even widths survived the reference test.
 !
 ! \author      Jonathan Muller
 ! \note
@@ -66,9 +74,16 @@ program pwb_reference_main
 
     if (command_argument_count() < 3) then
         write(*, '(a)') 'usage: pwb_reference <csv> <hz> <lag_max_s>'
+        write(*, '(a)') '       pwb_reference smooth <width> <n>'
         stop 2
     end if
     call get_command_argument(1, path)
+    if (trim(path) == 'smooth') then
+        !> Plain `stop`, not `stop 0`: gfortran prints "STOP 0" for the latter,
+        !> which lands in the harness's captured stderr for no reason.
+        call SmoothMode()
+        stop
+    end if
     call get_command_argument(2, arg)
     read(arg, *) hz
     call get_command_argument(3, arg)
@@ -125,6 +140,43 @@ program pwb_reference_main
     deallocate(ss, tt, ww, s_fs, w_fs, t_fs, s_fw, w_fw, s_ft, t_ft, ccov, xc, yc)
 
 contains
+
+!***************************************************************************
+!> Smooth a fixed synthetic series and print it, one value per line.
+!>
+!> A ramp with a single spike on it. The ramp makes an off-by-one in the
+!> window bounds visible as a constant offset, and the spike makes the
+!> lead/trail asymmetry of an even width visible as a shifted plateau - which
+!> a symmetric window of the same nominal width would place differently.
+!***************************************************************************
+subroutine SmoothMode()
+    character(1024) :: a2, a3
+    integer :: width, nn, i
+    real(kind = dbl), allocatable :: v(:), sm(:)
+
+    call get_command_argument(2, a2)
+    read(a2, *) width
+    call get_command_argument(3, a3)
+    read(a3, *) nn
+    if (width < 1 .or. nn < 1) then
+        write(*, '(a)') 'error: width and n must both be positive'
+        stop 2
+    end if
+
+    allocate(v(nn), sm(nn))
+    do i = 1, nn
+        v(i) = dble(i)
+    end do
+    v(max(1, nn / 2)) = v(max(1, nn / 2)) + 100d0
+
+    call SmoothAndFill(v, 1, nn, width, sm)
+    write(*, '(a,i0)') 'width=', width
+    write(*, '(a,i0)') 'n=', nn
+    do i = 1, nn
+        write(*, '(a,i0,a,es24.15)') 'y[', i, ']=', sm(i)
+    end do
+    deallocate(v, sm)
+end subroutine SmoothMode
 
 !> One comma-separated line of three reals. List-directed input would do it,
 !> but only where the separator is a comma AND the locale agrees; splitting on

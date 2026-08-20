@@ -561,6 +561,8 @@ subroutine PostProcessPwbTimelagCache()
     real(kind = dbl), allocatable :: lag(:), fallback_lag(:), sorted(:)
     logical, allocatable :: settled(:)
     real(kind = dbl) :: median_lag, t0, t1, span, previous, dist, limit
+    real(kind = dbl) :: previous_minutes
+    logical :: stale
     integer :: prev, nxt, shared
     logical, external :: GasSlotIsWater
 
@@ -618,16 +620,26 @@ subroutine PostProcessPwbTimelagCache()
         if (n == 0) cycle
 
         previous = error
+        previous_minutes = 0d0
         do j = 1, n
             i = idx(j)
             if (PwbTimelagCache(i)%result%hdi_prefiltered) cycle
             if (PwbTimelagCache(i)%result%selected_lag == error) cycle
             if (PwbTimelagCache(i)%result%edge_pinned) cycle
             if (PwbTimelagCache(i)%result%hdi_range == error) cycle
+            !> An anchor too old to hand out is too old to argue from. S2
+            !> accepts a vague detection for sitting close to the last
+            !> accepted lag, so letting it lean on one the carry limit has
+            !> already expired would walk the series along on evidence that no
+            !> longer counts - and would quietly reintroduce the unbounded
+            !> carry through the classifier, while the fills below expired
+            !> correctly.
+            stale = limit > 0d0 .and. previous /= error &
+                .and. (dble(tmin(i)) - previous_minutes) > limit
             if (PwbTimelagCache(i)%result%hdi_range < PWBSetup%hdi_thresh_s) then
                 lag(j) = PwbTimelagCache(i)%result%selected_lag
                 settled(j) = .true.
-            elseif (previous /= error) then
+            elseif (previous /= error .and. .not. stale) then
                 if (abs(PwbTimelagCache(i)%result%selected_lag - previous) &
                     <= PWBSetup%dev_thresh_s) then
                     lag(j) = PwbTimelagCache(i)%result%selected_lag
@@ -636,6 +648,7 @@ subroutine PostProcessPwbTimelagCache()
             end if
             if (settled(j)) then
                 previous = lag(j)
+                previous_minutes = dble(tmin(i))
                 if (PwbTimelagCache(i)%result%hdi_range < PWBSetup%hdi_thresh_s) then
                     PwbTimelagCache(i)%result%reliability_class = 'S1_optimal'
                 else
@@ -993,7 +1006,7 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     type(PWBResultType), intent(out) :: LocResult
     logical, intent(out) :: success
 
-    integer :: min_rl, max_rl, lag, margin, eval_lo, eval_hi
+    integer :: min_rl, max_rl, lag, margin, trail, eval_lo, eval_hi
     integer :: nvalid_w, nvalid_t, nvalid_s
     real(kind = dbl) :: min_valid
     real(kind = dbl), allocatable :: ww(:), tt(:), ss(:)
@@ -1037,16 +1050,22 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     !> The cross-correlation is evaluated a guard band beyond the declared
     !> window, not over the mirrored symmetric range the window sits inside.
     !>
-    !> Half the smoothing width is what the centred rolling mean consumes, so
-    !> every lag inside the search range keeps a genuine smoothed value rather
-    !> than one carried in from the edge. The two seconds on top of that are
-    !> there because the window is a guess: a peak just outside it used to be
-    !> indistinguishable from an ordinary edge-pinned failure, and is now
-    !> reported. The applied lag is still taken from inside the declared
-    !> window - the guard band informs, it does not widen the search.
+    !> The first term is what the centred rolling mean consumes, so every lag
+    !> inside the search range keeps a genuine smoothed value rather than one
+    !> carried in from the edge. SmoothAndFill's window reaches `lead` below a
+    !> position and `trail` above it, and trail = width/2 is the larger of the
+    !> two whatever the parity, so covering trail covers both.
+    !>
+    !> The two seconds on top of that are there because the window is a guess:
+    !> a peak just outside it used to be indistinguishable from an ordinary
+    !> edge-pinned failure, and is now reported. The applied lag is still taken
+    !> from inside the declared window - the guard band informs, it does not
+    !> widen the search.
+    !>
     !> One sample of headroom below nrow, because the differencing branch
     !> leaves n_eff = nrow - 1 and the evaluated range has to stay inside it.
-    margin = max(max(1, PWBSetup%smoothing_width) / 2, nint(2d0 * Metadata%ac_freq))
+    trail = max(1, PWBSetup%smoothing_width) / 2
+    margin = max(trail, nint(2d0 * Metadata%ac_freq))
     eval_lo = max(min_rl - margin, -(nrow - 3))
     eval_hi = min(max_rl + margin, nrow - 3)
     if (eval_lo >= eval_hi) then
