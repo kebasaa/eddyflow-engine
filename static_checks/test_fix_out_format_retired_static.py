@@ -23,6 +23,19 @@ all: that slot 37 of EPPrjCTags is BLANKED and not DELETED. These tables are
 positional. Deleting an entry renumbers every tag after it and silently
 rebinds hundreds of settings, with nothing to catch it - no compile error, no
 crash, just a project file that means something different than it says.
+
+One file may still name the flag, and naming it is how it gets thrown away.
+An EddyPro project still carries `fix_out_format`, so the importer has to
+recognise the key in order to DROP it; without that case the key would be
+copied through into the converted EddyFlow project, where it would sit as a
+setting nothing reads - exactly the orphan `col_co2` and friends are listed
+there to avoid. That is a widening of what a reader accepts, not a use of the
+flag, and it is the same distinction test_legacy_slot_scope_static.py draws
+between an on-disk alias and a rename.
+
+So the allowance is narrow in both directions: one occurrence, and it has to
+be inside IsConsumedKey. A read anywhere - including anywhere else in that
+same file - still fails.
 """
 
 from pathlib import Path
@@ -34,6 +47,18 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 TABLE = "src/src_common/m_common_global_var.f90"
+IMPORT = "src/src_common/m_eddypro_import.f90"
+
+#: Occurrences outside whole-line comments, per file, and why each is there.
+#: A number going up is a new read and fails. A number going down is the
+#: allowance outliving its reason - lower it, so the file cannot quietly
+#: regain what it gave up.
+ALLOWED = {
+    #> IsConsumedKey, where naming a retired key is how the importer discards
+    #> it rather than copying it into the file it writes. Pinned to that
+    #> function by test_the_importer_only_names_it_to_discard_it below.
+    IMPORT: 1,
+}
 
 
 def tracked_sources():
@@ -54,16 +79,68 @@ def code(rel):
         if not ln.lstrip().startswith("!"))
 
 
+def occurrences(rel):
+    """How many times a file names the flag outside a whole-line comment."""
+    return sum(ln.count("fix_out_format") for ln in code(rel).splitlines())
+
+
+def function_body(rel, opening, closing):
+    src = code(rel)
+    start = src.index(opening)
+    return src[start:src.index(closing, start) + len(closing)]
+
+
 class TheFlagIsGone(unittest.TestCase):
     def test_no_source_reads_it(self):
-        offenders = [rel for rel in tracked_sources()
-                     if "fix_out_format" in code(rel)]
+        offenders = []
+        for rel in tracked_sources():
+            n = occurrences(rel)
+            allowed = ALLOWED.get(rel, 0)
+            if n > allowed:
+                offenders.append("%s: %d, expected at most %d" % (rel, n, allowed))
         self.assertFalse(
             offenders,
             "these read the retired fixed-format flag:\n  "
             + "\n  ".join(offenders)
             + "\n\nThe full output covers every configured gas. There is no "
-              "second column set to select between.")
+              "second column set to select between. The one legitimate reason "
+              "to name the key is to discard it on import; if that is what "
+              "this is, say so in a comment and raise the count in ALLOWED.")
+
+    def test_the_allowance_is_not_stale(self):
+        """An allowance that has stopped being needed is one that could be
+        spent on a real read."""
+        stale = []
+        for rel, allowed in sorted(ALLOWED.items()):
+            if not (ROOT / rel).is_file():
+                stale.append("%s: listed but does not exist" % rel)
+                continue
+            n = occurrences(rel)
+            if n < allowed:
+                stale.append("%s: %d now, expectation still %d" % (rel, n, allowed))
+        self.assertFalse(
+            stale,
+            "lower these expectations to match the tree:\n  " + "\n  ".join(stale))
+
+    def test_the_importer_only_names_it_to_discard_it(self):
+        """The allowance is for one function, not for the file.
+
+        IsConsumedKey answers "is this a key the records replace, and so must
+        not be copied". Naming the flag anywhere else in the importer would be
+        reading it, and would still be wrong.
+        """
+        body = function_body(IMPORT,
+                             "logical function IsConsumedKey(",
+                             "end function IsConsumedKey")
+        self.assertEqual(body.count("fix_out_format"), 1,
+                         "the importer names the flag outside IsConsumedKey")
+        self.assertIn("case ('fix_out_format')", body)
+        #> And it is a discard, not a decode: the arm returns without reading
+        #> a value, exactly as the col_* arm above it does.
+        arm = body[body.index("case ('fix_out_format')"):]
+        arm = arm[:arm.index("end select")]
+        self.assertEqual(arm.split(), ["case", "('fix_out_format')", "return"],
+                         "the fix_out_format arm does more than discard the key")
 
     def test_the_project_type_no_longer_carries_it(self):
         self.assertNotIn("logical :: fix_out_format",
@@ -102,10 +179,15 @@ class TheTagSlotIsBlankedNotDeleted(unittest.TestCase):
         src = code(TABLE)
         m = re.search(r"integer, parameter :: Npc = (\d+)", src)
         self.assertIsNotNone(m)
-        self.assertEqual(int(m.group(1)), 274,
-                         "Npc changed. Retiring a tag blanks its label and "
-                         "leaves the size alone; the generator never shrinks "
-                         "a table.")
+        #> A floor, not an equality: the rule being pinned is that the table
+        #> never shrinks. Asserting the exact size made every new [Project]
+        #> key edit this line, which is noise around the one thing that
+        #> matters - a tag index moving under settings already written to
+        #> files.
+        self.assertGreaterEqual(
+            int(m.group(1)), 274,
+            "Npc shrank. Retiring a tag blanks its label and leaves the "
+            "size alone; the generator never shrinks a table.")
 
     def test_the_generator_owns_the_retirement(self):
         """Hand-editing the block is how it drifts from the generator."""
