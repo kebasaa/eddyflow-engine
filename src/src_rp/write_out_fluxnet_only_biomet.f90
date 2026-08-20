@@ -33,6 +33,7 @@
 !***************************************************************************
 subroutine WriteOutFluxnetOnlyBiomet()
     use m_rp_global_var
+    use m_cec
     implicit none
     !> local variables
     integer :: i
@@ -44,6 +45,18 @@ subroutine WriteOutFluxnetOnlyBiomet()
     character(14) :: tsIso
     real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
+    integer :: j
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_fields
+    integer :: n_w_slots
+    integer :: w_slots(GHGNumVar)
+    character(32) :: w_tags(GHGNumVar)
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    type(CECDescriptorType) :: cec_blank
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 6 + 9)
+    logical :: cec_is_int(MaxNumCecTargets * 6 + 9)
     include '../src_common/interfaces.inc'
 
     call clearstr(csv_row)
@@ -98,21 +111,61 @@ subroutine WriteOutFluxnetOnlyBiomet()
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end do
 
-    !> Per-gas moisture and analyser blocks, same position and width as in
-    !> WriteOutFluxnet: the slot is real so the row stays parseable, the
-    !> values are error because this period was skipped.
+    !> Per-gas moisture, analyser and hygrometer blocks, same position and
+    !> width as in WriteOutFluxnet: the slot is real so the row stays
+    !> parseable, the values are error because this period was skipped.
+    !>
+    !> The widths here were three, fourteen and nothing at all, against the
+    !> seven, fifteen and one-plus-seven-per-hygrometer the header names and
+    !> ReadExRecord steps over. It went unnoticed because the CEC descriptor
+    !> used to be found by counting back from the end of the row, so the
+    !> shortfall was quietly absorbed into the biomet chunk. Nothing is
+    !> end-anchored now, and a short row is a misread row.
     call AddIntDatumToDataline(nFluxnetGasSlots, csv_row, EddyFlowProj%err_label)
     do i = 1, nFluxnetGasSlots
         call AddIntDatumToDataline(FluxnetGasSlots(i), csv_row, EddyFlowProj%err_label)
-        do indx = 1, 2
+        do indx = 1, 6
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end do
     end do
     call AddIntDatumToDataline(nFluxnetInstrSlots, csv_row, EddyFlowProj%err_label)
     do i = 1, nFluxnetInstrSlots
         call AddIntDatumToDataline(FluxnetInstrSlots(i), csv_row, EddyFlowProj%err_label)
-        do indx = 1, 13
+        do indx = 1, 14
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end do
+    end do
+
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    j = 0
+    do i = 1, n_w_slots
+        if (len_trim(w_tags(i)) > 0) j = j + 1
+    end do
+    call AddIntDatumToDataline(j, csv_row, EddyFlowProj%err_label)
+    do i = 1, n_w_slots
+        if (len_trim(w_tags(i)) == 0) cycle
+        call AddIntDatumToDataline(w_slots(i), csv_row, EddyFlowProj%err_label)
+        do indx = 1, 6
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end do
+    end do
+
+    !> The CEC descriptors, at their full width and all error: a skipped period
+    !> has no partition, but it still has to occupy its own columns.
+    call CecPairs(cec_pairs, n_cec_pairs)
+    call AddIntDatumToDataline(n_cec_pairs, csv_row, EddyFlowProj%err_label)
+    call ResetCecDescriptor(cec_blank)
+    do cec_p = 1, n_cec_pairs
+        call CecExRowValues(cec_pairs(cec_p), cec_blank, cec_values, &
+            cec_is_int, n_cec_fields)
+        do cec_k = 1, n_cec_fields
+            if (cec_is_int(cec_k)) then
+                call AddIntDatumToDataline(nint(cec_values(cec_k)), csv_row, &
+                    EddyFlowProj%err_label)
+            else
+                call AddFloatDatumToDataline(cec_values(cec_k), csv_row, &
+                    EddyFlowProj%err_label)
+            end if
         end do
     end do
 
@@ -130,19 +183,6 @@ subroutine WriteOutFluxnetOnlyBiomet()
             call AddFloatDatumToDataline(bAggrOut(i), csv_row, EddyFlowProj%err_label)
         end do
     end if
-    !> CEC ratios — error for skipped periods
-    call AddFloatDatumToDataline(CECDescriptor%r_ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%r_Fc, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_valid, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_O1, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_O2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%frac_O1, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%frac_O2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%h2o_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%co2_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%h2o_status, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%co2_status, csv_row, EddyFlowProj%err_label)
-
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
 end subroutine WriteOutFluxnetOnlyBiomet

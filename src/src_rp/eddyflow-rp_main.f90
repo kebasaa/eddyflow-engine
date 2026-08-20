@@ -59,8 +59,13 @@ program EddyFlowRP
     integer :: msl
     !> Mole fraction of the water a gas names, from whichever source.
     real(kind = dbl) :: chi_moist
-    integer :: cec_co2_signal_col
-    integer :: cec_h2o_signal_col
+    integer :: cec_p
+    integer :: cec_k
+    integer :: cec_ntarget
+    integer :: cec_slots(MaxNumCecTargets)
+    real(kind = dbl) :: cec_totals(MaxNumCecTargets)
+    real(kind = dbl), allocatable :: CecPrimes(:, :)
+    logical :: cec_ok
     integer :: SpecRow
     integer :: Nmax
     integer :: Nmin
@@ -1659,8 +1664,11 @@ program EddyFlowRP
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
-        call ResetCecDescriptor(CECDescriptor)
-        call ResetCecFlux(CECFlux)
+        nCecPairs = 0
+        do cec_p = 1, MaxNumCecPairs
+            call ResetCecDescriptor(CECDescriptor(cec_p))
+            call ResetCecFlux(CECFlux(cec_p))
+        end do
 
         !***********************************************************************
         !**** RAW FILE IMPORT **************************************************
@@ -2311,6 +2319,43 @@ program EddyFlowRP
             !> Calculate Longest Gap Duration
             call LongestGapDuration(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
 
+            !> ===== 6.3 CONDITIONAL EDDY COVARIANCE ==========================
+            !> Before the run's own detrending, because the partition screens
+            !> the raw series on the analyser diagnostics and then detrends what
+            !> survives - and E2Set is gone a few lines below. Screening after
+            !> the fact would leave the trend fitted through the samples being
+            !> rejected.
+            !>
+            !> Also, necessarily, before FixDatasetForSpectra: that interpolates
+            !> E2Primes for the spectra, and a partition built on fabricated
+            !> samples would pass a completeness gate it should not.
+            nCecPairs = 0
+            do cec_p = 1, MaxNumCecPairs
+                call ResetCecDescriptor(CECDescriptor(cec_p))
+                call ResetCecFlux(CECFlux(cec_p))
+            end do
+            if (EddyFlowProj%do_cec > 0) then
+                call LogSayNoAdv('  Calculating CEC partitioning..')
+                call CecPairs(CecPairList, nCecPairs)
+                if (nCecPairs > 0) then
+                    if (.not. allocated(CecPrimes)) &
+                        allocate(CecPrimes(PeriodRecords, MaxNumCecTargets + 1))
+                    do cec_p = 1, nCecPairs
+                        call BuildCecPrimes(CecPairList(cec_p), E2Set, &
+                            size(E2Set, 1), size(E2Set, 2), UserSet, NumUserVar, &
+                            RPsetup%Tconst, EddyFlowProj%cec, CecPrimes, cec_ok)
+                        if (.not. cec_ok) cycle
+                        call ExtractCecDescriptor(CecPairList(cec_p), CecPrimes, &
+                            size(CecPrimes, 1), &
+                            StDiff%w_gas(CecPairList(cec_p)%carbon_slot), &
+                            StDiff%w_gas(CecPairList(cec_p)%water_slot), &
+                            CECDescriptor(cec_p), EddyFlowProj%cec)
+                    end do
+                    if (allocated(CecPrimes)) deallocate(CecPrimes)
+                end if
+                call LogSay(' Done.')
+            end if
+
             !> ===== 7. DETRENDING =============================================
             !> Calculate fluctuations based on chosen detrending method
             call LogSayNoAdv('  Detrending..')
@@ -2363,36 +2408,6 @@ program EddyFlowRP
             !> If requested, estimate random error
             call RandomUncertaintyHandle(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
 
-            !> Extract CEC before spectral processing interpolates E2Primes.
-            if (EddyFlowProj%do_cec > 0) then
-                call LogSayNoAdv('  Calculating CEC partitioning..')
-                cec_co2_signal_col = 0
-                cec_h2o_signal_col = 0
-                do j = 1, NumUserVar
-                    if ((UserCol(j)%var == 'AGC' .or. UserCol(j)%var == 'RSSI') &
-                        .and. (index(UserCol(j)%instr%model, 'li7200') /= 0 &
-                            .or. index(UserCol(j)%instr%model, 'li7500') /= 0)) then
-                        if (cec_co2_signal_col == 0) cec_co2_signal_col = j
-                        if (cec_h2o_signal_col == 0) cec_h2o_signal_col = j
-                    end if
-                end do
-                if (cec_co2_signal_col > 0 .and. cec_h2o_signal_col > 0) then
-                    call ExtractCecDescriptor(E2Primes, &
-                        StDiff%w_gas(PrimaryCarbonOutSlot()), &
-                        StDiff%w_gas(PrimaryWaterOutSlot()), &
-                        CECDescriptor, EddyFlowProj%cec, &
-                        UserSet(:, cec_co2_signal_col), &
-                        UserSet(:, cec_h2o_signal_col))
-                else
-                    call ExtractCecDescriptor(E2Primes, &
-                        StDiff%w_gas(PrimaryCarbonOutSlot()), &
-                        StDiff%w_gas(PrimaryWaterOutSlot()), &
-                        CECDescriptor, EddyFlowProj%cec)
-                end if
-                CECFlux%r_ET_cec = CECDescriptor%r_ET
-                CECFlux%r_Fc_cec = CECDescriptor%r_Fc
-                call LogSay(' Done.')
-            end if
             if (allocated(UserSet)) deallocate(UserSet)
 
             !*******************************************************************
@@ -2583,13 +2598,21 @@ program EddyFlowRP
                 foot_model_used = 'none'
             end if
 
-            !> RP applies the CEC descriptor only when it owns the final
-            !> corrected totals. Otherwise FCC applies it to FCC Flux3.
-            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) &
-                call ApplyCecDescriptor(CECDescriptor, &
-                    Flux3%gas(PrimaryWaterOutSlot()), &
-                    Flux3%gas(PrimaryCarbonOutSlot()), &
-                    EddyFlowProj%do_cec, CECFlux)
+            !> RP applies the CEC descriptors only when it owns the final
+            !> corrected totals. Otherwise FCC applies them to FCC's Flux3.
+            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) then
+                do cec_p = 1, nCecPairs
+                    call CecTargetSlots(CecPairList(cec_p), cec_slots, cec_ntarget)
+                    cec_totals = error
+                    do cec_k = 1, cec_ntarget
+                        if (cec_slots(cec_k) < firstGas &
+                            .or. cec_slots(cec_k) > lastGas) cycle
+                        cec_totals(cec_k) = Flux3%gas(cec_slots(cec_k))
+                    end do
+                    call ApplyCecDescriptor(CECDescriptor(cec_p), cec_totals, &
+                        CECFlux(cec_p))
+                end do
+            end if
             if (allocated(E2Primes)) deallocate(E2Primes)
 
             !> Calculate storage terms

@@ -49,6 +49,14 @@ subroutine InitFluxnetFile_rp()
     integer :: w_slots(GHGNumVar)
     character(8) :: w_tags(GHGNumVar)
     integer :: n_w_slots
+    integer :: cec_p
+    integer :: cec_k
+    integer :: cec_ntarget
+    integer :: n_cec_pairs
+    integer :: cec_slots(MaxNumCecTargets)
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    character(48) :: cec_tag
+    character(8) :: cec_kstr
     character(64) :: usg(NumUserVar)
     character(LongOutstringLen) :: csv_row
     include '../src_common/interfaces.inc'
@@ -477,10 +485,6 @@ subroutine InitFluxnetFile_rp()
     !> by field position, so a family inserted earlier would shift every column
     !> after it and be read into the wrong variable.
     !>
-    !> Here rather than at the very end because the CEC descriptor is anchored
-    !> to the end - its reader takes the last eleven fields of whatever remains
-    !> - so a block appended after it would be swallowed as the descriptor.
-    !>
     !> The designated hygrometer is not in this block: it is TAU/H/LE/ET above,
     !> under the FLUXNET spellings a reader expects. A single-hygrometer site
     !> emits the count and nothing else, and its row is as it was.
@@ -495,6 +499,46 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, 'TAU' // trim(w_tags(j)), separator)
         call AddDatum(csv_row, 'MO_LENGTH' // trim(w_tags(j)), separator)
         call AddDatum(csv_row, 'ZL' // trim(w_tags(j)), separator)
+    end do
+
+    !> The Conditional Eddy Covariance descriptors, one self-describing block
+    !> per pairing, between the hygrometer block and biomet.
+    !>
+    !> This used to sit at the very end of the row and be found by counting
+    !> eleven fields back from it, which made "nothing may be appended after
+    !> the descriptor" an invariant three writers and one reader had to keep
+    !> without the compiler's help - and which could not survive a descriptor
+    !> whose width depends on how many pairings the project declares. Biomet is
+    !> the tail now, and nothing in this row is anchored to the end any more.
+    call AddDatum(csv_row, 'NUM_CEC_PAIRS', separator)
+    call CecPairs(cec_pairs, n_cec_pairs)
+    do cec_p = 1, n_cec_pairs
+        cec_tag = cec_pairs(cec_p)%tag
+        call AddDatum(csv_row, 'CEC_METH' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_CO2_SLOT' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_H2O_SLOT' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_N_VALID' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_N_O1' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_N_O2' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_FRAC_O1' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_FRAC_O2' // trim(cec_tag), separator)
+        call AddDatum(csv_row, 'CEC_N_TARGET' // trim(cec_tag), separator)
+        call CecTargetSlots(cec_pairs(cec_p), cec_slots, cec_ntarget)
+        do cec_k = 1, cec_ntarget
+            write(cec_kstr, '(i0)') cec_k
+            call AddDatum(csv_row, 'CEC_TARGET_SLOT_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
+            call AddDatum(csv_row, 'CEC_F_O1_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
+            call AddDatum(csv_row, 'CEC_F_O2_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
+            call AddDatum(csv_row, 'CEC_R_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
+            call AddDatum(csv_row, 'CEC_STATUS_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
+            call AddDatum(csv_row, 'CEC_VALID_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
+        end do
     end do
 
     call AddDatum(csv_row, 'NUM_BIOMET_VARS', separator)
@@ -516,19 +560,6 @@ subroutine InitFluxnetFile_rp()
     !> replace over the row was a hazard in its own right, rewriting the literal
     !> GS4 wherever it appeared, including inside a biomet column name that
     !> happened to contain it.
-
-    !> CEC partitioning ratios (always present; error when do_cec=0)
-    call AddDatum(csv_row, 'r_ET_cec', separator)
-    call AddDatum(csv_row, 'r_Fc_cec', separator)
-    call AddDatum(csv_row, 'CEC_N_VALID', separator)
-    call AddDatum(csv_row, 'CEC_N_O1', separator)
-    call AddDatum(csv_row, 'CEC_N_O2', separator)
-    call AddDatum(csv_row, 'CEC_FRAC_O1', separator)
-    call AddDatum(csv_row, 'CEC_FRAC_O2', separator)
-    call AddDatum(csv_row, 'CEC_H2O_VALID', separator)
-    call AddDatum(csv_row, 'CEC_CO2_VALID', separator)
-    call AddDatum(csv_row, 'CEC_H2O_STATUS', separator)
-    call AddDatum(csv_row, 'CEC_CO2_STATUS', separator)
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 

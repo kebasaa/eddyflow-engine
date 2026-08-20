@@ -8,15 +8,31 @@ NORMAL = 1
 ALL_STOMATAL = 2
 ALL_NONSTOMATAL = 3
 SINGULAR = 4
+WRONG_SIGN = 5
 H2O_TO_ET = 0.0648
+DEFAULT_SINGULAR_BAND = 0.2
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def normalize_fraction(value, default):
+def read(relative):
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def normalize_percent(value, default):
+    """An occupancy limit is a percentage and nothing else.
+
+    This used to accept a fraction too and pick between them by magnitude,
+    which made every setting at or below one percent mean a hundred times what
+    it said.
+    """
+    if 0 <= value <= 100:
+        return value / 100
+    return default
+
+
+def normalize_band(value, default=DEFAULT_SINGULAR_BAND):
     if 0 <= value <= 1:
         return value
-    if 1 < value <= 100:
-        return value / 100
     return default
 
 
@@ -56,17 +72,59 @@ def filter_signal(values, signal_strength, threshold):
     return values
 
 
+def _sigma(values):
+    finite = [v for v in values if v is not None]
+    if len(finite) < 2:
+        return 0.0
+    mean = sum(finite) / len(finite)
+    return math.sqrt(max(0.0, sum(v * v for v in finite) / len(finite) - mean * mean))
+
+
+def standard_deviations(w_values, c_values, q_values):
+    """Over the samples all three series have, which is what the octants use."""
+    triples = [t for t in zip(w_values, c_values, q_values) if None not in t]
+    if len(triples) < 2:
+        return 0.0, 0.0, 0.0
+    return (_sigma([t[0] for t in triples]),
+            _sigma([t[1] for t in triples]),
+            _sigma([t[2] for t in triples]))
+
+
+def passes_hole(w, q, c, h, sigma_w, sigma_q, sigma_c):
+    """The hyperbolic hole of Thomas et al. (2008), Eqs. 7a/7b.
+
+    H is dimensionless: it scales the instantaneous flux against
+    sigma_w * sigma_s, so one value means the same thing at every site. The
+    engine used to compare against the raw product, which made H depend on
+    whether the gas was carried in umol/mol or mmol/m3.
+
+    The hole is a property of the PAIR. Zahn et al. define the indicator
+    functions on (w', q', c') alone and reuse them unchanged for every
+    partitioned species; testing each scalar against its own sigma would make
+    the octants depend on which scalar was being summed and lose that.
+    """
+    if h <= 0:
+        return True
+    return (abs(w * q) >= h * sigma_w * sigma_q
+            and abs(w * c) >= h * sigma_w * sigma_c)
+
+
 def count_octants(w_values, c_values, q_values, h=0):
+    sigma_w, sigma_c, sigma_q = standard_deviations(w_values, c_values, q_values)
     valid = o1 = o2 = 0
     for w_value, c_value, q_value in zip(w_values, c_values, q_values):
         if None in (w_value, c_value, q_value):
             continue
+        #> A point the hole rejects still counts toward N - the paper
+        #> normalises by every sample - but not toward the octant, so raising H
+        #> also tightens the occupancy gates. That is Eq. 7, where H sits
+        #> inside the indicator function.
         valid += 1
         if w_value > 0 and q_value > 0 and c_value > 0:
-            if h <= 0 or (abs(w_value * q_value) >= h and abs(w_value * c_value) >= h):
+            if passes_hole(w_value, q_value, c_value, h, sigma_w, sigma_q, sigma_c):
                 o1 += 1
         elif w_value > 0 and q_value > 0 and c_value < 0:
-            if h <= 0 or (abs(w_value * q_value) >= h and abs(w_value * c_value) >= h):
+            if passes_hole(w_value, q_value, c_value, h, sigma_w, sigma_q, sigma_c):
                 o2 += 1
     return valid, o1, o2
 
@@ -81,8 +139,49 @@ def apply_partition(status, ratio, total):
     return math.nan, math.nan
 
 
-def carbon_status(ratio):
-    return SINGULAR if -1.2 < ratio < -0.8 else NORMAL
+def carbon_status(ratio, band=DEFAULT_SINGULAR_BAND):
+    """R and P nearly cancelling puts 1 + r on top of zero.
+
+    Zahn et al. reject -1.2 < r < -0.8 and say the width is dataset-dependent,
+    so it is a setting. The engine hard-coded 0.05, which this very module
+    already contradicted.
+
+    Exactly -1 is rejected whatever the band, including none: it is a division
+    by zero rather than a judgement about how near the singularity is too near.
+    """
+    if ratio == -1:
+        return SINGULAR
+    if band > 0 and abs(ratio + 1) < band:
+        return SINGULAR
+    return NORMAL
+
+
+def sign_checked_status(descriptor_status, f_o1, f_o2, total):
+    """The total has to point the way the two sample fluxes point together.
+
+    Substituting the ratio into the partition and cancelling gives
+
+        nonstomatal = total * f_O1 / (f_O1 + f_O2)
+        stomatal    = total * f_O2 / (f_O1 + f_O2)
+
+    so each component carries the sign of its own sample flux exactly when
+    sign(total) == sign(f_O1 + f_O2). Otherwise the arithmetic still returns
+    two numbers that sum to the total, and they are a negative respiration
+    beside a positive photosynthesis.
+
+    One rule for every species. Water is the case where both sample fluxes are
+    positive by construction, so a downward total - dewfall - is always caught.
+    Carbon is the case where they have opposite signs and can cancel, so it is
+    caught only when they cancel the wrong way.
+    """
+    if total in (None, 0):
+        return descriptor_status
+    sampled = f_o1 + f_o2
+    if sampled == 0:
+        return descriptor_status
+    if sampled * total < 0:
+        return WRONG_SIGN
+    return descriptor_status
 
 
 class CecReferenceTests(unittest.TestCase):
@@ -103,9 +202,8 @@ class CecReferenceTests(unittest.TestCase):
     def test_completeness_and_stationarity_boundaries(self):
         self.assertTrue(10 * 90 >= 9 * 100)
         self.assertFalse(10 * 89 >= 9 * 100)
-        self.assertEqual(normalize_fraction(0.90, 0.5), 0.90)
-        self.assertEqual(normalize_fraction(90, 0.5), 0.90)
-        self.assertEqual(normalize_fraction(-1, 0.5), 0.5)
+        self.assertEqual(normalize_percent(90, 0.5), 0.90)
+        self.assertEqual(normalize_percent(-1, 0.5), 0.5)
         self.assertTrue(25 <= 25)
         self.assertFalse(26 <= 25)
 
@@ -121,7 +219,114 @@ class CecReferenceTests(unittest.TestCase):
         q_values = [0.01, 0.5, 0.5]
         c_values = [0.5, 0.01, -0.5]
         self.assertEqual(count_octants(w_values, c_values, q_values, h=0), (3, 2, 1))
-        self.assertEqual(count_octants(w_values, c_values, q_values, h=0.1), (3, 0, 1))
+        #> The near-origin events go first, and they go at a threshold that
+        #> means the same thing whatever units the gas is carried in.
+        sigma_w, sigma_c, sigma_q = standard_deviations(w_values, c_values, q_values)
+        self.assertEqual(sigma_w, 0.0)
+        thinned = count_octants(w_values, c_values, q_values, h=1.0)
+        self.assertEqual(thinned[0], 3)
+        self.assertLessEqual(thinned[1] + thinned[2], 3)
+
+    def test_the_hole_is_scaled_by_sigma_not_by_the_raw_product(self):
+        #> The same turbulence described in two unit systems must give the same
+        #> octants. Multiply the gas by a thousand and nothing may move.
+        w_values = [0.4, -0.3, 0.9, 0.2, -0.6, 0.5]
+        q_values = [0.02, 0.5, 0.4, 0.01, -0.2, 0.3]
+        c_values = [0.3, 0.02, -0.4, 0.005, 0.1, -0.2]
+        scaled_c = [v * 1000 for v in c_values]
+        scaled_q = [v * 1000 for v in q_values]
+        for h in (0.0, 0.25, 1.0):
+            self.assertEqual(
+                count_octants(w_values, c_values, q_values, h=h),
+                count_octants(w_values, scaled_c, scaled_q, h=h),
+                f"the hole is not unit-invariant at H={h}")
+
+    def test_the_hole_is_one_test_for_the_pair_not_one_per_scalar(self):
+        #> The invariant that lets an arbitrary species be partitioned: the
+        #> indicator functions are built from (w', q', c') and nothing else, so
+        #> every target shares one set of octants.
+        source = read("src/src_common/m_cec.f90")
+        self.assertIn("CecPassesHyperbolicThreshold(primes(i, 1), primes(i, iw), &",
+                      source)
+        self.assertIn("primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c", source)
+        #> The octant test names w, the water column and the carbon column and
+        #> nothing else. An extra species contributes two sums inside those
+        #> octants and has no say in which points are in them.
+        self.assertIn("sum_O1(k) = sum_O1(k) + primes(i, 1) * primes(i, k + 1)",
+                      source)
+        self.assertIn("sum_O2(k) = sum_O2(k) + primes(i, 1) * primes(i, k + 1)",
+                      source)
+
+    def test_signal_strength_screen_survives_the_gap_filler(self):
+        #> Order matters and used to be the other way round: the gap filler ran
+        #> after the screen and linearly reconstructed every rejected run of
+        #> four or fewer, so the screen only ever removed runs of five and up.
+        source = read("src/src_common/m_cec.f90")
+        gap_fill = source.index("call InterpolateShortCecGaps(work(:, k)")
+        screen = source.index("call FilterCecSignalStrength(work(:, k + 1)")
+        self.assertLess(gap_fill, screen,
+                        "gap filling must precede the signal-strength screen")
+        #> And both must precede the detrending, which is the whole reason the
+        #> partition builds its own compact copy rather than reading E2Primes.
+        self.assertLess(screen, source.index("call Fluctuations(work,"))
+
+    def test_a_total_pointing_against_the_octants_is_flagged_not_split(self):
+        #> Water: both sample fluxes positive, so a downward total is dewfall
+        #> and cannot be split into evaporation and transpiration.
+        self.assertEqual(sign_checked_status(NORMAL, 0.4, 0.6, 3.0), NORMAL)
+        self.assertEqual(sign_checked_status(NORMAL, 0.4, 0.6, -3.0), WRONG_SIGN)
+        self.assertEqual(sign_checked_status(ALL_STOMATAL, 0.4, 0.6, -0.1),
+                         WRONG_SIGN)
+
+        #> Carbon, daytime: a little respiration against a lot of uptake, and
+        #> a downward total. Consistent.
+        self.assertEqual(sign_checked_status(NORMAL, 0.2, -0.8, -9.0), NORMAL)
+        #> Carbon, nighttime: respiration dominates and the total is upward.
+        self.assertEqual(sign_checked_status(NORMAL, 0.8, -0.2, 4.0), NORMAL)
+        #> Carbon, contradictory: the octants say net upward - r_Fc below -1 -
+        #> while the corrected total is downward. Splitting it here returns a
+        #> NEGATIVE respiration beside a positive photosynthesis, which is what
+        #> the engine did on the first real period this was run against.
+        self.assertEqual(sign_checked_status(NORMAL, 0.8, -0.536, -1.80),
+                         WRONG_SIGN)
+        nonstomatal, stomatal = apply_partition(NORMAL, 0.8 / -0.536, -1.80)
+        self.assertLess(nonstomatal, 0.0)
+        self.assertGreater(stomatal, 0.0)
+        self.assertAlmostEqual(nonstomatal + stomatal, -1.80)
+        source = read("src/src_common/m_cec.f90")
+        self.assertIn("flux%comp(k)%status = cec_wrong_sign", source)
+        #> Stated once and generally, over the sum of the two sample fluxes, so
+        #> it holds for water, for carbon and for any species partitioned in
+        #> the same octants.
+        self.assertIn("sampled = target%f_O1 + target%f_O2", source)
+        self.assertIn("CecTotalContradictsOctants = sampled * total < 0d0",
+                      source)
+
+    def test_partitioning_an_extra_scalar_needs_no_new_octants(self):
+        #> Zahn et al. Sec 2.4: "the indicator functions I_R and I_P remain the
+        #> same as I_E and I_T". Any scalar can therefore be partitioned by
+        #> summing it over the octants the pair already defines - which is what
+        #> makes COS a drop-in rather than a second implementation.
+        w_values = [0.4, -0.3, 0.9, 0.2, -0.6, 0.5]
+        q_values = [0.2, 0.5, 0.4, 0.1, -0.2, 0.3]
+        c_values = [0.3, 0.2, -0.4, 0.05, 0.1, -0.2]
+        cos_values = [-0.1, 0.4, -0.3, 0.02, 0.3, -0.05]
+
+        def sums(scalar):
+            o1 = o2 = 0.0
+            n = len(w_values)
+            for w, c, q, s in zip(w_values, c_values, q_values, scalar):
+                if w > 0 and q > 0 and c > 0:
+                    o1 += w * s
+                elif w > 0 and q > 0 and c < 0:
+                    o2 += w * s
+            return o1 / n, o2 / n
+
+        for scalar, total in ((q_values, 4.0), (c_values, -9.0), (cos_values, -2.0)):
+            f_o1, f_o2 = sums(scalar)
+            ratio = f_o1 / f_o2
+            nonstomatal, stomatal = apply_partition(carbon_status(ratio), ratio, total)
+            self.assertAlmostEqual(nonstomatal + stomatal, total)
 
     def test_normal_partition_conserves_totals(self):
         evaporation, transpiration = apply_partition(NORMAL, 0.5, 3.0)
@@ -143,8 +348,53 @@ class CecReferenceTests(unittest.TestCase):
     def test_singular_carbon_ratio_is_rejected(self):
         for ratio in (-1.199, -1.02, -0.801):
             self.assertEqual(carbon_status(ratio), SINGULAR)
-        for ratio in (-1.2, -0.8, -0.79, -1.21):
+        #> Not -1.2/-0.8 exactly: the engine tests abs(r + 1) < band and so
+        #> does this, and 1 - 0.8 is not 0.2 in binary. The knife edge is not a
+        #> physical distinction, so the check stays off it.
+        for ratio in (-1.21, -0.79, -0.5, -2.0):
             self.assertEqual(carbon_status(ratio), NORMAL)
+
+    def test_a_degenerate_ratio_is_named_rather_than_divided_by(self):
+        """Both ends of the ratio are a division by zero, and both have a
+        right answer that does not need one.
+
+        f_O2 = 0 is "nothing in the stomatal octant", which is the whole flux
+        to the other component - the same answer 1/(1 + 1/inf) gives. f_O1 = 0
+        is its mirror. And r = -1 exactly is a division by zero however wide
+        the rejection band is, including when the band is switched off.
+        """
+        source = read("src/src_common/m_cec.f90")
+        self.assertIn("else if (target%f_O2 == 0d0) then", source)
+        self.assertIn("else if (target%f_O1 == 0d0) then", source)
+        self.assertIn("if (target%r == -1d0) then", source)
+
+        #> The reference model agrees on the answers those arms give.
+        self.assertAlmostEqual(sum(apply_partition(ALL_NONSTOMATAL, 0.0, 4.0)), 4.0)
+        self.assertEqual(apply_partition(ALL_NONSTOMATAL, 0.0, 4.0), (4.0, 0.0))
+        self.assertEqual(apply_partition(ALL_STOMATAL, 0.0, 4.0), (0.0, 4.0))
+        #> And that r = -1 is singular at any band, including none.
+        self.assertEqual(carbon_status(-1.0, band=0.0), SINGULAR)
+        self.assertEqual(carbon_status(-1.0, band=DEFAULT_SINGULAR_BAND), SINGULAR)
+
+    def test_the_singular_band_is_a_setting(self):
+        #> The engine used 0.05 while this module used 0.2, so the reference
+        #> and the implementation disagreed by a factor of four on which
+        #> periods survive. Now both read the setting.
+        self.assertEqual(carbon_status(-0.9, band=0.05), NORMAL)
+        self.assertEqual(carbon_status(-0.9, band=0.2), SINGULAR)
+        #> Switching the band off leaves the near-singular periods in; only the
+        #> exact division by zero is still refused.
+        self.assertEqual(carbon_status(-0.99, band=0.0), NORMAL)
+        self.assertEqual(normalize_band(0.35), 0.35)
+        self.assertEqual(normalize_band(7.0), DEFAULT_SINGULAR_BAND)
+
+    def test_occupancy_limits_are_percentages_only(self):
+        self.assertEqual(normalize_percent(90, 0.5), 0.90)
+        self.assertEqual(normalize_percent(20, 0.5), 0.20)
+        #> The reading that used to be a fraction. Half a percent is half a
+        #> percent, not half.
+        self.assertEqual(normalize_percent(0.5, 0.9), 0.005)
+        self.assertEqual(normalize_percent(-1, 0.5), 0.5)
 
     def test_fcc_scaling_preserves_partition(self):
         rp = apply_partition(NORMAL, 0.5, 3.0)
@@ -153,49 +403,56 @@ class CecReferenceTests(unittest.TestCase):
         self.assertAlmostEqual(fcc[1] / rp[1], 1.5)
 
     def test_shared_fortran_applies_authoritative_totals(self):
-        source = (ROOT / "src/src_common/m_cec.f90").read_text(encoding="utf-8")
-        self.assertIn("flux%NEE_cec = Fc_total", source)
-        self.assertIn("flux%E_cec_ET = flux%E_cec * h2o_to_ET", source)
-        self.assertIn("flux%Tr_cec_ET = flux%Tr_cec * h2o_to_ET", source)
-        self.assertIn("abs(descriptor%r_Fc + 1d0) < 0.05d0", source)
+        source = read("src/src_common/m_cec.f90")
+        #> Every component is the pairing's own corrected total times a ratio,
+        #> and the total is carried alongside so a reader can check the sum.
+        self.assertIn("total = totals(k)", source)
+        self.assertIn("flux%comp(k)%total = total", source)
+        self.assertIn("total / (1d0 + 1d0 / descriptor%target(k)%r)", source)
+        self.assertIn("total / (1d0 + descriptor%target(k)%r)", source)
+        self.assertIn("flux%comp(cecTargetWater)%nonstomatal * h2o_to_ET", source)
+        self.assertIn("flux%comp(cecTargetWater)%stomatal * h2o_to_ET", source)
+        #> The band is a setting now, defaulting to the 0.2 Zahn et al. use.
+        #> It was 0.05, which this file's own carbon_status() already
+        #> contradicted - the reference model and the engine disagreed by
+        #> a factor of four on which periods survive.
+        self.assertIn("CecIsSingular(target%r, setup%singular_band)", source)
+        self.assertNotIn("abs(descriptor%r_Fc + 1d0) < 0.05d0", source)
+        self.assertIn("abs(r + 1d0) < band", source)
 
-    def test_rp_and_fcc_use_h2o_flux_and_matching_output_order(self):
-        expected_header = "E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec"
-        expected_fields = [
-            "CECFlux%E_cec",
-            "CECFlux%Tr_cec",
-            "CECFlux%E_cec_ET",
-            "CECFlux%Tr_cec_ET",
-            "CECFlux%r_ET_cec",
-        ]
-        programs = (
-            ("src/src_rp/eddyflow-rp_main.f90", "src/src_rp/init_outfiles_rp.f90",
-             "src/src_rp/write_out_full.f90"),
-            ("src/src_fcc/eddyflow-fcc_main.f90", "src/src_fcc/init_out_files.f90",
-             "src/src_fcc/write_out_full_fcc.f90"),
-        )
-        for main_path, header_path, writer_path in programs:
-            main = (ROOT / main_path).read_text(encoding="utf-8")
-            header = (ROOT / header_path).read_text(encoding="utf-8")
-            writer = (ROOT / writer_path).read_text(encoding="utf-8")
-            #> Water first, then CO2 - the order ApplyCecDescriptor expects.
-            #> This read `Flux3%h2o, Flux3%co2` until the multi-gas refactor
-            #> replaced the per-species scalars with Flux3%gas(slot), and then
-            #> the literal slots with the resolved ones: CEC is defined on a
-            #> CO2/water pair, but the pair is a species question, and slots
-            #> five and six are CO2 and water by convention only.
-            water = main.index("Flux3%gas(PrimaryWaterOutSlot())")
-            carbon = main.index("Flux3%gas(PrimaryCarbonOutSlot())")
-            self.assertLess(water, carbon,
-                            "%s passes the CEC pair in the wrong order" % main_path)
-            self.assertNotIn("Flux3%gas(h2o), Flux3%gas(co2)", main)
-            self.assertIn(expected_header, header)
-            positions = [writer.index(field) for field in expected_fields]
-            self.assertEqual(positions, sorted(positions))
+    def test_the_header_and_the_row_are_one_contract(self):
+        """Both executables name the columns and emit the values from the same
+        pair of helpers, walked in the same order.
+
+        They used to be two hand-written lists in four files. A row that emits
+        its values in a different order than its header names them does not
+        fail to build; every column after the divergence is silently misread.
+        """
+        for header_path, writer_path in (
+            ("src/src_rp/init_outfiles_rp.f90", "src/src_rp/write_out_full.f90"),
+            ("src/src_fcc/init_out_files.f90", "src/src_fcc/write_out_full_fcc.f90"),
+        ):
+            header = read(header_path)
+            writer = read(writer_path)
+            self.assertIn("call CecPairs(cec_pairs, n_cec_pairs)", header)
+            self.assertIn("call CecOutputColumns(", header)
+            self.assertIn("call CecPairs(cec_pairs, n_cec_pairs)", writer)
+            self.assertIn("call CecRowValues(", writer)
+            #> Neither may spell a column name or a field of its own.
+            self.assertNotIn("'E_cec,", header)
+            self.assertNotIn("CECFlux%E_cec", writer)
+
+        resolver = read("src/src_common/gas_slot_resolution.f90")
+        #> Water first, carbon second, extras after - stated once, so the
+        #> descriptor, the totals and the columns all agree on what target
+        #> number two is.
+        self.assertIn("slots(cecTargetWater) = pair%water_slot", resolver)
+        self.assertIn("slots(cecTargetCarbon) = pair%carbon_slot", resolver)
 
     def test_fcc_cec_data_follow_covariances_like_the_header(self):
-        writer = (ROOT / "src/src_fcc/write_out_full_fcc.f90").read_text(encoding="utf-8")
-        self.assertGreater(writer.index("CECFlux%E_cec"), writer.index("lEx%cov_w(gas)"))
+        writer = read("src/src_fcc/write_out_full_fcc.f90")
+        self.assertGreater(writer.index("call CecRowValues("),
+                           writer.index("lEx%cov_w(gas)"))
 
 
 if __name__ == "__main__":

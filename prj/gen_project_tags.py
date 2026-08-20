@@ -60,6 +60,16 @@ PROJECT_COUNTS = ["gas_num", "cell_num", "diag_num"]
 #: is designated, which is what every project written before this key expects.
 GAS_NUMERIC = ["col", "moist", "cell", "mw", "diff", "fluxnet_default"]
 GAS_TEXT = ["var", "instr"]
+#: One Conditional Eddy Covariance pairing. `co2` and `h2o` are gas RECORD
+#: indices, not raw column numbers, so a project that is re-ordered keeps its
+#: pairings. `extra` is a comma-separated list of further record indices whose
+#: species are partitioned in the same pair's octants - carbonyl sulfide, for
+#: instance - which is why it is a text key rather than a fixed run of numbers.
+#:
+#: Appended AFTER the diag block, so the gas/cell/diag origins do not move.
+CEC_NUMERIC = ["meth", "co2", "h2o"]
+CEC_TEXT = ["extra"]
+
 CELL_NUMERIC = ["col"]
 CELL_TEXT = ["var", "instr"]
 DIAG_NUMERIC = ["col"]
@@ -116,6 +126,9 @@ def const(name):
 #: cannot fall out of step with the engine's own bound.
 MAX_GAS_CLASSES = const("MaxGasClasses")
 
+#: How many CO2/water pairings a project may declare.
+CEC_PAIRS = const("MaxNumCecPairs")
+
 
 # --------------------------------------------------------------------------
 # Hand-placed tags.
@@ -139,10 +152,18 @@ INSTR_LACK_ORIGIN = 357
 #: Absent means "use the project-wide max_lack", which is every project written
 #: before this key existed. Keyed by the same 1-based index the .metadata uses
 #: for instr_<K>_*, so instr_3_max_lack is the allowance of instr_3_model.
+#: Tags that occupy a stated index rather than being appended. A new [Project]
+#: scalar goes into one of the blanks left by a retired key, never onto the end
+#: of the table: the record blocks begin at gasNumTag and every per-gas setting
+#: after it is addressed by its offset from that origin, so appending would
+#: silently repoint all of them.
 FIXED_TAGS = {
     "RP.SNTags": {
         INSTR_LACK_ORIGIN + k - 1: f"instr_{k}_max_lack"
         for k in range(1, const("MaxNumInstruments") + 1)
+    },
+    "EPPrjNTags": {
+        4: "cec_singular_band",
     },
 }
 
@@ -172,10 +193,13 @@ def appended(marker, lim):
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_NUMERIC]
         out += [f"cell_{i}_{s}" for i in range(1, c + 1) for s in CELL_NUMERIC]
         out += [f"diag_{i}_{s}" for i in range(1, d + 1) for s in DIAG_NUMERIC]
+        out += ["cec_num"]
+        out += [f"cec_{i}_{s}" for i in range(1, CEC_PAIRS + 1) for s in CEC_NUMERIC]
     elif marker == "EPPrjCTags":
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_TEXT]
         out += [f"cell_{i}_{s}" for i in range(1, c + 1) for s in CELL_TEXT]
         out += [f"diag_{i}_{s}" for i in range(1, d + 1) for s in DIAG_TEXT]
+        out += [f"cec_{i}_{s}" for i in range(1, CEC_PAIRS + 1) for s in CEC_TEXT]
     elif marker == "RP.SNTags":
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in RP_GAS_NUMERIC]
     elif marker == "RP.SCTags":
@@ -341,7 +365,7 @@ def process(path, table, marker, size_param, lim, check):
     # Drop any previously appended record slots, then re-append. Without this
     # the generator would not be idempotent: a second run would stack another
     # full set of records on top of the first.
-    record = re.compile(r"^(gas|cell|diag)_\d+_|^(gas|cell|diag)_num$")
+    record = re.compile(r"^(gas|cell|diag|cec)_\d+_|^(gas|cell|diag|cec)_num$")
     kept = {i: l for i, l in entries.items() if not record.match(l)}
 
     # Retired tags keep their slot and lose their label.
@@ -424,6 +448,8 @@ def origins_block(origins, lim):
     L.append(f"    integer, parameter :: diagRecLeapC  = {len(DIAG_TEXT)}")
     L.append(f"    integer, parameter :: rpGasLeapN    = {len(RP_GAS_NUMERIC)}")
     L.append(f"    integer, parameter :: rpGasLeapC    = {len(RP_GAS_TEXT)}")
+    L.append(f"    integer, parameter :: cecRecLeapN   = {len(CEC_NUMERIC)}")
+    L.append(f"    integer, parameter :: cecRecLeapC   = {len(CEC_TEXT)}")
     L.append(f"    integer, parameter :: fccGasLeapN   = {len(FCC_GAS_NUMERIC)}")
     L.append(f"    integer, parameter :: fccGasLeapC   = {len(FCC_GAS_TEXT)}")
     return L
@@ -452,17 +478,23 @@ def main():
 
         g, c = lim["gases"], lim["cells"]
         if marker == "EPPrjNTags":
+            d = lim["diags"]
+            diag_n = base + 3 + g * len(GAS_NUMERIC) + c * len(CELL_NUMERIC)
+            cec_num_n = diag_n + d * len(DIAG_NUMERIC)
             origins += [("gasNumTag", base), ("cellNumTag", base + 1),
                         ("diagNumTag", base + 2),
                         ("gasRecOriginN", base + 3),
                         ("cellRecOriginN", base + 3 + g * len(GAS_NUMERIC)),
-                        ("diagRecOriginN",
-                         base + 3 + g * len(GAS_NUMERIC) + c * len(CELL_NUMERIC))]
+                        ("diagRecOriginN", diag_n),
+                        ("cecNumTag", cec_num_n),
+                        ("cecRecOriginN", cec_num_n + 1)]
         elif marker == "EPPrjCTags":
+            d = lim["diags"]
+            diag_c = base + g * len(GAS_TEXT) + c * len(CELL_TEXT)
             origins += [("gasRecOriginC", base),
                         ("cellRecOriginC", base + g * len(GAS_TEXT)),
-                        ("diagRecOriginC",
-                         base + g * len(GAS_TEXT) + c * len(CELL_TEXT))]
+                        ("diagRecOriginC", diag_c),
+                        ("cecRecOriginC", diag_c + d * len(DIAG_TEXT))]
         elif marker == "RP.SNTags":
             origins.append(("rpGasOriginN", base))
             origins.append(("rpInstrMaxLackN", INSTR_LACK_ORIGIN))

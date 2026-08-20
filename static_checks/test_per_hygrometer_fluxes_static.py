@@ -202,7 +202,7 @@ class TheFluxnetBlockSitsWhereItCanBeParsed(unittest.TestCase):
         body = code(READER)
         self.assertIn("nWaterFluxFields = 7", body)
         self.assertLess(body.index("n_water_flux"),
-                        body.index("lEx%cec%r_ET = error"))
+                        body.index("read(dataline, *, iostat = read_status) n_cec_pairs"))
 
     def test_the_block_is_self_describing(self):
         """A count first, so the reader needs no knowledge of the project."""

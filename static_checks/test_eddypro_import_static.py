@@ -364,12 +364,24 @@ class TheHandshake(unittest.TestCase):
     def test_the_written_project_declares_our_format_and_version(self):
         src = code(IMPORT)
         self.assertIn("';EDDYFLOW_PROCESSING'", src)
-        self.assertIn("ImportedIniVer = '5.0.0'", src)
+        #> Not pinned to a literal: what matters is that the two agree, and
+        #> re-stating the number here means every format bump edits a test that
+        #> is not about the number.
+        #>
         #> A file written newer than the engine reads is refused by Fatal
         #> error(96) the moment it is read back, which would make the import
-        #> produce something it cannot run.
-        self.assertIn("MaxSupportedIniVer = '5.0.0'", read(
-            "src/src_common/m_common_global_var.f90"))
+        #> produce something it cannot run. The import stamps what it writes,
+        #> so it moves with the format: it now emits cec_singular_band and the
+        #> pairing keys, which a 5.0.0 reader does not know.
+        import re as _re
+        stamped = _re.search(r"ImportedIniVer = '([\d.]+)'", src)
+        self.assertIsNotNone(stamped, "the import does not stamp a version")
+        supported = _re.search(
+            r"MaxSupportedIniVer = '([\d.]+)'",
+            read("src/src_common/m_common_global_var.f90"))
+        self.assertIsNotNone(supported)
+        self.assertEqual(stamped.group(1), supported.group(1),
+                         "the import writes a version the engine will refuse")
 
     def test_the_imported_pair_cannot_overwrite_its_source(self):
         #> <base>.metadata is the name the EddyPro metadata already carries in
@@ -406,10 +418,14 @@ class TheHandshake(unittest.TestCase):
                     "cec_max_stationarity", "automatic_spectra_config",
                     "flux_run_mode", "rot_pf_assessment_only",
                     "tlag_assessment_only", "biom_rh_override",
+                    "cec_singular_band",
                     "pwb_n_bootstrap", "pwb_block_length_s", "pwb_min_valid_frac",
                     "pwb_hdi_thresh_s", "pwb_dev_thresh_s", "pwb_hdi_prefilter_s",
                     "pwb_smoothing_width", "pwb_random_seed"):
             self.assertIn("'%s" % key, src, "%s is not written" % key)
+        #> And the one entry that is NOT a no-op, kept separate here for the
+        #> same reason it is kept separate in the table it checks.
+        self.assertIn("'tlag_meth", src, "tlag_meth is not written")
 
     def test_a_setting_whose_absence_is_a_decision_is_left_absent(self):
         #> The other half of the rule, and the half that is easy to lose to a
@@ -456,6 +472,7 @@ class TheProjectDefaults(unittest.TestCase):
         "cec_signal_strength": "EddyFlowProj%cec%signal_strength = 70d0",
         "cec_max_stationarity": "EddyFlowProj%cec%max_stationarity = 25d0",
         "cec_max_gap_fill": "EddyFlowProj%cec%max_gap_fill = 4",
+        "cec_singular_band": "EddyFlowProj%cec%singular_band = 0.2d0",
         "pwb_n_bootstrap": "PWBSetup%n_bootstrap = 99",
         "pwb_block_length_s": "PWBSetup%block_length_s = 20d0",
         "pwb_min_valid_frac": "PWBSetup%min_valid_frac = 0.3d0",
@@ -510,6 +527,7 @@ class TheProjectDefaults(unittest.TestCase):
         for key, expected in (("cec_h", 0.0), ("cec_signal_strength", 70.0),
                               ("cec_max_stationarity", 25.0),
                               ("cec_max_gap_fill", 4),
+                              ("cec_singular_band", 0.2),
                               ("pwb_n_bootstrap", 99),
                               ("pwb_block_length_s", 20.0),
                               ("pwb_min_valid_frac", 0.3),
@@ -522,10 +540,27 @@ class TheProjectDefaults(unittest.TestCase):
                                    msg="%s disagrees with its reader" % key)
         #> The flags are all off, which is what every one of those readers
         #> initialises before it looks for the tag.
+        #>
+        #> cec_meth carries a requirement of its own beyond that: a project
+        #> arriving from EddyPro has had no chance to say which CO2 channel
+        #> pairs with which water, so the partition must not start itself.
+        #> TheImportedProjectStartsWithoutCec below covers the rest of it.
         for key in ("cec_meth", "automatic_spectra_config", "flux_run_mode",
                     "rot_pf_assessment_only", "tlag_assessment_only",
                     "biom_rh_override"):
             self.assertEqual(table[key], "0", "%s should be off" % key)
+
+    def test_the_one_corrective_default_is_not_claimed_to_be_a_no_op(self):
+        """tlag_meth is the exception, and it has to stay visibly one.
+
+        Every other entry states the value the engine already applies when the
+        key is absent, so writing it changes nothing. This one states 2 where
+        the engine would have applied 'none', deliberately - so it must not be
+        in OWNED, where the checks above would try to find a reader assignment
+        agreeing with it and would be asserting something untrue.
+        """
+        self.assertEqual(self.written()["tlag_meth"], "2")
+        self.assertNotIn("tlag_meth", self.OWNED)
 
     def test_the_retired_pwb_keys_are_not_written(self):
         #> pwb_detect_prewpl chose whether detection saw the gas series before
@@ -668,6 +703,276 @@ class TheFixtures(unittest.TestCase):
         for key in ("instr_1_ac_freq=0.000", "instr_1_integrates=0",
                     "col_1_error_value=-9999.0000"):
             self.assertIn(key, md)
+
+
+
+class TheImportedProjectStartsWithoutCec(unittest.TestCase):
+    """A project arriving from EddyPro must not start partitioning by itself.
+
+    Conditional Eddy Covariance needs to know which CO2 channel is paired with
+    which water channel, and a project that has only ever existed as an EddyPro
+    file has had no chance to say. It is written off, and the pairing list is
+    deliberately not written at all - absent means "derive one pairing per CO2
+    channel from the analyser layout", which is a decision for the interface to
+    make once someone opens the converted project, not for the importer.
+    """
+
+    EP = Path("tests/regression/base_ep.eddypro")
+
+    def test_the_key_is_written_off(self):
+        #> Asserted against the table rather than the fixture, so it holds for
+        #> every EddyPro file rather than for the one in the tree.
+        src = read(IMPORT)
+        keys = re.search(r"defaultKey\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        vals = re.search(r"defaultValue\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        table = dict(zip([x.strip() for x in re.findall(r"'([^']*)'", keys)],
+                         [x.strip() for x in re.findall(r"'([^']*)'", vals)]))
+        self.assertEqual(table["cec_meth"], "0")
+
+    def test_no_eddypro_file_can_state_it_so_the_default_always_fires(self):
+        """The gap-fill only fires when the source is silent, so this is the
+        half that makes it unconditional in practice."""
+        if not (ROOT / self.EP).exists():
+            self.skipTest("%s is not checked out" % self.EP)
+        lines = [ln for ln in read(self.EP).splitlines()
+                 if ln.strip().startswith("cec_")]
+        self.assertEqual(lines, [],
+                         "the EddyPro fixture states a CEC key, so it no "
+                         "longer shows that a real EddyPro project leaves the "
+                         "importer's default to fire")
+
+    def test_the_pairing_list_is_left_for_the_interface(self):
+        #> Writing cec_num=0 would say "no pairings", which is a different
+        #> thing from "you decide" - see the reader's own note in
+        #> write_processing_project_variables.f90.
+        src = code(IMPORT)
+        for key in ("cec_num", "cec_1_meth", "cec_1_co2", "cec_1_h2o",
+                    "cec_1_extra"):
+            self.assertNotIn("'%s" % key, src,
+                             "%s must not be written: an absent pairing list "
+                             "means the layout decides" % key)
+
+
+class TheImportedProjectKeepsEddyProsTimeLag(unittest.TestCase):
+    """Whatever method the source chose is what the converted project runs.
+
+    The importer has three ways to interfere with a key - discard it in
+    IsConsumedKey, replace it through the override list, or fill it in from the
+    defaults table when absent. tlag_meth is in none of the first two, so a
+    stated value reaches the written file untouched, in its own section, with
+    its own value.
+
+    It is in the third, at 2, and only for the case where the source states
+    nothing: the reader has no *TagFound guard for this key and would otherwise
+    fall through to 'none' and run with no time-lag compensation at all.
+    """
+
+    EP = Path("tests/regression/base_ep.eddypro")
+    NATIVE = Path("tests/regression/base_ep_native.eddyflow")
+
+    @staticmethod
+    def tlag_select():
+        """Just the time-lag select case.
+
+        read_ini_rp.f90 has several selects over a single character, and the
+        detrending one comes first - so searching the whole file for
+        `case ('2')` lands on Meth%det and asserts nothing about time lags.
+        """
+        reader = read("src/src_rp/read_ini_rp.f90")
+        start = reader.index("select case (SCTags(16)%value(1:1))")
+        return reader[start:reader.index("end select", start)]
+
+    def test_a_stated_value_is_copied_through(self):
+        src = code(IMPORT)
+
+        consumed = src[src.index("logical function IsConsumedKey("):]
+        consumed = consumed[:consumed.index("end function IsConsumedKey")]
+        self.assertNotIn("tlag_meth", consumed,
+                         "discarding it would drop the source's choice")
+
+        #> The overrides are added in one run of AddOverride calls; naming
+        #> tlag_meth among them would replace the source's value with ours.
+        added = re.findall(r"call AddOverride\([^)]*'([a-z_]+)'", src)
+        self.assertNotIn("tlag_meth", added)
+        self.assertIn("ini_version", added, "the override list moved")
+
+    def test_the_regression_pair_still_covers_that(self):
+        """It only does while the fixture states the key."""
+        for rel in (self.EP, self.NATIVE):
+            if not (ROOT / rel).exists():
+                self.skipTest("%s is not checked out" % rel)
+        for rel in (self.EP, self.NATIVE):
+            stated = [ln.strip() for ln in read(rel).splitlines()
+                      if ln.strip().startswith("tlag_meth=")]
+            self.assertEqual(stated, ["tlag_meth=2"],
+                             "%s no longer states tlag_meth once, so the pair "
+                             "stops proving the source's value survives" % rel)
+
+    def test_the_importer_can_never_produce_pwb(self):
+        """EddyPro has no fifth method, and the import must not invent one."""
+        src = read(IMPORT)
+        keys = re.search(r"defaultKey\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        vals = re.search(r"defaultValue\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        table = dict(zip([x.strip() for x in re.findall(r"'([^']*)'", keys)],
+                         [x.strip() for x in re.findall(r"'([^']*)'", vals)]))
+        self.assertNotEqual(table["tlag_meth"], "5")
+
+        #> And five is still what PWB is, so the number above means what this
+        #> test thinks it means.
+        block = self.tlag_select()
+        self.assertIn("Meth%tlag = 'pwb'", block[block.index("case ('5')"):])
+
+    def test_the_absent_case_is_filled_with_eddypros_own_default(self):
+        src = read(IMPORT)
+        keys = re.search(r"defaultKey\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        vals = re.search(r"defaultValue\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        sects = re.search(r"defaultSect\(nProjectDefaults\) = \[(.*?)\]",
+                          src, re.S).group(1)
+        k = [x.strip() for x in re.findall(r"'([^']*)'", keys)]
+        v = [x.strip() for x in re.findall(r"'([^']*)'", vals)]
+        names = re.findall(r"\bsect[A-Z]\w*", sects)
+        self.assertEqual(len(names), len(k), "defaultSect is the wrong length")
+
+        at = k.index("tlag_meth")
+        self.assertEqual(v[at], "2")
+        self.assertEqual(names[at], "sectSettings",
+                         "tlag_meth lives in [RawProcess_Settings]; filling it "
+                         "into another section would leave the reader's own "
+                         "section still empty")
+
+        #> Two is covariance maximization with default, and the reader still
+        #> maps it there.
+        block = self.tlag_select()
+        arm = block[block.index("case ('2')"):block.index("case ('3')")]
+        self.assertIn("Meth%tlag = 'maxcov&default'", arm)
+
+        #> And the hole this fills is still open: no *TagFound guard, and the
+        #> fall-through is 'none'. If either changes, this default may have
+        #> stopped being needed.
+        self.assertNotIn("SCTagFound(16)", read("src/src_rp/read_ini_rp.f90"))
+        self.assertIn("Meth%tlag = 'none'",
+                      block[block.index("case default"):])
+
+    def test_the_hole_it_fills_is_described_where_it_is_filled(self):
+        """The entry breaks the table's own rule, so the comment has to say
+        which entry and why - otherwise the next reader takes it for a no-op
+        like the other twenty-two."""
+        src = read(IMPORT)
+        head = src[:src.index("integer, parameter :: nProjectDefaults")]
+        self.assertIn("KIND TWO", head)
+        self.assertIn("tlag_meth", head)
+        self.assertIn("case default", head)
+
+
+
+
+class TheTwoImportersAgree(unittest.TestCase):
+    """An EddyPro project must convert the same way whichever door it comes in.
+
+    There are two importers. The engine's, in m_eddypro_import.f90, rewrites the
+    file and runs it. The interface's is `EcProject::importEddyProProject`,
+    which renames the fourth-gas keys, hands the rest to `loadEcProject` - where
+    an absent key takes `defaultEcProjectState` - and then saves the result as a
+    native .eddyflow.
+
+    So the two arrive at the same answer by different routes: the engine writes
+    a literal into the file, the interface applies its own default and then
+    writes that. They agree today, and nothing said so. This is the check that
+    notices when one of them moves.
+    """
+
+    GUI_STATE = "src/ecprojectstate.h"
+    GUI_PROJECT = "src/ecproject.cpp"
+
+    def engine_default(self, key):
+        src = read(IMPORT)
+        keys = re.search(r"defaultKey\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        vals = re.search(r"defaultValue\(nProjectDefaults\) = \[(.*?)\]",
+                         src, re.S).group(1)
+        table = dict(zip([x.strip() for x in re.findall(r"'([^']*)'", keys)],
+                         [x.strip() for x in re.findall(r"'([^']*)'", vals)]))
+        return table[key]
+
+    def gui_default(self, field):
+        state = read(self.GUI_STATE, GUI)
+        m = re.search(r"int %s = (-?\d+);" % field, state)
+        self.assertIsNotNone(m, "%s is gone from the interface's state" % field)
+        return m.group(1)
+
+    @unittest.skipUnless((GUI / "src/ecprojectstate.h").exists(),
+                         "eddyflow-gui not checked out beside this repository")
+    def test_the_time_lag_fallback_is_the_same_number(self):
+        """Both routes must land an EddyPro file that states no tlag_meth on
+        the same method.
+
+        The engine writes the literal because its own reader would otherwise
+        fall through to 'none'; the interface never had that problem, because
+        an absent key takes its default. The two numbers have to match or the
+        same project computes different fluxes depending on whether it was
+        opened or run.
+        """
+        self.assertEqual(self.engine_default("tlag_meth"),
+                         self.gui_default("tlag_meth"),
+                         "the import default and the interface default for "
+                         "tlag_meth have diverged")
+
+    @unittest.skipUnless((GUI / "src/ecprojectstate.h").exists(),
+                         "eddyflow-gui not checked out beside this repository")
+    def test_neither_route_switches_the_partition_on(self):
+        self.assertEqual(self.engine_default("cec_meth"), "0")
+        self.assertEqual(self.gui_default("cec_meth"), "0")
+
+    @unittest.skipUnless((GUI / "src/ecproject.cpp").exists(),
+                         "eddyflow-gui not checked out beside this repository")
+    def test_the_interface_writes_both_back_out(self):
+        """Reading them is not enough: the interface saves the converted
+        project as a native file, so both keys have to be written to it or the
+        next reader is back to guessing."""
+        gui = read(self.GUI_PROJECT, GUI)
+        #> The whole call, field and all. Matching the key name alone passes
+        #> on a rename to INI_SCREEN_SETTINGS_77, because the old name is a
+        #> prefix of the new one - and it says nothing about which field the
+        #> value came from.
+        for call in (
+            "project_ini.setValue(EcIni::INI_PROJECT_72, "
+            "ec_project_state_.projectGeneral.cec_meth)",
+            "project_ini.setValue(EcIni::INI_SCREEN_SETTINGS_7, "
+            "ec_project_state_.screenSetting.tlag_meth)",
+        ):
+            self.assertIn(call, gui, "no longer written on save: %s" % call)
+
+        defs = read("src/ecinidefs.h", GUI)
+        self.assertIn('INI_PROJECT_72   = QStringLiteral("cec_meth")', defs)
+        self.assertIn('INI_SCREEN_SETTINGS_7    = QStringLiteral("tlag_meth")', defs)
+
+    @unittest.skipUnless((GUI / "src/ecproject.cpp").exists(),
+                         "eddyflow-gui not checked out beside this repository")
+    def test_the_interface_import_is_a_rename_and_a_load(self):
+        """It must not grow a defaults table of its own.
+
+        If it ever needs one, the two would have to be kept in step by hand -
+        which is the failure this whole class exists to prevent. Today it
+        renames the fourth-gas keys and defers everything else to loadEcProject,
+        where the state defaults above apply.
+        """
+        gui = read(self.GUI_PROJECT, GUI)
+        body = gui[gui.index("bool EcProject::importEddyProProject("):]
+        body = body[:body.index("\n}\n")]
+        self.assertIn("fourthGasKeyRenames()", body)
+        self.assertIn("loadEcProject(", body)
+        for key in ("cec_meth", "tlag_meth"):
+            self.assertNotIn(key, body,
+                             "the interface's import now handles %s itself, so "
+                             "it no longer agrees with the engine by "
+                             "construction" % key)
+
 
 
 if __name__ == "__main__":

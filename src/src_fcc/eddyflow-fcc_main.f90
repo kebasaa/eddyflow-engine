@@ -84,6 +84,10 @@ Program EddyFlowFCC
     type(QCType) :: StDiff
     type(QCType) :: DtDiff
     type(ExType) :: lEx
+    integer :: cec_p
+    integer :: cec_k
+    integer :: cec_slot
+    real(kind = dbl) :: cec_totals(MaxNumCecTargets)
 
     !> Allocatable variabled
     type(DateType), allocatable :: exTimeSeries(:)
@@ -558,13 +562,27 @@ Program EddyFlowFCC
         !> Calculate fluxes at Level 2 and Level 3
         call Fluxes23(lEx)
 
-        !> Apply RP's high-frequency CEC descriptor to FCC's authoritative
-        !> corrected totals.
-        if (EddyFlowProj%do_cec > 0) &
-            call ApplyCecDescriptor(lEx%cec, &
-                Flux3%gas(PrimaryWaterOutSlot()), &
-                Flux3%gas(PrimaryCarbonOutSlot()), &
-                EddyFlowProj%do_cec, CECFlux)
+        !> Apply RP's high-frequency CEC descriptors to FCC's authoritative
+        !> corrected totals - one per pairing.
+        !>
+        !> The target slots come from the descriptor, not from the project: the
+        !> descriptor is what RP actually computed, and reading the totals for
+        !> some other list would pair a ratio with a flux it does not describe.
+        do cec_p = 1, MaxNumCecPairs
+            call ResetCecFlux(CECFlux(cec_p))
+        end do
+        if (EddyFlowProj%do_cec > 0) then
+            do cec_p = 1, min(lEx%n_cec, MaxNumCecPairs)
+                cec_totals = error
+                do cec_k = 1, lEx%cec(cec_p)%n_target
+                    cec_slot = lEx%cec(cec_p)%target(cec_k)%slot
+                    if (cec_slot < firstGas .or. cec_slot > lastGas) cycle
+                    cec_totals(cec_k) = Flux3%gas(cec_slot)
+                end do
+                call ApplyCecDescriptor(lEx%cec(cec_p), cec_totals, &
+                    CECFlux(cec_p))
+            end do
+        end if
 
         !> Calculate footprint estimation   
         foot_model_used = Meth%foot(1:len_trim(Meth%foot))

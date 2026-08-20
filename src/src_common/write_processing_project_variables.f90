@@ -73,6 +73,7 @@ subroutine WriteProcessingProjectVariables()
     Dir%main_out       = 'none'
     EddyFlowProj%fname_template = 'none'
     EddyFlowProj%cec%h = 0d0
+    EddyFlowProj%cec%singular_band = 0.2d0
     EddyFlowProj%cec%min_o1_o2 = 0.20d0
     EddyFlowProj%cec%min_octant = 0.05d0
     EddyFlowProj%cec%min_valid = 0.90d0
@@ -392,7 +393,15 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%fluxnet_mode = EPPrjCTags(49)%value(1:1) == '1'
 
     !> Conditional Eddy Covariance (Zahn et al. 2022)
-    select case (EPPrjCTags(50)%value(1:1))
+    !> The whole value, not its first character: reading one character put a
+    !> ceiling of nine on a key that has no reason to have one.
+    !>
+    !> Two and three are accepted as well as one, and all three mean "on". The
+    !> key was a three-way choice of which flux to partition before that choice
+    !> moved onto the pairing, as cec_<i>_meth; a project written then still
+    !> says 2 or 3, and refusing it would switch the partition off for those
+    !> projects rather than telling anyone. The interface writes only 0 or 1.
+    select case (trim(adjustl(EPPrjCTags(50)%value)))
         case ('1')
             EddyFlowProj%do_cec = 1
         case ('2')
@@ -404,14 +413,17 @@ subroutine WriteProcessingProjectVariables()
     end select
     if (EPPrjNTagFound(26)) &
         EddyFlowProj%cec%h = max(0d0, EPPrjNTags(26)%value)
+    if (EPPrjNTagFound(4)) &
+        EddyFlowProj%cec%singular_band = NormalizeCecBand( &
+            EPPrjNTags(4)%value, 0.2d0)
     if (EPPrjNTagFound(27)) &
-        EddyFlowProj%cec%min_o1_o2 = NormalizeCecFraction( &
+        EddyFlowProj%cec%min_o1_o2 = NormalizeCecPercent( &
             EPPrjNTags(27)%value, 0.20d0)
     if (EPPrjNTagFound(28)) &
-        EddyFlowProj%cec%min_octant = NormalizeCecFraction( &
+        EddyFlowProj%cec%min_octant = NormalizeCecPercent( &
             EPPrjNTags(28)%value, 0.05d0)
     if (EPPrjNTagFound(29)) &
-        EddyFlowProj%cec%min_valid = NormalizeCecFraction( &
+        EddyFlowProj%cec%min_valid = NormalizeCecPercent( &
             EPPrjNTags(29)%value, 0.90d0)
     if (EPPrjNTagFound(30)) &
         EddyFlowProj%cec%signal_strength = NormalizeCecSignalStrength( &
@@ -600,7 +612,114 @@ subroutine ReadMeasurementRecords()
         if (EPPrjNTagFound(b)) EddyFlowProj%diag(i)%col = nint(EPPrjNTags(b)%value)
     end do
 
+    !> After the gas loop, because a pairing names gas records and there is no
+    !> point resolving one against a list that is not read yet.
+    call ReadCecRecords()
+
 end subroutine ReadMeasurementRecords
+
+!***************************************************************************
+!
+! \brief       The Conditional Eddy Covariance pairings the project states.
+! \author      Jonathan Muller
+! \note        A pairing is (one CO2 channel, one water channel, and any
+!              further species to partition in the octants those two define).
+!              Indices are into the gas records rather than raw columns, so a
+!              re-ordered project keeps its pairings.
+!
+!              An absent cec_num leaves cec_num zero, and CecPairs then derives
+!              one pairing per CO2 channel from the analyser layout. Stating
+!              the pairings overrides that entirely - including stating none.
+!***************************************************************************
+subroutine ReadCecRecords()
+    integer :: i
+    integer :: k
+    integer :: b
+    integer :: ntok
+    integer :: tok(MaxNumCecExtra)
+
+    EddyFlowProj%cec_num = 0
+    if (EPPrjNTagFound(cecNumTag)) &
+        EddyFlowProj%cec_num = nint(EPPrjNTags(cecNumTag)%value)
+    EddyFlowProj%cec_num = min(max(EddyFlowProj%cec_num, 0), MaxNumCecPairs)
+
+    do i = 1, MaxNumCecPairs
+        EddyFlowProj%cec_pair(i)%meth = 0
+        EddyFlowProj%cec_pair(i)%carbon = 0
+        EddyFlowProj%cec_pair(i)%water = 0
+        EddyFlowProj%cec_pair(i)%extra = 0
+        if (i > EddyFlowProj%cec_num) cycle
+
+        !> A stated pairing is on unless it says otherwise, so a file that
+        !> names a pairing and forgets the flag still gets a pairing.
+        EddyFlowProj%cec_pair(i)%meth = 1
+
+        b = cecRecOriginN + (i - 1) * cecRecLeapN
+        if (EPPrjNTagFound(b))     EddyFlowProj%cec_pair(i)%meth = &
+            nint(EPPrjNTags(b)%value)
+        if (EPPrjNTagFound(b + 1)) EddyFlowProj%cec_pair(i)%carbon = &
+            nint(EPPrjNTags(b + 1)%value)
+        if (EPPrjNTagFound(b + 2)) EddyFlowProj%cec_pair(i)%water = &
+            nint(EPPrjNTags(b + 2)%value)
+
+        if (EddyFlowProj%cec_pair(i)%meth < 0 &
+            .or. EddyFlowProj%cec_pair(i)%meth > 3) &
+            EddyFlowProj%cec_pair(i)%meth = 1
+
+        b = cecRecOriginC + (i - 1) * cecRecLeapC
+        if (EPPrjCTagFound(b)) then
+            call ParseCecExtraList(EPPrjCTags(b)%value, tok, ntok)
+            do k = 1, ntok
+                EddyFlowProj%cec_pair(i)%extra(k) = tok(k)
+            end do
+        end if
+    end do
+end subroutine ReadCecRecords
+
+!***************************************************************************
+!
+! \brief       Split "6,7" into gas record indices.
+! \author      Jonathan Muller
+! \note        A list rather than a fixed run of numbered keys because most
+!              pairings carry none and the few that do carry one or two, and
+!              because the same shape already serves gas_<i>_sa_months.
+!
+!              Anything that is not a positive integer is dropped rather than
+!              refused: an extra species that cannot be resolved costs the
+!              project a column, not the run.
+!***************************************************************************
+subroutine ParseCecExtraList(text, tok, ntok)
+    character(*), intent(in) :: text
+    integer, intent(out) :: tok(MaxNumCecExtra)
+    integer, intent(out) :: ntok
+
+    character(len(text)) :: buf
+    integer :: i
+    integer :: value
+    integer :: io_status
+
+    tok = 0
+    ntok = 0
+    buf = text
+    do i = 1, len_trim(buf)
+        if (buf(i:i) == ',' .or. buf(i:i) == ';') buf(i:i) = ' '
+    end do
+    if (len_trim(buf) == 0) return
+
+    do
+        buf = adjustl(buf)
+        if (len_trim(buf) == 0) exit
+        read(buf, *, iostat = io_status) value
+        if (io_status /= 0) exit
+        if (value > 0 .and. ntok < MaxNumCecExtra) then
+            ntok = ntok + 1
+            tok(ntok) = value
+        end if
+        i = index(trim(buf), ' ')
+        if (i <= 0) exit
+        buf = buf(i:)
+    end do
+end subroutine ParseCecExtraList
 
 !***************************************************************************
 !
@@ -638,18 +757,34 @@ subroutine ApplyDiagnosticRecordColumns()
     end do
 end subroutine ApplyDiagnosticRecordColumns
 
-real(kind = dbl) function NormalizeCecFraction(value, default_value)
+!> An occupancy limit is a percentage, and only a percentage. This used to
+!> accept a fraction as well, deciding which was meant from the magnitude - so
+!> the interface, whose spin boxes are labelled [%] and go down to 0.1, could
+!> write 0.5 and have it read back as fifty percent.
+real(kind = dbl) function NormalizeCecPercent(value, default_value)
+    real(kind = dbl), intent(in) :: value
+    real(kind = dbl), intent(in) :: default_value
+
+    if (value >= 0d0 .and. value <= 100d0) then
+        NormalizeCecPercent = value / 100d0
+    else
+        NormalizeCecPercent = default_value
+    end if
+end function NormalizeCecPercent
+
+!> Half-width of the r_Fc ~ -1 band in which R and P nearly cancel and the
+!> partition is a division by something near zero. Zahn et al. use 0.2; 0
+!> switches the guard off.
+real(kind = dbl) function NormalizeCecBand(value, default_value)
     real(kind = dbl), intent(in) :: value
     real(kind = dbl), intent(in) :: default_value
 
     if (value >= 0d0 .and. value <= 1d0) then
-        NormalizeCecFraction = value
-    else if (value > 1d0 .and. value <= 100d0) then
-        NormalizeCecFraction = value / 100d0
+        NormalizeCecBand = value
     else
-        NormalizeCecFraction = default_value
+        NormalizeCecBand = default_value
     end if
-end function NormalizeCecFraction
+end function NormalizeCecBand
 
 real(kind = dbl) function NormalizeCecSignalStrength(value, default_value)
     real(kind = dbl), intent(in) :: value

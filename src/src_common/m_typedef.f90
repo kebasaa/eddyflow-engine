@@ -63,6 +63,11 @@ module m_typedef
     !> ever described the interface's own input rule. Removed rather than left
     !> to be mistaken for a constraint the engine enforces.
     integer, parameter :: MaxNumGases = 64
+    !> How many CO2/water pairs the partition may be run over, and how many
+    !> further species each pair may carry. One pair per analyser is the shape
+    !> this is sized for, so the ceiling is the instrument ceiling.
+    integer, parameter :: MaxNumCecPairs = 8
+    integer, parameter :: MaxNumCecExtra = 4
 
     !> Cell temperature in/out, cell pressure and average cell temperature, one
     !> set per instrument; diagnostics, two per instrument. Read by
@@ -135,7 +140,20 @@ module m_typedef
     integer, parameter :: FilenameLen = 256
     integer, parameter :: LongInstringLen = 8192
     integer, parameter :: ShortInstringLen = 1024
-    integer, parameter :: LongOutstringLen = 16348
+    !> Widest a header or a data row of the FLUXNET/essentials file may get.
+    !>
+    !> It has to hold the widest header the layout can produce, which is a
+    !> per-gas block for up to sixty-four gases plus a Conditional Eddy
+    !> Covariance block for up to eight pairings of up to six targets each.
+    !> The CEC names are the long ones - CEC_TARGET_SLOT_6_<instrument>_2 - so
+    !> that block alone can run to twenty thousand characters.
+    !>
+    !> A header longer than this is not reported: it is silently cut, and FCC
+    !> then fails to find the NUM_BIOMET_VARS marker it locates the custom
+    !> variables by. That is what a two-pairing project did against the old
+    !> 16348, which is why the number is now well clear of any real layout
+    !> rather than just clear of the one that was tried.
+    integer, parameter :: LongOutstringLen = 65536
 
     integer, parameter :: iniLabelLen = 64
     integer, parameter :: iniValueLen = PathLen
@@ -653,8 +671,42 @@ module m_typedef
         type(InstrumentType) :: Instr(E2NumVar)
     end type DynMDType
 
+    !> Positions within a pair's target list. The pair's own water and carbon
+    !> are always first and second, so a reader can name them without looking
+    !> anything up; extra species follow in the order the pair states them.
+    integer, parameter :: MaxNumCecTargets = 2 + MaxNumCecExtra
+    integer, parameter :: cecTargetWater = 1
+    integer, parameter :: cecTargetCarbon = 2
+
+    !> One CO2/water pairing, as the project states it. Indices are into the
+    !> gas records, 1-based, so they survive a project being re-ordered in a
+    !> way raw column numbers would not.
+    type :: CECPairType
+        integer :: meth   !< 0 off, 1 water and carbon, 2 water only, 3 carbon only
+        !> Named for the role, not the species: these are record indices and
+        !> a bare `co2` reads as the retired slot constant of the same name.
+        integer :: carbon !< gas record; 0 = the designated CO2
+        integer :: water  !< gas record; 0 = the water on the carbon's analyser
+        integer :: extra(MaxNumCecExtra)  !< further species to partition; 0 = unused
+    end type CECPairType
+
+    !> A pairing with its record indices resolved to gas slots, and the
+    !> suffix its output columns carry. Resolution and naming come back from
+    !> one call because the header and the rows are written by different
+    !> executables: getting the list right and the naming wrong shifts the file
+    !> exactly as getting the list wrong does.
+    type :: CECResolvedPairType
+        integer :: meth
+        integer :: carbon_slot
+        integer :: water_slot
+        integer :: n_extra
+        integer :: extra_slot(MaxNumCecExtra)
+        character(48) :: tag
+    end type CECResolvedPairType
+
     type :: CECSetupType
-        real(kind = dbl) :: h
+        real(kind = dbl) :: h            !< hyperbolic hole, in units of sigma_w*sigma_s
+        real(kind = dbl) :: singular_band !< half-width of the r_Fc ~ -1 rejection band
         real(kind = dbl) :: min_o1_o2
         real(kind = dbl) :: min_octant
         real(kind = dbl) :: min_valid
@@ -731,7 +783,10 @@ module m_typedef
         logical :: hf_meth_in_situ
         logical :: hf_correct_ghg_ba
         logical :: hf_correct_ghg_zoh
-        integer :: do_cec    !< 0=disabled, 1=H2O+CO2, 2=H2O only, 3=CO2 only
+        !> Master switch only. Which fluxes a given pairing partitions is the
+        !> pairing's own business - a single project-wide 'water only' says
+        !> nothing useful once there is more than one analyser.
+        integer :: do_cec    !< 0 = disabled, 1 = enabled
         type(CECSetupType) :: cec
         !> Measurement records read from the project file. These are the only
         !> way a project names its gases, cell measurements and diagnostics.
@@ -747,6 +802,8 @@ module m_typedef
         integer :: gas_num
         integer :: cell_num
         integer :: diag_num
+        integer :: cec_num
+        type(CECPairType) :: cec_pair(MaxNumCecPairs)
         type(GasRecordType)  :: gas(MaxNumGases)
         type(MeasRecordType) :: cell(MaxNumCellCols)
         type(MeasRecordType) :: diag(MaxNumDiagCols)
@@ -758,35 +815,61 @@ module m_typedef
     integer, parameter :: cec_all_stomatal = 2
     integer, parameter :: cec_all_nonstomatal = 3
     integer, parameter :: cec_singular = 4
+    !> The authoritative total contradicts the octant statistics: the two
+    !> components share a sign (r > 0), so the total must share it too. A
+    !> negative ET would otherwise be split into a negative "transpiration".
+    integer, parameter :: cec_wrong_sign = 5
 
-    !> High-frequency Conditional Eddy Covariance partition descriptor.
+    !> One scalar partitioned in one pair's octants.
+    !>
+    !> The octants are NOT recomputed per target. Zahn et al. (Sec. 2.4) define
+    !> the indicator functions on (w', q', c') alone and say they "remain the
+    !> same" for the second scalar - which is the whole reason a species the
+    !> octants know nothing about, carbonyl sulfide among them, can be
+    !> partitioned by the same pass that partitions water and carbon.
+    type :: CECTargetType
+        integer :: slot                 !< gas slot; 0 = unused
+        real(kind = dbl) :: f_O1        !< (1/N) sum over O1 of w's'
+        real(kind = dbl) :: f_O2        !< (1/N) sum over O2 of w's'
+        real(kind = dbl) :: r           !< f_O1 / f_O2
+        integer :: status
+        logical :: valid
+    end type CECTargetType
+
+    !> High-frequency Conditional Eddy Covariance partition descriptor, for one
+    !> CO2/water pair. Everything here comes from the raw series alone, which is
+    !> what lets RP compute it and FCC apply it to its own corrected totals.
     type :: CECDescriptorType
-        real(kind = dbl) :: r_ET
-        real(kind = dbl) :: r_Fc
-        real(kind = dbl) :: frac_O1
-        real(kind = dbl) :: frac_O2
+        integer :: meth
+        integer :: carbon_slot
+        integer :: water_slot
+        integer :: n_target
         integer :: n_valid
         integer :: n_O1
         integer :: n_O2
-        integer :: h2o_status
-        integer :: co2_status
-        logical :: h2o_valid
-        logical :: co2_valid
+        real(kind = dbl) :: frac_O1
+        real(kind = dbl) :: frac_O2
+        type(CECTargetType) :: target(MaxNumCecTargets)
     end type CECDescriptorType
 
-    !> Results of Conditional Eddy Covariance partitioning (Zahn et al. 2022)
+    !> One partitioned scalar's two components and the total they sum to. The
+    !> status is the flux's own, not the descriptor's: whether the partition
+    !> holds also depends on the authoritative total, which the descriptor has
+    !> never seen.
+    type :: CECComponentType
+        real(kind = dbl) :: nonstomatal  !< the O1 component: E, Reco, soil COS
+        real(kind = dbl) :: stomatal     !< the O2 component: T,  P,   plant COS
+        real(kind = dbl) :: total        !< what this pair partitioned
+        integer :: status
+    end type CECComponentType
+
+    !> Results of Conditional Eddy Covariance partitioning (Zahn et al. 2022),
+    !> for one pair. Every scalar is in its own gas's flux units; the two depth
+    !> equivalents are the water target expressed in mm hour-1.
     type :: CECFluxType
-        real(kind = dbl) :: E_cec    !< evaporation [mmol m-2 s-1]
-        real(kind = dbl) :: Tr_cec   !< transpiration [mmol m-2 s-1]
-        real(kind = dbl) :: E_cec_ET !< evaporation equivalent [mm hour-1]
-        real(kind = dbl) :: Tr_cec_ET !< transpiration equivalent [mm hour-1]
-        real(kind = dbl) :: Reco_cec !< ecosystem respiration [umol m-2 s-1]
-        real(kind = dbl) :: P_cec    !< net photosynthesis [umol m-2 s-1]
-        real(kind = dbl) :: GPP_cec  !< compatibility alias for P_cec
-        real(kind = dbl) :: NEE_cec  !< net ecosystem exchange = Reco+P [umol m-2 s-1]
-        real(kind = dbl) :: r_ET_cec !< sample flux ratio fE/fT [dimensionless]
-        real(kind = dbl) :: r_Fc_cec !< sample flux ratio fR/fP [dimensionless]
-        logical :: ok
+        type(CECComponentType) :: comp(MaxNumCecTargets)
+        real(kind = dbl) :: E_cec_ET
+        real(kind = dbl) :: Tr_cec_ET
     end type CECFluxType
 
     type :: EddyFlowLogType
@@ -881,7 +964,6 @@ module m_typedef
         character(PathLen) :: pf
         character(PathLen) :: to
         character(PathLen) :: sa
-        character(PathLen) :: cec   !< CEC ratios intermediate file (RP→FCC)
     end type FileType
 
     !> One configured gas measurement. Replaces the fixed col_co2/col_h2o/
@@ -1828,7 +1910,8 @@ module m_typedef
         type(FluxType) :: Flux0
         Type(SwVerType) :: logger_swver
         type(StatsType) :: stats
-        type(CECDescriptorType) :: cec
+        integer :: n_cec
+        type(CECDescriptorType) :: cec(MaxNumCecPairs)
     end type ExType
 
     type fluxnetChunksType

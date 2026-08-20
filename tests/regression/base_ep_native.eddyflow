@@ -7,7 +7,7 @@ run_mode=0
 run_fcc=0
 project_title=CH-LAE
 sw_version=7.3.0
-ini_version=5.0.0
+ini_version=5.1.0
 project_id=CH-LAE_EP25
 file_type=1
 file_prototype=CH-LAE_ec-cos_yyyymmdd-HHMM.csv
@@ -99,6 +99,7 @@ cec_min_valid=90.0
 cec_signal_strength=70.0
 cec_max_gap_fill=4
 cec_max_stationarity=25.0
+cec_singular_band=0.200
 
 [FluxCorrection_SpectralAnalysis_General]
 sa_start_date=2025-06-01

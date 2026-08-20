@@ -195,8 +195,12 @@ module m_rp_global_var
     type (FluxType) :: Flux1
     type (FluxType) :: Flux2
     type (FluxType) :: Flux3
-    type (CECDescriptorType) :: CECDescriptor
-    type (CECFluxType) :: CECFlux
+    !> One per pairing. A site running two analysers partitions each of them
+    !> against its own water, and neither is "the" partition.
+    integer :: nCecPairs
+    type (CECResolvedPairType) :: CecPairList(MaxNumCecPairs)
+    type (CECDescriptorType) :: CECDescriptor(MaxNumCecPairs)
+    type (CECFluxType) :: CECFlux(MaxNumCecPairs)
     type (BurbaType):: Burba
     type (BurbaParType) :: BurbaPar
     type (StorType) :: Stor

@@ -1268,3 +1268,708 @@ subroutine GasFullOutputUnits(unit_in, flux_scale, dens_scale, &
             dens_label = '[mmol+1m-3]'
     end select
 end subroutine GasFullOutputUnits
+
+!***************************************************************************
+!
+! \brief       Every Conditional Eddy Covariance pairing, resolved, with the
+!              suffix its columns carry.
+! \author      Jonathan Muller
+! \note        A pairing is one CO2 channel, one water channel, and any
+!              further species partitioned in the octants those two define.
+!              Both channels are needed whichever fluxes the pairing is asked
+!              to partition, because the octants are built from the signs of
+!              w', q' and c' together - "carbon only" still needs the water.
+!
+!              Stated pairings win. An absent cec_num means the project has
+!              never said, and the layout answers instead: one pairing per CO2
+!              channel, each with the water on its own analyser. That is the
+!              pairing a site means when it says nothing, and it is the one
+!              choice that does not silently mix two analysers' time lags and
+!              spectral responses into the series that define the octants.
+!
+!              Columns are suffixed with the analyser the CO2 sits on rather
+!              than a bare number, so a reader can tell which instrument a
+!              partition describes without consulting the project file. Two
+!              pairings on one analyser - a site with two water channels on it
+!              - are told apart by an occurrence number after that.
+!***************************************************************************
+subroutine CecPairs(pairs, npairs)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(out) :: pairs(MaxNumCecPairs)
+    integer, intent(out) :: npairs
+
+    integer :: i
+    integer :: j
+    integer :: k
+    integer :: rec
+    integer :: slot
+    integer :: gas
+    integer :: occurrence
+    integer :: repeat
+    character(48) :: base
+    integer, external :: PrimaryCarbonSlot
+    integer, external :: CecWaterOnAnalyserOf
+    character(32), external :: GasOutputLabel
+    logical, save :: crossPairWarned(MaxNumCecPairs) = .false.
+
+    do i = 1, MaxNumCecPairs
+        pairs(i)%meth = 0
+        pairs(i)%carbon_slot = 0
+        pairs(i)%water_slot = 0
+        pairs(i)%n_extra = 0
+        pairs(i)%extra_slot = 0
+        pairs(i)%tag = ''
+    end do
+    npairs = 0
+    if (EddyFlowProj%do_cec == 0) return
+
+    if (EddyFlowProj%cec_num > 0) then
+        do i = 1, min(EddyFlowProj%cec_num, MaxNumCecPairs)
+            if (EddyFlowProj%cec_pair(i)%meth == 0) cycle
+
+            slot = CecSlotOfRecord(EddyFlowProj%cec_pair(i)%carbon, 'CO2')
+            if (slot == 0) slot = PrimaryCarbonSlot()
+            if (slot < firstGas) cycle
+
+            npairs = npairs + 1
+            pairs(npairs)%meth = EddyFlowProj%cec_pair(i)%meth
+            pairs(npairs)%carbon_slot = slot
+            pairs(npairs)%water_slot = &
+                CecSlotOfRecord(EddyFlowProj%cec_pair(i)%water, 'H2O')
+            if (pairs(npairs)%water_slot == 0) &
+                pairs(npairs)%water_slot = CecWaterOnAnalyserOf(slot)
+
+            do k = 1, MaxNumCecExtra
+                rec = EddyFlowProj%cec_pair(i)%extra(k)
+                if (rec <= 0) cycle
+                if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) cycle
+                if (EddyFlowProj%gas(rec)%col <= 0) cycle
+                gas = firstGas + rec - 1
+                !> A pairing's own two channels are already targets one and
+                !> two. Naming one again would partition it twice under two
+                !> names, so it is dropped rather than duplicated.
+                if (gas == pairs(npairs)%carbon_slot) cycle
+                if (gas == pairs(npairs)%water_slot) cycle
+                pairs(npairs)%n_extra = pairs(npairs)%n_extra + 1
+                pairs(npairs)%extra_slot(pairs(npairs)%n_extra) = gas
+            end do
+        end do
+    else
+        call AutoCecPairs(pairs, npairs)
+    end if
+
+    !> Drop a pairing that cannot be run, and one that repeats an earlier one.
+    j = 0
+    do i = 1, npairs
+        if (pairs(i)%carbon_slot < firstGas .or. pairs(i)%water_slot < firstGas) cycle
+        if (CecPairIsRepeated(pairs, j, pairs(i)%carbon_slot, pairs(i)%water_slot)) cycle
+        j = j + 1
+        if (j /= i) pairs(j) = pairs(i)
+    end do
+    do i = j + 1, npairs
+        pairs(i)%meth = 0
+        pairs(i)%carbon_slot = 0
+        pairs(i)%water_slot = 0
+        pairs(i)%n_extra = 0
+        pairs(i)%extra_slot = 0
+        pairs(i)%tag = ''
+    end do
+    npairs = j
+
+    !> Once per run, not once per period: this is called by the header
+    !> builders and by both row writers, so an unguarded message is one per
+    !> half-hour per pairing and the log the warning exists to be read in is
+    !> buried under it. Same guard, and the same reason, as Warning(106).
+    do i = 1, npairs
+        if (pairs(i)%carbon_slot < firstGas .or. pairs(i)%water_slot < firstGas) cycle
+        if (CecSameAnalyser(pairs(i)%carbon_slot, pairs(i)%water_slot)) cycle
+        if (crossPairWarned(i)) cycle
+        crossPairWarned(i) = .true.
+        write(*, '(a,i0,a)') '  Warning(113)> CEC pairing ', i, ': ' &
+            // trim(GasOutputLabel(pairs(i)%carbon_slot)) // ' with the water on ' &
+            // trim(GasOutputLabel(pairs(i)%water_slot)) // '.'
+        write(ulog, '(a,i0,a)') '  Warning(113)> CEC pairing ', i, ': ' &
+            // trim(GasOutputLabel(pairs(i)%carbon_slot)) // ' with the water on ' &
+            // trim(GasOutputLabel(pairs(i)%water_slot)) // '.'
+        call ExceptionHandler(113)
+    end do
+
+    !> Suffixes last, in two passes: whether a name needs an occurrence number
+    !> depends on how many pairings share the analyser, which the first of them
+    !> cannot know.
+    do i = 1, npairs
+        base = CecPairBaseTag(pairs(i)%carbon_slot, i)
+        repeat = 0
+        occurrence = 0
+        do k = 1, npairs
+            if (trim(CecPairBaseTag(pairs(k)%carbon_slot, k)) /= trim(base)) cycle
+            repeat = repeat + 1
+            if (k <= i) occurrence = occurrence + 1
+        end do
+        if (repeat == 1) then
+            pairs(i)%tag = '_' // trim(base)
+        else
+            write(pairs(i)%tag, '(a,i0)') '_' // trim(base) // '_', occurrence
+        end if
+    end do
+
+contains
+
+    !> Do the two slots sit on the same analyser? Asked of the project rather
+    !> than of E2Col, like everything else here, because the header builders
+    !> want an answer before the first period is imported.
+    logical function CecSameAnalyser(a, b)
+        integer, intent(in) :: a
+        integer, intent(in) :: b
+        character(32) :: ia, ib
+        integer :: ra, rb
+
+        CecSameAnalyser = .true.
+        ra = a - firstGas + 1
+        rb = b - firstGas + 1
+        if (ra < 1 .or. ra > min(EddyFlowProj%gas_num, MaxNumGases)) return
+        if (rb < 1 .or. rb > min(EddyFlowProj%gas_num, MaxNumGases)) return
+        ia = EddyFlowProj%gas(ra)%instr
+        ib = EddyFlowProj%gas(rb)%instr
+        call lowercase(ia)
+        call lowercase(ib)
+        !> An unnamed analyser is not evidence of two, so it is not warned
+        !> about: 'none' and 'other' are what a project says when it has not
+        !> told us which instrument a channel is on.
+        if (len_trim(ia) == 0 .or. trim(ia) == 'none' .or. trim(ia) == 'other') return
+        if (len_trim(ib) == 0 .or. trim(ib) == 'none' .or. trim(ib) == 'other') return
+        CecSameAnalyser = trim(ia) == trim(ib)
+    end function CecSameAnalyser
+
+    !> The gas slot a 1-based record index names, if it names the wanted
+    !> species and a column. Zero for "not stated", which the caller resolves.
+    integer function CecSlotOfRecord(rec, wanted)
+        integer, intent(in) :: rec
+        character(*), intent(in) :: wanted
+        character(32) :: species
+
+        CecSlotOfRecord = 0
+        if (rec <= 0) return
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) return
+        if (EddyFlowProj%gas(rec)%col <= 0) return
+        species = EddyFlowProj%gas(rec)%var
+        call uppercase(species)
+        if (trim(adjustl(species)) /= trim(adjustl(wanted))) return
+        CecSlotOfRecord = firstGas + rec - 1
+    end function CecSlotOfRecord
+
+    logical function CecPairIsRepeated(seen, nseen, csl, wsl)
+        type(CECResolvedPairType), intent(in) :: seen(MaxNumCecPairs)
+        integer, intent(in) :: nseen
+        integer, intent(in) :: csl
+        integer, intent(in) :: wsl
+        integer :: n
+
+        CecPairIsRepeated = .false.
+        do n = 1, nseen
+            if (seen(n)%carbon_slot == csl .and. seen(n)%water_slot == wsl) then
+                CecPairIsRepeated = .true.
+                return
+            end if
+        end do
+    end function CecPairIsRepeated
+
+    !> The analyser the CO2 sits on, from the project rather than from E2Col:
+    !> the header writers ask for these before the first period is imported,
+    !> and E2Col is not populated until one is. A pairing whose analyser has no
+    !> name falls back to its ordinal, which is unlovely but unambiguous.
+    character(48) function CecPairBaseTag(csl, ordinal)
+        integer, intent(in) :: csl
+        integer, intent(in) :: ordinal
+        integer :: r
+
+        CecPairBaseTag = ''
+        r = csl - firstGas + 1
+        if (r >= 1 .and. r <= min(EddyFlowProj%gas_num, MaxNumGases)) &
+            CecPairBaseTag = EddyFlowProj%gas(r)%instr
+        call lowercase(CecPairBaseTag)
+        if (len_trim(CecPairBaseTag) == 0 &
+            .or. trim(CecPairBaseTag) == 'none' &
+            .or. trim(CecPairBaseTag) == 'other') &
+            write(CecPairBaseTag, '(a,i0)') 'pair', ordinal
+    end function CecPairBaseTag
+
+end subroutine CecPairs
+
+!***************************************************************************
+!
+! \brief       The pairings a project means when it states none.
+! \author      Jonathan Muller
+! \note        One per CO2 channel, each with the water on the same analyser.
+!              Falling back to the designated hygrometer when an analyser
+!              carries none is a stand-in, not a measurement of that cell, so
+!              it is warned about - the octants are built from q' and c'
+!              together, and across two analysers those two arrive at
+!              different time lags and through different spectral responses.
+!***************************************************************************
+subroutine AutoCecPairs(pairs, npairs)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(out) :: pairs(MaxNumCecPairs)
+    integer, intent(out) :: npairs
+
+    integer :: gas
+    integer :: rec
+    character(32) :: species
+    integer, external :: CecWaterOnAnalyserOf
+
+    npairs = 0
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (EddyFlowProj%gas(rec)%col <= 0) cycle
+        species = EddyFlowProj%gas(rec)%var
+        call uppercase(species)
+        if (trim(adjustl(species)) /= 'CO2') cycle
+        if (npairs >= MaxNumCecPairs) exit
+
+        npairs = npairs + 1
+        pairs(npairs)%meth = 1
+        pairs(npairs)%carbon_slot = gas
+        pairs(npairs)%water_slot = CecWaterOnAnalyserOf(gas)
+        pairs(npairs)%n_extra = 0
+        pairs(npairs)%extra_slot = 0
+        pairs(npairs)%tag = ''
+    end do
+end subroutine AutoCecPairs
+
+!***************************************************************************
+!
+! \brief       The water channel on the same analyser as a given gas slot.
+! \author      Jonathan Muller
+! \note        Falls back to the designated hygrometer, and says so, because a
+!              pairing across two analysers is a real answer with a real caveat
+!              rather than an error.
+!***************************************************************************
+integer function CecWaterOnAnalyserOf(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+
+    integer :: gas
+    integer :: rec
+    integer :: own
+    character(32) :: analyser
+    character(32) :: other
+    character(32) :: species
+    integer, external :: PrimaryWaterSlot
+
+    CecWaterOnAnalyserOf = 0
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+
+    own = gas_slot - firstGas + 1
+    if (own < 1 .or. own > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    analyser = EddyFlowProj%gas(own)%instr
+    call lowercase(analyser)
+
+    if (len_trim(analyser) > 0 .and. trim(analyser) /= 'none' &
+        .and. trim(analyser) /= 'other') then
+        do gas = firstGas, lastGas
+            rec = gas - firstGas + 1
+            if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (EddyFlowProj%gas(rec)%col <= 0) cycle
+            species = EddyFlowProj%gas(rec)%var
+            call uppercase(species)
+            if (trim(adjustl(species)) /= 'H2O') cycle
+            other = EddyFlowProj%gas(rec)%instr
+            call lowercase(other)
+            if (trim(other) /= trim(analyser)) cycle
+            CecWaterOnAnalyserOf = gas
+            return
+        end do
+    end if
+
+    !> No water on that analyser, so the designated hygrometer stands in. The
+    !> octants are built from q' and c' together, and across two analysers
+    !> those two arrive at different time lags and through different spectral
+    !> responses - a real answer with a real caveat, so say so.
+    CecWaterOnAnalyserOf = PrimaryWaterSlot()
+end function CecWaterOnAnalyserOf
+
+!***************************************************************************
+!
+! \brief       The custom column carrying a gas's own signal-strength
+!              diagnostic, or 0 if its analyser reports none.
+! \author      Jonathan Muller
+! \note        Matched on the instrument's metadata block number, not on a
+!              model substring. The conditional eddy covariance screen used to
+!              take the first column named AGC or RSSI on anything matching
+!              li7200 or li7500 and apply it to both gases of the pair - so a
+!              site running two analysers screened one analyser's gas with the
+!              other's diagnostic, and a site running neither, a quantum
+!              cascade laser measuring carbonyl sulfide for instance, was not
+!              screened at all.
+!***************************************************************************
+integer function CecSignalColumnFor(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+
+    integer :: j
+
+    CecSignalColumnFor = 0
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+    if (.not. allocated(UserCol)) return
+    if (E2Col(gas_slot)%instr%slot <= 0) return
+
+    do j = 1, NumUserVar
+        if (UserCol(j)%var /= 'AGC' .and. UserCol(j)%var /= 'RSSI') cycle
+        if (UserCol(j)%instr%slot /= E2Col(gas_slot)%instr%slot) cycle
+        CecSignalColumnFor = j
+        return
+    end do
+end function CecSignalColumnFor
+
+!***************************************************************************
+!
+! \brief       Is that diagnostic a received-signal strength, where high is
+!              clean, or an automatic gain control, where high is dirty?
+! \author      Jonathan Muller
+! \note        The two are stored under the same name and compared against the
+!              same number, and they run in opposite directions. A column the
+!              user labelled RSSI is one. A column labelled AGC is one too from
+!              analyser firmware 5.3.0, which is where LI-COR changed what the
+!              diagnostic word encodes - the same boundary interpret_diagnostics
+!              uses to decode it.
+!
+!              An analyser that states no firmware compares older than any
+!              threshold, so it is read as a true AGC. That is the arm an
+!              unpopulated sw_ver has always taken elsewhere in the engine, and
+!              it is the safer reading: treating a real AGC as an RSSI keeps
+!              exactly the samples that should go.
+!***************************************************************************
+logical function CecSignalIsRssi(gas_slot, user_col)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    integer, intent(in) :: user_col
+
+    logical, external :: CompareSwVer
+    type(SwVerType), external :: SwVerFromString
+
+    CecSignalIsRssi = .false.
+    if (.not. allocated(UserCol)) return
+    if (user_col < 1 .or. user_col > NumUserVar) return
+    if (UserCol(user_col)%var == 'RSSI') then
+        CecSignalIsRssi = .true.
+        return
+    end if
+    if (UserCol(user_col)%var /= 'AGC') return
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+
+    CecSignalIsRssi = CompareSwVer(E2Col(gas_slot)%instr%sw_ver, &
+        SwVerFromString('5.3.0'))
+end function CecSignalIsRssi
+
+!***************************************************************************
+!
+! \brief       The scalars one pairing partitions, in output order.
+! \author      Jonathan Muller
+! \note        Water first, carbon second, extras after, always. Header
+!              builders, row writers, the essentials record and this module all
+!              walk the same list from the same helper, because a target list
+!              that is right in one place and wrong in another shifts a file
+!              rather than failing to build.
+!***************************************************************************
+subroutine CecTargetSlots(pair, slots, ntarget)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(in) :: pair
+    integer, intent(out) :: slots(MaxNumCecTargets)
+    integer, intent(out) :: ntarget
+
+    integer :: k
+
+    slots = 0
+    slots(cecTargetWater) = pair%water_slot
+    slots(cecTargetCarbon) = pair%carbon_slot
+    ntarget = 2
+    do k = 1, pair%n_extra
+        if (pair%extra_slot(k) <= 0) cycle
+        if (ntarget >= MaxNumCecTargets) exit
+        ntarget = ntarget + 1
+        slots(ntarget) = pair%extra_slot(k)
+    end do
+end subroutine CecTargetSlots
+
+!***************************************************************************
+!
+! \brief       The full-output columns one pairing contributes, named and
+!              with their units, in the order the row writers emit them.
+! \author      Jonathan Muller
+! \note        One helper for both, because the header and the row are built
+!              in different files and, for the FCC executable, a different
+!              program. A name list that is right in one and wrong in the other
+!              does not fail to build; it shifts every column after it.
+!
+!              The order is: the pairing's targets, water first and carbon
+!              second and extras after, then the octant statistics the ratios
+!              were computed from. Water and carbon are named for what they are
+!              - evaporation, transpiration, respiration, photosynthesis - and
+!              anything else generically, because the octants sort by pathway
+!              rather than by medium and "soil" would be a guess about a
+!              species the method knows nothing about.
+!***************************************************************************
+subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(in) :: pair
+    character(*), intent(in) :: flux_label(GHGNumVar)
+    character(*), intent(out) :: names(:)
+    character(*), intent(out) :: units(:)
+    integer, intent(out) :: nnames
+
+    integer :: k
+    integer :: ntarget
+    integer :: slots(MaxNumCecTargets)
+    character(64) :: stem
+    character(64) :: gas_tags(GHGNumVar)
+    character(48) :: tag
+
+    names = ''
+    units = ''
+    nnames = 0
+    if (pair%meth == 0) return
+
+    call CecTargetSlots(pair, slots, ntarget)
+    call FullOutputGasTags(gas_tags)
+    tag = pair%tag
+
+    do k = 1, ntarget
+        if (slots(k) < firstGas .or. slots(k) > lastGas) cycle
+        if (k == cecTargetWater) then
+            if (pair%meth /= 1 .and. pair%meth /= 2) cycle
+            call Emit('E_cec' // trim(tag), flux_label(slots(k)))
+            call Emit('Tr_cec' // trim(tag), flux_label(slots(k)))
+            call Emit('E_cec_ET' // trim(tag), '[mm+1hour-1]')
+            call Emit('Tr_cec_ET' // trim(tag), '[mm+1hour-1]')
+            call Emit('ET_cec' // trim(tag), flux_label(slots(k)))
+            call Emit('r_ET_cec' // trim(tag), '[#]')
+            call Emit('qc_cec_h2o' // trim(tag), '[#]')
+        else if (k == cecTargetCarbon) then
+            if (pair%meth /= 1 .and. pair%meth /= 3) cycle
+            call Emit('Reco_cec' // trim(tag), flux_label(slots(k)))
+            call Emit('P_cec' // trim(tag), flux_label(slots(k)))
+            call Emit('NEE_cec' // trim(tag), flux_label(slots(k)))
+            call Emit('r_Fc_cec' // trim(tag), '[#]')
+            call Emit('qc_cec_co2' // trim(tag), '[#]')
+        else
+            stem = gas_tags(slots(k))
+            if (len_trim(stem) > 1) stem = stem(1:len_trim(stem) - 1)
+            call Emit(trim(stem) // '_nonstomatal_cec' // trim(tag), &
+                flux_label(slots(k)))
+            call Emit(trim(stem) // '_stomatal_cec' // trim(tag), &
+                flux_label(slots(k)))
+            call Emit(trim(stem) // '_total_cec' // trim(tag), &
+                flux_label(slots(k)))
+            call Emit('r_' // trim(stem) // '_cec' // trim(tag), '[#]')
+            call Emit('qc_cec_' // trim(stem) // trim(tag), '[#]')
+        end if
+    end do
+
+    !> How many points each octant held, and what fraction of the record that
+    !> was. These decide whether a ratio is worth anything, and they used to be
+    !> written only to the essentials file - so the one output a user reads
+    !> could not tell a confident partition from a badly sampled one.
+    call Emit('cec_n_o1' // trim(tag), '[#]')
+    call Emit('cec_n_o2' // trim(tag), '[#]')
+    call Emit('cec_frac_o1' // trim(tag), '[#]')
+    call Emit('cec_frac_o2' // trim(tag), '[#]')
+
+contains
+
+    subroutine Emit(name, unit)
+        character(*), intent(in) :: name
+        character(*), intent(in) :: unit
+
+        if (nnames >= size(names)) return
+        nnames = nnames + 1
+        names(nnames) = name
+        units(nnames) = unit
+    end subroutine Emit
+
+end subroutine CecOutputColumns
+
+!***************************************************************************
+!
+! \brief       The values behind CecOutputColumns, in the same order.
+! \author      Jonathan Muller
+! \note        Deliberately next to CecOutputColumns and deliberately walking
+!              the same branches in the same order: these two are one contract
+!              expressed twice, and a row that emits its values in a different
+!              order than its header names them is a file whose every later
+!              column is misread rather than a build that fails.
+!
+!              `is_int` says which are counts and status codes, so the writers
+!              format them as integers without having to know which is which.
+!
+!              The scale is the caller's, for the same reason the labels are
+!              the caller's in CecOutputColumns: RP resolves a gas's unit from
+!              the metadata columns it read, FCC from its own copy taken at
+!              startup, and a shared helper asking GasUnitIn is right only in
+!              RP. That is what had FCC labelling carbonyl sulfide in umol and
+!              printing it unscaled - a thousandfold error in the one output a
+!              reader actually reads.
+!***************************************************************************
+subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(in) :: pair
+    type(CECDescriptorType), intent(in) :: descriptor
+    type(CECFluxType), intent(in) :: flux
+    real(kind = dbl), intent(in) :: flux_sc(GHGNumVar)
+    real(kind = dbl), intent(out) :: values(:)
+    logical, intent(out) :: is_int(:)
+    integer, intent(out) :: nvalues
+
+    integer :: k
+    integer :: ntarget
+    integer :: slots(MaxNumCecTargets)
+    real(kind = dbl) :: sc
+
+    values = error
+    is_int = .false.
+    nvalues = 0
+    if (pair%meth == 0) return
+
+    call CecTargetSlots(pair, slots, ntarget)
+
+    do k = 1, ntarget
+        if (slots(k) < firstGas .or. slots(k) > lastGas) cycle
+        sc = flux_sc(slots(k))
+        if (k == cecTargetWater) then
+            if (pair%meth /= 1 .and. pair%meth /= 2) cycle
+            call EmitScaled(flux%comp(k)%nonstomatal, sc)
+            call EmitScaled(flux%comp(k)%stomatal, sc)
+            call EmitScaled(flux%E_cec_ET, 1d0)
+            call EmitScaled(flux%Tr_cec_ET, 1d0)
+            call EmitScaled(flux%comp(k)%total, sc)
+            call EmitScaled(descriptor%target(k)%r, 1d0)
+            call EmitCount(flux%comp(k)%status)
+        else if (k == cecTargetCarbon) then
+            if (pair%meth /= 1 .and. pair%meth /= 3) cycle
+            call EmitScaled(flux%comp(k)%nonstomatal, sc)
+            call EmitScaled(flux%comp(k)%stomatal, sc)
+            call EmitScaled(flux%comp(k)%total, sc)
+            call EmitScaled(descriptor%target(k)%r, 1d0)
+            call EmitCount(flux%comp(k)%status)
+        else
+            call EmitScaled(flux%comp(k)%nonstomatal, sc)
+            call EmitScaled(flux%comp(k)%stomatal, sc)
+            call EmitScaled(flux%comp(k)%total, sc)
+            call EmitScaled(descriptor%target(k)%r, 1d0)
+            call EmitCount(flux%comp(k)%status)
+        end if
+    end do
+
+    call EmitCount(descriptor%n_O1)
+    call EmitCount(descriptor%n_O2)
+    call EmitScaled(descriptor%frac_O1, 1d0)
+    call EmitScaled(descriptor%frac_O2, 1d0)
+
+contains
+
+    subroutine EmitScaled(value, scale)
+        real(kind = dbl), intent(in) :: value
+        real(kind = dbl), intent(in) :: scale
+
+        if (nvalues >= size(values)) return
+        nvalues = nvalues + 1
+        if (value == error) then
+            values(nvalues) = error
+        else
+            values(nvalues) = value * scale
+        end if
+        is_int(nvalues) = .false.
+    end subroutine EmitScaled
+
+    subroutine EmitCount(value)
+        integer, intent(in) :: value
+
+        if (nvalues >= size(values)) return
+        nvalues = nvalues + 1
+        values(nvalues) = dble(value)
+        is_int(nvalues) = .true.
+    end subroutine EmitCount
+
+end subroutine CecRowValues
+
+!***************************************************************************
+!
+! \brief       One pairing's descriptor as the essentials row carries it.
+! \author      Jonathan Muller
+! \note        The transport from RP to FCC. Three writers emit this - the
+!              normal row, the skipped-period row, and FCC's echo of both - and
+!              ReadExRecord consumes it, so it is built once here.
+!
+!              The widths are fixed and named: nine fields for the pairing,
+!              then six for each of the targets the NINTH of those announces.
+!              The count comes from the pairing rather than from the
+!              descriptor, because a period whose extraction bailed still has
+!              to occupy its own width in the row.
+!***************************************************************************
+subroutine CecExRowValues(pair, descriptor, values, is_int, nvalues)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(in) :: pair
+    type(CECDescriptorType), intent(in) :: descriptor
+    real(kind = dbl), intent(out) :: values(:)
+    logical, intent(out) :: is_int(:)
+    integer, intent(out) :: nvalues
+
+    integer :: k
+    integer :: ntarget
+    integer :: slots(MaxNumCecTargets)
+
+    values = error
+    is_int = .false.
+    nvalues = 0
+
+    call CecTargetSlots(pair, slots, ntarget)
+
+    call EmitInt(pair%meth)
+    call EmitInt(pair%carbon_slot)
+    call EmitInt(pair%water_slot)
+    call EmitInt(descriptor%n_valid)
+    call EmitInt(descriptor%n_O1)
+    call EmitInt(descriptor%n_O2)
+    call EmitReal(descriptor%frac_O1)
+    call EmitReal(descriptor%frac_O2)
+    call EmitInt(ntarget)
+
+    do k = 1, ntarget
+        call EmitInt(slots(k))
+        call EmitReal(descriptor%target(k)%f_O1)
+        call EmitReal(descriptor%target(k)%f_O2)
+        call EmitReal(descriptor%target(k)%r)
+        call EmitInt(descriptor%target(k)%status)
+        call EmitInt(merge(1, 0, descriptor%target(k)%valid))
+    end do
+
+contains
+
+    subroutine EmitInt(value)
+        integer, intent(in) :: value
+
+        if (nvalues >= size(values)) return
+        nvalues = nvalues + 1
+        values(nvalues) = dble(value)
+        is_int(nvalues) = .true.
+    end subroutine EmitInt
+
+    subroutine EmitReal(value)
+        real(kind = dbl), intent(in) :: value
+
+        if (nvalues >= size(values)) return
+        nvalues = nvalues + 1
+        values(nvalues) = value
+        is_int(nvalues) = .false.
+    end subroutine EmitReal
+
+end subroutine CecExRowValues

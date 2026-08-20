@@ -61,6 +61,13 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     character(32) :: gas_mixr_label(GHGNumVar), gas_dens_label(GHGNumVar)
     character(LongOutstringLen) :: csv_row
     character(DatumLen) :: field_val
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_cols
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 8 + 8)
+    logical :: cec_is_int(MaxNumCecTargets * 8 + 8)
     include '../src_common/interfaces.inc'
 
     !> Scale every gas back to the unit basis its column is labelled with.
@@ -500,32 +507,24 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         end do
     end if
 
-    !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
-    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-        call WriteDatumFloat(CECFlux%E_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%Tr_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%E_cec_ET, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%Tr_cec_ET, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%r_ET_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(CECDescriptor%h2o_status, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-    end if
-    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-        call WriteDatumFloat(CECFlux%Reco_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%P_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%NEE_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%r_Fc_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(CECDescriptor%co2_status, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
+    !> Conditional Eddy Covariance outputs (Zahn et al. 2022), one block per
+    !> pairing, in the order InitOutFiles_rp named them.
+    if (EddyFlowProj%do_cec > 0) then
+        call CecPairs(cec_pairs, n_cec_pairs)
+        do cec_p = 1, n_cec_pairs
+            call CecRowValues(cec_pairs(cec_p), CECDescriptor(cec_p), &
+                CECFlux(cec_p), gas_flux_sc, cec_values, cec_is_int, n_cec_cols)
+            do cec_k = 1, n_cec_cols
+                if (cec_is_int(cec_k)) then
+                    call WriteDatumInt(nint(cec_values(cec_k)), field_val, &
+                        EddyFlowProj%err_label)
+                else
+                    call WriteDatumFloat(cec_values(cec_k), field_val, &
+                        EddyFlowProj%err_label)
+                end if
+                call AddDatum(csv_row, field_val, separator)
+            end do
+        end do
     end if
 
     write(uflx, '(a)') csv_row(1:len_trim(csv_row) - 1)

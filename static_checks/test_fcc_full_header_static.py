@@ -264,20 +264,17 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertEqual(repaired_header2[custom_start + ncustom], "E_cec")
         self.assertFalse(any(re.fullmatch(r"[-+]?(?:\d+|\d*\.\d+)", label) for label in custom_labels))
 
-    def test_read_ex_record_parses_cec_tail_without_biomet_fields(self):
+    def test_read_ex_record_consumes_the_cec_block_before_biomet(self):
         source = read("src/src_common/read_ex_record.f90")
 
-        # The width is spelled nCecFields, not a bare 11. Assert the name at the
-        # use sites and the number once at its definition, so that renaming the
-        # constant fails here but adding a CEC field only has to be updated in
-        # one place.
-        self.assertIn(f"nCecFields   = {CEC_TAIL_WIDTH}", source)
-        self.assertIn("if (remaining_fields == nCecFields) then", source)
-        self.assertIn("cec_line = dataline(1:len_trim(dataline))", source)
-        self.assertIn("dataline = ''", source)
-        self.assertIn("elseif (remaining_fields > nCecFields) then", source)
-        self.assertIn("if (len_trim(cec_line) > 0) then", source)
-        self.assertIn("strCharIndex(dataline, ',', remaining_fields - nCecFields)", source)
+        # Read forward off its own count of pairings, like the blocks before
+        # it. The widths are named, not bare numbers, so renaming a constant
+        # fails here while widening the block is a one-line change there.
+        self.assertIn("nCecPairFixedFields = 9", source)
+        self.assertIn("nCecTargetFields = 6", source)
+        self.assertIn("strCharIndex(dataline, ',', nCecPairFixedFields)", source)
+        self.assertIn("strCharIndex(dataline, ',', nCecTargetFields)", source)
+        self.assertNotIn("nCecFields", source)
 
         cec_fields = [
             "0.5", "-0.25", "17900", "1400", "1000", "0.078", "0.056",
@@ -302,14 +299,14 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         # the engine even while the fixture existed. This asserts the Fortran.
         source = read("src/src_common/write_processing_project_variables.f90")
 
-        # A project may write these either as a fraction or as a percent; the
-        # normalizer is what makes 20.0 and 0.20 mean the same thing. Each tag
-        # has to keep its own default, or a missing setting silently adopts
-        # another setting's threshold.
+        # The occupancy limits are percentages, full stop. Each tag has to
+        # keep its own default, or a missing setting silently adopts another
+        # setting's threshold.
         for tag, normalizer, default in (
-            (27, "NormalizeCecFraction", "0.20d0"),
-            (28, "NormalizeCecFraction", "0.05d0"),
-            (29, "NormalizeCecFraction", "0.90d0"),
+            (4, "NormalizeCecBand", "0.2d0"),
+            (27, "NormalizeCecPercent", "0.20d0"),
+            (28, "NormalizeCecPercent", "0.05d0"),
+            (29, "NormalizeCecPercent", "0.90d0"),
             (30, "NormalizeCecSignalStrength", "70d0"),
             (31, "NormalizeCecMaxGapFill", "4"),
             (32, "NormalizeCecStationarity", "25d0"),
@@ -317,9 +314,11 @@ class FccFullHeaderStaticTests(unittest.TestCase):
             self.assertIn(f"if (EPPrjNTagFound({tag}))", source)
             self.assertIn(f"{normalizer}( &\n            EPPrjNTags({tag})%value, {default})", source)
 
-        # The percent branch is the point of the rule: a value in (1, 100] is a
-        # percentage and must be divided, not taken as a fraction.
+        # Percent in, fraction out - unconditionally. Deciding which was meant
+        # from the magnitude made every value at or below 1 percent mean
+        # something else entirely.
         self.assertIn("value / 100d0", source)
+        self.assertNotIn("value > 1d0 .and. value <= 100d0", source)
 
     def test_ch_lae_full_output_without_biomet_still_has_cec_columns(self):
         sample = ROOT / "data" / "eddyflow_CH-LAE_COS_full_output_2026-07-02T093117_adv.csv"
@@ -350,12 +349,24 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         header_source = read("src/src_fcc/init_out_files.f90")
         writer_source = read("src/src_fcc/write_out_full_fcc.f90")
 
-        self.assertEqual(header_source.count("r_ET_cec,qc_cec_h2o"), 1)
-        self.assertEqual(header_source.count("r_Fc_cec,qc_cec_co2"), 1)
-        self.assertEqual(header_source.count("[mm+1hour-1],[#],[#]"), 1)
-        self.assertEqual(header_source.count("[umol+1m-2s-1],[#],[#]"), 1)
-        self.assertIn("WriteDatumInt(lEx%cec%h2o_status", writer_source)
-        self.assertIn("WriteDatumInt(lEx%cec%co2_status", writer_source)
+        #> The names are built by CecOutputColumns and the values by
+        #> CecRowValues, so neither file spells a column of its own. They used
+        #> to be two hand-written lists that had to be kept in the same order
+        #> by hand, across two executables.
+        self.assertIn("call CecOutputColumns(", header_source)
+        self.assertNotIn("r_ET_cec,qc_cec_h2o", header_source)
+        self.assertNotIn("r_Fc_cec,qc_cec_co2", header_source)
+        self.assertIn("call CecRowValues(", writer_source)
+        self.assertNotIn("CECFlux%E_cec", writer_source)
+
+        #> The status a row carries is the flux's, not the descriptor's:
+        #> whether the partition held depends on the authoritative total too -
+        #> a downward ET cannot be split into evaporation and transpiration -
+        #> and the descriptor, built from the high-frequency data alone, has
+        #> never seen it.
+        resolver = read("src/src_common/gas_slot_resolution.f90")
+        self.assertIn("call EmitCount(flux%comp(k)%status)", resolver)
+        self.assertNotIn("call EmitCount(descriptor%target(k)%status)", resolver)
 
     def test_cec_stationarity_ini_setting_is_registered_and_used(self):
         tags_source = read("src/src_common/m_common_global_var.f90")
@@ -375,9 +386,9 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         self.assertIn("EddyFlowProj%cec%max_stationarity = 25d0", parser_source)
         self.assertIn("NormalizeCecStationarity", parser_source)
         self.assertIn("EPPrjNTagFound(32)", parser_source)
-        self.assertIn("active_setup%max_stationarity", cec_source)
-        self.assertIn("if (active_setup%max_stationarity > 0d0) then", cec_source)
-        self.assertNotIn("stationarity_co2 > 25", cec_source)
+        self.assertIn("setup%max_stationarity", cec_source)
+        self.assertIn("if (setup%max_stationarity > 0d0) then", cec_source)
+        self.assertNotIn("stationarity_carbon > 25", cec_source)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ subroutine WriteOutFullFcc(lEx)
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
-    character(16000) :: csv_row
+    character(LongOutstringLen) :: csv_row
 
     !> local variables
     integer :: var
@@ -55,6 +55,13 @@ subroutine WriteOutFullFcc(lEx)
     integer :: n_flag_vars
     character(LongOutstringLen) :: flag_legend
     character(DatumLen) :: field_val
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_cols
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 8 + 8)
+    logical :: cec_is_int(MaxNumCecTargets * 8 + 8)
     include '../src_common/interfaces_1.inc'
 
 
@@ -461,32 +468,31 @@ subroutine WriteOutFullFcc(lEx)
         end do
     end if
 
-    !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
-    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-        call WriteDatumFloat(CECFlux%E_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%Tr_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%E_cec_ET, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%Tr_cec_ET, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%r_ET_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(lEx%cec%h2o_status, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-    end if
-    if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-        call WriteDatumFloat(CECFlux%Reco_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%P_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%NEE_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumFloat(CECFlux%r_Fc_cec, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(lEx%cec%co2_status, field_val, EddyFlowProj%err_label)
-        call AddDatum(csv_row, field_val, separator)
+    !> Conditional Eddy Covariance outputs (Zahn et al. 2022), one block per
+    !> pairing, in the order InitOutFiles named them. The descriptor is RP's,
+    !> read back from the essentials file; the totals behind the components are
+    !> FCC's own.
+    if (EddyFlowProj%do_cec > 0) then
+        call CecPairs(cec_pairs, n_cec_pairs)
+        do cec_p = 1, n_cec_pairs
+            !> Past what the essentials file carried, both of these are in
+            !> their reset state - ReadExRecord clears every pairing slot, and
+            !> so does the loop in the main program - so the block is emitted
+            !> at full width with error values rather than going short and
+            !> shifting the rest of the row.
+            call CecRowValues(cec_pairs(cec_p), lEx%cec(cec_p), &
+                CECFlux(cec_p), gas_full_flux_sc, cec_values, cec_is_int, n_cec_cols)
+            do cec_k = 1, n_cec_cols
+                if (cec_is_int(cec_k)) then
+                    call WriteDatumInt(nint(cec_values(cec_k)), field_val, &
+                        EddyFlowProj%err_label)
+                else
+                    call WriteDatumFloat(cec_values(cec_k), field_val, &
+                        EddyFlowProj%err_label)
+                end if
+                call AddDatum(csv_row, field_val, separator)
+            end do
+        end do
     end if
 
     write(uflx, '(a)')   csv_row(1:len_trim(csv_row) - 1)

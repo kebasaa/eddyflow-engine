@@ -81,6 +81,13 @@ subroutine InitOutFiles_rp()
     character(LongOutstringLen) :: header3
     character(LongOutstringLen) :: dataline
     logical :: proceed
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_cols
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    character(64) :: cec_names(MaxNumCecTargets * 8 + 8)
+    character(32) :: cec_units(MaxNumCecTargets * 8 + 8)
     include '../src_common/interfaces.inc'
 
 
@@ -498,22 +505,23 @@ subroutine InitOutFiles_rp()
             end do
         end if
 
-        !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
-        if (EddyFlowProj%do_cec == 1) then
-            call AddDatum(header1, 'conditional_eddy_covariance,,,,,,,,,,', separator)
-        else if (EddyFlowProj%do_cec == 2) then
-            call AddDatum(header1, 'conditional_eddy_covariance,,,,,', separator)
-        else if (EddyFlowProj%do_cec == 3) then
-            call AddDatum(header1, 'conditional_eddy_covariance,,,,', separator)
-        end if
-        if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-            call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
-            call AddDatum(header3, &
-                '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
-        end if
-        if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-            call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
-            call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
+        !> Conditional Eddy Covariance outputs (Zahn et al. 2022), one block per
+        !> pairing. The width is counted rather than written out as a run of
+        !> commas: it depends on how many species the pairing partitions.
+        if (EddyFlowProj%do_cec > 0) then
+            call CecPairs(cec_pairs, n_cec_pairs)
+            do cec_p = 1, n_cec_pairs
+                call CecOutputColumns(cec_pairs(cec_p), gas_flux_label, cec_names, cec_units, &
+                    n_cec_cols)
+                if (n_cec_cols <= 0) cycle
+                call AddDatum(header1, 'conditional_eddy_covariance' &
+                    // trim(cec_pairs(cec_p)%tag) &
+                    // repeat(',', n_cec_cols - 1), separator)
+                do cec_k = 1, n_cec_cols
+                    call AddDatum(header2, trim(cec_names(cec_k)), separator)
+                    call AddDatum(header3, trim(cec_units(cec_k)), separator)
+                end do
+            end do
         end if
 
         !> Write on output file

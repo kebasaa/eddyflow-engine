@@ -133,6 +133,84 @@ interface
         implicit none
     end function PrimaryCarbonOutSlot
 
+    !> Every conditional eddy covariance pairing, resolved to slots and named,
+    !> in one call - for the same reason WaterOutSlots is one call.
+    subroutine CecPairs(pairs, npairs)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(out) :: pairs(MaxNumCecPairs)
+        integer, intent(out) :: npairs
+    end subroutine CecPairs
+
+    subroutine AutoCecPairs(pairs, npairs)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(out) :: pairs(MaxNumCecPairs)
+        integer, intent(out) :: npairs
+    end subroutine AutoCecPairs
+
+    integer function CecWaterOnAnalyserOf(gas_slot)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+    end function CecWaterOnAnalyserOf
+
+    !> A gas's own signal-strength diagnostic, and which way it reads.
+    !> The scalars one pairing partitions, in output order, and the columns
+    !> they contribute. Asked by the header builders and the row writers alike.
+    subroutine CecTargetSlots(pair, slots, ntarget)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(in) :: pair
+        integer, intent(out) :: slots(MaxNumCecTargets)
+        integer, intent(out) :: ntarget
+    end subroutine CecTargetSlots
+
+    subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(in) :: pair
+        character(*), intent(in) :: flux_label(GHGNumVar)
+        character(*), intent(out) :: names(:)
+        character(*), intent(out) :: units(:)
+        integer, intent(out) :: nnames
+    end subroutine CecOutputColumns
+
+    subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(in) :: pair
+        type(CECDescriptorType), intent(in) :: descriptor
+        type(CECFluxType), intent(in) :: flux
+        real(kind = dbl), intent(in) :: flux_sc(GHGNumVar)
+        real(kind = dbl), intent(out) :: values(:)
+        logical, intent(out) :: is_int(:)
+        integer, intent(out) :: nvalues
+    end subroutine CecRowValues
+
+    subroutine CecExRowValues(pair, descriptor, values, is_int, nvalues)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(in) :: pair
+        type(CECDescriptorType), intent(in) :: descriptor
+        real(kind = dbl), intent(out) :: values(:)
+        logical, intent(out) :: is_int(:)
+        integer, intent(out) :: nvalues
+    end subroutine CecExRowValues
+
+    integer function CecSignalColumnFor(gas_slot)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+    end function CecSignalColumnFor
+
+    logical function CecSignalIsRssi(gas_slot, user_col)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: gas_slot
+        integer, intent(in) :: user_col
+    end function CecSignalIsRssi
+
     !> Width and legend of the packed statistical-flag strings. The units row
     !> names the variables and the data row emits their digits, so both sides
     !> ask this or the cell describes a different set than it carries.

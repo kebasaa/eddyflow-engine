@@ -370,7 +370,7 @@ module m_common_global_var
     !> 5.0.0 is the record format: gases, cell measurements and diagnostics are
     !> described by indexed records rather than one column per fixed role. The
     !> GUI migrates a 4.x file on open and saves it in this format.
-    character(5), parameter :: MaxSupportedIniVer = '5.0.0'
+    character(5), parameter :: MaxSupportedIniVer = '5.1.0'
     type(DateType), parameter :: &
         tsNull= DateType(0, 0, 0, 0, 0)
     type(InstrumentType), parameter :: &
@@ -488,8 +488,8 @@ module m_common_global_var
     real(kind = dbl) :: UnPar(2) = error
 
     !> tags of the [Project] group of processing.eddypro file
-    integer, parameter :: Npn = 467
-    integer, parameter :: Npc = 274
+    integer, parameter :: Npn = 492
+    integer, parameter :: Npc = 282
     !> BEGIN GENERATED ProjectRecordOrigins - edit gen_project_tags.py, not this block
     !> Slot origins for the appended gas/cell/diag records. The value
     !> is the index of the FIRST field of record 1, so record i field f
@@ -500,9 +500,12 @@ module m_common_global_var
     integer, parameter :: gasRecOriginN = 36
     integer, parameter :: cellRecOriginN = 420
     integer, parameter :: diagRecOriginN = 452
+    integer, parameter :: cecNumTag = 468
+    integer, parameter :: cecRecOriginN = 469
     integer, parameter :: gasRecOriginC = 51
     integer, parameter :: cellRecOriginC = 179
     integer, parameter :: diagRecOriginC = 243
+    integer, parameter :: cecRecOriginC = 275
     integer, parameter :: rpGasOriginN = 425
     integer, parameter :: rpInstrMaxLackN = 357
     integer, parameter :: rpGasOriginC = 102
@@ -516,6 +519,8 @@ module m_common_global_var
     integer, parameter :: diagRecLeapC  = 2
     integer, parameter :: rpGasLeapN    = 25
     integer, parameter :: rpGasLeapC    = 3
+    integer, parameter :: cecRecLeapN   = 3
+    integer, parameter :: cecRecLeapC   = 1
     integer, parameter :: fccGasLeapN   = 6
     integer, parameter :: fccGasLeapC   = 1
     !> END GENERATED ProjectRecordOrigins
@@ -527,7 +532,7 @@ module m_common_global_var
     data EPPrjNTags(1)%Label / 'binary_nbytes' / &
          EPPrjNTags(2)%Label / 'binary_hnlines' / &
          EPPrjNTags(3)%Label / 'col_ts' / &
-         EPPrjNTags(4)%Label / '' / &
+         EPPrjNTags(4)%Label / 'cec_singular_band' / &
          EPPrjNTags(5)%Label / '' / &
          EPPrjNTags(6)%Label / '' / &
          EPPrjNTags(7)%Label / '' / &
@@ -990,7 +995,32 @@ module m_common_global_var
          EPPrjNTags(464)%Label / 'diag_13_col' / &
          EPPrjNTags(465)%Label / 'diag_14_col' / &
          EPPrjNTags(466)%Label / 'diag_15_col' / &
-         EPPrjNTags(467)%Label / 'diag_16_col' /
+         EPPrjNTags(467)%Label / 'diag_16_col' / &
+         EPPrjNTags(468)%Label / 'cec_num' / &
+         EPPrjNTags(469)%Label / 'cec_1_meth' / &
+         EPPrjNTags(470)%Label / 'cec_1_co2' / &
+         EPPrjNTags(471)%Label / 'cec_1_h2o' / &
+         EPPrjNTags(472)%Label / 'cec_2_meth' / &
+         EPPrjNTags(473)%Label / 'cec_2_co2' / &
+         EPPrjNTags(474)%Label / 'cec_2_h2o' / &
+         EPPrjNTags(475)%Label / 'cec_3_meth' / &
+         EPPrjNTags(476)%Label / 'cec_3_co2' / &
+         EPPrjNTags(477)%Label / 'cec_3_h2o' / &
+         EPPrjNTags(478)%Label / 'cec_4_meth' / &
+         EPPrjNTags(479)%Label / 'cec_4_co2' / &
+         EPPrjNTags(480)%Label / 'cec_4_h2o' / &
+         EPPrjNTags(481)%Label / 'cec_5_meth' / &
+         EPPrjNTags(482)%Label / 'cec_5_co2' / &
+         EPPrjNTags(483)%Label / 'cec_5_h2o' / &
+         EPPrjNTags(484)%Label / 'cec_6_meth' / &
+         EPPrjNTags(485)%Label / 'cec_6_co2' / &
+         EPPrjNTags(486)%Label / 'cec_6_h2o' / &
+         EPPrjNTags(487)%Label / 'cec_7_meth' / &
+         EPPrjNTags(488)%Label / 'cec_7_co2' / &
+         EPPrjNTags(489)%Label / 'cec_7_h2o' / &
+         EPPrjNTags(490)%Label / 'cec_8_meth' / &
+         EPPrjNTags(491)%Label / 'cec_8_co2' / &
+         EPPrjNTags(492)%Label / 'cec_8_h2o' /
     !> END GENERATED EPPrjNTags
 
     !> BEGIN GENERATED EPPrjCTags - edit gen_project_tags.py, not this block
@@ -1265,7 +1295,15 @@ module m_common_global_var
          EPPrjCTags(271)%Label / 'diag_15_var' / &
          EPPrjCTags(272)%Label / 'diag_15_instr' / &
          EPPrjCTags(273)%Label / 'diag_16_var' / &
-         EPPrjCTags(274)%Label / 'diag_16_instr' /
+         EPPrjCTags(274)%Label / 'diag_16_instr' / &
+         EPPrjCTags(275)%Label / 'cec_1_extra' / &
+         EPPrjCTags(276)%Label / 'cec_2_extra' / &
+         EPPrjCTags(277)%Label / 'cec_3_extra' / &
+         EPPrjCTags(278)%Label / 'cec_4_extra' / &
+         EPPrjCTags(279)%Label / 'cec_5_extra' / &
+         EPPrjCTags(280)%Label / 'cec_6_extra' / &
+         EPPrjCTags(281)%Label / 'cec_7_extra' / &
+         EPPrjCTags(282)%Label / 'cec_8_extra' /
     !> END GENERATED EPPrjCTags
 
     !> tags of the metadata file created by GHG software

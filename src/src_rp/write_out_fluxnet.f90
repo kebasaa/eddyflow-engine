@@ -59,7 +59,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     real(kind = dbl) :: float_doy
     real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
-    character(16000) :: csv_row
+    character(LongOutstringLen) :: csv_row
     character(32) :: char_doy
     character(14) :: tsIso
     character(9) :: vm97flags(GHGNumVar)
@@ -87,6 +87,13 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     integer :: jg2
     !> FluxnetGasScale / FluxnetGasAdvScale arrive with interfaces.inc, whose
     !> first line pulls in interfaces_1.inc.
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_fields
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 6 + 9)
+    logical :: cec_is_int(MaxNumCecTargets * 6 + 9)
     include '../src_common/interfaces.inc'
 
 
@@ -1108,6 +1115,25 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(Flux3%zL_at(var), csv_row, EddyFlowProj%err_label)
     end do
 
+    !> The CEC descriptors, one self-describing block per pairing, ahead of
+    !> biomet - InitFluxnetFile_rp names them in this order and ReadExRecord
+    !> steps through them by the counts they carry.
+    call CecPairs(cec_pairs, n_cec_pairs)
+    call AddIntDatumToDataline(n_cec_pairs, csv_row, EddyFlowProj%err_label)
+    do cec_p = 1, n_cec_pairs
+        call CecExRowValues(cec_pairs(cec_p), CECDescriptor(cec_p), cec_values, cec_is_int, &
+            n_cec_fields)
+        do cec_k = 1, n_cec_fields
+            if (cec_is_int(cec_k)) then
+                call AddIntDatumToDataline(nint(cec_values(cec_k)), csv_row, &
+                    EddyFlowProj%err_label)
+            else
+                call AddFloatDatumToDataline(cec_values(cec_k), csv_row, &
+                    EddyFlowProj%err_label)
+            end if
+        end do
+    end do
+
     !> All aggregated biomet values in FLUXNET units
     call AddIntDatumToDataline(nbVars, csv_row, EddyFlowProj%err_label)
     if (nbVars > 0) then
@@ -1124,19 +1150,6 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
 
         if (allocated(bAggrOut)) deallocate(bAggrOut)
     end if
-
-    !> CEC partitioning ratios (always written; error when do_cec=0)
-    call AddFloatDatumToDataline(CECDescriptor%r_ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%r_Fc, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_valid, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_O1, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_O2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%frac_O1, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%frac_O2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%h2o_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%co2_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%h2o_status, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%co2_status, csv_row, EddyFlowProj%err_label)
 
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')

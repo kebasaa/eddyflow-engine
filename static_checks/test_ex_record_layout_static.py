@@ -54,7 +54,14 @@ HISTORICAL = {
     "nTlagMethFields": 4,
     "nMetaFixedFields": 22,
     "nMetaGasFields": 11,
-    "nCecFields": 11,
+    #> The CEC block is a count of pairings, then this many fields for each,
+    #> then a count of that pairing's targets and this many for each of those.
+    #> It replaced a fixed eleven fields found by counting back from the end of
+    #> the row - an anchor that could not survive a width depending on how many
+    #> pairings a project declares, and that made "never append after the
+    #> descriptor" a rule four files had to keep unaided.
+    "nCecPairFixedFields": 9,
+    "nCecTargetFields": 6,
 }
 
 #: Counts that have been converted from a compile-time `parameter` to a runtime

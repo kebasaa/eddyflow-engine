@@ -80,7 +80,7 @@ module m_eddypro_import
     !> The record format this import writes. It must not exceed
     !> MaxSupportedIniVer, or the file we have just written is refused by
     !> Fatal error(96) the moment it is read back.
-    character(*), parameter :: ImportedIniVer = '5.0.0'
+    character(*), parameter :: ImportedIniVer = '5.1.0'
 
     !> EddyPro has four gas slots and no more.
     integer, parameter :: nEddyProGasSlots = 4
@@ -126,13 +126,34 @@ module m_eddypro_import
     character(*), parameter :: sectBiomet = 'RawProcess_BiometMeasurements'
 
     !***********************************************************************
-    !> The settings EddyFlow added to the project format, which no EddyPro
-    !> file can state, each with THE VALUE THIS ENGINE ALREADY APPLIES WHEN
-    !> THE KEY IS ABSENT. Stating them is what makes the imported file a
-    !> complete EddyFlow project rather than one the interface has to migrate
-    !> on open; taking the engine's own value is what makes stating them a
-    !> no-op. Every one is *TagFound-guarded at its reader, so absent and
-    !> stated-at-this-value take the same branch.
+    !> What the import states that the source did not, in two kinds.
+    !>
+    !> KIND ONE, and all but one of these: the settings EddyFlow added to the
+    !> project format, which no EddyPro file can state, each with THE VALUE
+    !> THIS ENGINE ALREADY APPLIES WHEN THE KEY IS ABSENT. Stating them is what
+    !> makes the imported file a complete EddyFlow project rather than one the
+    !> interface has to migrate on open; taking the engine's own value is what
+    !> makes stating them a no-op. Every one is *TagFound-guarded at its
+    !> reader, so absent and stated-at-this-value take the same branch.
+    !>
+    !> KIND TWO, and tlag_meth alone: an EddyPro key restated because the
+    !> engine's absent-key behaviour for it is WRONG. This is the one entry
+    !> here that deliberately changes what a run does, and it is last in the
+    !> tables so it does not read as one of the others.
+    !>
+    !> An EddyPro project almost always states tlag_meth, and when it does it
+    !> is copied through untouched like any other key - the import takes over
+    !> whatever method the source chose, and cannot produce the fifth value,
+    !> PWB, which EddyPro has no way to express. But if the key is absent the
+    !> reader has no *TagFound guard: read_ini_rp.f90 tests
+    !> SCTags(16)%value(1:1), finds a blank, takes case default and runs
+    !> Meth%tlag = 'none' - no time-lag compensation at all, silently. Two is
+    !> covariance maximization with default, which is EddyPro's own default
+    !> and the interface's, so the converted project runs what it displays.
+    !>
+    !> The reader is deliberately not changed with it: a hand-written
+    !> .eddyflow that omits the key still gets 'none', and widening this to
+    !> every native project is a far larger question than the import path.
     !>
     !> Keep this in step with the readers, which own these numbers:
     !>   cec_*                    write_processing_project_variables.f90:75-81
@@ -145,7 +166,8 @@ module m_eddypro_import
     !>
     !> Grouped by section, and the grouping is load-bearing: a section the
     !> source never opened is emitted at the end, one header per run of
-    !> entries.
+    !> entries. tlag_meth is the sole RawProcess_Settings entry and sits on
+    !> its own at the end for that reason as well as the one above.
     !>
     !> flux_run_mode and biom_rh_override are in no tag table here and are
     !> written for the interface alone, so that a converted project opens
@@ -173,24 +195,27 @@ module m_eddypro_import
     !> pf_sect_* and wdf_sect_* are EddyPro keys in any case, present since
     !> the fork, and are copied through whenever the source states them.
     !***********************************************************************
-    integer, parameter :: nProjectDefaults = 21
+    integer, parameter :: nProjectDefaults = 23
     !> The type spec pads: these section names are parameters of their own
     !> natural lengths, and an array constructor needs them equal.
     character(40), parameter :: defaultSect(nProjectDefaults) = [ &
         character(40) :: &
         sectProject, sectProject, sectProject, sectProject, &
         sectProject, sectProject, sectProject, sectProject, &
+        sectProject, &
         sectSpectral, sectSpectral, &
         sectTilt, &
         sectTimelag, &
         sectPwb, sectPwb, sectPwb, sectPwb, sectPwb, sectPwb, &
         sectPwb, sectPwb, &
-        sectBiomet]
+        sectBiomet, &
+        sectSettings]
     character(26), parameter :: defaultKey(nProjectDefaults) = [ &
         'cec_meth                  ', 'cec_h                     ', &
         'cec_min_o1_o2             ', 'cec_min_octant            ', &
         'cec_min_valid             ', 'cec_signal_strength       ', &
         'cec_max_gap_fill          ', 'cec_max_stationarity      ', &
+        'cec_singular_band         ', &
         'automatic_spectra_config  ', 'flux_run_mode             ', &
         'rot_pf_assessment_only    ', &
         'tlag_assessment_only      ', &
@@ -198,16 +223,19 @@ module m_eddypro_import
         'pwb_min_valid_frac        ', 'pwb_hdi_thresh_s          ', &
         'pwb_dev_thresh_s          ', 'pwb_hdi_prefilter_s       ', &
         'pwb_smoothing_width       ', 'pwb_random_seed           ', &
-        'biom_rh_override          ']
+        'biom_rh_override          ', &
+        'tlag_meth                 ']
     character(8), parameter :: defaultValue(nProjectDefaults) = [ &
         '0       ', '0.000   ', '20.0    ', '5.0     ', &
         '90.0    ', '70.0    ', '4       ', '25.0    ', &
+        '0.200   ', &
         '0       ', '0       ', &
         '0       ', &
         '0       ', &
         '99      ', '20.0    ', '0.300   ', '0.50    ', &
         '0.50    ', '1.00    ', '5       ', '2024    ', &
-        '0       ']
+        '0       ', &
+        '2       ']
 
     !> One key=value line of an INI file, with the section it was found in.
     !> ParseIniFile drops the section and these keys have to be written back

@@ -36,6 +36,7 @@
 !***************************************************************************
 subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReached)
     use m_common_global_var
+    use m_cec, only: ResetCecDescriptor
     !> In/out variables
     character(*), intent(in) :: FilePath
     integer, intent(in) :: rec_num
@@ -64,10 +65,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: jx
     integer :: jxi
     integer :: jxj
-    integer :: cec_h2o_valid
-    integer :: cec_co2_valid
-    integer :: cec_start
-    integer :: remaining_fields
+    integer :: cec_target_valid
     integer :: n_gas_moist
     real(kind = dbl) :: moist_rhow
     real(kind = dbl) :: moist_sigma
@@ -84,8 +82,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     real(kind = dbl) :: instr_kw, instr_ko
     real(kind = dbl) :: instr_ac_freq
     character(9) :: vm97flags(GHGNumVar)
-    character(16000) :: dataline
-    character(16000) :: cec_line
+    character(LongOutstringLen) :: dataline
     !> Scratch for fields that are read only to be discarded. Must hold the
     !> largest such group, which is the level 1 and 2 fluxes: two flux families
     !> of four plus one per gas each. At 32 a project with more than 28 gases
@@ -160,7 +157,22 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer, parameter :: nMetaFixedFields = 13 + 9  !< ident, geometry, sonic
     integer, parameter :: nMetaGasFields = 11        !< +2 for the water slot
     integer :: n_meta_gas
-    integer, parameter :: nCecFields   = 11                       !< CEC descriptor
+    !> Conditional Eddy Covariance block: a count of pairings, then for each
+    !> of them this many fields (meth, co2 slot, h2o slot, n_valid, n_O1, n_O2,
+    !> frac_O1, frac_O2, n_target) followed by n_target lots of
+    !> (slot, f_O1, f_O2, r, status, valid).
+    !>
+    !> Self-describing and read forward, like the blocks around it. It used to
+    !> be found by taking the last eleven fields of the row, which made "never
+    !> append anything after the descriptor" an invariant four files had to
+    !> keep by hand - and which could not survive a block whose width depends
+    !> on how many pairings a project declares.
+    integer, parameter :: nCecPairFixedFields = 9
+    integer, parameter :: nCecTargetFields = 6
+    integer :: n_cec_pairs
+    integer :: n_cec_target
+    integer :: cec_p
+    integer :: cec_k
     !> Per-gas moisture block: a count, then this many fields per gas
     !> (slot, rhow, sigma, q, rhoa, rhocp, rh).
     integer, parameter :: nGasMoistFields = 7
@@ -826,10 +838,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> Consume the per-hygrometer flux block RP wrote after the analyser one.
     !>
     !> FCC recomputes every one of these, so nothing is kept - but the fields
-    !> must still be stepped over. The CEC descriptor below is located by
-    !> taking the last nCecFields of whatever remains, and the biomet chunk is
-    !> whatever is left after that; leaving these in place would push both
-    !> along and hand the CEC parser six flux values.
+    !> must still be stepped over, or the CEC block after them is read out of
+    !> the middle of this one.
     if (len_trim(dataline) > 0) then
         read(dataline, *, iostat = read_status) n_water_flux
         if (read_status /= 0) then
@@ -857,42 +867,74 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         end do
     end if
 
-    !> Split and read the CEC descriptor appended after variable biomet data.
-    lEx%cec%r_ET = error
-    lEx%cec%r_Fc = error
-    lEx%cec%frac_O1 = error
-    lEx%cec%frac_O2 = error
-    lEx%cec%n_valid = 0
-    lEx%cec%n_O1 = 0
-    lEx%cec%n_O2 = 0
-    lEx%cec%h2o_status = cec_rejected
-    lEx%cec%co2_status = cec_rejected
-    lEx%cec%h2o_valid = .false.
-    lEx%cec%co2_valid = .false.
+    !> Consume the Conditional Eddy Covariance block, which sits between the
+    !> hygrometer fluxes and biomet and describes its own width.
+    lEx%n_cec = 0
+    do cec_p = 1, MaxNumCecPairs
+        call ResetCecDescriptor(lEx%cec(cec_p))
+    end do
     if (len_trim(dataline) > 0) then
-        remaining_fields = count([(dataline(i:i) == ',', &
-            i = 1, len_trim(dataline))]) + 1
-        cec_line = ''
-        if (remaining_fields == nCecFields) then
-            cec_line = dataline(1:len_trim(dataline))
-            dataline = ''
-        elseif (remaining_fields > nCecFields) then
-            cec_start = strCharIndex(dataline, ',', remaining_fields - nCecFields)
-            if (cec_start > 0) then
-                cec_line = dataline(cec_start + 1:len_trim(dataline))
-                dataline = dataline(1:cec_start - 1)
-            end if
+        read(dataline, *, iostat = read_status) n_cec_pairs
+        if (read_status /= 0) then
+            call InvalidateRecord()
+            return
         end if
-        if (len_trim(cec_line) > 0) then
-            read(cec_line, *, iostat = read_status) lEx%cec%r_ET, lEx%cec%r_Fc, &
-                lEx%cec%n_valid, lEx%cec%n_O1, lEx%cec%n_O2, &
-                lEx%cec%frac_O1, lEx%cec%frac_O2, cec_h2o_valid, cec_co2_valid, &
-                lEx%cec%h2o_status, lEx%cec%co2_status
-            if (read_status == 0) then
-                lEx%cec%h2o_valid = cec_h2o_valid == 1
-                lEx%cec%co2_valid = cec_co2_valid == 1
-            end if
+        ix = strCharIndex(dataline, ',', 1)
+        if (ix <= 0) then
+            call InvalidateRecord()
+            return
         end if
+        dataline = dataline(ix+1: len_trim(dataline))
+
+        if (n_cec_pairs < 0 .or. n_cec_pairs > MaxNumCecPairs) then
+            call InvalidateRecord()
+            return
+        end if
+        lEx%n_cec = n_cec_pairs
+
+        do cec_p = 1, n_cec_pairs
+            read(dataline, *, iostat = read_status) &
+                lEx%cec(cec_p)%meth, lEx%cec(cec_p)%carbon_slot, &
+                lEx%cec(cec_p)%water_slot, lEx%cec(cec_p)%n_valid, &
+                lEx%cec(cec_p)%n_O1, lEx%cec(cec_p)%n_O2, &
+                lEx%cec(cec_p)%frac_O1, lEx%cec(cec_p)%frac_O2, n_cec_target
+            if (read_status /= 0) then
+                call InvalidateRecord()
+                return
+            end if
+            ix = strCharIndex(dataline, ',', nCecPairFixedFields)
+            if (ix <= 0) then
+                call InvalidateRecord()
+                return
+            end if
+            dataline = dataline(ix+1: len_trim(dataline))
+
+            if (n_cec_target < 0 .or. n_cec_target > MaxNumCecTargets) then
+                call InvalidateRecord()
+                return
+            end if
+            lEx%cec(cec_p)%n_target = n_cec_target
+
+            do cec_k = 1, n_cec_target
+                read(dataline, *, iostat = read_status) &
+                    lEx%cec(cec_p)%target(cec_k)%slot, &
+                    lEx%cec(cec_p)%target(cec_k)%f_O1, &
+                    lEx%cec(cec_p)%target(cec_k)%f_O2, &
+                    lEx%cec(cec_p)%target(cec_k)%r, &
+                    lEx%cec(cec_p)%target(cec_k)%status, cec_target_valid
+                if (read_status /= 0) then
+                    call InvalidateRecord()
+                    return
+                end if
+                lEx%cec(cec_p)%target(cec_k)%valid = cec_target_valid == 1
+                ix = strCharIndex(dataline, ',', nCecTargetFields)
+                if (ix <= 0) then
+                    call InvalidateRecord()
+                    return
+                end if
+                dataline = dataline(ix+1: len_trim(dataline))
+            end do
+        end do
     end if
 
     !> Put remaining into last chunk

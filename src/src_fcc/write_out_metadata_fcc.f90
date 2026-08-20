@@ -36,7 +36,7 @@ subroutine WriteOutMetadataFcc(lEx)
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
-    character(16000) :: csv_row
+    character(LongOutstringLen) :: csv_row
 
     !> local variables
     integer :: gas

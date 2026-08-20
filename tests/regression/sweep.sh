@@ -50,6 +50,7 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # so a '#' line inside it becomes four or five bogus fixture names.
 FIXTURES="
 base_rec
+base_cec_cos
 base_no_gas
 base_no_water
 base_no_ch4

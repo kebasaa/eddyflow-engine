@@ -1,6 +1,140 @@
 7.3.0 (2026-08-20)
 
     Engine:
+	- Fix: An EddyPro project that states no tlag_meth is imported with
+	               tlag_meth=2 rather than with nothing. The key has no
+	               *TagFound guard at its reader, so an absent one fell through
+	               read_ini_rp's case default to Meth%tlag = 'none' and the run
+	               did no time-lag compensation at all, silently. Two is
+	               covariance maximization with default - EddyPro's own default
+	               and the interface's - so the converted project now runs what
+	               the interface displays for it.
+	               This is the one entry in the import's defaults table that is
+	               NOT a no-op; every other states the value the engine already
+	               applies when the key is absent. The table's comment says which
+	               and why.
+	               A project that DOES state tlag_meth is untouched, as before:
+	               the key is in none of the importer's three lists, so the
+	               source's choice is copied through verbatim. EddyPro has no
+	               fifth method, so an import can never select the pre-whitening
+	               block-bootstrap.
+	               Deliberately not widened to the reader: a hand-written
+	               .eddyflow that omits tlag_meth still gets 'none'.
+	- Fix: Conditional Eddy Covariance is off in an imported project, and is
+	               now pinned to stay that way. It already was - cec_meth is
+	               written 0 whenever the source is silent, and no EddyPro file
+	               can state it - but nothing said so, and nothing said the
+	               pairing list must stay unwritten either. An absent cec_num
+	               means "derive one pairing per CO2 channel from the analyser
+	               layout", which is the interface's decision to make once
+	               someone opens the converted project, not the importer's.
+	               The two importers are now checked against each other: the
+	               engine writes these values into the file, while the interface
+	               applies its own defaults on load and saves them, and the
+	               numbers have to match or the same project computes different
+	               fluxes depending on whether it was opened or run.
+	- BREAKING: Conditional Eddy Covariance is rebuilt. The cec_* key set, the CEC output
+	               column names and the CEC block of the essentials record all change, and
+	               ini_version goes to 5.1.0 so an older engine refuses a newer file rather
+	               than reading past the parts it does not know.
+	- New feature: A project may state which CO2 channel is partitioned against which H2O
+	               channel, as cec_num plus cec_<i>_meth / _co2 / _h2o / _extra, and may run
+	               several pairings at once. Absent, the layout decides: one pairing per CO2
+	               channel, each with the water on its own analyser. That was previously the
+	               first record of each species wherever each happened to sit, so a site with
+	               two analysers could have its carbon partitioned against the other
+	               instrument's water without anything saying so. A pairing that still crosses
+	               two analysers is warned about.
+	               Output columns carry the analyser their CO2 sits on - E_cec_li7200_1,
+	               Reco_cec_miro_mga4_6_2 - with an occurrence number after it when two
+	               pairings share one.
+	- New feature: Any declared species can be partitioned in a pairing's octants, named in
+	               cec_<i>_extra. Zahn et al. define the indicator functions on the vertical
+	               wind, the water and the carbon dioxide alone and reuse them unchanged for
+	               the second scalar, so nothing about the octants is specific to CO2 - which
+	               is what makes carbonyl sulfide a drop-in. Its plant uptake is stomatal and
+	               effectively irreversible, so its stomatal component is a cleaner
+	               photosynthesis proxy than P_cec. Emitted as <species>_nonstomatal_cec,
+	               <species>_stomatal_cec, <species>_total_cec, r_<species>_cec and
+	               qc_cec_<species>, in that gas's own flux units.
+	- Fix: The hyperbolic threshold H is dimensionless. It was compared against the raw
+	               product w's', so what it meant depended on whether the gas was carried in
+	               umol/mol or mmol/m3 and no single value was usable anywhere; it is now
+	               |w's'| >= H*sigma_w*sigma_s, which is the form Thomas et al. (2008) state
+	               and the form in which H = 0.25 means something. The default is still 0, so
+	               a project that never set it is unaffected. This is the control that makes
+	               the method work in weak turbulence: without it, instrument noise around
+	               c' = 0 fills both octants about equally and the CO2 ratio walks into the
+	               r ~ -1 singularity. Raising H also thins the octants, so the occupancy
+	               limits may need to come down with it.
+	- Fix: The singularity band is a setting, cec_singular_band, defaulting to the 0.2
+	               Zahn et al. use. It was hard-coded at 0.05 - a quarter of the paper's
+	               width, and in contradiction with the repository's own reference model,
+	               which had been using 0.2 all along.
+	- Fix: A period whose corrected total points against its own octant sums is flagged
+	               rather than split. Substituting the ratio into the partition gives each
+	               component the sign of its own sample flux only when the total points the
+	               way the two of them point together; otherwise the arithmetic still returns
+	               two numbers that sum to the total, and they are a negative respiration
+	               beside a positive photosynthesis, or a negative transpiration. Both were
+	               being emitted as valid. On the first three hours this was run against, one
+	               period produced Reco = -5.13 umol m-2 s-1 flagged normal, and the same
+	               period's dewfall was split into a negative evaporation and a negative
+	               transpiration. Reported now as qc_cec_* = 5 with the ratio kept.
+	- Fix: The signal-strength screen no longer runs after the gap filler, which used to
+	               reconstruct by linear interpolation every rejected run of four samples or
+	               fewer - so the screen only ever removed runs of five and longer. Order is
+	               now the paper's: fill the short gaps, screen, then detrend.
+	- Fix: The screen runs on the raw series rather than on the finished fluctuations, so
+	               the trend is no longer fitted through the samples being rejected. The
+	               partition builds its own compact copy of w and its targets to do it, and
+	               touches neither E2Set nor E2Primes: the fluxes themselves do not move
+	               because a partition asked for a stricter screen.
+	- Fix: Each gas is screened against its OWN analyser's diagnostic. The first column
+	               named AGC or RSSI on anything matching li7200 or li7500 was used for both
+	               gases of the pair, so a two-analyser site screened one analyser's gas with
+	               the other's diagnostic, and a quantum cascade laser measuring carbonyl
+	               sulfide was not screened at all.
+	- Fix: The diagnostic is read in the right direction. RSSI is a received-signal
+	               strength, so low is dirty; the AGC of a pre-5.3.0 LI-7500 is the gain the
+	               instrument had to apply to see through its windows, so HIGH is dirty. Both
+	               are conventionally compared against 70 and the test was "below threshold"
+	               whichever it was - so on an old open-path analyser it kept the dirtiest
+	               samples and discarded the cleanest.
+	- Fix: The partition refuses a period whose columns are not present, rather than
+	               reading whatever the freshly allocated E2Primes happened to contain.
+	               EliminateCorruptedVariables clears that flag per period, and the detrending
+	               routines leave such a column untouched, so the values were arbitrary and
+	               often finite enough to be accepted.
+	- Fix: The occupancy limits cec_min_o1_o2, cec_min_octant and cec_min_valid are read
+	               as percentages and nothing else. The normalizer used to pick between a
+	               percentage and a fraction by magnitude, so an interface spin box labelled
+	               [%] and set to 0.5 came back as fifty per cent.
+	- Fix: The CEC block of the essentials record is read forward off its own count of
+	               pairings, like the hygrometer and analyser blocks before it, instead of
+	               being found by counting eleven fields back from the end of the row. That
+	               anchor made "never append after the descriptor" a rule four files had to
+	               keep unaided, and it could not survive a block of variable width. Nothing
+	               in that row is anchored to its end any more.
+	- Fix: The skipped-period essentials row is the width its own header declares. It
+	               wrote three fields per gas where the reader steps over seven, fourteen per
+	               analyser where it steps over fifteen, and no hygrometer count at all. The
+	               end-anchored CEC block had been absorbing the shortfall into the biomet
+	               chunk, which is why nothing had noticed.
+	- Fix: The octant counts and fractions reach the full output, not only the essentials
+	               file, as cec_n_o1, cec_n_o2, cec_frac_o1 and cec_frac_o2 per pairing. They
+	               are what distinguishes a confident partition from a badly sampled one, and
+	               the one output most people read could not show it.
+	- Fix: CEC component columns carry their gas's own flux scale and label, taken from
+	               the caller. A shared helper resolving units through GasUnitIn is right in
+	               RP and wrong in FCC, which keeps its own copy - carbonyl sulfide came out
+	               of FCC labelled in umol and printed unscaled, a thousandfold error.
+	- Fix: cec_meth is parsed from the whole value rather than its first character, and
+	               it is now a master switch (0 or 1). Which fluxes a pairing partitions is
+	               the pairing's own cec_<i>_meth.
+	- Removed: CECFluxType%ok, computed and never read; GPP_cec, computed, never written
+	               and carrying photosynthesis's sign; FileType%cec, a path for an RP-to-FCC
+	               file that does not exist and never did - the handoff is the essentials row.
 	- New feature: The EddyPro import writes complete EddyFlow files, not merely readable
 	               ones. It used to produce a project and a metadata the engine accepts but
 	               which are not in this format: the interface would migrate both on open and

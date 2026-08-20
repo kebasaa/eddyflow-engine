@@ -36,7 +36,7 @@ subroutine WriteOutFluxnetFcc(lEx)
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
-    character(16000) :: csv_row
+    character(LongOutstringLen) :: csv_row
 
     !> local variables
     integer :: var
@@ -72,6 +72,13 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> characters counts tests, not gases, so this width is unaffected by the
     !> gas capacity - unlike lEx%vm_flags, which is the transpose.
     character(9) :: vm97flags(GHGNumVar)
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_fields
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 6 + 9)
+    logical :: cec_is_int(MaxNumCecTargets * 6 + 9)
     include '../src_common/interfaces_1.inc'
 
 
@@ -667,22 +674,28 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddFloatDatumToDataline(Flux3%zL_at(gas), csv_row, EddyFlowProj%err_label)
     end do
 
+    !> The CEC descriptors, one self-describing block per pairing, ahead of
+    !> biomet - InitFluxnetFile_rp names them in this order and ReadExRecord
+    !> steps through them by the counts they carry.
+    call CecPairs(cec_pairs, n_cec_pairs)
+    call AddIntDatumToDataline(n_cec_pairs, csv_row, EddyFlowProj%err_label)
+    do cec_p = 1, n_cec_pairs
+        call CecExRowValues(cec_pairs(cec_p), lEx%cec(cec_p), cec_values, cec_is_int, &
+            n_cec_fields)
+        do cec_k = 1, n_cec_fields
+            if (cec_is_int(cec_k)) then
+                call AddIntDatumToDataline(nint(cec_values(cec_k)), csv_row, &
+                    EddyFlowProj%err_label)
+            else
+                call AddFloatDatumToDataline(cec_values(cec_k), csv_row, &
+                    EddyFlowProj%err_label)
+            end if
+        end do
+    end do
+
     !> Write sisxth string from Chunks
     !> Biomet data
     call AddDatum(csv_row, fluxnetChunks%s(6), separator)
-
-    !> Preserve RP's high-frequency CEC descriptor in FCC output.
-    call AddFloatDatumToDataline(lEx%cec%r_ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%cec%r_Fc, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(lEx%cec%n_valid, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(lEx%cec%n_O1, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(lEx%cec%n_O2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%cec%frac_O1, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%cec%frac_O2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, lEx%cec%h2o_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, lEx%cec%co2_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(lEx%cec%h2o_status, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(lEx%cec%co2_status, csv_row, EddyFlowProj%err_label)
 
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')

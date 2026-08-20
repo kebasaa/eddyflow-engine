@@ -769,6 +769,7 @@ read_biomet_meta_file.o: \
 read_ex_record.o: \
 	read_ex_record.f90 \
 	interfaces_1.inc \
+	m_cec.o \
 	m_common_global_var.o \
 	m_typedef.o
 read_ini_fcc.o: \
@@ -988,6 +989,7 @@ write_out_fluxnet_only_biomet.o: \
 	write_out_fluxnet_only_biomet.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	m_cec.o \
 	m_rp_global_var.o
 write_out_full.o: \
 	write_out_full.f90 \

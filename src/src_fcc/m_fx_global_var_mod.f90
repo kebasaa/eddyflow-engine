@@ -61,7 +61,7 @@ module m_fx_global_var
     character(32) :: gas_full_dens_label(GHGNumVar)
     character(64) :: UserVarHeader(MaxUserVar)
     character(26), parameter :: SubDirSpecAn = 'eddyflow_spectral_analysis'
-    character(16000) :: fluxnet_header
+    character(LongOutstringLen) :: fluxnet_header
 
     logical :: MeanBinSpecAvailable(MaxGasClasses, GHGNumVar)
     logical :: MeanBinCospAvailable(MaxGasClasses, GHGNumVar)
@@ -106,7 +106,9 @@ module m_fx_global_var
     type(FluxType) :: Flux1
     type(FluxType) :: Flux2
     type(FluxType) :: Flux3
-    type(CECFluxType) :: CECFlux
+    integer :: nCecPairs
+    type(CECResolvedPairType) :: CecPairList(MaxNumCecPairs)
+    type(CECFluxType) :: CECFlux(MaxNumCecPairs)
     type(FCCMetadataType) :: FCCMetadata
 
     !> tags of the setup ".ini" file for eccoce
