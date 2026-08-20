@@ -85,7 +85,7 @@ class CecIniStaticTests(unittest.TestCase):
         assert "setup%signal_strength" in source
         assert "CecPassesHyperbolicThreshold" in source
         assert "setup%singular_band" in source
-        assert "call InterpolateShortCecGaps(w_prime, 4)" not in source
+        assert "call InterpolateShortCecGaps(work(:, k), 4)" not in source
         assert "10 * descriptor%n_valid < 9 * nrow" not in source
         assert "descriptor%frac_O1 + descriptor%frac_O2 < 0.20d0" not in source
         assert "frac_O1 < 0.05d0" not in source

@@ -1312,6 +1312,7 @@ subroutine CecPairs(pairs, npairs)
     integer, external :: CecWaterOnAnalyserOf
     character(32), external :: GasOutputLabel
     logical, save :: crossPairWarned(MaxNumCecPairs) = .false.
+    logical, save :: cecWplWarned = .false.
 
     do i = 1, MaxNumCecPairs
         pairs(i)%meth = 0
@@ -1394,6 +1395,14 @@ subroutine CecPairs(pairs, npairs)
             // trim(GasOutputLabel(pairs(i)%water_slot)) // '.'
         call ExceptionHandler(113)
     end do
+
+    !> Same guard and the same reason as the pairing warning above. Asked once
+    !> the list is known to be non-empty, so a project with CEC on but nothing
+    !> to partition does not also complain about the density correction.
+    if (npairs > 0 .and. .not. EddyFlowProj%wpl .and. .not. cecWplWarned) then
+        cecWplWarned = .true.
+        call ExceptionHandler(114)
+    end if
 
     !> Suffixes last, in two passes: whether a name needs an occurrence number
     !> depends on how many pairings share the analyser, which the first of them

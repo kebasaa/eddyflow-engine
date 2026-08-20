@@ -129,6 +129,39 @@ def count_octants(w_values, c_values, q_values, h=0):
     return valid, o1, o2
 
 
+def target_sums(w_values, c_values, q_values, scalar, h=0):
+    """One target's two sample fluxes, over the samples that target has.
+
+    The octant mask comes from w, c and q alone - Zahn et al. Sec. 2.4, "the
+    indicator functions I_R and I_P remain the same as I_E and I_T" - so a
+    target with no value for a sample contributes nothing for that sample and
+    does NOT take the sample out of the octant. That is what stops an extra
+    species moving the water and carbon it was added beside.
+
+    N is this target's own count rather than the pairing's. The ratio is
+    invariant to that choice, so nothing computed downstream moves; it only
+    makes f_O1 and f_O2 mean "per sample this target actually had".
+    """
+    sigma_w, sigma_c, sigma_q = standard_deviations(w_values, c_values, q_values)
+    o1 = o2 = 0.0
+    n = 0
+    for w, c, q, s in zip(w_values, c_values, q_values, scalar):
+        if None in (w, c, q) or s is None:
+            continue
+        n += 1
+        if not (w > 0 and q > 0):
+            continue
+        if not passes_hole(w, q, c, h, sigma_w, sigma_q, sigma_c):
+            continue
+        if c > 0:
+            o1 += w * s
+        elif c < 0:
+            o2 += w * s
+    if n == 0:
+        return None, None
+    return o1 / n, o2 / n
+
+
 def apply_partition(status, ratio, total):
     if status == NORMAL:
         return total / (1 + 1 / ratio), total / (1 + ratio)
@@ -173,7 +206,16 @@ def sign_checked_status(descriptor_status, f_o1, f_o2, total):
     positive by construction, so a downward total - dewfall - is always caught.
     Carbon is the case where they have opposite signs and can cancel, so it is
     caught only when they cancel the wrong way.
+
+    Only the ratio branch is guarded. Where one octant holds too few points the
+    paper hands the whole flux to the other component; that branch divides by
+    nothing and leaves the total's sign on the single component it fills, so
+    there is no inversion here to catch and vetoing it would only throw away
+    periods - the nighttime ones above all, which is where CEC does most of its
+    work.
     """
+    if descriptor_status != NORMAL:
+        return descriptor_status
     if total in (None, 0):
         return descriptor_status
     sampled = f_o1 + f_o2
@@ -257,26 +299,48 @@ class CecReferenceTests(unittest.TestCase):
         self.assertIn("sum_O2(k) = sum_O2(k) + primes(i, 1) * primes(i, k + 1)",
                       source)
 
-    def test_signal_strength_screen_survives_the_gap_filler(self):
-        #> Order matters and used to be the other way round: the gap filler ran
-        #> after the screen and linearly reconstructed every rejected run of
-        #> four or fewer, so the screen only ever removed runs of five and up.
+    def test_the_screen_runs_before_the_gap_filler(self):
+        """Zahn et al. Sec. 3.2, in the order they state it.
+
+        "CO2 or H2O measurements with a signal strength [below] 70% ... were
+        deleted. Small gaps (up to four consecutive points) were filled by
+        linear interpolation." The gaps worth filling are the ones the screen
+        has just made, so a brief dropout costs four interpolated samples
+        instead of costing the whole period at the 90% completeness gate.
+
+        This ran the other way round and was described in the source as the
+        paper's order. It was not. cec_max_gap_fill = 0 is how a project asks
+        for the strict reading, where a condemned sample is never rebuilt.
+        """
         source = read("src/src_common/m_cec.f90")
-        gap_fill = source.index("call InterpolateShortCecGaps(work(:, k)")
         screen = source.index("call FilterCecSignalStrength(work(:, k + 1)")
-        self.assertLess(gap_fill, screen,
-                        "gap filling must precede the signal-strength screen")
+        gap_fill = source.index("call InterpolateShortCecGaps(work(:, k)")
+        self.assertLess(screen, gap_fill,
+                        "the signal-strength screen must precede the gap filler")
         #> And both must precede the detrending, which is the whole reason the
         #> partition builds its own compact copy rather than reading E2Primes.
-        self.assertLess(screen, source.index("call Fluctuations(work,"))
+        self.assertLess(gap_fill, source.index("call Fluctuations(work,"))
 
     def test_a_total_pointing_against_the_octants_is_flagged_not_split(self):
         #> Water: both sample fluxes positive, so a downward total is dewfall
         #> and cannot be split into evaporation and transpiration.
         self.assertEqual(sign_checked_status(NORMAL, 0.4, 0.6, 3.0), NORMAL)
         self.assertEqual(sign_checked_status(NORMAL, 0.4, 0.6, -3.0), WRONG_SIGN)
+
+        #> But NOT where the octant was too sparse to divide by. Zahn et al.
+        #> Sec. 2.4 hand the whole flux to the other component there, and that
+        #> assignment cannot invert a sign because it performs no division -
+        #> the component IS the total. Vetoing it would discard exactly the
+        #> nighttime periods the fallback exists to carry.
         self.assertEqual(sign_checked_status(ALL_STOMATAL, 0.4, 0.6, -0.1),
-                         WRONG_SIGN)
+                         ALL_STOMATAL)
+        self.assertEqual(sign_checked_status(ALL_NONSTOMATAL, 0.4, 0.6, -0.1),
+                         ALL_NONSTOMATAL)
+        for status in (ALL_STOMATAL, ALL_NONSTOMATAL):
+            first, second = apply_partition(status, 0.0, -0.1)
+            self.assertAlmostEqual(first + second, -0.1)
+            self.assertLessEqual(first, 0.0)
+            self.assertLessEqual(second, 0.0)
 
         #> Carbon, daytime: a little respiration against a lot of uptake, and
         #> a downward total. Consistent.
@@ -301,6 +365,20 @@ class CecReferenceTests(unittest.TestCase):
         self.assertIn("sampled = target%f_O1 + target%f_O2", source)
         self.assertIn("CecTotalContradictsOctants = sampled * total < 0d0",
                       source)
+
+        #> Inside the ratio arm, not ahead of the select. Asserted by slicing
+        #> the arm out, because the call sitting anywhere in the subroutine is
+        #> what it used to do and would still satisfy a bare `assertIn`.
+        arm = source[source.index("            case (cec_normal)"):
+                     source.index("            case (cec_all_stomatal)")]
+        self.assertIn("if (CecTotalContradictsOctants(descriptor%target(k), total))",
+                      arm,
+                      "the sign guard no longer sits inside the ratio branch")
+        head = source[source.index("subroutine ApplyCecDescriptor"):
+                      source.index("            case (cec_normal)")]
+        self.assertNotIn("CecTotalContradictsOctants", head,
+                         "the sign guard is back ahead of the select, where it "
+                         "also vetoes the sparse-octant fallbacks")
 
     def test_partitioning_an_extra_scalar_needs_no_new_octants(self):
         #> Zahn et al. Sec 2.4: "the indicator functions I_R and I_P remain the
@@ -327,6 +405,59 @@ class CecReferenceTests(unittest.TestCase):
             ratio = f_o1 / f_o2
             nonstomatal, stomatal = apply_partition(carbon_status(ratio), ratio, total)
             self.assertAlmostEqual(nonstomatal + stomatal, total)
+
+    def test_an_extra_species_cannot_move_the_pair_it_was_added_to(self):
+        """Adding COS to a pairing must leave its water and carbon untouched.
+
+        The sample gate names w, the water column and the carbon column and
+        nothing else, so a target that is missing for a sample no longer takes
+        that sample out of the period. Before this, one gappy extra species
+        shrank n_valid for every target and silently revised the E/T/R/P a
+        pairing had already published.
+        """
+        source = read("src/src_common/m_cec.f90")
+        body = source[source.index("subroutine ExtractCecDescriptor"):
+                      source.index("end subroutine ExtractCecDescriptor")]
+        for column in ("primes(i, 1)", "primes(i, iw)", "primes(i, ic)"):
+            self.assertIn("if (.not. CecValueIsValid(%s)) cycle" % column, body)
+        #> The old all-targets veto, by the name it went under.
+        self.assertNotIn("usable", body,
+                         "a target other than w, q and c can veto a sample "
+                         "again, so extras move the pair once more")
+        #> And each target divides by its own count, not the pairing's.
+        for line in ("descriptor%target(k)%f_O1 = sum_O1(k) / dble(n_target_valid(k))",
+                     "descriptor%target(k)%f_O2 = sum_O2(k) / dble(n_target_valid(k))"):
+            self.assertIn(line, body)
+
+    def test_a_targets_own_sample_count_leaves_its_ratio_alone(self):
+        """Which is why normalising per target moves no flux.
+
+        f_O1 and f_O2 both scale with 1/N, so the ratio - the only thing
+        ApplyCecDescriptor reads - is invariant. The magnitudes change, and
+        nothing downstream reads them for magnitude.
+        """
+        w_values = [0.4, -0.3, 0.9, 0.2, -0.6, 0.5]
+        q_values = [0.2, 0.5, 0.4, 0.1, -0.2, 0.3]
+        c_values = [0.3, 0.2, -0.4, 0.05, 0.1, -0.2]
+        cos_values = [-0.1, 0.4, -0.3, 0.02, 0.3, -0.05]
+
+        #> Blank the extra species only where the sample is in no octant, so
+        #> the two sums are identical and only N differs.
+        gappy = list(cos_values)
+        for i, (w, q) in enumerate(zip(w_values, q_values)):
+            if not (w > 0 and q > 0):
+                gappy[i] = None
+        self.assertIn(None, gappy, "the fixture stopped exercising the gap")
+
+        full_o1, full_o2 = target_sums(w_values, c_values, q_values, cos_values)
+        gap_o1, gap_o2 = target_sums(w_values, c_values, q_values, gappy)
+        self.assertNotAlmostEqual(full_o1, gap_o1)
+        self.assertAlmostEqual(full_o1 / full_o2, gap_o1 / gap_o2)
+
+        #> And the water and carbon of the same pairing are untouched by either.
+        for scalar in (q_values, c_values):
+            self.assertEqual(target_sums(w_values, c_values, q_values, scalar),
+                             target_sums(w_values, c_values, q_values, scalar))
 
     def test_normal_partition_conserves_totals(self):
         evaporation, transpiration = apply_partition(NORMAL, 0.5, 3.0)

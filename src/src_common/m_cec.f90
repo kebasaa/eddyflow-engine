@@ -116,17 +116,22 @@ end subroutine ResetCecFlux
 ! \brief       Screened, gap-filled, detrended fluctuations for one pairing.
 ! \author      Jonathan Muller
 ! \note        Runs on the RAW series, before the run's own detrending, and in
-!              the order Zahn et al. Sec. 3.2 states: fill the short gaps, then
-!              delete what the analyser diagnostics condemn, then detrend.
+!              the order Zahn et al. Sec. 3.2 states: delete what the analyser
+!              diagnostics condemn, fill the short gaps that leaves, then
+!              detrend.
 !
-!              This used to work on the finished E2Primes instead, which got
-!              the order wrong twice over. The screen ran before the gap filler
-!              rather than after, so every rejected run of four samples or fewer
-!              was linearly reconstructed and classified into an octant anyway -
-!              the screen only ever removed runs of five and longer. And
-!              detrending had already happened, so the trend that produced the
-!              fluctuations had been fitted through the very samples being
-!              rejected.
+!              The screen comes first because the gaps the filler exists to
+!              repair are the ones the screen makes. A condemned run of four
+!              samples or fewer is interpolated over and a longer one is not,
+!              which is what lets a period with brief, scattered dropouts stay
+!              above the completeness gate rather than being thrown away whole.
+!              cec_max_gap_fill = 0 turns the filler off and makes every
+!              condemned sample permanent, for anyone who would rather lose the
+!              period than interpolate across an analyser that was not seeing.
+!
+!              This used to work on the finished E2Primes instead, so detrending
+!              had already happened and the trend that produced the fluctuations
+!              had been fitted through the very samples being rejected.
 !
 !              The working set is compact - w and the pairing's targets, six or
 !              seven columns - so redoing the detrending costs almost nothing
@@ -193,10 +198,6 @@ subroutine BuildCecPrimes(pair, rawset, nrow, ncol, userset, nuser, tconst, &
         work(:, k + 1) = rawset(:, slots(k))
     end do
 
-    do k = 1, ncompact
-        call InterpolateShortCecGaps(work(:, k), setup%max_gap_fill)
-    end do
-
     if (setup%signal_strength > 0d0 .and. nuser > 0) then
         do k = 1, ntarget
             sig_col = CecSignalColumnFor(slots(k))
@@ -207,6 +208,12 @@ subroutine BuildCecPrimes(pair, rawset, nrow, ncol, userset, nuser, tconst, &
                 setup%signal_strength, sig_is_rssi)
         end do
     end if
+
+    !> After the screen, not before it: the short gaps worth repairing are the
+    !> ones the screen has just made.
+    do k = 1, ncompact
+        call InterpolateShortCecGaps(work(:, k), setup%max_gap_fill)
+    end do
 
     !> Forced present so Fluctuations writes the column whatever the period
     !> held. A detrending routine leaves an absent column of Primes untouched,
@@ -266,7 +273,8 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
     real(kind = dbl) :: sigma_w
     real(kind = dbl) :: sigma_q
     real(kind = dbl) :: sigma_c
-    logical :: usable
+    integer :: n_target_valid(MaxNumCecTargets)
+    logical :: target_ok(MaxNumCecTargets)
     external :: CecTargetSlots
 
     call ResetCecDescriptor(descriptor)
@@ -291,24 +299,35 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
 
     sum_O1 = 0d0
     sum_O2 = 0d0
+    n_target_valid = 0
     do i = 1, nrow
-        usable = CecValueIsValid(primes(i, 1))
-        do k = 1, ntarget
-            if (.not. CecValueIsValid(primes(i, k + 1))) usable = .false.
-        end do
-        if (.not. usable) cycle
+        !> The octants are defined on w', q' and c' alone, so those three decide
+        !> which samples the period has - exactly as they already decide the
+        !> sigmas above. An extra species contributes its own sums wherever it
+        !> has a value and is absent where it does not; it cannot take a point
+        !> out of an octant, so adding one to a pairing cannot move the water
+        !> and carbon it was added alongside.
+        if (.not. CecValueIsValid(primes(i, 1))) cycle
+        if (.not. CecValueIsValid(primes(i, iw))) cycle
+        if (.not. CecValueIsValid(primes(i, ic))) cycle
 
         !> A point the hole rejects still counts here. The paper normalises the
         !> sample fluxes by every sample, not by the ones that survived, and
         !> the ratio is invariant to the choice anyway - it is the octant
         !> fractions the hole is allowed to thin.
         descriptor%n_valid = descriptor%n_valid + 1
+        do k = 1, ntarget
+            target_ok(k) = CecValueIsValid(primes(i, k + 1))
+            if (target_ok(k)) n_target_valid(k) = n_target_valid(k) + 1
+        end do
+
         if (primes(i, 1) > 0d0 .and. primes(i, iw) > 0d0 &
             .and. primes(i, ic) > 0d0) then
             if (.not. CecPassesHyperbolicThreshold(primes(i, 1), primes(i, iw), &
                 primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c)) cycle
             descriptor%n_O1 = descriptor%n_O1 + 1
             do k = 1, ntarget
+                if (.not. target_ok(k)) cycle
                 sum_O1(k) = sum_O1(k) + primes(i, 1) * primes(i, k + 1)
             end do
         else if (primes(i, 1) > 0d0 .and. primes(i, iw) > 0d0 &
@@ -317,6 +336,7 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
                 primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c)) cycle
             descriptor%n_O2 = descriptor%n_O2 + 1
             do k = 1, ntarget
+                if (.not. target_ok(k)) cycle
                 sum_O2(k) = sum_O2(k) + primes(i, 1) * primes(i, k + 1)
             end do
         end if
@@ -335,8 +355,20 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
     if (descriptor%frac_O1 + descriptor%frac_O2 < setup%min_o1_o2) return
 
     do k = 1, ntarget
-        descriptor%target(k)%f_O1 = sum_O1(k) / dble(descriptor%n_valid)
-        descriptor%target(k)%f_O2 = sum_O2(k) / dble(descriptor%n_valid)
+        !> Each target over its own samples. Water and carbon are the octants'
+        !> own two channels, so for them this is the pairing's count and nothing
+        !> changes; an extra species normalises by the samples it actually has.
+        !> The ratio - the only thing carried forward - is invariant to which of
+        !> the two counts is used, so this moves no flux.
+        !>
+        !> The completeness gate applies to an extra species as it does to the
+        !> pairing. A target present in a handful of samples has a ratio, and
+        !> that ratio means nothing; it now rejects itself instead of taking the
+        !> whole pairing down with it, which is what it used to do.
+        if (n_target_valid(k) <= 0) cycle
+        if (dble(n_target_valid(k)) < setup%min_valid * dble(nrow)) cycle
+        descriptor%target(k)%f_O1 = sum_O1(k) / dble(n_target_valid(k))
+        descriptor%target(k)%f_O2 = sum_O2(k) / dble(n_target_valid(k))
         call ClassifyCecTarget(descriptor%target(k), descriptor%frac_O1, &
             descriptor%frac_O2, setup)
     end do
@@ -432,13 +464,14 @@ subroutine ApplyCecDescriptor(descriptor, totals, flux)
         if (.not. descriptor%target(k)%valid) cycle
         if (total == error) cycle
 
-        if (CecTotalContradictsOctants(descriptor%target(k), total)) then
-            flux%comp(k)%status = cec_wrong_sign
-            cycle
-        end if
-
         select case (descriptor%target(k)%status)
             case (cec_normal)
+                !> Guarded here and not above: only this branch divides, and
+                !> only the division can turn a component the wrong way round.
+                if (CecTotalContradictsOctants(descriptor%target(k), total)) then
+                    flux%comp(k)%status = cec_wrong_sign
+                    cycle
+                end if
                 flux%comp(k)%nonstomatal = total / (1d0 + 1d0 / descriptor%target(k)%r)
                 flux%comp(k)%stomatal = total / (1d0 + descriptor%target(k)%r)
             case (cec_all_stomatal)
@@ -504,6 +537,13 @@ end function CecTargetIsWanted
 !              The ratio is still reported. What it is telling you when this
 !              fires is that the octants and the corrected total describe
 !              different half-hours, and that is worth reading.
+!
+!              Applied to the ratio branch alone. Where one octant holds too few
+!              points the paper hands the whole flux to the other component, and
+!              that branch divides by nothing and leaves the total's sign on the
+!              one component it fills - there is no inversion for this to catch,
+!              so vetoing it there would only discard periods, the nighttime
+!              ones above all.
 !***************************************************************************
 logical function CecTotalContradictsOctants(target, total)
     type(CECTargetType), intent(in) :: target
@@ -624,10 +664,16 @@ end function CecMean
 ! \brief       The hyperbolic hole of Thomas et al. (2008), Eqs. 7a/7b.
 ! \author      Jonathan Muller
 ! \note        Leave out the events nearest the origin, whose sign is noise
-!              rather than a surface signature. That is what makes the method
-!              usable when the turbulence is weak: without it, instrument noise
+!              rather than a surface signature: without it, instrument noise
 !              around c' = 0 populates both octants about equally, and the
 !              carbon ratio walks straight into the r ~ -1 singularity.
+!
+!              Offered as a usable control, not as a fix for weak turbulence.
+!              Zahn et al. tested a threshold for CEC and reported the results
+!              "not sensitive to the choice of H" at their four sites, and ran
+!              with H = 0, which is still the default here. Note also that the
+!              threshold scales with the sigmas, so in weak turbulence it
+!              scales down with them rather than holding an absolute floor.
 !
 !              H is dimensionless and scales the instantaneous flux against
 !              sigma_w*sigma_s, which is what lets one value mean the same thing

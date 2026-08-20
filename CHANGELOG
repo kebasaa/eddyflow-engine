@@ -61,16 +61,51 @@
 	               product w's', so what it meant depended on whether the gas was carried in
 	               umol/mol or mmol/m3 and no single value was usable anywhere; it is now
 	               |w's'| >= H*sigma_w*sigma_s, which is the form Thomas et al. (2008) state
-	               and the form in which H = 0.25 means something. The default is still 0, so
-	               a project that never set it is unaffected. This is the control that makes
-	               the method work in weak turbulence: without it, instrument noise around
-	               c' = 0 fills both octants about equally and the CO2 ratio walks into the
-	               r ~ -1 singularity. Raising H also thins the octants, so the occupancy
-	               limits may need to come down with it.
+	               and the form in which H = 0.25 means something. The default is still 0,
+	               which is what Zahn et al. themselves used, so a project that never set it
+	               is unaffected.
+	               What the threshold is FOR is leaving out the events nearest the origin,
+	               whose sign is noise rather than a surface signature - the failure mode
+	               that would otherwise fill both octants about equally and walk the CO2
+	               ratio into the r ~ -1 singularity. Whether that helps at a given site is
+	               an open question rather than a claim of this release: the paper tested a
+	               threshold for CEC and reported the results "not sensitive to the choice
+	               of H" at its four sites. It is offered as a usable control, now that a
+	               value of it means the same thing everywhere; it is not a fix for weak
+	               turbulence. Raising H also thins the octants, so the occupancy limits may
+	               need to come down with it.
 	- Fix: The singularity band is a setting, cec_singular_band, defaulting to the 0.2
 	               Zahn et al. use. It was hard-coded at 0.05 - a quarter of the paper's
 	               width, and in contradiction with the repository's own reference model,
 	               which had been using 0.2 all along.
+	- Fix: An extra species can no longer move the pairing it was added to. A sample
+	               counted only where EVERY target had a value, extras included, so adding
+	               carbonyl sulfide to a pairing silently revised the E, Tr, Reco and P it
+	               had already published - on the test dataset, all four components, both
+	               ratios and both octant counts moved. The octants are defined on the
+	               vertical wind, the water and the carbon dioxide alone, so those three now
+	               decide which samples a period has; a target absent for a sample
+	               contributes nothing for that sample and does not remove it from the
+	               octant. Each target normalises by its own count, which leaves the ratio -
+	               the only thing carried forward - untouched. The completeness gate now
+	               applies per target too, so a sparse extra species rejects itself instead
+	               of taking the pairing down with it.
+	- Fix: A sparse octant is no longer vetoed by the sign check. Where one octant
+	               holds fewer than cec_min_octant of the points, Zahn et al. Sec. 2.4 give
+	               the whole flux to the other component - which is how the method works at
+	               night - but the wrong-sign guard ran ahead of that and could discard it.
+	               That branch divides by nothing and leaves the total's sign on the single
+	               component it fills, so there was no inversion there for the guard to
+	               catch and it only cost periods. It now guards the ratio branch alone.
+	- New feature: Warning(114) when the partition is on and the WPL density correction is
+	               off. The raw series are converted to mixing ratios only when WPL is
+	               requested, and the octants are the SIGNS of the water and carbon
+	               fluctuations - in a molar density from an open-path analyser, part of
+	               that fluctuation is the air expanding rather than the gas arriving, and
+	               it is large enough to reverse the sign. Zahn et al. require the
+	               fluctuations themselves to carry the density correction, separately from
+	               the totals. A closed-path analyser already reporting mixing ratios is
+	               unaffected.
 	- Fix: A period whose corrected total points against its own octant sums is flagged
 	               rather than split. Substituting the ratio into the partition gives each
 	               component the sign of its own sample flux only when the total points the
@@ -81,10 +116,18 @@
 	               period produced Reco = -5.13 umol m-2 s-1 flagged normal, and the same
 	               period's dewfall was split into a negative evaporation and a negative
 	               transpiration. Reported now as qc_cec_* = 5 with the ratio kept.
-	- Fix: The signal-strength screen no longer runs after the gap filler, which used to
-	               reconstruct by linear interpolation every rejected run of four samples or
-	               fewer - so the screen only ever removed runs of five and longer. Order is
-	               now the paper's: fill the short gaps, screen, then detrend.
+	- Fix: The signal-strength screen runs BEFORE the gap filler, which is the order
+	               Zahn et al. Sec. 3.2 state: samples below the threshold are deleted, then
+	               "small gaps (up to four consecutive points) were filled by linear
+	               interpolation". The gaps worth repairing are the ones the screen has just
+	               made, so a brief dropout now costs four interpolated samples instead of
+	               costing the whole period at the 90% completeness gate.
+	               This corrects a 7.3.0 change that had the two the other way round and
+	               described that as the paper's order. It was not: filling first left every
+	               condemned sample permanent and counted it against the completeness gate,
+	               rejecting periods the reference method keeps. Anyone who prefers that
+	               stricter reading - never interpolate across an analyser that was not
+	               seeing - gets it exactly by setting cec_max_gap_fill to 0.
 	- Fix: The screen runs on the raw series rather than on the finished fluctuations, so
 	               the trend is no longer fitted through the samples being rejected. The
 	               partition builds its own compact copy of w and its targets to do it, and
