@@ -1760,6 +1760,7 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit('Tr_cec_ET' // trim(tag), '[mm+1hour-1]')
             call Emit('ET_cec' // trim(tag), flux_label(slots(k)))
             call Emit('r_ET_cec' // trim(tag), '[#]')
+            call Emit('cec_ns_h2o' // trim(tag), '[%]')
             call Emit('qc_cec_h2o' // trim(tag), '[#]')
         else if (k == cecTargetCarbon) then
             if (pair%meth /= 1 .and. pair%meth /= 3) cycle
@@ -1767,6 +1768,7 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit('P_cec' // trim(tag), flux_label(slots(k)))
             call Emit('NEE_cec' // trim(tag), flux_label(slots(k)))
             call Emit('r_Fc_cec' // trim(tag), '[#]')
+            call Emit('cec_ns_co2' // trim(tag), '[%]')
             call Emit('qc_cec_co2' // trim(tag), '[#]')
         else
             stem = gas_tags(slots(k))
@@ -1778,6 +1780,7 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit(trim(stem) // '_total_cec' // trim(tag), &
                 flux_label(slots(k)))
             call Emit('r_' // trim(stem) // '_cec' // trim(tag), '[#]')
+            call Emit('cec_ns_' // trim(stem) // trim(tag), '[%]')
             call Emit('qc_cec_' // trim(stem) // trim(tag), '[#]')
         end if
     end do
@@ -1860,6 +1863,7 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
             call EmitScaled(flux%Tr_cec_ET, 1d0)
             call EmitScaled(flux%comp(k)%total, sc)
             call EmitScaled(descriptor%target(k)%r, 1d0)
+            call EmitScaled(descriptor%target(k)%ns_r, 1d0)
             call EmitCount(flux%comp(k)%status)
         else if (k == cecTargetCarbon) then
             if (pair%meth /= 1 .and. pair%meth /= 3) cycle
@@ -1867,12 +1871,14 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
             call EmitScaled(flux%comp(k)%stomatal, sc)
             call EmitScaled(flux%comp(k)%total, sc)
             call EmitScaled(descriptor%target(k)%r, 1d0)
+            call EmitScaled(descriptor%target(k)%ns_r, 1d0)
             call EmitCount(flux%comp(k)%status)
         else
             call EmitScaled(flux%comp(k)%nonstomatal, sc)
             call EmitScaled(flux%comp(k)%stomatal, sc)
             call EmitScaled(flux%comp(k)%total, sc)
             call EmitScaled(descriptor%target(k)%r, 1d0)
+            call EmitScaled(descriptor%target(k)%ns_r, 1d0)
             call EmitCount(flux%comp(k)%status)
         end if
     end do
@@ -1957,6 +1963,7 @@ subroutine CecExRowValues(pair, descriptor, values, is_int, nvalues)
         call EmitReal(descriptor%target(k)%f_O1)
         call EmitReal(descriptor%target(k)%f_O2)
         call EmitReal(descriptor%target(k)%r)
+        call EmitReal(descriptor%target(k)%ns_r)
         call EmitInt(descriptor%target(k)%status)
         call EmitInt(merge(1, 0, descriptor%target(k)%valid))
     end do

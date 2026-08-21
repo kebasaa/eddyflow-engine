@@ -712,6 +712,7 @@ module m_typedef
         real(kind = dbl) :: min_valid
         real(kind = dbl) :: signal_strength
         real(kind = dbl) :: max_stationarity
+        integer :: stationarity_mode
         integer :: max_gap_fill
     end type CECSetupType
 
@@ -820,6 +821,23 @@ module m_typedef
     !> negative ET would otherwise be split into a negative "transpiration".
     integer, parameter :: cec_wrong_sign = 5
 
+    !> Which stationarity criterion gates the partition.
+    !>
+    !> Foken's statistic is |(GlbCov - AvrgCov) / GlbCov|, a RELATIVE measure
+    !> whose denominator is the whole-period covariance - so it explodes
+    !> whenever the flux is near zero, which at night it is, whether or not the
+    !> period is genuinely non-stationary. It is a statement about the total
+    !> covariance, and CEC does not use the total covariance: it uses the ratio
+    !> of two conditional ones, which is far more robust to a drift because a
+    !> trend contaminates both octants alike and largely cancels.
+    !>
+    !> cec_stat_flux is what Zahn et al. did and stays the default. cec_stat_
+    !> ratio applies the same construction to the quantity the method actually
+    !> uses. Either way cec_max_stationarity is the threshold, and 0 disables
+    !> the gate entirely.
+    integer, parameter :: cec_stat_flux = 0
+    integer, parameter :: cec_stat_ratio = 1
+
     !> One scalar partitioned in one pair's octants.
     !>
     !> The octants are NOT recomputed per target. Zahn et al. (Sec. 2.4) define
@@ -832,6 +850,11 @@ module m_typedef
         real(kind = dbl) :: f_O1        !< (1/N) sum over O1 of w's'
         real(kind = dbl) :: f_O2        !< (1/N) sum over O2 of w's'
         real(kind = dbl) :: r           !< f_O1 / f_O2
+        !> Foken's stationarity construction applied to r rather than to the
+        !> total covariance, in percent. error when fewer than three
+        !> sub-intervals could produce a ratio. Reported whatever the gate is
+        !> set to, so the two criteria can be compared on the same run.
+        real(kind = dbl) :: ns_r
         integer :: status
         logical :: valid
     end type CECTargetType

@@ -139,6 +139,13 @@ Program EddyFlowFCC
 
     if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
 
+    !> Before anything reads a record. InitExVars parses the whole file by
+    !> field position, so a file from an older RP does not announce itself -
+    !> every record simply fails and the run dies on "no valid data records",
+    !> which tells the user nothing about why. The check used to sit after
+    !> this and could therefore never fire.
+    call CheckExFileVintageAt(AuxFile%ex)
+
     !> Preliminarily read essential files and retrieve a few information
     call InitExVars(exStartTimestamp, exEndTimestamp, &
         NumExRecords, NumValidExRecords, FirstValidRecord)
@@ -687,6 +694,8 @@ contains
 !              moisture records are the narrow ones. Re-running RP regenerates
 !              the file; there is nothing to migrate.
 !***************************************************************************
+!> Read the header off an already-open essentials unit, and judge it. Doubles
+!> as the header skip both callers need.
 subroutine CheckExFileVintage()
     implicit none
     character(LongOutstringLen) :: header
@@ -694,6 +703,35 @@ subroutine CheckExFileVintage()
     header = ''
     read(uex, '(a)', iostat = open_status) header
     if (open_status /= 0) call ExceptionHandler(60)
+    call JudgeExHeader(header)
+end subroutine CheckExFileVintage
+
+!> The same judgement, on a file nothing has opened yet.
+!>
+!> Wanted separately because the only useful place to make it is before
+!> InitExVars, which is before any unit is open - and after InitExVars is too
+!> late, the records having already failed to parse.
+subroutine CheckExFileVintageAt(path)
+    implicit none
+    character(*), intent(in) :: path
+
+    integer :: unt
+    integer :: ios
+    character(LongOutstringLen) :: header
+
+    open(newunit = unt, file = path, status = 'old', iostat = ios)
+    if (ios /= 0) call ExceptionHandler(60)
+    header = ''
+    read(unt, '(a)', iostat = ios) header
+    close(unt)
+    if (ios /= 0) call ExceptionHandler(60)
+    call JudgeExHeader(header)
+end subroutine CheckExFileVintageAt
+
+!> Which column names a file must carry to be readable by this version.
+subroutine JudgeExHeader(header)
+    implicit none
+    character(*), intent(in) :: header
 
     !> Two markers, because the row grew twice. NUM_WATER_FLUX arrived with
     !> the per-hygrometer families and H2O_BIOMET_MOLE_FRACTION with the
@@ -702,6 +740,14 @@ subroutine CheckExFileVintage()
     if (index(header, 'NUM_WATER_FLUX') <= 0 &
         .or. index(header, 'H2O_BIOMET_MOLE_FRACTION') <= 0) &
         call ExceptionHandler(107)
-end subroutine CheckExFileVintage
+
+    !> The third marker is conditional, because a project with the partition
+    !> off writes no CEC block at all and a header without one is not old. But
+    !> a header that HAS the block and lacks CEC_NS_ was written before the
+    !> partition-stability statistic joined the per-target fields, and would
+    !> parse one field short per target from there to the end of the row.
+    if (index(header, 'CEC_METH') > 0 .and. index(header, 'CEC_NS_') <= 0) &
+        call ExceptionHandler(107)
+end subroutine JudgeExHeader
 
 end program EddyFlowFCC

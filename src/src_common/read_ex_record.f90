@@ -168,7 +168,10 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> keep by hand - and which could not survive a block whose width depends
     !> on how many pairings a project declares.
     integer, parameter :: nCecPairFixedFields = 9
-    integer, parameter :: nCecTargetFields = 6
+    !> slot, f_O1, f_O2, r, ns_r, status, valid. Seven since the ratio's own
+    !> stationarity joined them; a file written before that is refused by
+    !> CheckExFileVintage rather than read one field short per target.
+    integer, parameter :: nCecTargetFields = 7
     integer :: n_cec_pairs
     integer :: n_cec_target
     integer :: cec_p
@@ -921,6 +924,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
                     lEx%cec(cec_p)%target(cec_k)%f_O1, &
                     lEx%cec(cec_p)%target(cec_k)%f_O2, &
                     lEx%cec(cec_p)%target(cec_k)%r, &
+                    lEx%cec(cec_p)%target(cec_k)%ns_r, &
                     lEx%cec(cec_p)%target(cec_k)%status, cec_target_valid
                 if (read_status /= 0) then
                     call InvalidateRecord()

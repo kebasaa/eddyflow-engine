@@ -271,7 +271,12 @@ class FccFullHeaderStaticTests(unittest.TestCase):
         # it. The widths are named, not bare numbers, so renaming a constant
         # fails here while widening the block is a one-line change there.
         self.assertIn("nCecPairFixedFields = 9", source)
-        self.assertIn("nCecTargetFields = 6", source)
+        #> Named, not a bare number. The value itself is not pinned here:
+        #> test_cec_ex_block_static owns the per-target width and checks the
+        #> reader, the writer and the header against one another, which is the
+        #> property that matters. A literal in a second place only ever meant a
+        #> second place to update.
+        self.assertIn("nCecTargetFields = ", source)
         self.assertIn("strCharIndex(dataline, ',', nCecPairFixedFields)", source)
         self.assertIn("strCharIndex(dataline, ',', nCecTargetFields)", source)
         self.assertNotIn("nCecFields", source)

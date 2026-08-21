@@ -91,6 +91,7 @@ subroutine ResetCecDescriptor(descriptor)
         descriptor%target(k)%f_O1 = error
         descriptor%target(k)%f_O2 = error
         descriptor%target(k)%r = error
+        descriptor%target(k)%ns_r = error
         descriptor%target(k)%status = cec_rejected
         descriptor%target(k)%valid = .false.
     end do
@@ -275,6 +276,17 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
     real(kind = dbl) :: sigma_c
     integer :: n_target_valid(MaxNumCecTargets)
     logical :: target_ok(MaxNumCecTargets)
+    !> Six, because that is what StationarityTest divides a period into. The
+    !> two statistics are only comparable if they are built the same way.
+    integer, parameter :: ncecdiv = 6
+    !> Which octant each sample landed in: -1 not usable at all, 0 usable but
+    !> in neither, 1 and 2 the octants. Recorded here so the stability pass
+    !> below reuses this classification rather than rebuilding it, which would
+    !> be a second copy of the hyperbolic hole to keep in step.
+    integer, allocatable :: octant(:)
+    real(kind = dbl) :: f_whole_O1(MaxNumCecTargets)
+    real(kind = dbl) :: f_whole_O2(MaxNumCecTargets)
+    real(kind = dbl) :: ns(MaxNumCecTargets)
     external :: CecTargetSlots
 
     call ResetCecDescriptor(descriptor)
@@ -300,6 +312,8 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
     sum_O1 = 0d0
     sum_O2 = 0d0
     n_target_valid = 0
+    allocate(octant(nrow))
+    octant = -1
     do i = 1, nrow
         !> The octants are defined on w', q' and c' alone, so those three decide
         !> which samples the period has - exactly as they already decide the
@@ -321,11 +335,13 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
             if (target_ok(k)) n_target_valid(k) = n_target_valid(k) + 1
         end do
 
+        octant(i) = 0
         if (primes(i, 1) > 0d0 .and. primes(i, iw) > 0d0 &
             .and. primes(i, ic) > 0d0) then
             if (.not. CecPassesHyperbolicThreshold(primes(i, 1), primes(i, iw), &
                 primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c)) cycle
             descriptor%n_O1 = descriptor%n_O1 + 1
+            octant(i) = 1
             do k = 1, ntarget
                 if (.not. target_ok(k)) cycle
                 sum_O1(k) = sum_O1(k) + primes(i, 1) * primes(i, k + 1)
@@ -335,12 +351,30 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
             if (.not. CecPassesHyperbolicThreshold(primes(i, 1), primes(i, iw), &
                 primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c)) cycle
             descriptor%n_O2 = descriptor%n_O2 + 1
+            octant(i) = 2
             do k = 1, ntarget
                 if (.not. target_ok(k)) cycle
                 sum_O2(k) = sum_O2(k) + primes(i, 1) * primes(i, k + 1)
             end do
         end if
     end do
+
+    !> Before the gates, with the fractions, and for the same reason: the gate
+    !> below may read it, and a rejected period should still report what it
+    !> was judged on.
+    f_whole_O1 = error
+    f_whole_O2 = error
+    do k = 1, ntarget
+        if (n_target_valid(k) <= 0) cycle
+        f_whole_O1(k) = sum_O1(k) / dble(n_target_valid(k))
+        f_whole_O2(k) = sum_O2(k) / dble(n_target_valid(k))
+    end do
+    call CecPartitionStability(primes, nrow, octant, ntarget, ncecdiv, &
+        f_whole_O1, f_whole_O2, ns)
+    do k = 1, ntarget
+        descriptor%target(k)%ns_r = ns(k)
+    end do
+    deallocate(octant)
 
     !> Before the gates, not after them. The counts above are accumulated
     !> whatever happens next, so computing the fractions below a `return` left
@@ -359,9 +393,25 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
     !> Zahn et al. retained periods with at least 90% instantaneous data.
     if (dble(descriptor%n_valid) < setup%min_valid * dble(nrow)) return
     if (setup%max_stationarity > 0d0) then
-        if (stationarity_carbon == ierror .or. stationarity_water == ierror) return
-        if (dble(stationarity_carbon) > setup%max_stationarity &
-            .or. dble(stationarity_water) > setup%max_stationarity) return
+        if (setup%stationarity_mode == cec_stat_ratio) then
+            !> The partition's own stability. An undefined statistic passes:
+            !> too few sub-intervals held both octants to form a mean, and
+            !> refusing a period on a number that could not be computed is the
+            !> fault this mode exists to correct. Sparse periods are the
+            !> occupancy gate's business, just below.
+            if (descriptor%target(cecTargetWater)%ns_r /= error) then
+                if (descriptor%target(cecTargetWater)%ns_r &
+                    > setup%max_stationarity) return
+            end if
+            if (descriptor%target(cecTargetCarbon)%ns_r /= error) then
+                if (descriptor%target(cecTargetCarbon)%ns_r &
+                    > setup%max_stationarity) return
+            end if
+        else
+            if (stationarity_carbon == ierror .or. stationarity_water == ierror) return
+            if (dble(stationarity_carbon) > setup%max_stationarity &
+                .or. dble(stationarity_water) > setup%max_stationarity) return
+        end if
     end if
 
     if (descriptor%frac_O1 + descriptor%frac_O2 < setup%min_o1_o2) return
@@ -717,6 +767,149 @@ logical function CecPassesHyperbolicThreshold(w_prime, q_prime, c_prime, h, &
             abs(w_prime * c_prime) >= h * sigma_w * sigma_c
     end if
 end function CecPassesHyperbolicThreshold
+
+!***************************************************************************
+!
+! \brief       How much the partition itself moves through the period.
+! \author      Jonathan Muller
+! \note        Foken's test asks whether the total covariance is steady. This
+!              asks whether the SPLIT between the two octants is - which is
+!              what the partition multiplies into the total, and the only
+!              thing about a period the ratio depends on.
+!
+!              Two departures from Foken, both deliberate and both necessary.
+!
+!              First, each sixth is re-centred on its own mean, exactly as
+!              StationarityTest re-centres each of its six. That is not a
+!              detail: `primes` already carries whole-period fluctuations, so
+!              slicing them without re-centring gives sub-interval means that
+!              average back to the whole-period value identically, and the
+!              statistic measures nothing at all. A first version of this did
+!              precisely that and read 70000% on periods Foken called
+!              stationary, because all that survived was the nonlinearity of a
+!              ratio of noisy sixths.
+!
+!              Second, the denominator. Foken divides by the covariance whose
+!              stationarity he is testing, so his statistic runs away as that
+!              covariance approaches zero - which at night, for carbon, it
+!              does, and that is what rejects half a day of perfectly well
+!              sampled partitions. Here both the whole-period and the
+!              sub-interval split are normalised by |f_O1| + |f_O2|, the size
+!              of the partition itself, which cannot vanish while the octants
+!              hold anything. A trend that scales both octants together moves
+!              neither split and cancels, which is the robustness the ratio
+!              was supposed to buy.
+!
+!              The result is bounded by 200 and reads as the percentage of its
+!              own range by which the split moved. Undefined when fewer than
+!              three sixths held enough to centre on.
+!
+!***************************************************************************
+subroutine CecPartitionStability(primes, nrow, octant, ntarget, ndiv, &
+    f_O1, f_O2, ns)
+    integer, intent(in) :: nrow
+    real(kind = dbl), intent(in) :: primes(nrow, MaxNumCecTargets + 1)
+    integer, intent(in) :: octant(nrow)
+    integer, intent(in) :: ntarget
+    integer, intent(in) :: ndiv
+    real(kind = dbl), intent(in) :: f_O1(MaxNumCecTargets)
+    real(kind = dbl), intent(in) :: f_O2(MaxNumCecTargets)
+    real(kind = dbl), intent(out) :: ns(MaxNumCecTargets)
+
+    integer :: i
+    integer :: j
+    integer :: k
+    integer :: sub
+    integer :: nsub
+    integer :: n_all(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: sw(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: ss(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: c1(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: c2(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: wbar
+    real(kind = dbl) :: sbar
+    real(kind = dbl) :: a1
+    real(kind = dbl) :: a2
+    real(kind = dbl) :: denom
+    real(kind = dbl) :: split_whole
+    real(kind = dbl) :: split_sub
+
+    ns = error
+    if (nrow < 2 .or. ndiv < 1) return
+
+    !> Pass one: each sixth's own mean, over every sample it can use - not
+    !> only the octant members, whose asymmetry is the signal and must not be
+    !> centred away.
+    n_all = 0
+    sw = 0d0
+    ss = 0d0
+    do i = 1, nrow
+        if (octant(i) < 0) cycle
+        sub = 1 + ((i - 1) * ndiv) / nrow
+        if (sub < 1) sub = 1
+        if (sub > ndiv) sub = ndiv
+        do j = 1, ntarget
+            if (.not. CecValueIsValid(primes(i, j + 1))) cycle
+            n_all(sub, j) = n_all(sub, j) + 1
+            sw(sub, j) = sw(sub, j) + primes(i, 1)
+            ss(sub, j) = ss(sub, j) + primes(i, j + 1)
+        end do
+    end do
+
+    !> Pass two: the conditional covariances of each sixth about that mean.
+    c1 = 0d0
+    c2 = 0d0
+    do i = 1, nrow
+        if (octant(i) <= 0) cycle
+        sub = 1 + ((i - 1) * ndiv) / nrow
+        if (sub < 1) sub = 1
+        if (sub > ndiv) sub = ndiv
+        do j = 1, ntarget
+            if (.not. CecValueIsValid(primes(i, j + 1))) cycle
+            if (n_all(sub, j) < 2) cycle
+            wbar = sw(sub, j) / dble(n_all(sub, j))
+            sbar = ss(sub, j) / dble(n_all(sub, j))
+            if (octant(i) == 1) then
+                c1(sub, j) = c1(sub, j) &
+                    + (primes(i, 1) - wbar) * (primes(i, j + 1) - sbar)
+            else
+                c2(sub, j) = c2(sub, j) &
+                    + (primes(i, 1) - wbar) * (primes(i, j + 1) - sbar)
+            end if
+        end do
+    end do
+
+    do j = 1, ntarget
+        if (.not. CecValueIsValid(f_O1(j))) cycle
+        if (.not. CecValueIsValid(f_O2(j))) cycle
+        denom = dabs(f_O1(j)) + dabs(f_O2(j))
+        if (denom <= 0d0) cycle
+        split_whole = f_O1(j) / denom
+
+        a1 = 0d0
+        a2 = 0d0
+        nsub = 0
+        do k = 1, ndiv
+            if (n_all(k, j) < 2) cycle
+            nsub = nsub + 1
+            a1 = a1 + c1(k, j) / dble(n_all(k, j))
+            a2 = a2 + c2(k, j) / dble(n_all(k, j))
+        end do
+        !> A mean of two sixths is not a measure of anything, and refusing a
+        !> period on a number that could not be computed is the fault this
+        !> whole mode exists to correct. The caller reads error as no opinion.
+        if (nsub < 3) cycle
+        a1 = a1 / dble(nsub)
+        a2 = a2 / dble(nsub)
+
+        denom = dabs(a1) + dabs(a2)
+        if (denom <= 0d0) cycle
+        split_sub = a1 / denom
+
+        ns(j) = dabs(split_whole - split_sub) * 1d2
+    end do
+end subroutine CecPartitionStability
+
 
 !> Two components nearly cancelling puts 1 + r on top of zero, so the partition
 !> blows up on a total that is itself near zero. Zahn et al. reject the band

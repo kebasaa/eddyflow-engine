@@ -1,6 +1,56 @@
-7.3.0 (2026-08-20)
+8.0.0 (2026-08-20)
 
     Engine:
+	- Fix: An essentials file from an older version is refused with the message that
+	               says so, rather than with "no valid data records found". The check on
+	               the header ran after InitExVars, which parses the whole file by field
+	               position - so every record had already failed and the run had already
+	               died by the time the check could speak. It now runs before anything
+	               reads a record, on a unit of its own, since at that point none is open.
+	               Found by pointing this version at a genuine older file and getting
+	               error 61 where error 107 was intended; both directions are now tested.
+	- New feature: cec_stationarity_mode chooses which stationarity criterion gates the
+	               partition. 0, the default, is Zahn et al.'s and leaves every existing
+	               project computing exactly what it computed before. 1 asks instead
+	               whether the SPLIT between the two octants holds steady through the
+	               period, which is the only thing about a period the partition depends
+	               on.
+	               Foken's statistic divides by the covariance whose stationarity it is
+	               testing, so it runs away as that covariance approaches zero - which
+	               for carbon at night it does. On the day this was built against it read
+	               755%, 471%, 314% on periods whose octants were perfectly well sampled,
+	               and 30 of 48 periods were rejected, 28 of them on that gate, while 26
+	               of the 30 had occupancies of 0.24 to 0.44 against a 0.20 requirement.
+	               Half a day of sound partitions was being discarded, and it was the
+	               half the paper reports the method handling best: at night CEC gives
+	               the whole flux to E and R through the sparse-octant rule, which never
+	               got to run.
+	               The new criterion divides the period into six as StationarityTest
+	               does, re-centres each sixth on its own mean as StationarityTest does,
+	               and compares the octant split of the averaged sixths against the split
+	               of the whole. Both splits are normalised by |f_O1| + |f_O2|, the size
+	               of the partition itself, which cannot vanish while the octants hold
+	               anything - so the statistic is bounded by 200 and reads as the
+	               percentage of its own range by which the split moved. A trend that
+	               scales both octants together moves neither split and cancels, which is
+	               the robustness a ratio method should have.
+	               cec_max_stationarity is still the threshold in either mode and 0 still
+	               disables the gate. Fewer than three sixths with enough samples to
+	               centre on leaves the statistic undefined, and undefined PASSES:
+	               refusing a period on a number that could not be computed is the fault
+	               the mode exists to correct, and sparse periods are the occupancy
+	               gate's business. Completeness and occupancy gate unconditionally in
+	               both modes; this replaces one criterion, not three.
+	- New feature: cec_ns_<species> reports that statistic per target, in per cent, in
+	               both modes - so the two criteria can be compared on one run and a
+	               threshold chosen from data rather than guessed at. Reported for a
+	               rejected period too, for the same reason the octant fractions are.
+	               BREAKING for the essentials file: the per-target block grows from six
+	               fields to seven. A file written before this is refused with Fatal
+	               error(107) on the missing CEC_NS_ header marker rather than read one
+	               field short per target. The marker is checked only when the header
+	               carries a CEC block at all, since a project with the partition off
+	               writes none and such a file is not old.
 	- Fix: A period the partition rejects reports its octant counts AND its octant
 	               fractions, which used to disagree. The counts are accumulated in the
 	               sample loop and the fractions were computed after the completeness and
@@ -152,7 +202,7 @@
 	               interpolation". The gaps worth repairing are the ones the screen has just
 	               made, so a brief dropout now costs four interpolated samples instead of
 	               costing the whole period at the 90% completeness gate.
-	               This corrects a 7.3.0 change that had the two the other way round and
+	               This corrects a change that had the two the other way round and
 	               described that as the paper's order. It was not: filling first left every
 	               condemned sample permanent and counted it against the completeness gate,
 	               rejecting periods the reference method keeps. Anyone who prefers that

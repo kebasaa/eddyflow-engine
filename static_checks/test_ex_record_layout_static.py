@@ -61,7 +61,11 @@ HISTORICAL = {
     #> pairings a project declares, and that made "never append after the
     #> descriptor" a rule four files had to keep unaided.
     "nCecPairFixedFields": 9,
-    "nCecTargetFields": 6,
+    #> Seven since the ratio's own stationarity joined slot, f_O1, f_O2, r,
+    #> status and valid. A file written at six is refused by
+    #> CheckExFileVintage on the missing CEC_NS_ header marker rather than
+    #> read one field short per target.
+    "nCecTargetFields": 7,
 }
 
 #: Counts that have been converted from a compile-time `parameter` to a runtime

@@ -164,6 +164,7 @@ FIXED_TAGS = {
     },
     "EPPrjNTags": {
         4: "cec_singular_band",
+        5: "cec_stationarity_mode",
     },
 }
 

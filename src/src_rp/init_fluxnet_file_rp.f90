@@ -534,6 +534,8 @@ subroutine InitFluxnetFile_rp()
                 // trim(cec_tag), separator)
             call AddDatum(csv_row, 'CEC_R_' // trim(cec_kstr) &
                 // trim(cec_tag), separator)
+            call AddDatum(csv_row, 'CEC_NS_' // trim(cec_kstr) &
+                // trim(cec_tag), separator)
             call AddDatum(csv_row, 'CEC_STATUS_' // trim(cec_kstr) &
                 // trim(cec_tag), separator)
             call AddDatum(csv_row, 'CEC_VALID_' // trim(cec_kstr) &

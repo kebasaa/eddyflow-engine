@@ -90,9 +90,48 @@ class TheBlockDescribesItsOwnWidth(unittest.TestCase):
 
     def test_the_widths_are_named_and_stepped_over_by_name(self):
         self.assertEqual(param(self.reader, "nCecPairFixedFields"), 9)
-        self.assertEqual(param(self.reader, "nCecTargetFields"), 6)
         self.assertIn("strCharIndex(dataline, ',', nCecPairFixedFields)", self.reader)
         self.assertIn("strCharIndex(dataline, ',', nCecTargetFields)", self.reader)
+        #> The per-target width is not pinned to a number here. It has grown
+        #> once already, and the thing that matters is not what it is but that
+        #> the reader, the writer and the header agree on it - which is what
+        #> the two tests below check. A literal here only ever meant a second
+        #> place to update.
+        self.assertGreaterEqual(param(self.reader, "nCecTargetFields"), 6)
+
+    def test_a_file_written_before_the_block_widened_is_refused(self):
+        """Read one field short per target and everything after it is garbage.
+
+        The guard is conditional on the block being there at all: a project
+        with the partition switched off writes no CEC fields, and such a
+        header is not old, just quiet.
+        """
+        vintage = code("src/src_fcc/eddyflow-fcc_main.f90")
+        self.assertIn(
+            "index(header, 'CEC_METH') > 0 .and. index(header, 'CEC_NS_') <= 0",
+            vintage)
+        self.assertIn("call ExceptionHandler(107)", vintage)
+
+    def test_the_vintage_check_runs_before_anything_parses_a_record(self):
+        """Otherwise it can never fire, and it did not.
+
+        InitExVars reads the whole file by field position. An old file fails
+        every record there, the run stops on "no valid data records found",
+        and the message that would have explained why is never reached. Tested
+        against a real pre-widening file, which reported error 61 instead of
+        107 until the check moved ahead of it.
+        """
+        main = code("src/src_fcc/eddyflow-fcc_main.f90")
+        checked = main.index("call CheckExFileVintageAt(AuxFile%ex)")
+        parsed = main.index("call InitExVars(")
+        self.assertLess(checked, parsed,
+                        "the vintage check is back behind the first thing "
+                        "that parses a record, where it cannot fire")
+        #> Self-contained, because at that point no unit is open yet.
+        self.assertIn("subroutine CheckExFileVintageAt(path)", main)
+        self.assertIn("open(newunit = unt, file = path", main)
+        #> One judgement shared by both entry points, so they cannot diverge.
+        self.assertEqual(main.count("call JudgeExHeader(header)"), 2)
 
     def test_the_counts_are_bounded_before_they_are_used(self):
         #> A corrupt count is a record to reject, not a loop to run.
@@ -107,27 +146,31 @@ class TheBlockDescribesItsOwnWidth(unittest.TestCase):
         self.assertIn("call ResetCecDescriptor(lEx%cec(cec_p))", self.reader)
         self.assertIn("do cec_p = 1, MaxNumCecPairs", self.reader)
 
-    def test_the_writers_emit_the_same_nine_and_six(self):
+    def test_the_writer_emits_what_the_reader_steps_over(self):
         """One helper builds the row for all three writers, so the widths
         cannot drift between them."""
         resolver = code("src/src_common/gas_slot_resolution.f90")
         block = resolver[resolver.index("subroutine CecExRowValues"):]
         block = block[:block.index("end subroutine CecExRowValues")]
         self.assertEqual(block.count("call EmitInt(") + block.count("call EmitReal("),
-                         9 + 6,
-                         "CecExRowValues no longer emits nine pairing fields "
-                         "and six per target; update nCecPairFixedFields and "
-                         "nCecTargetFields with it")
+                         param(self.reader, "nCecPairFixedFields")
+                         + param(self.reader, "nCecTargetFields"),
+                         "CecExRowValues and the reader disagree about how "
+                         "wide a pairing is")
         for path in (ROW_RP, ROW_SKIPPED, ROW_FCC):
             self.assertIn("call CecExRowValues(", code(path))
 
     def test_the_header_names_as_many_fields_as_the_row_writes(self):
         header = code(HEADER)
         block = header[header.index("'NUM_CEC_PAIRS'"):header.index("'NUM_BIOMET_VARS'")]
-        #> Nine per pairing and six per target, the same numbers the reader
-        #> steps over and the row helper emits.
+        #> The same two numbers the reader steps over and the row helper
+        #> emits. Three sources, one width, none of them a literal here.
         per_pair = block.count("call AddDatum(csv_row, 'CEC_")
-        self.assertEqual(per_pair, 9 + 6)
+        self.assertEqual(per_pair,
+                         param(self.reader, "nCecPairFixedFields")
+                         + param(self.reader, "nCecTargetFields"),
+                         "the essentials header and the reader disagree about "
+                         "how wide a pairing is")
 
 
 class TheSkippedPeriodRowIsTheSameWidth(unittest.TestCase):

@@ -195,14 +195,14 @@ module m_eddypro_import
     !> pf_sect_* and wdf_sect_* are EddyPro keys in any case, present since
     !> the fork, and are copied through whenever the source states them.
     !***********************************************************************
-    integer, parameter :: nProjectDefaults = 23
+    integer, parameter :: nProjectDefaults = 24
     !> The type spec pads: these section names are parameters of their own
     !> natural lengths, and an array constructor needs them equal.
     character(40), parameter :: defaultSect(nProjectDefaults) = [ &
         character(40) :: &
         sectProject, sectProject, sectProject, sectProject, &
         sectProject, sectProject, sectProject, sectProject, &
-        sectProject, &
+        sectProject, sectProject, &
         sectSpectral, sectSpectral, &
         sectTilt, &
         sectTimelag, &
@@ -215,7 +215,7 @@ module m_eddypro_import
         'cec_min_o1_o2             ', 'cec_min_octant            ', &
         'cec_min_valid             ', 'cec_signal_strength       ', &
         'cec_max_gap_fill          ', 'cec_max_stationarity      ', &
-        'cec_singular_band         ', &
+        'cec_singular_band         ', 'cec_stationarity_mode     ', &
         'automatic_spectra_config  ', 'flux_run_mode             ', &
         'rot_pf_assessment_only    ', &
         'tlag_assessment_only      ', &
@@ -228,7 +228,7 @@ module m_eddypro_import
     character(8), parameter :: defaultValue(nProjectDefaults) = [ &
         '0       ', '0.000   ', '20.0    ', '5.0     ', &
         '90.0    ', '70.0    ', '4       ', '25.0    ', &
-        '0.200   ', &
+        '0.200   ', '0       ', &
         '0       ', '0       ', &
         '0       ', &
         '0       ', &

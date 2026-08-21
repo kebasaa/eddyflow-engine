@@ -173,7 +173,10 @@ class CecIniStaticTests(unittest.TestCase):
         #> four files had to keep by hand, and it could not survive a block
         #> whose width depends on how many pairings a project declares.
         assert "nCecPairFixedFields = 9" in source
-        assert "nCecTargetFields = 6" in source
+        #> Named, not a bare number, and not pinned to a value here -
+        #> test_cec_ex_block_static owns the width and checks the reader, the
+        #> writer and the header against each other.
+        assert "nCecTargetFields = " in source
         assert "n_cec_pairs > MaxNumCecPairs" in source
         assert "strCharIndex(dataline, ',', nCecPairFixedFields)" in source
         assert "strCharIndex(dataline, ',', nCecTargetFields)" in source

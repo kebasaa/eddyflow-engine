@@ -533,7 +533,7 @@ module m_common_global_var
          EPPrjNTags(2)%Label / 'binary_hnlines' / &
          EPPrjNTags(3)%Label / 'col_ts' / &
          EPPrjNTags(4)%Label / 'cec_singular_band' / &
-         EPPrjNTags(5)%Label / '' / &
+         EPPrjNTags(5)%Label / 'cec_stationarity_mode' / &
          EPPrjNTags(6)%Label / '' / &
          EPPrjNTags(7)%Label / '' / &
          EPPrjNTags(8)%Label / '' / &

@@ -162,6 +162,32 @@ def target_sums(w_values, c_values, q_values, scalar, h=0):
     return o1 / n, o2 / n
 
 
+def partition_stability(sub_c1, sub_c2, sub_n, whole_O1, whole_O2):
+    """The corrected statistic: how far the octant split moves.
+
+    Both splits are normalised by |f_O1| + |f_O2|, which cannot vanish while
+    the octants hold anything - unlike Foken's denominator, which is the
+    covariance under test and goes to zero with the night-time carbon flux.
+    A trend that scales both octants together moves neither split and
+    cancels, which is the robustness the ratio was meant to buy.
+
+    Bounded by 200. None where fewer than three sixths could be centred.
+    """
+    denom = abs(whole_O1) + abs(whole_O2)
+    if denom == 0:
+        return None
+    split_whole = whole_O1 / denom
+    usable = [(a, b, n) for a, b, n in zip(sub_c1, sub_c2, sub_n) if n >= 2]
+    if len(usable) < 3:
+        return None
+    a1 = sum(a / n for a, b, n in usable) / len(usable)
+    a2 = sum(b / n for a, b, n in usable) / len(usable)
+    denom = abs(a1) + abs(a2)
+    if denom == 0:
+        return None
+    return abs(split_whole - a1 / denom) * 100.0
+
+
 def apply_partition(status, ratio, total):
     if status == NORMAL:
         return total / (1 + 1 / ratio), total / (1 + ratio)
@@ -420,8 +446,11 @@ class CecReferenceTests(unittest.TestCase):
                       source.index("end subroutine ExtractCecDescriptor")]
         for column in ("primes(i, 1)", "primes(i, iw)", "primes(i, ic)"):
             self.assertIn("if (.not. CecValueIsValid(%s)) cycle" % column, body)
-        #> The old all-targets veto, by the name it went under.
-        self.assertNotIn("usable", body,
+        #> The old all-targets veto. Named exactly, because it was the
+        #> variable that has to be gone, not the word - the first version of
+        #> this matched any prose containing "usable" and tripped on a comment.
+        self.assertNotIn("logical :: usable", body)
+        self.assertNotIn("if (.not. usable) cycle", body,
                          "a target other than w, q and c can veto a sample "
                          "again, so extras move the pair once more")
         #> And each target divides by its own count, not the pairing's.
@@ -504,6 +533,175 @@ class CecReferenceTests(unittest.TestCase):
         self.assertNotIn("return", block,
                          "a missing diagnostic column now abandons the pairing "
                          "instead of skipping the screen")
+
+    def test_each_sixth_is_recentred_on_its_own_mean(self):
+        """Without this the statistic measures nothing whatsoever.
+
+        `primes` already holds whole-period fluctuations. Slice them without
+        re-centring and the mean of the six sub-interval values equals the
+        whole-period value identically, so the difference between them - which
+        IS the trend signal, and is the whole of Foken's test - is exactly
+        zero by construction. The first version of this did that, and read
+        70000% on periods Foken called stationary; all that survived was the
+        nonlinearity of a ratio of noisy sixths.
+
+        StationarityTest re-centres because it slices the raw set and takes
+        each slice's covariance about that slice's own mean. This has to do
+        the same by hand.
+        """
+        engine = read("src/src_rp/stationarity_test.f90")
+        self.assertIn("call CovarianceMatrixNoError(SubSet, subn, GHGNumVar, SubCov, error)",
+                      engine)
+        cec = read("src/src_common/m_cec.f90")
+        block = cec[cec.index("subroutine CecPartitionStability"):
+                    cec.index("end subroutine CecPartitionStability")]
+        self.assertIn("(primes(i, 1) - wbar) * (primes(i, j + 1) - sbar)", block)
+        self.assertIn("wbar = sw(sub, j) / dble(n_all(sub, j))", block)
+
+        #> And the mean is taken over every sample the sixth can use, not only
+        #> its octant members - centring on those would remove the very
+        #> asymmetry the octant selects for.
+        first = block[block.index("n_all = 0"):block.index("c1 = 0d0")]
+        self.assertIn("if (octant(i) < 0) cycle", first)
+        self.assertNotIn("if (octant(i) <= 0) cycle", first)
+
+    def test_the_denominator_cannot_vanish(self):
+        """The other half of the fix, and the half that answers the problem.
+
+        Foken divides by the covariance whose stationarity he is testing, so
+        his statistic runs away as that covariance approaches zero - which for
+        carbon at night it does, and that is what was rejecting half a day of
+        well-sampled partitions. Both splits here are normalised by
+        |f_O1| + |f_O2|, which cannot vanish while the octants hold anything.
+        """
+        cec = read("src/src_common/m_cec.f90")
+        block = cec[cec.index("subroutine CecPartitionStability"):
+                    cec.index("end subroutine CecPartitionStability")]
+        self.assertEqual(block.count("denom = dabs(f_O1(j)) + dabs(f_O2(j))"), 1)
+        self.assertEqual(block.count("denom = dabs(a1) + dabs(a2)"), 1)
+        self.assertIn("split_whole = f_O1(j) / denom", block)
+        self.assertIn("split_sub = a1 / denom", block)
+        #> Never by the quantity being tested, which is the mistake being
+        #> corrected. The statistic is bounded by 200 as a result.
+        self.assertNotIn("/ f_O1(j)", block)
+        self.assertNotIn("/ r_whole", block)
+
+    def test_it_divides_the_period_as_the_existing_test_does(self):
+        #> Six, or the two numbers are not comparable on the same run.
+        self.assertIn("integer, parameter :: ndiv = 6",
+                      read("src/src_rp/stationarity_test.f90"))
+        self.assertIn("integer, parameter :: ncecdiv = 6",
+                      read("src/src_common/m_cec.f90"))
+
+    def test_a_steady_split_reads_zero_however_the_flux_drifts(self):
+        """The property the whole mode rests on.
+
+        Both octants doubling through the period is a drifting flux and a
+        perfectly steady partition. Foken's statistic on the covariance sees
+        the drift; this one sees the partition, and the partition is what CEC
+        multiplies into the total.
+        """
+        n = [10] * 6
+        c1 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        c2 = [2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+        whole1 = sum(c1) / 6.0
+        whole2 = sum(c2) / 6.0
+        self.assertAlmostEqual(
+            partition_stability([a * 10 for a in c1], [b * 10 for b in c2],
+                                n, whole1, whole2), 0.0)
+
+    def test_a_split_that_moves_is_what_it_catches(self):
+        #> Non-stomatal dominant early, stomatal dominant late: the same total
+        #> activity throughout, a partition that inverts.
+        n = [10] * 6
+        c1 = [9.0, 8.0, 7.0, 3.0, 2.0, 1.0]
+        c2 = [1.0, 2.0, 3.0, 7.0, 8.0, 9.0]
+        whole1 = sum(c1) / 6.0
+        whole2 = sum(c2) / 6.0
+        got = partition_stability([a * 10 for a in c1], [b * 10 for b in c2],
+                                  n, whole1, whole2)
+        self.assertGreaterEqual(got, 0.0)
+        self.assertLessEqual(got, 200.0, "the statistic is meant to be bounded")
+
+    def test_it_is_bounded_where_the_old_one_ran_to_70000(self):
+        """The failure that sent the first attempt back.
+
+        One sixth whose stomatal octant nearly cancels used to send a ratio to
+        infinity and drag the mean of ratios with it. Averaging the
+        covariances and normalising by the partition's own size cannot do
+        that: the result never leaves [0, 200].
+        """
+        n = [10] * 6
+        c1 = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        c2 = [1.0, 1.0, 1.0, 1.0, 1.0, 1e-12]
+        got = partition_stability([a * 10 for a in c1], [b * 10 for b in c2],
+                                  n, sum(c1) / 6.0, sum(c2) / 6.0)
+        self.assertLessEqual(got, 200.0)
+
+    def test_too_few_sub_intervals_is_undefined_not_failed(self):
+        """Rejecting on a number that could not be computed is the fault this
+        mode exists to correct, so the engine reads error as "no opinion"."""
+        self.assertIsNone(partition_stability([1.0] * 6, [1.0] * 6,
+                                              [10, 10, 1, 1, 1, 1], 1.0, 1.0))
+
+        body = read("src/src_common/m_cec.f90")
+        gate = body[body.index("if (setup%stationarity_mode == cec_stat_ratio) then"):]
+        gate = gate[:gate.index("else")]
+        #> Guarded on /= error before it is compared, so an undefined value
+        #> cannot trip the threshold.
+        self.assertIn("%ns_r /= error", gate)
+        for target in ("cecTargetWater", "cecTargetCarbon"):
+            self.assertIn("descriptor%%target(%s)%%ns_r" % target, gate)
+
+    def test_the_published_criterion_is_what_a_project_gets_by_default(self):
+        types = read("src/src_common/m_typedef.f90")
+        self.assertIn("integer, parameter :: cec_stat_flux = 0", types)
+        self.assertIn("integer, parameter :: cec_stat_ratio = 1", types)
+
+        source = read("src/src_common/write_processing_project_variables.f90")
+        #> Sliced to the block that sets the defaults, because the same line
+        #> also appears in the parser's fallback below and an unsliced
+        #> assertIn would pass on that alone - which would leave a project
+        #> that states nothing silently taking the new mode.
+        defaults = source[:source.index("if (EPPrjNTagFound(")]
+        self.assertIn("EddyFlowProj%cec%stationarity_mode = cec_stat_flux", defaults)
+
+        #> And an unrecognised value falls back to the paper rather than to
+        #> the new mode. The safe direction to be wrong in.
+        parser = source[source.index("if (EPPrjNTagFound(5)) then"):]
+        parser = parser[:parser.index("end if", parser.index("else"))]
+        self.assertIn("nint(EPPrjNTags(5)%value) == cec_stat_ratio", parser)
+        self.assertIn("EddyFlowProj%cec%stationarity_mode = cec_stat_flux", parser)
+
+    def test_the_mode_switches_the_gate_and_nothing_else(self):
+        """It replaces one gate. Completeness and occupancy are unconditional,
+        and a period that fails those fails in either mode."""
+        body = read("src/src_common/m_cec.f90")
+        extract = body[body.index("subroutine ExtractCecDescriptor"):
+                       body.index("end subroutine ExtractCecDescriptor")]
+        mode = extract.index("setup%stationarity_mode")
+        complete = extract.index("< setup%min_valid * dble(nrow)) return")
+        occupancy = extract.index("< setup%min_o1_o2) return")
+        self.assertLess(complete, mode, "completeness moved inside the mode")
+        self.assertLess(mode, occupancy, "occupancy moved inside the mode")
+        gated = extract[extract.index("if (setup%max_stationarity > 0d0) then"):occupancy]
+        self.assertNotIn("min_valid", gated)
+        self.assertNotIn("min_o1_o2", gated)
+
+    def test_the_statistic_is_reported_whichever_gate_is_chosen(self):
+        #> So the two criteria can be compared on one run, and so a rejected
+        #> period still says what it was judged on - the same reason the
+        #> octant fractions moved above the gates.
+        body = read("src/src_common/m_cec.f90")
+        extract = body[body.index("subroutine ExtractCecDescriptor"):
+                       body.index("end subroutine ExtractCecDescriptor")]
+        assigned = extract.index("call CecPartitionStability(")
+        self.assertLess(assigned,
+                        extract.index("if (setup%max_stationarity > 0d0) then"),
+                        "the statistic is computed after the gate that reads it")
+        self.assertLess(assigned,
+                        extract.index("< setup%min_valid * dble(nrow)) return"),
+                        "a period rejected for completeness reports no statistic")
 
     def test_normal_partition_conserves_totals(self):
         evaporation, transpiration = apply_partition(NORMAL, 0.5, 3.0)
