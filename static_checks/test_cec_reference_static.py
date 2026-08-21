@@ -1,4 +1,5 @@
 import math
+import re
 from pathlib import Path
 import unittest
 
@@ -186,6 +187,28 @@ def partition_stability(sub_c1, sub_c2, sub_n, whole_O1, whole_O2):
     if denom == 0:
         return None
     return abs(split_whole - a1 / denom) * 100.0
+
+
+def flux_is_unresolved(total, err, k):
+    """Is this flux distinguishable from zero?
+
+    Finkelstein & Sims give |F|/RE ~ |r| * sqrt(N_indep / 2), so comparing a
+    flux against a multiple of its own random error IS the significance of the
+    w-scalar correlation, with the number of independent samples taken from
+    the period's own integral timescale rather than assumed.
+
+    An absent error is no opinion, never a failure: a run with the estimator
+    switched off leaves every random error unset, and refusing every period on
+    that basis would turn a switched-off diagnostic into a switched-off
+    partition.
+    """
+    if k <= 0:
+        return False
+    if err is None or err <= 0:
+        return False
+    if total is None:
+        return False
+    return abs(total) < k * err
 
 
 def apply_partition(status, ratio, total):
@@ -702,6 +725,131 @@ class CecReferenceTests(unittest.TestCase):
         self.assertLess(assigned,
                         extract.index("< setup%min_valid * dble(nrow)) return"),
                         "a period rejected for completeness reports no statistic")
+
+    def test_an_unresolved_flux_is_not_worth_partitioning(self):
+        """The failure this exists to stop.
+
+        The octants mean something only if the sign of c\' carries a surface
+        signature. On the record this was written for, night |r(w,CO2)| ran at
+        0.079 against 0.336 by day - below one sigma, so the moist ejections
+        split near evenly and O2 never emptied. The partition would still
+        return two numbers summing to the total; they would mean nothing.
+        """
+        #> A flux ten times its own error is real; one a third of it is not.
+        self.assertFalse(flux_is_unresolved(10.0, 1.0, 2.0))
+        self.assertTrue(flux_is_unresolved(0.3, 1.0, 2.0))
+        #> Sign does not matter - a downward night flux is as unresolved as an
+        #> upward one of the same size.
+        self.assertTrue(flux_is_unresolved(-0.3, 1.0, 2.0))
+
+    def test_the_test_is_off_by_default_and_off_means_off(self):
+        self.assertFalse(flux_is_unresolved(0.001, 1.0, 0.0))
+        source = read("src/src_common/write_processing_project_variables.f90")
+        defaults = source[:source.index("if (EPPrjNTagFound(")]
+        self.assertIn("EddyFlowProj%cec%min_flux_sigma = 0d0", defaults)
+        body = read("src/src_common/m_cec.f90")
+        fn = body[body.index("logical function CecFluxIsUnresolved"):
+                  body.index("end function CecFluxIsUnresolved")]
+        self.assertIn("if (setup%min_flux_sigma <= 0d0) return", fn)
+
+    def test_a_missing_random_error_is_no_opinion_not_a_failure(self):
+        """ru_meth = 0 leaves every random error unset. Refusing every period
+        on that basis would turn a switched-off diagnostic into a switched-off
+        partition, so the engine warns instead and the test abstains."""
+        self.assertFalse(flux_is_unresolved(0.001, None, 2.0))
+        body = read("src/src_common/m_cec.f90")
+        fn = body[body.index("logical function CecFluxIsUnresolved"):
+                  body.index("end function CecFluxIsUnresolved")]
+        self.assertIn("if (.not. CecValueIsValid(err)) return", fn)
+        self.assertIn("if (err <= 0d0) return", fn)
+        #> And it is said out loud, once, where it can still be acted on.
+        self.assertIn("call ExceptionHandler(115)",
+                      read("src/src_rp/read_ini_rp.f90"))
+        self.assertIn("Warning(115)", read("src/src_common/exception_handler.f90"))
+
+    def test_the_pairing_is_judged_on_both_of_its_channels(self):
+        """The pool is the moist ejections and the split is the sign of c\',
+        so an unresolved water flux means "moist ejection" is not selecting
+        surface-influenced air, and an unresolved carbon flux means the split
+        is a coin toss. Either one sinks the pairing."""
+        body = read("src/src_common/m_cec.f90")
+        fn = body[body.index("logical function CecPairingIsUnresolved"):
+                  body.index("end function CecPairingIsUnresolved")]
+        self.assertIn("cecTargetWater", fn)
+        self.assertIn("cecTargetCarbon", fn)
+        self.assertIn(".or.", fn)
+
+    def test_the_pairing_check_precedes_the_per_target_loop(self):
+        #> It rejects the whole pairing, so it cannot live inside the loop
+        #> over targets - and the extras' own check must live inside it.
+        body = read("src/src_common/m_cec.f90")
+        apply = body[body.index("subroutine ApplyCecDescriptor"):
+                     body.index("end subroutine ApplyCecDescriptor")]
+        pairing = apply.index("if (CecPairingIsUnresolved(")
+        loop = apply.index("do k = 1, descriptor%n_target", pairing)
+        self.assertLess(pairing, loop)
+        #> The extras gate themselves, as they do for completeness.
+        extra = apply.index("if (k /= cecTargetWater .and. k /= cecTargetCarbon) then")
+        self.assertLess(loop, extra)
+
+    def test_the_refusal_has_its_own_name(self):
+        """"No resolvable flux" is a different statement from "not enough
+        data", and only one of them is worth revisiting with a longer record."""
+        types = read("src/src_common/m_typedef.f90")
+        #> Read out of the source and compared to each other, so that reusing a
+        #> code already spoken for fails here rather than silently relabelling
+        #> some other verdict in qc_cec_*.
+        codes = dict((m.group(1), int(m.group(2))) for m in re.finditer(
+            r"integer, parameter :: (cec_[a-z_]+) = (\d+)", types))
+        self.assertEqual(codes.pop("cec_insignificant", None), 6)
+        others = sorted(v for k, v in codes.items()
+                        if not k.startswith("cec_stat_"))
+        self.assertNotIn(6, others)
+        self.assertEqual(others, list(range(len(others))),
+                         "the codes are a contiguous block; 6 was the next free")
+        body = read("src/src_common/m_cec.f90")
+        apply = body[body.index("subroutine ApplyCecDescriptor"):
+                     body.index("end subroutine ApplyCecDescriptor")]
+        self.assertEqual(apply.count("cec_insignificant"), 2,
+                         "the pairing refusal and the extra refusal, no more")
+
+    def test_the_papers_own_refusal_is_not_relabelled(self):
+        """A period the occupancy gate or the singularity band already refused
+        was not lost to this test. Overwriting its reason would inflate what
+        the test appears to cost and hide the reason worth acting on."""
+        body = read("src/src_common/m_cec.f90")
+        apply = body[body.index("subroutine ApplyCecDescriptor"):
+                     body.index("end subroutine ApplyCecDescriptor")]
+        branch = apply[apply.index("if (CecPairingIsUnresolved("):
+                       apply.index("do k = 1, descriptor%n_target",
+                                   apply.index("return", apply.index(
+                                       "if (CecPairingIsUnresolved(")))]
+        self.assertIn("flux%comp(k)%status = descriptor%target(k)%status", branch)
+        #> valid is false for cec_rejected and for cec_singular alike, so one
+        #> test covers both of the paper's refusals.
+        self.assertIn("if (descriptor%target(k)%valid) &", branch)
+
+    def test_each_error_comes_from_the_slot_its_total_came_from(self):
+        """A mismatched index would test one gas's flux against another gas's
+        error and report a verdict that means nothing, silently."""
+        rp = read("src/src_rp/eddyflow-rp_main.f90")
+        block = rp[rp.index("cec_totals(cec_k) = Flux3%gas(cec_slots(cec_k))"):]
+        block = block[:block.index("end do")]
+        self.assertIn("cec_errors(cec_k) = Essentials%rand_uncer(cec_slots(cec_k))",
+                      block)
+        fcc = read("src/src_fcc/eddyflow-fcc_main.f90")
+        block = fcc[fcc.index("cec_totals(cec_k) = Flux3%gas(cec_slot)"):]
+        block = block[:block.index("end do")]
+        self.assertIn("cec_errors(cec_k) = lEx%rand_uncer(cec_slot)", block)
+
+    def test_it_applies_whichever_stationarity_mode_is_chosen(self):
+        #> The failure is not mode-specific. Mode 0 merely happens to reject
+        #> those periods today for a different reason, and would stop the
+        #> moment someone set cec_max_stationarity to 0.
+        body = read("src/src_common/m_cec.f90")
+        apply = body[body.index("subroutine ApplyCecDescriptor"):
+                     body.index("end subroutine ApplyCecDescriptor")]
+        self.assertNotIn("stationarity_mode", apply)
 
     def test_normal_partition_conserves_totals(self):
         evaporation, transpiration = apply_partition(NORMAL, 0.5, 3.0)

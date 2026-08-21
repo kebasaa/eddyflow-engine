@@ -88,6 +88,7 @@ Program EddyFlowFCC
     integer :: cec_k
     integer :: cec_slot
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
+    real(kind = dbl) :: cec_errors(MaxNumCecTargets)
 
     !> Allocatable variabled
     type(DateType), allocatable :: exTimeSeries(:)
@@ -581,13 +582,17 @@ Program EddyFlowFCC
         if (EddyFlowProj%do_cec > 0) then
             do cec_p = 1, min(lEx%n_cec, MaxNumCecPairs)
                 cec_totals = error
+                cec_errors = error
                 do cec_k = 1, lEx%cec(cec_p)%n_target
                     cec_slot = lEx%cec(cec_p)%target(cec_k)%slot
                     if (cec_slot < firstGas .or. cec_slot > lastGas) cycle
                     cec_totals(cec_k) = Flux3%gas(cec_slot)
+                    !> RP estimated it and the essentials row carried it here,
+                    !> from the same slot as the total beside it.
+                    cec_errors(cec_k) = lEx%rand_uncer(cec_slot)
                 end do
                 call ApplyCecDescriptor(lEx%cec(cec_p), cec_totals, &
-                    CECFlux(cec_p))
+                    cec_errors, EddyFlowProj%cec, CECFlux(cec_p))
             end do
         end if
 

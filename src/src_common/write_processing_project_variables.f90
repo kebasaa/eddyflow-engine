@@ -81,6 +81,8 @@ subroutine WriteProcessingProjectVariables()
     EddyFlowProj%cec%max_stationarity = 25d0
     !> Zahn et al.'s criterion, so an untouched project reproduces the paper.
     EddyFlowProj%cec%stationarity_mode = cec_stat_flux
+    !> Off, for the same reason: the paper applies no significance test.
+    EddyFlowProj%cec%min_flux_sigma = 0d0
     EddyFlowProj%cec%max_gap_fill = 4
 
     !> Project general info
@@ -436,6 +438,11 @@ subroutine WriteProcessingProjectVariables()
     if (EPPrjNTagFound(32)) &
         EddyFlowProj%cec%max_stationarity = NormalizeCecStationarity( &
             EPPrjNTags(32)%value, 25d0)
+    if (EPPrjNTagFound(6)) then
+        !> Negative is meaningless, and reading it as "off" is the safe way to
+        !> misread it.
+        EddyFlowProj%cec%min_flux_sigma = max(0d0, EPPrjNTags(6)%value)
+    end if
     if (EPPrjNTagFound(5)) then
         !> Anything but the ratio mode is the paper's, a value from some later
         !> version this one does not understand included. Falling back to the

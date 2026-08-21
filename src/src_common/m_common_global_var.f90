@@ -539,7 +539,7 @@ module m_common_global_var
          EPPrjNTags(3)%Label / 'col_ts' / &
          EPPrjNTags(4)%Label / 'cec_singular_band' / &
          EPPrjNTags(5)%Label / 'cec_stationarity_mode' / &
-         EPPrjNTags(6)%Label / '' / &
+         EPPrjNTags(6)%Label / 'cec_min_flux_sigma' / &
          EPPrjNTags(7)%Label / '' / &
          EPPrjNTags(8)%Label / '' / &
          EPPrjNTags(9)%Label / '' / &

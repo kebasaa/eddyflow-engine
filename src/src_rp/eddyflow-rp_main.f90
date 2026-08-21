@@ -64,6 +64,7 @@ program EddyFlowRP
     integer :: cec_ntarget
     integer :: cec_slots(MaxNumCecTargets)
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
+    real(kind = dbl) :: cec_errors(MaxNumCecTargets)
     real(kind = dbl), allocatable :: CecPrimes(:, :)
     logical :: cec_ok
     integer :: SpecRow
@@ -2604,13 +2605,18 @@ program EddyFlowRP
                 do cec_p = 1, nCecPairs
                     call CecTargetSlots(CecPairList(cec_p), cec_slots, cec_ntarget)
                     cec_totals = error
+                    cec_errors = error
                     do cec_k = 1, cec_ntarget
                         if (cec_slots(cec_k) < firstGas &
                             .or. cec_slots(cec_k) > lastGas) cycle
                         cec_totals(cec_k) = Flux3%gas(cec_slots(cec_k))
+                        !> From the same slot as the total beside it. Reading
+                        !> either from a different one would test a flux
+                        !> against another gas's error and say nothing.
+                        cec_errors(cec_k) = Essentials%rand_uncer(cec_slots(cec_k))
                     end do
                     call ApplyCecDescriptor(CECDescriptor(cec_p), cec_totals, &
-                        CECFlux(cec_p))
+                        cec_errors, EddyFlowProj%cec, CECFlux(cec_p))
                 end do
             end if
             if (allocated(E2Primes)) deallocate(E2Primes)

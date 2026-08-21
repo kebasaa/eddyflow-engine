@@ -506,9 +506,13 @@ end subroutine ClassifyCecTarget
 !              density and frequency-response terms the paper says must be in
 !              the total and cannot be in an instantaneous fluctuation.
 !***************************************************************************
-subroutine ApplyCecDescriptor(descriptor, totals, flux)
+subroutine ApplyCecDescriptor(descriptor, totals, errors, setup, flux)
     type(CECDescriptorType), intent(in) :: descriptor
     real(kind = dbl), intent(in) :: totals(MaxNumCecTargets)
+    !> Random error of each total, from Finkelstein & Sims. error where the
+    !> run did not estimate one, which is how the test says "no opinion".
+    real(kind = dbl), intent(in) :: errors(MaxNumCecTargets)
+    type(CECSetupType), intent(in) :: setup
     type(CECFluxType), intent(out) :: flux
 
     integer :: k
@@ -516,6 +520,34 @@ subroutine ApplyCecDescriptor(descriptor, totals, flux)
 
     call ResetCecFlux(flux)
     if (descriptor%meth == 0) return
+
+    !> Is there a flux here at all?
+    !>
+    !> Pairing-level, and judged on the water and the carbon together, because
+    !> that is what the octants are built from: the pool is the moist
+    !> ejections and the split is the sign of c'. If the water flux is not
+    !> resolved then "moist ejection" is not selecting surface-influenced air;
+    !> if the carbon flux is not resolved then the split is a coin toss. On the
+    !> record this was written for, night |r(w,CO2)| ran at 0.079 against 0.336
+    !> by day - below one sigma, and the moist ejections duly split near evenly.
+    !> The partition would still return two numbers that sum to the total. They
+    !> would mean nothing.
+    if (CecPairingIsUnresolved(totals, errors, setup)) then
+        do k = 1, descriptor%n_target
+            if (.not. CecTargetIsWanted(k, descriptor%meth)) cycle
+            flux%comp(k)%total = totals(k)
+            !> The paper's own verdict stands wherever it reached one. A period
+            !> the occupancy gate or the singularity band already refused was
+            !> not lost to this test, and saying so keeps the count of what
+            !> this test costs honest. What is relabelled is exactly the
+            !> population it is about: the periods the published method would
+            !> have gone on to partition.
+            flux%comp(k)%status = descriptor%target(k)%status
+            if (descriptor%target(k)%valid) &
+                flux%comp(k)%status = cec_insignificant
+        end do
+        return
+    end if
 
     do k = 1, descriptor%n_target
         if (.not. CecTargetIsWanted(k, descriptor%meth)) cycle
@@ -525,6 +557,16 @@ subroutine ApplyCecDescriptor(descriptor, totals, flux)
         flux%comp(k)%status = descriptor%target(k)%status
         if (.not. descriptor%target(k)%valid) cycle
         if (total == error) cycle
+
+        !> And each extra species on its own account. A carbonyl sulfide flux
+        !> lost in its own noise should reject itself, not the pairing that
+        !> carried it - the same rule the completeness gate follows.
+        if (k /= cecTargetWater .and. k /= cecTargetCarbon) then
+            if (CecFluxIsUnresolved(total, errors(k), setup)) then
+                flux%comp(k)%status = cec_insignificant
+                cycle
+            end if
+        end if
 
         select case (descriptor%target(k)%status)
             case (cec_normal)
@@ -551,6 +593,48 @@ subroutine ApplyCecDescriptor(descriptor, totals, flux)
         flux%Tr_cec_ET = flux%comp(cecTargetWater)%stomatal * h2o_to_ET
     end if
 end subroutine ApplyCecDescriptor
+
+!***************************************************************************
+!
+! \brief       Is this flux distinguishable from zero?
+! \author      Jonathan Muller
+! \note        Finkelstein & Sims (2001) give the random error of a covariance
+!              from the period's own integral timescale, and
+!              |F| / RE ~ |r| * sqrt(N_indep / 2) - so this is the significance
+!              of the w-scalar correlation, with the number of independent
+!              samples measured rather than guessed at.
+!
+!              An absent error is no opinion, not a failure. The run may simply
+!              not estimate one: ru_meth = 0 leaves rand_uncer at error for
+!              every gas, and refusing every period on that basis would turn a
+!              switched-off diagnostic into a switched-off partition. The
+!              engine warns about that combination instead.
+!
+!***************************************************************************
+logical function CecFluxIsUnresolved(total, err, setup)
+    real(kind = dbl), intent(in) :: total
+    real(kind = dbl), intent(in) :: err
+    type(CECSetupType), intent(in) :: setup
+
+    CecFluxIsUnresolved = .false.
+    if (setup%min_flux_sigma <= 0d0) return
+    if (.not. CecValueIsValid(err)) return
+    if (err <= 0d0) return
+    if (.not. CecValueIsValid(total)) return
+
+    CecFluxIsUnresolved = dabs(total) < setup%min_flux_sigma * err
+end function CecFluxIsUnresolved
+
+!> The pairing's own two channels, both of which the octants depend on.
+logical function CecPairingIsUnresolved(totals, errors, setup)
+    real(kind = dbl), intent(in) :: totals(MaxNumCecTargets)
+    real(kind = dbl), intent(in) :: errors(MaxNumCecTargets)
+    type(CECSetupType), intent(in) :: setup
+
+    CecPairingIsUnresolved = &
+        CecFluxIsUnresolved(totals(cecTargetWater), errors(cecTargetWater), setup) &
+        .or. CecFluxIsUnresolved(totals(cecTargetCarbon), errors(cecTargetCarbon), setup)
+end function CecPairingIsUnresolved
 
 !> Water on 1 and 2, carbon on 1 and 3, extras whenever the pairing runs at
 !> all: an extra species needs the octants, not the choice of which of the two

@@ -1,6 +1,31 @@
 8.0.0 (2026-08-20)
 
     Engine:
+	- New feature: cec_min_flux_sigma refuses to partition a flux that is not
+	               distinguishable from zero. Zahn et al. (2022) apply no such test and on a
+	               well-coupled daytime record none is needed; it is the weak-turbulence case
+	               this guards. The octants mean something only if the sign of c' carries a
+	               surface signature, and where the scalar is barely coupled to the vertical
+	               wind that sign is noise: the moist ejections split near evenly between O1
+	               and O2, and the method returns an E/T and a Reco/P split of a signal that
+	               is not there. Nothing else in CEC notices - the occupancy gates see two
+	               well-filled octants and the components still sum to the total. On the
+	               record this came from, night |r(w,CO2)| ran at 0.079 against 0.336 by day,
+	               below one sigma. Set it to a number of sigma and a pairing whose water or
+	               carbon flux is smaller than that many times its own Finkelstein & Sims
+	               random error is refused, reported as status 6 in qc_cec_<species> so that
+	               "no resolvable flux" is distinguishable from every other reason a period
+	               is dropped. Each further species is judged on its own account, so a
+	               carbonyl sulfide flux lost in its own noise rejects itself rather than the
+	               pairing that carried it. |F|/RE is about |r|*sqrt(N_indep/2), so this is
+	               the significance of that correlation with the number of independent
+	               samples taken from the period's own integral timescale rather than
+	               assumed. It REJECTS periods rather than rescuing them - the opposite trade
+	               to cec_stationarity_mode, and independent of it, applying in either mode.
+	               0 is off and is the default, so an untouched project reproduces the
+	               published method. It needs ru_meth on; with the estimator off there is no
+	               random error to read, and the run says so as Warning(115) and refuses
+	               nothing rather than refusing everything.
 	- Fix: A column named AGC or RSSI reaches the engine at all. IsCustomOutputColumn
 	               listed `agc` and `rssi` beside `ignore` and `flag_1`, so such a column
 	               was dropped before it could become a user column - and the two loops

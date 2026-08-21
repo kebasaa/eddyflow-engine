@@ -720,6 +720,16 @@ module m_typedef
         real(kind = dbl) :: signal_strength
         real(kind = dbl) :: max_stationarity
         integer :: stationarity_mode
+        !> How many of its own random errors a flux must exceed before the
+        !> pairing will partition it. 0 disables the test.
+        !>
+        !> Finkelstein & Sims give |F|/RE ~ |r| * sqrt(N_indep / 2), so this is
+        !> the significance of the w-scalar correlation with N_indep taken from
+        !> the period's own integral timescale rather than assumed. The octants
+        !> only mean anything if the sign of c' carries a surface signature,
+        !> and below about one sigma it does not: the moist ejections split
+        !> near evenly and the partition divides a signal that is not there.
+        real(kind = dbl) :: min_flux_sigma
         integer :: max_gap_fill
     end type CECSetupType
 
@@ -837,6 +847,12 @@ module m_typedef
     !> components share a sign (r > 0), so the total must share it too. A
     !> negative ET would otherwise be split into a negative "transpiration".
     integer, parameter :: cec_wrong_sign = 5
+    !> The flux this pairing would have partitioned is not distinguishable
+    !> from zero, so there is nothing here to divide between two components.
+    !> Its own reason rather than plain cec_rejected, because a period refused
+    !> for want of signal is a different statement from one refused for want
+    !> of data, and only one of them is worth revisiting with a longer record.
+    integer, parameter :: cec_insignificant = 6
 
     !> Which stationarity criterion gates the partition.
     !>

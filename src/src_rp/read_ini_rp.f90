@@ -66,6 +66,14 @@ subroutine ReadIniRP(key)
     !> them in relevant variables
     call WriteVariablesRP()
 
+    !> Said once, here, where both settings are finally known and where the
+    !> user can still act on it. The significance test compares a flux against
+    !> its own random error, and with no estimator running there is no error to
+    !> compare against - so the test would quietly pass every period while
+    !> looking as though it were guarding them.
+    if (EddyFlowProj%cec%min_flux_sigma > 0d0 .and. EddyFlowProj%do_cec > 0 &
+        .and. trim(RUsetup%meth) == 'none') call ExceptionHandler(115)
+
     call LogSay(' Done.')
 end subroutine ReadIniRP
 
