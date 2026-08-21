@@ -459,6 +459,52 @@ class CecReferenceTests(unittest.TestCase):
             self.assertEqual(target_sums(w_values, c_values, q_values, scalar),
                              target_sums(w_values, c_values, q_values, scalar))
 
+    def test_a_rejected_period_still_reports_its_octants(self):
+        """Counts and fractions describe the period either way.
+
+        The counts are accumulated in the sample loop whatever happens next,
+        so computing the fractions after the completeness and stationarity
+        gates left a rejected period publishing half its diagnostics: counts
+        present, fractions at error, and no way to divide one by the other
+        because n_valid is not written out. On the run this was found in, 30
+        of 48 periods came out that way.
+
+        A period that did not partition is exactly when someone wants to read
+        these, so they are computed before the gates. The occupancy gate still
+        sits after them, because it is the one that reads them.
+        """
+        source = read("src/src_common/m_cec.f90")
+        body = source[source.index("subroutine ExtractCecDescriptor"):
+                      source.index("end subroutine ExtractCecDescriptor")]
+        frac = body.index("descriptor%frac_O1 = dble(descriptor%n_O1)")
+        complete = body.index("< setup%min_valid * dble(nrow)) return")
+        stationary = body.index("> setup%max_stationarity")
+        occupancy = body.index("< setup%min_o1_o2) return")
+        self.assertLess(frac, complete, "the completeness gate returns first")
+        self.assertLess(frac, stationary, "the stationarity gate returns first")
+        self.assertLess(complete, occupancy,
+                        "the occupancy gate must still read them, so it stays last")
+        #> And it cannot divide by zero on the way.
+        self.assertIn("if (descriptor%n_valid > 0) then", body)
+
+    def test_a_gas_with_no_diagnostic_skips_the_screen_not_the_partition(self):
+        """No AGC or RSSI column is a normal site, not a broken one.
+
+        Most analysers report no signal strength at all - a quantum cascade
+        laser has nothing to report - and the partition does not depend on
+        one. The lookup returning nothing must therefore skip that target's
+        screen and carry on, never abandon the pairing.
+        """
+        source = read("src/src_common/m_cec.f90")
+        body = source[source.index("subroutine BuildCecPrimes"):
+                      source.index("end subroutine BuildCecPrimes")]
+        block = body[body.index("if (setup%signal_strength > 0d0"):]
+        block = block[:block.index("call Fluctuations(work,")]
+        self.assertIn("if (sig_col <= 0 .or. sig_col > nuser) cycle", block)
+        self.assertNotIn("return", block,
+                         "a missing diagnostic column now abandons the pairing "
+                         "instead of skipping the screen")
+
     def test_normal_partition_conserves_totals(self):
         evaporation, transpiration = apply_partition(NORMAL, 0.5, 3.0)
         respiration, photosynthesis = apply_partition(NORMAL, -0.25, -12.0)

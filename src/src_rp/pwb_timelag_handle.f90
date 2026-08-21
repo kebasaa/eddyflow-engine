@@ -819,8 +819,16 @@ subroutine PostProcessPwbTimelagCache()
         PwbTimelagCache(i)%result%carry_hours = 0d0
     end do
 
-    !> Steps 6 and 7, per gas: the median of what was detected, then whatever
-    !> the streaming pass settled on.
+    !> Whatever the streaming pass settled on stands as the last resort of
+    !> step 8 - covariance maximisation where it fell back, the detection
+    !> itself otherwise. Captured here, by cache row, because three passes now
+    !> run between this and the arm that reads it, and any of them may
+    !> overwrite used_lag.
+    do i = 1, PwbTimelagCacheN
+        fallback_lag(i) = PwbTimelagCache(i)%used_lag
+    end do
+
+    !> Step 6, per gas: the median of what the gas itself detected.
     do gas = firstGas, lastGas
         n = 0
         do k = 1, PwbTimelagCacheN
@@ -828,10 +836,6 @@ subroutine PostProcessPwbTimelagCache()
             if (PwbTimelagCache(i)%gas /= gas) cycle
             n = n + 1
             idx(n) = i
-            !> Whatever the streaming pass settled on stands as this period's
-            !> last resort - covariance maximisation where it fell back, the
-            !> detection itself otherwise. Read before it is overwritten.
-            fallback_lag(n) = PwbTimelagCache(i)%used_lag
         end do
         if (n == 0) cycle
 
@@ -847,28 +851,82 @@ subroutine PostProcessPwbTimelagCache()
         median_lag = error
         if (nsel > 0) median_lag = MedianOf(sorted, nsel)
 
+        if (median_lag == error) cycle
         do j = 1, n
             i = idx(j)
             if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
                 .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
-            if (median_lag /= error) then
-                !> Every one of the lags being averaged here is one the rule
-                !> has just rejected, so this is a last resort and is labelled
-                !> as one.
-                PwbTimelagCache(i)%used_lag = median_lag
-                PwbTimelagCache(i)%result%reliability_class = 'S3_median'
-                PwbTimelagCache(i)%result%fill_method = 'median'
-                PwbTimelagCache(i)%result%fallback_source = 'median'
-                PwbTimelagCache(i)%result%origin_gas = gas
-                PwbTimelagCache(i)%result%fallback_used = .false.
-            else
-                PwbTimelagCache(i)%used_lag = fallback_lag(j)
-                PwbTimelagCache(i)%result%reliability_class = 'fallback'
-                PwbTimelagCache(i)%result%fill_method = 'maxcov_default'
-                PwbTimelagCache(i)%result%fallback_source = 'maxcov_default'
-                PwbTimelagCache(i)%result%fallback_used = .true.
-            end if
+            !> Every one of the lags being averaged here is one the rule has
+            !> just rejected, so this is a last resort and is labelled as one.
+            PwbTimelagCache(i)%used_lag = median_lag
+            PwbTimelagCache(i)%result%reliability_class = 'S3_median'
+            PwbTimelagCache(i)%result%fill_method = 'median'
+            PwbTimelagCache(i)%result%fallback_source = 'median'
+            PwbTimelagCache(i)%result%origin_gas = gas
+            PwbTimelagCache(i)%result%fallback_used = .false.
         end do
+    end do
+
+    !> Step 7: the tube-mate again, this time from a donor that was itself
+    !> filled rather than detected.
+    !>
+    !> Step 5 above only borrows from a donor the rule trusted outright, which
+    !> is the right first answer. But a gas whose every detection was rejected
+    !> - carbonyl sulfide, whose HDI routinely spans the whole search window -
+    !> reaches step 6 with nothing to take a median of, and then had only its
+    !> own rejected covariance maximisation left. That put COS at 10.6 s on a
+    !> tube whose delay is 16.2 s, while the CO2 beside it in the same tube
+    !> carried a perfectly good interpolated 16.5 s. Preferring "my own
+    !> rejected number" to "my tube-mate's filled one" is the wrong way round.
+    !>
+    !> Same donor rule as step 5 - one analyser, never water, same period -
+    !> and a distinct label, because a donor that was itself filled is weaker
+    !> evidence than one the rule trusted. Donors filled by THIS pass are
+    !> excluded, so a borrowed lag cannot be borrowed onward.
+    do i = 1, PwbTimelagCacheN
+        gas = PwbTimelagCache(i)%gas
+        if (gas < firstGas .or. gas > lastGas) cycle
+        if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
+            .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
+        shared = 0
+        do j = 1, PwbTimelagCacheN
+            if (j == i) cycle
+            if (PwbTimelagCache(j)%date /= PwbTimelagCache(i)%date) cycle
+            if (PwbTimelagCache(j)%time /= PwbTimelagCache(i)%time) cycle
+            g = PwbTimelagCache(j)%gas
+            if (g < firstGas .or. g > lastGas) cycle
+            if (GasSlotIsWater(g)) cycle
+            if (.not. SameAnalyser(gas, g)) cycle
+            if (trim(PwbTimelagCache(j)%result%reliability_class) == 'pending') cycle
+            if (trim(PwbTimelagCache(j)%result%reliability_class) == 'S3_expired') cycle
+            if (trim(PwbTimelagCache(j)%result%reliability_class) == 'fallback') cycle
+            if (trim(PwbTimelagCache(j)%result%reliability_class) == 'S4_instrument_filled') cycle
+            shared = j
+            exit
+        end do
+        if (shared == 0) cycle
+        PwbTimelagCache(i)%used_lag = PwbTimelagCache(shared)%used_lag
+        PwbTimelagCache(i)%result%reliability_class = 'S4_instrument_filled'
+        PwbTimelagCache(i)%result%fill_method = 'instrument_filled'
+        PwbTimelagCache(i)%result%fallback_source = 'instrument_filled'
+        PwbTimelagCache(i)%result%fallback_used = .false.
+        PwbTimelagCache(i)%result%donor_gas = GasLabel(PwbTimelagCache(shared)%gas)
+        PwbTimelagCache(i)%result%origin_gas = PwbTimelagCache(shared)%gas
+        PwbTimelagCache(i)%result%carry_hours = 0d0
+    end do
+
+    !> Step 8: nothing reached this period. Whatever the streaming pass settled
+    !> on, which for a gas the rule rejected everywhere is its own covariance
+    !> maximisation - said plainly by the label rather than dressed up.
+    do i = 1, PwbTimelagCacheN
+        if (PwbTimelagCache(i)%gas < firstGas .or. PwbTimelagCache(i)%gas > lastGas) cycle
+        if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
+            .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
+        PwbTimelagCache(i)%used_lag = fallback_lag(i)
+        PwbTimelagCache(i)%result%reliability_class = 'fallback'
+        PwbTimelagCache(i)%result%fill_method = 'maxcov_default'
+        PwbTimelagCache(i)%result%fallback_source = 'maxcov_default'
+        PwbTimelagCache(i)%result%fallback_used = .true.
     end do
 
     !> fallback_used means "no evidence reached this period", and only the

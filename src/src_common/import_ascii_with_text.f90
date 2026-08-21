@@ -56,7 +56,6 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
     integer :: intsep
     integer :: io_status
     character(LongInstringLen) :: dataline
-    character(DatumLen) :: datum
     !> The parser answers one value per RAW column; fRaw holds only the hot
     !> ones, so the record is compacted on the way in - the same compaction
     !> ImportAscii does after its own read.

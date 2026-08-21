@@ -1,6 +1,36 @@
 7.3.0 (2026-08-20)
 
     Engine:
+	- Fix: A period the partition rejects reports its octant counts AND its octant
+	               fractions, which used to disagree. The counts are accumulated in the
+	               sample loop and the fractions were computed after the completeness and
+	               stationarity gates, both of which return early - so a rejected period
+	               published cec_n_o1 and cec_n_o2 with cec_frac_o1 and cec_frac_o2 at the
+	               error value, and no way to divide one by the other, because n_valid is
+	               not written out. On the run this was found in, 30 of 48 periods came out
+	               that way. They are computed before the gates now. No flux moves: every
+	               arm still leaves the targets invalid and ApplyCecDescriptor reads that,
+	               not these. The occupancy gate still sits after them, being the one that
+	               reads them.
+	- Fix: A gas whose every time-lag detection was rejected tries its tube-mate
+	               before falling back to a number the rule has already thrown out. The
+	               instrument-shared step only borrowed from a donor the rule trusted
+	               outright in that same period, which is the right first answer; but a
+	               gas like carbonyl sulfide, whose pre-whitened HDI routinely spans the
+	               whole search window, then reached the median step with nothing to take a
+	               median of and had only its own rejected covariance maximisation left.
+	               On the run this was found in, that put COS at 10.6 s in a tube whose
+	               delay is 16.2 s, while the CO2 beside it in the same tube carried an
+	               interpolated 16.5 s - five periods took a lag 2.8 to 6.2 s wrong. There
+	               is now a second shared pass, after the median and before the terminal
+	               arm, taking a donor in any settled class rather than only S1 or S2. It
+	               reports as S4_instrument_filled, distinct from the S4_instrument_shared
+	               of the first pass, because a donor that was itself filled is weaker
+	               evidence; and it will not take a lag this same pass just borrowed, so
+	               nothing walks from tube-mate to tube-mate. A gas that detects its own
+	               lag is untouched.
+	- Fix: Builds clean again. import_ascii_with_text declared a datum buffer it
+	               never used.
 	- Fix: An EddyPro project that states no tlag_meth is imported with
 	               tlag_meth=2 rather than with nothing. The key has no
 	               *TagFound guard at its reader, so an absent one fell through

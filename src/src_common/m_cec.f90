@@ -342,6 +342,20 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
         end if
     end do
 
+    !> Before the gates, not after them. The counts above are accumulated
+    !> whatever happens next, so computing the fractions below a `return` left
+    !> a rejected period publishing half its diagnostics: counts present,
+    !> fractions at error, and no way to divide one by the other because
+    !> n_valid is not written out. They describe the period either way, and a
+    !> period that did not partition is exactly when someone wants to see them.
+    !>
+    !> This changes no flux. Every arm below leaves the targets invalid, and
+    !> ApplyCecDescriptor gates on that, not on these.
+    if (descriptor%n_valid > 0) then
+        descriptor%frac_O1 = dble(descriptor%n_O1) / dble(descriptor%n_valid)
+        descriptor%frac_O2 = dble(descriptor%n_O2) / dble(descriptor%n_valid)
+    end if
+
     !> Zahn et al. retained periods with at least 90% instantaneous data.
     if (dble(descriptor%n_valid) < setup%min_valid * dble(nrow)) return
     if (setup%max_stationarity > 0d0) then
@@ -350,8 +364,6 @@ subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
             .or. dble(stationarity_water) > setup%max_stationarity) return
     end if
 
-    descriptor%frac_O1 = dble(descriptor%n_O1) / dble(descriptor%n_valid)
-    descriptor%frac_O2 = dble(descriptor%n_O2) / dble(descriptor%n_valid)
     if (descriptor%frac_O1 + descriptor%frac_O2 < setup%min_o1_o2) return
 
     do k = 1, ntarget

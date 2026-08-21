@@ -90,13 +90,66 @@ class ALagIsNeverBorrowedAcrossInstruments(unittest.TestCase):
             self.assertNotIn("%instr%model /= E2Col(j)%instr%model", source)
             self.assertNotIn("%instr%model == E2Col(j)%instr%model", source)
 
-    def test_water_never_donates_on_either_path(self):
+    def test_water_never_donates_on_any_path(self):
         #> Water's lag depends on humidity in a way the trace gases' does not,
-        #> so borrowing from it is worse than not borrowing. Both the
-        #> per-period rule and the aggregate summary refuse it.
+        #> so borrowing from it is worse than not borrowing.
+        #>
+        #> Stated as a pairing rather than a count: every donor search - the
+        #> two per-period ones and the aggregate summary - refuses water, so
+        #> the two totals move together and a fourth path added later has to
+        #> refuse it as well to keep this passing. Counting to a literal meant
+        #> adding a path failed here for no reason.
         module = code(MODULE)
-        self.assertEqual(module.count("if (GasSlotIsWater("), 2)
+        searches = module.count("SameAnalyser(gas, ")
+        self.assertGreaterEqual(searches, 3, "the donor searches moved")
+        self.assertEqual(module.count("if (GasSlotIsWater("), searches,
+                         "a donor search does not refuse water")
         self.assertIn("GasSlotIsWater(k)", code(HANDLER))
+
+    def test_a_rejected_lag_is_the_last_resort_not_the_second(self):
+        """A gas the rule rejected everywhere must try its tube-mate first.
+
+        Carbonyl sulfide is the case: its HDI routinely spans the whole search
+        window, so every detection is prefiltered, there is nothing to take a
+        median of, and before this the only thing left was its own rejected
+        covariance maximisation. On the run this was found in, that put COS at
+        10.6 s in a tube whose delay is 16.2 s, while the CO2 beside it in the
+        same tube carried an interpolated 16.5 s.
+
+        So there is a second shared pass, and it sits between the median and
+        the terminal arm. Order is the whole point: before the median it would
+        outrank the gas's own evidence, after the terminal arm it would never
+        run.
+        """
+        module = code(MODULE)
+        median = module.index("reliability_class = 'S3_median'")
+        filled = module.index("reliability_class = 'S4_instrument_filled'")
+        terminal = module.index("fill_method = 'maxcov_default'")
+        self.assertLess(median, filled,
+                        "the tube-mate now outranks the gas's own median")
+        self.assertLess(filled, terminal,
+                        "the terminal arm runs before the tube-mate is tried")
+
+    def test_the_second_pass_takes_a_filled_donor_but_not_a_borrowed_one(self):
+        #> The point of the pass is to accept a donor the rule did not trust
+        #> outright - interpolated, carried, backfilled. What it must not
+        #> accept is a lag this same pass just borrowed, or the value would
+        #> walk from tube-mate to tube-mate with nothing behind it.
+        module = code(MODULE)
+        block = module[module.index("reliability_class) == 'fallback') cycle"):]
+        block = block[:block.index("reliability_class = 'S4_instrument_filled'")]
+        self.assertIn("== 'S4_instrument_filled') cycle", block)
+
+    def test_the_terminal_arm_reads_the_streaming_answer_by_row(self):
+        #> fallback_lag used to be filled per gas, indexed by that gas's
+        #> ordinal, and read in the same loop. Three passes now sit between
+        #> the capture and the read, so it is captured by cache row instead -
+        #> indexing it by the old ordinal would hand a row another row's lag.
+        module = code(MODULE)
+        self.assertIn("fallback_lag(i) = PwbTimelagCache(i)%used_lag", module)
+        self.assertIn("PwbTimelagCache(i)%used_lag = fallback_lag(i)", module)
+        self.assertNotIn("fallback_lag(n) = ", module)
+        self.assertNotIn("= fallback_lag(j)", module)
 
 
 class AStaleFileCannotReintroduceIt(unittest.TestCase):
