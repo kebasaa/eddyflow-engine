@@ -127,7 +127,12 @@ class FccFullHeaderStaticTests(unittest.TestCase):
             self.assertIn("if (col%useit) return", source)
             self.assertIn("if (len_trim(var) == 0) return", source)
             self.assertIn("'ignore', 'not_numeric', 'none'", source)
-            self.assertIn("'agc', 'rssi'", source)
+            #> `agc` and `rssi` were on this list and must not go back on it:
+            #> excluding them kept the very columns CecSignalColumnFor and
+            #> SetLicorDiagnostics go looking for out of UserCol. Pinned in
+            #> test_signal_strength_records_static.py, and asserted here too
+            #> because this is the check that read as approving of them.
+            self.assertNotIn("'agc', 'rssi'", source)
             self.assertIn(marker, source)
 
         define_vars = read("src/src_rp/define_vars.f90")

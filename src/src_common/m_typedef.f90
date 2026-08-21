@@ -76,6 +76,13 @@ module m_typedef
     integer, parameter :: MaxNumCellCols = MaxNumInstruments * 4
     integer, parameter :: MaxNumDiagCols = MaxNumInstruments * 2
 
+    !> Analyser signal strength - AGC or RSSI, the two spellings LI-COR uses -
+    !> two per instrument, on the same reasoning as the diagnostics. No
+    !> analyser reports both, so one per instrument would do; two leaves room
+    !> for a site that records the raw and the derived one separately, which is
+    !> the same allowance the diagnostics get.
+    integer, parameter :: MaxNumAgcCols = MaxNumInstruments * 2
+
     !> Cell measurements per instrument: cell_t, int_t_1, int_t_2, int_p.
     !> One set each, because a site with two analysers has two cells; a single
     !> set meant the second instrument's record silently overwrote the first.
@@ -803,11 +810,21 @@ module m_typedef
         integer :: gas_num
         integer :: cell_num
         integer :: diag_num
+        integer :: agc_num
         integer :: cec_num
         type(CECPairType) :: cec_pair(MaxNumCecPairs)
         type(GasRecordType)  :: gas(MaxNumGases)
         type(MeasRecordType) :: cell(MaxNumCellCols)
         type(MeasRecordType) :: diag(MaxNumDiagCols)
+        !> Signal-strength columns, one record per declared AGC or RSSI column.
+        !>
+        !> These used to have no representation in the project file at all: a
+        !> column was a signal strength if its metadata variable was spelled
+        !> exactly `AGC` or `RSSI`, and which analyser it belonged to was
+        !> inferred. A record says both, so the conditional eddy covariance
+        !> screen can find the diagnostic of the gas's OWN analyser and a
+        !> lower-case spelling from another tool still reads.
+        type(MeasRecordType) :: agc(MaxNumAgcCols)
     end type EddyFlowProjType
 
     !> CEC component status values.

@@ -190,9 +190,9 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
     !> instrument, so only a true duplicate collides. Gas records cannot
     !> collide at all: their slot is the record index.
     do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
-        if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%diag(i)%col)) cycle
+        if (.not. RecordIsLive(LocCol, EddyFlowProj%diag(i))) cycle
         do j = i + 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
-            if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%diag(j)%col)) cycle
+            if (.not. RecordIsLive(LocCol, EddyFlowProj%diag(j))) cycle
             if (trim(adjustl(EddyFlowProj%diag(i)%var)) /= &
                 trim(adjustl(EddyFlowProj%diag(j)%var))) cycle
             passed(1) = .false.
@@ -203,9 +203,9 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
     end do
 
     do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
-        if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%cell(i)%col)) cycle
+        if (.not. RecordIsLive(LocCol, EddyFlowProj%cell(i))) cycle
         do j = i + 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
-            if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%cell(j)%col)) cycle
+            if (.not. RecordIsLive(LocCol, EddyFlowProj%cell(j))) cycle
             if (trim(adjustl(EddyFlowProj%cell(i)%var)) /= &
                 trim(adjustl(EddyFlowProj%cell(j)%var))) cycle
             !> Same quantity on two analysers is the design, not a duplicate.
@@ -220,28 +220,27 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
 
 contains
 
-!> Whether a record's column is one the run will actually read.
+!> Whether a record is one the run will actually read.
 !>
-!> Mirrors ColumnIsSelectable in DefineUsedVariables: a column the metadata
-!> declares `ignore` or `not_numeric` is dropped at import, so a record naming
-!> one selects nothing and cannot be in competition with anything.
-logical function RecordColumnIsLive(Cols, col_num)
+!> Two ways it is not. The column may be one the metadata declares `ignore` or
+!> `not_numeric`, which is dropped at import. Or the column may have been
+!> re-declared since the record was written, so the record now names a column
+!> that measures something else - which is what an edit in the Raw File
+!> Description leaves behind, and it is no more in competition for the slot
+!> than an ignored column is. RecordNamesColumn decides both.
+!>
+!> The record, not just its column number, because the second test needs to
+!> know what the record claims the column is.
+logical function RecordIsLive(Cols, rec)
     type(ColType), intent(in) :: Cols(MaxNumCol)
-    integer, intent(in) :: col_num
-    character(32) :: var
+    type(MeasRecordType), intent(in) :: rec
+    logical, external :: RecordNamesColumn
 
-    RecordColumnIsLive = .false.
-    if (col_num < 1 .or. col_num > MaxNumCol) return
+    RecordIsLive = .false.
+    if (rec%col < 1 .or. rec%col > MaxNumCol) return
 
-    var = Cols(col_num)%var
-    call lowercase(var)
-    select case (trim(adjustl(var)))
-        case ('ignore', 'not_numeric')
-            return
-        case default
-            RecordColumnIsLive = .true.
-    end select
-end function RecordColumnIsLive
+    RecordIsLive = RecordNamesColumn(Cols(rec%col)%var, rec%var)
+end function RecordIsLive
 end subroutine MetadataFileValidation
 
 !***************************************************************************

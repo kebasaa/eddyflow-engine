@@ -511,6 +511,7 @@ subroutine ReadMeasurementRecords()
     EddyFlowProj%gas_num  = 0
     EddyFlowProj%cell_num = 0
     EddyFlowProj%diag_num = 0
+    EddyFlowProj%agc_num  = 0
 
     !> Whether the file states a gas count at all, which is a different
     !> question from whether that count is zero. See gas_num_stated.
@@ -522,12 +523,19 @@ subroutine ReadMeasurementRecords()
         EddyFlowProj%cell_num = nint(EPPrjNTags(cellNumTag)%value)
     if (EPPrjNTagFound(diagNumTag)) &
         EddyFlowProj%diag_num = nint(EPPrjNTags(diagNumTag)%value)
+    !> An absent agc_num is not "no signal strength": it is a project written
+    !> before these records existed, and CecSignalColumnFor falls back to
+    !> matching a column named AGC or RSSI by name, which is all such a file
+    !> has ever had.
+    if (EPPrjNTagFound(agcNumTag)) &
+        EddyFlowProj%agc_num = nint(EPPrjNTags(agcNumTag)%value)
 
     !> Clamp to what we can hold. The GUI enforces the same limits, so this
     !> only bites on a hand-edited file, but a silent overrun would be worse.
     EddyFlowProj%gas_num  = min(max(EddyFlowProj%gas_num,  0), MaxNumGases)
     EddyFlowProj%cell_num = min(max(EddyFlowProj%cell_num, 0), MaxNumCellCols)
     EddyFlowProj%diag_num = min(max(EddyFlowProj%diag_num, 0), MaxNumDiagCols)
+    EddyFlowProj%agc_num  = min(max(EddyFlowProj%agc_num,  0), MaxNumAgcCols)
 
     do i = 1, MaxNumGases
         EddyFlowProj%gas(i) = GasRecordType('none', 'none', nint(error), 0, 0, &
@@ -622,6 +630,21 @@ subroutine ReadMeasurementRecords()
 
         b = diagRecOriginN + (i - 1) * diagRecLeapN
         if (EPPrjNTagFound(b)) EddyFlowProj%diag(i)%col = nint(EPPrjNTags(b)%value)
+    end do
+
+    !> Signal-strength columns.
+    do i = 1, MaxNumAgcCols
+        EddyFlowProj%agc(i) = MeasRecordType('none', 'none', nint(error))
+        if (i > EddyFlowProj%agc_num) cycle
+
+        b = agcRecOriginC + (i - 1) * agcRecLeapC
+        if (EPPrjCTagFound(b))     EddyFlowProj%agc(i)%var = &
+            trim(adjustl(EPPrjCTags(b)%value))
+        if (EPPrjCTagFound(b + 1)) EddyFlowProj%agc(i)%instr = &
+            trim(adjustl(EPPrjCTags(b + 1)%value))
+
+        b = agcRecOriginN + (i - 1) * agcRecLeapN
+        if (EPPrjNTagFound(b)) EddyFlowProj%agc(i)%col = nint(EPPrjNTags(b)%value)
     end do
 
     !> After the gas loop, because a pairing names gas records and there is no

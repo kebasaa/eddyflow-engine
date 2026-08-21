@@ -74,6 +74,11 @@ CELL_NUMERIC = ["col"]
 CELL_TEXT = ["var", "instr"]
 DIAG_NUMERIC = ["col"]
 DIAG_TEXT = ["var", "instr"]
+#: One analyser signal-strength column: `agc` or `rssi`, and the analyser it
+#: belongs to. Same shape as a diagnostic record, and appended AFTER the cec
+#: block so no existing origin moves.
+AGC_NUMERIC = ["col"]
+AGC_TEXT = ["var", "instr"]
 
 # Per-gas processing settings, replacing the single *_gas4 key of each family.
 #> Append only. Every name here is a slot at a fixed offset from the record
@@ -182,12 +187,14 @@ def limits():
         "gases": const("MaxNumGases"),
         "cells": derived("MaxNumCellCols", "MaxNumInstruments"),
         "diags": derived("MaxNumDiagCols", "MaxNumInstruments"),
+        "agcs": derived("MaxNumAgcCols", "MaxNumInstruments"),
     }
 
 
 def appended(marker, lim):
     """Labels to append for a block, in order."""
     g, c, d = lim["gases"], lim["cells"], lim["diags"]
+    a = lim["agcs"]
     out = []
     if marker == "EPPrjNTags":
         out += PROJECT_COUNTS
@@ -196,11 +203,14 @@ def appended(marker, lim):
         out += [f"diag_{i}_{s}" for i in range(1, d + 1) for s in DIAG_NUMERIC]
         out += ["cec_num"]
         out += [f"cec_{i}_{s}" for i in range(1, CEC_PAIRS + 1) for s in CEC_NUMERIC]
+        out += ["agc_num"]
+        out += [f"agc_{i}_{s}" for i in range(1, a + 1) for s in AGC_NUMERIC]
     elif marker == "EPPrjCTags":
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_TEXT]
         out += [f"cell_{i}_{s}" for i in range(1, c + 1) for s in CELL_TEXT]
         out += [f"diag_{i}_{s}" for i in range(1, d + 1) for s in DIAG_TEXT]
         out += [f"cec_{i}_{s}" for i in range(1, CEC_PAIRS + 1) for s in CEC_TEXT]
+        out += [f"agc_{i}_{s}" for i in range(1, a + 1) for s in AGC_TEXT]
     elif marker == "RP.SNTags":
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in RP_GAS_NUMERIC]
     elif marker == "RP.SCTags":
@@ -366,7 +376,7 @@ def process(path, table, marker, size_param, lim, check):
     # Drop any previously appended record slots, then re-append. Without this
     # the generator would not be idempotent: a second run would stack another
     # full set of records on top of the first.
-    record = re.compile(r"^(gas|cell|diag|cec)_\d+_|^(gas|cell|diag|cec)_num$")
+    record = re.compile(r"^(gas|cell|diag|cec|agc)_\d+_|^(gas|cell|diag|cec|agc)_num$")
     kept = {i: l for i, l in entries.items() if not record.match(l)}
 
     # Retired tags keep their slot and lose their label.
@@ -451,6 +461,8 @@ def origins_block(origins, lim):
     L.append(f"    integer, parameter :: rpGasLeapC    = {len(RP_GAS_TEXT)}")
     L.append(f"    integer, parameter :: cecRecLeapN   = {len(CEC_NUMERIC)}")
     L.append(f"    integer, parameter :: cecRecLeapC   = {len(CEC_TEXT)}")
+    L.append(f"    integer, parameter :: agcRecLeapN   = {len(AGC_NUMERIC)}")
+    L.append(f"    integer, parameter :: agcRecLeapC   = {len(AGC_TEXT)}")
     L.append(f"    integer, parameter :: fccGasLeapN   = {len(FCC_GAS_NUMERIC)}")
     L.append(f"    integer, parameter :: fccGasLeapC   = {len(FCC_GAS_TEXT)}")
     return L
@@ -482,20 +494,25 @@ def main():
             d = lim["diags"]
             diag_n = base + 3 + g * len(GAS_NUMERIC) + c * len(CELL_NUMERIC)
             cec_num_n = diag_n + d * len(DIAG_NUMERIC)
+            agc_num_n = cec_num_n + 1 + CEC_PAIRS * len(CEC_NUMERIC)
             origins += [("gasNumTag", base), ("cellNumTag", base + 1),
                         ("diagNumTag", base + 2),
                         ("gasRecOriginN", base + 3),
                         ("cellRecOriginN", base + 3 + g * len(GAS_NUMERIC)),
                         ("diagRecOriginN", diag_n),
                         ("cecNumTag", cec_num_n),
-                        ("cecRecOriginN", cec_num_n + 1)]
+                        ("cecRecOriginN", cec_num_n + 1),
+                        ("agcNumTag", agc_num_n),
+                        ("agcRecOriginN", agc_num_n + 1)]
         elif marker == "EPPrjCTags":
             d = lim["diags"]
             diag_c = base + g * len(GAS_TEXT) + c * len(CELL_TEXT)
+            cec_c = diag_c + d * len(DIAG_TEXT)
             origins += [("gasRecOriginC", base),
                         ("cellRecOriginC", base + g * len(GAS_TEXT)),
                         ("diagRecOriginC", diag_c),
-                        ("cecRecOriginC", diag_c + d * len(DIAG_TEXT))]
+                        ("cecRecOriginC", cec_c),
+                        ("agcRecOriginC", cec_c + CEC_PAIRS * len(CEC_TEXT))]
         elif marker == "RP.SNTags":
             origins.append(("rpGasOriginN", base))
             origins.append(("rpInstrMaxLackN", INSTR_LACK_ORIGIN))

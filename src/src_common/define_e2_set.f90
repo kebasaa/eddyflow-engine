@@ -388,6 +388,7 @@ subroutine ApplyCellDiagRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, 
     real(kind = dbl), intent(inout) :: E2Set(e2nrow, e2ncol)
     real(kind = dbl), intent(inout) :: DiagSet(dnrow, dncol)
     integer :: i, slot, src, offset, k
+    logical, external :: RecordNamesColumn
 
     if (EddyFlowProj%cell_num > 0) then
         do slot = firstCell, lastCell
@@ -397,6 +398,8 @@ subroutine ApplyCellDiagRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, 
         do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
             src = LocColByOrigCol(LocCol, ncol, EddyFlowProj%cell(i)%col)
             if (src <= 0) cycle
+            if (.not. RecordNamesColumn(LocCol(src)%var, &
+                EddyFlowProj%cell(i)%var)) cycle
             select case (trim(EddyFlowProj%cell(i)%var))
                 case ('cell_t');  offset = 0
                 case ('int_t_1'); offset = 1
@@ -427,11 +430,25 @@ subroutine ApplyCellDiagRecords(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, 
         do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
             src = LocColByOrigCol(LocCol, ncol, EddyFlowProj%diag(i)%col)
             if (src <= 0) cycle
+            !> A record left behind by an edit names a column that measures
+            !> something else now. It is inert, here as in DefineUsedVariables
+            !> and MetadataFileValidation - the column survives this far as a
+            !> custom output column, so being reachable is not the same as
+            !> being the diagnostic.
+            if (.not. RecordNamesColumn(LocCol(src)%var, &
+                EddyFlowProj%diag(i)%var)) cycle
+            !> Both spellings of the anemometer record. The interface writes
+            !> the slug `diag_anem`, which is what ApplyDiagnosticRecordColumns
+            !> and DefineUsedVariables already accept - this one took only
+            !> `anemometer_diagnostic`, so on every project carrying diagnostic
+            !> records it cleared DiagSet(:, diagAnem) above and then cycled
+            !> past the record that would have refilled it. The flags were
+            !> read, the presence flag was set, and the data was gone.
             select case (trim(EddyFlowProj%diag(i)%var))
                 case ('diag_72'); slot = diag72
                 case ('diag_75'); slot = diag75
                 case ('diag_77'); slot = diag77
-                case ('anemometer_diagnostic'); slot = diagAnem
+                case ('diag_anem', 'anemometer_diagnostic'); slot = diagAnem
                 case default;     cycle
             end select
             DiagSet(1:dnrow, slot) = Raw(1:dnrow, src)

@@ -126,17 +126,19 @@ class RecordsCompetingForOneSlotAreRefused(unittest.TestCase):
     def test_the_check_exists_and_has_its_own_flag(self):
         source = read(VALIDATION)
         self.assertIn("passed(27) = .false.", source)
-        self.assertIn("logical function RecordColumnIsLive", source)
+        self.assertIn("logical function RecordIsLive", source)
 
     def test_inert_records_do_not_count(self):
         """A record on an ignored column is already inert.
 
         Counting it would refuse the very projects the ignore handling exists to
-        keep running.
+        keep running. So is a record whose column has since been re-declared as
+        something else - see test_signal_strength_records_static.py, which is
+        the case that made that matter.
         """
         source = read(VALIDATION)
         self.assertIn(
-            "if (.not. RecordColumnIsLive(LocCol, EddyFlowProj%diag(i)%col)) cycle",
+            "if (.not. RecordIsLive(LocCol, EddyFlowProj%diag(i))) cycle",
             source,
         )
 

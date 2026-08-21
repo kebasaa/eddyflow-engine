@@ -798,6 +798,8 @@ read_timelag_opt_file.o: \
 	read_timelag_opt_file.f90 \
 	m_rp_global_var.o \
 	pwb_timelag_handle.o
+record_names_column.o: \
+	record_names_column.f90
 rename_tmp_files_common.o: \
 	rename_tmp_files_common.f90 \
 	m_common_global_var.o

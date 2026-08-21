@@ -1620,6 +1620,7 @@ integer function CecSignalColumnFor(gas_slot)
     implicit none
     integer, intent(in) :: gas_slot
 
+    integer :: i
     integer :: j
 
     CecSignalColumnFor = 0
@@ -1627,6 +1628,27 @@ integer function CecSignalColumnFor(gas_slot)
     if (.not. allocated(UserCol)) return
     if (E2Col(gas_slot)%instr%slot <= 0) return
 
+    !> The project's own records first. They name the column, so the answer
+    !> does not turn on how the metadata spelled the variable - the name match
+    !> below is case-sensitive, and a file written by another tool saying `agc`
+    !> went unscreened with nothing said.
+    !>
+    !> The instrument is taken from the column's metadata rather than from the
+    !> record's `instr` string. Both say the same thing when the interface
+    !> wrote the file, and the metadata is the authority on which analyser a
+    !> column came from; comparing id spellings is how this went wrong before.
+    do i = 1, min(EddyFlowProj%agc_num, MaxNumAgcCols)
+        if (EddyFlowProj%agc(i)%col <= 0) cycle
+        do j = 1, NumUserVar
+            if (UserCol(j)%orig_col /= EddyFlowProj%agc(i)%col) cycle
+            if (UserCol(j)%instr%slot /= E2Col(gas_slot)%instr%slot) cycle
+            CecSignalColumnFor = j
+            return
+        end do
+    end do
+
+    !> A project written before the records existed says nothing but the
+    !> variable name, so that is what is left to match on.
     do j = 1, NumUserVar
         if (UserCol(j)%var /= 'AGC' .and. UserCol(j)%var /= 'RSSI') cycle
         if (UserCol(j)%instr%slot /= E2Col(gas_slot)%instr%slot) cycle
@@ -1661,15 +1683,29 @@ logical function CecSignalIsRssi(gas_slot, user_col)
 
     logical, external :: CompareSwVer
     type(SwVerType), external :: SwVerFromString
+    integer :: i
+    character(32) :: name
 
     CecSignalIsRssi = .false.
     if (.not. allocated(UserCol)) return
     if (user_col < 1 .or. user_col > NumUserVar) return
-    if (UserCol(user_col)%var == 'RSSI') then
+
+    !> Which of the two this column is, from the record that names it if there
+    !> is one and from the variable name otherwise. Lower-cased either way, so
+    !> the spelling in the file decides nothing.
+    name = UserCol(user_col)%var
+    do i = 1, min(EddyFlowProj%agc_num, MaxNumAgcCols)
+        if (EddyFlowProj%agc(i)%col /= UserCol(user_col)%orig_col) cycle
+        name = EddyFlowProj%agc(i)%var
+        exit
+    end do
+    call lowercase(name)
+
+    if (trim(adjustl(name)) == 'rssi') then
         CecSignalIsRssi = .true.
         return
     end if
-    if (UserCol(user_col)%var /= 'AGC') return
+    if (trim(adjustl(name)) /= 'agc') return
     if (gas_slot < firstGas .or. gas_slot > lastGas) return
 
     CecSignalIsRssi = CompareSwVer(E2Col(gas_slot)%instr%sw_ver, &

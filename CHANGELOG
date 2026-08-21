@@ -1,6 +1,50 @@
 8.0.0 (2026-08-20)
 
     Engine:
+	- Fix: A column named AGC or RSSI reaches the engine at all. IsCustomOutputColumn
+	               listed `agc` and `rssi` beside `ignore` and `flag_1`, so such a column
+	               was dropped before it could become a user column - and the two loops
+	               that go looking for one, CecSignalColumnFor and SetLicorDiagnostics,
+	               search exactly that list. Both were dead code: the conditional eddy
+	               covariance signal-strength screen ran on nothing whatever the project
+	               asked for, and INST_LI7700_RSSI was always the error value. Neither
+	               said so. The exclusion is gone from all three copies of the predicate,
+	               each of which now says why it must not come back.
+	- New feature: agc_num and agc_<i>_var / _instr / _col in the project file name the
+	               signal-strength columns and the analyser each belongs to, on the same
+	               shape as the cell and diagnostic records. The screen resolves the
+	               column through them first, and reads the record's var lower-cased, so
+	               a metadata file spelling the variable `agc` is read the way it was
+	               meant - the name comparison this replaces was case-sensitive and
+	               failed silently. A project with no agc_num predates the records and
+	               still falls back to matching the variable name, so nothing in the
+	               field changes behaviour by being left alone. The tags are appended
+	               after the cec block, so no existing record origin moves.
+	- Fix: A measurement record whose column has since been re-declared is inert rather
+	               than honoured. A diagnostic column re-declared as something else left
+	               its record behind, and the record was still believed: where it
+	               collided with a real diagnostic on the same analyser the run was
+	               refused outright - "Two measurement records describe the same quantity
+	               on the same instrument" - over a record the interface does not show
+	               and the user cannot remove, and where it did not collide it won the
+	               slot instead and the engine decoded whatever the column now held as a
+	               diagnostic bitfield. RecordNamesColumn compares what the record claims
+	               against what the metadata declares, case-insensitively, and the three
+	               places that consume a record all ask it. The `ignore` / `not_numeric`
+	               exemption that was already there is the same rule, generalised.
+	- Fix: The anemometer diagnostic survives a project that carries diagnostic records.
+	               ApplyCellDiagRecords accepted only `anemometer_diagnostic` while the
+	               interface writes the slug `diag_anem`, so on any project with
+	               diag_num > 0 it cleared the anemometer slot and then cycled past the
+	               record that would have refilled it. The flags were read and the
+	               presence flag was set, and the data was gone. Both spellings are
+	               accepted, as they already were in ApplyDiagnosticRecordColumns and
+	               DefineUsedVariables.
+	- Fix: Each analyser gets its own signal-strength column in the essentials. Every
+	               branch of the loop in SetLicorDiagnostics ended it, not only the one
+	               that matched its own analyser, so the first AGC or RSSI column of any
+	               kind stopped the search: a site with an LI-7500 and an LI-7700 filled
+	               one of AGC75 / RSSI77 and left the other at its error value.
 	- Fix: An essentials file from an older version is refused with the message that
 	               says so, rather than with "no valid data records found". The check on
 	               the header ran after InitExVars, which parses the whole file by field

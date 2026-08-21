@@ -488,8 +488,8 @@ module m_common_global_var
     real(kind = dbl) :: UnPar(2) = error
 
     !> tags of the [Project] group of processing.eddypro file
-    integer, parameter :: Npn = 492
-    integer, parameter :: Npc = 282
+    integer, parameter :: Npn = 509
+    integer, parameter :: Npc = 314
     !> BEGIN GENERATED ProjectRecordOrigins - edit gen_project_tags.py, not this block
     !> Slot origins for the appended gas/cell/diag records. The value
     !> is the index of the FIRST field of record 1, so record i field f
@@ -502,10 +502,13 @@ module m_common_global_var
     integer, parameter :: diagRecOriginN = 452
     integer, parameter :: cecNumTag = 468
     integer, parameter :: cecRecOriginN = 469
+    integer, parameter :: agcNumTag = 493
+    integer, parameter :: agcRecOriginN = 494
     integer, parameter :: gasRecOriginC = 51
     integer, parameter :: cellRecOriginC = 179
     integer, parameter :: diagRecOriginC = 243
     integer, parameter :: cecRecOriginC = 275
+    integer, parameter :: agcRecOriginC = 283
     integer, parameter :: rpGasOriginN = 425
     integer, parameter :: rpInstrMaxLackN = 357
     integer, parameter :: rpGasOriginC = 102
@@ -521,6 +524,8 @@ module m_common_global_var
     integer, parameter :: rpGasLeapC    = 3
     integer, parameter :: cecRecLeapN   = 3
     integer, parameter :: cecRecLeapC   = 1
+    integer, parameter :: agcRecLeapN   = 1
+    integer, parameter :: agcRecLeapC   = 2
     integer, parameter :: fccGasLeapN   = 6
     integer, parameter :: fccGasLeapC   = 1
     !> END GENERATED ProjectRecordOrigins
@@ -1020,7 +1025,24 @@ module m_common_global_var
          EPPrjNTags(489)%Label / 'cec_7_h2o' / &
          EPPrjNTags(490)%Label / 'cec_8_meth' / &
          EPPrjNTags(491)%Label / 'cec_8_co2' / &
-         EPPrjNTags(492)%Label / 'cec_8_h2o' /
+         EPPrjNTags(492)%Label / 'cec_8_h2o' / &
+         EPPrjNTags(493)%Label / 'agc_num' / &
+         EPPrjNTags(494)%Label / 'agc_1_col' / &
+         EPPrjNTags(495)%Label / 'agc_2_col' / &
+         EPPrjNTags(496)%Label / 'agc_3_col' / &
+         EPPrjNTags(497)%Label / 'agc_4_col' / &
+         EPPrjNTags(498)%Label / 'agc_5_col' / &
+         EPPrjNTags(499)%Label / 'agc_6_col' / &
+         EPPrjNTags(500)%Label / 'agc_7_col' / &
+         EPPrjNTags(501)%Label / 'agc_8_col' / &
+         EPPrjNTags(502)%Label / 'agc_9_col' / &
+         EPPrjNTags(503)%Label / 'agc_10_col' / &
+         EPPrjNTags(504)%Label / 'agc_11_col' / &
+         EPPrjNTags(505)%Label / 'agc_12_col' / &
+         EPPrjNTags(506)%Label / 'agc_13_col' / &
+         EPPrjNTags(507)%Label / 'agc_14_col' / &
+         EPPrjNTags(508)%Label / 'agc_15_col' / &
+         EPPrjNTags(509)%Label / 'agc_16_col' /
     !> END GENERATED EPPrjNTags
 
     !> BEGIN GENERATED EPPrjCTags - edit gen_project_tags.py, not this block
@@ -1303,7 +1325,39 @@ module m_common_global_var
          EPPrjCTags(279)%Label / 'cec_5_extra' / &
          EPPrjCTags(280)%Label / 'cec_6_extra' / &
          EPPrjCTags(281)%Label / 'cec_7_extra' / &
-         EPPrjCTags(282)%Label / 'cec_8_extra' /
+         EPPrjCTags(282)%Label / 'cec_8_extra' / &
+         EPPrjCTags(283)%Label / 'agc_1_var' / &
+         EPPrjCTags(284)%Label / 'agc_1_instr' / &
+         EPPrjCTags(285)%Label / 'agc_2_var' / &
+         EPPrjCTags(286)%Label / 'agc_2_instr' / &
+         EPPrjCTags(287)%Label / 'agc_3_var' / &
+         EPPrjCTags(288)%Label / 'agc_3_instr' / &
+         EPPrjCTags(289)%Label / 'agc_4_var' / &
+         EPPrjCTags(290)%Label / 'agc_4_instr' / &
+         EPPrjCTags(291)%Label / 'agc_5_var' / &
+         EPPrjCTags(292)%Label / 'agc_5_instr' / &
+         EPPrjCTags(293)%Label / 'agc_6_var' / &
+         EPPrjCTags(294)%Label / 'agc_6_instr' / &
+         EPPrjCTags(295)%Label / 'agc_7_var' / &
+         EPPrjCTags(296)%Label / 'agc_7_instr' / &
+         EPPrjCTags(297)%Label / 'agc_8_var' / &
+         EPPrjCTags(298)%Label / 'agc_8_instr' / &
+         EPPrjCTags(299)%Label / 'agc_9_var' / &
+         EPPrjCTags(300)%Label / 'agc_9_instr' / &
+         EPPrjCTags(301)%Label / 'agc_10_var' / &
+         EPPrjCTags(302)%Label / 'agc_10_instr' / &
+         EPPrjCTags(303)%Label / 'agc_11_var' / &
+         EPPrjCTags(304)%Label / 'agc_11_instr' / &
+         EPPrjCTags(305)%Label / 'agc_12_var' / &
+         EPPrjCTags(306)%Label / 'agc_12_instr' / &
+         EPPrjCTags(307)%Label / 'agc_13_var' / &
+         EPPrjCTags(308)%Label / 'agc_13_instr' / &
+         EPPrjCTags(309)%Label / 'agc_14_var' / &
+         EPPrjCTags(310)%Label / 'agc_14_instr' / &
+         EPPrjCTags(311)%Label / 'agc_15_var' / &
+         EPPrjCTags(312)%Label / 'agc_15_instr' / &
+         EPPrjCTags(313)%Label / 'agc_16_var' / &
+         EPPrjCTags(314)%Label / 'agc_16_instr' /
     !> END GENERATED EPPrjCTags
 
     !> tags of the metadata file created by GHG software

@@ -90,6 +90,12 @@ subroutine DefineUsedVariables(LocCol)
         end do
         do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
             if (.not. ColumnIsSelectable(EddyFlowProj%diag(i)%col)) cycle
+            !> And the column has to still be the diagnostic the record says it
+            !> is. Re-declare a diagnostic column as something else and the
+            !> record naming it survives the edit; honoured, it took the slot
+            !> from the column that is one, and the engine decoded whatever the
+            !> column now holds as a diagnostic bitfield.
+            if (.not. RecordStillNamesIt(EddyFlowProj%diag(i))) cycle
             select case (trim(adjustl(EddyFlowProj%diag(i)%var)))
                 case ('diag_72')
                     EddyFlowProj%Col(E2NumVar + diag72)   = EddyFlowProj%diag(i)%col
@@ -131,13 +137,19 @@ subroutine DefineUsedVariables(LocCol)
         if (ColumnIsSelectable(EddyFlowProj%gas(i)%col)) &
             LocCol(EddyFlowProj%gas(i)%col)%useit = .true.
     end do
+    !> Nested rather than one .and. chain: gfortran warns that a function in a
+    !> compound condition might not be evaluated.
     do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
-        if (ColumnIsSelectable(EddyFlowProj%cell(i)%col)) &
-            LocCol(EddyFlowProj%cell(i)%col)%useit = .true.
+        if (ColumnIsSelectable(EddyFlowProj%cell(i)%col)) then
+            if (RecordStillNamesIt(EddyFlowProj%cell(i))) &
+                LocCol(EddyFlowProj%cell(i)%col)%useit = .true.
+        end if
     end do
     do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
-        if (ColumnIsSelectable(EddyFlowProj%diag(i)%col)) &
-            LocCol(EddyFlowProj%diag(i)%col)%useit = .true.
+        if (ColumnIsSelectable(EddyFlowProj%diag(i)%col)) then
+            if (RecordStillNamesIt(EddyFlowProj%diag(i))) &
+                LocCol(EddyFlowProj%diag(i)%col)%useit = .true.
+        end if
     end do
 
     !> The fourth gas's column used to be renamed to 'n2o' here so the rest of
@@ -270,6 +282,22 @@ logical function ColumnIsSelectable(col_num)
     end select
 end function ColumnIsSelectable
 
+!> Whether \a rec still describes the column it names.
+!>
+!> Reads LocCol from the host, like ColumnIsSelectable above and for the same
+!> reason: there is one array in play and no chance of asking about a different
+!> one. The bounds check is ColumnIsSelectable's, repeated here so this can be
+!> called on its own.
+logical function RecordStillNamesIt(rec)
+    type(MeasRecordType), intent(in) :: rec
+    logical, external :: RecordNamesColumn
+
+    RecordStillNamesIt = .false.
+    if (rec%col < 1 .or. rec%col > MaxNumCol) return
+
+    RecordStillNamesIt = RecordNamesColumn(LocCol(rec%col)%var, rec%var)
+end function RecordStillNamesIt
+
 logical function IsCustomOutputColumn(col)
     type(ColType), intent(in) :: col
     character(32) :: var
@@ -280,9 +308,16 @@ logical function IsCustomOutputColumn(col)
     var = col%var
     call lowercase(var)
     if (len_trim(var) == 0) return
+    !> `agc` and `rssi` are deliberately NOT excluded here. They were, and
+    !> that made two loops that hunt for them dead code: CecSignalColumnFor
+    !> (gas_slot_resolution.f90) and SetLicorDiagnostics both look for
+    !> UserCol(j)%var == 'AGC'/'RSSI', and a column excluded here never
+    !> reaches UserCol at all. The conditional eddy covariance screen ran on
+    !> nothing and RSSI77 was always the error value, with no message either
+    !> way. A signal-strength column is ordinary custom data; the records say
+    !> which analyser it belongs to.
     select case (trim(var))
-        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
-              'agc', 'rssi')
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2')
             return
         case default
             IsCustomOutputColumn = .true.
