@@ -39,13 +39,30 @@ subroutine ReportImportedSpectra(nbins)
     !> In/out variables
     integer, intent(in) :: nbins
     !> Local variables
-    integer :: nh2o
+    integer :: gas
+    integer :: cnt
+    character(16) :: name
+    character(16), external :: GasName
+    logical, external :: GasSlotIsWater
 
-    write(*, '(a)') '  Imported gas binned spectra:'
-    nh2o = sum(MeanBinSpec(nbins/2, RH10:RH90)%cnt(h2o))
-    write(*, '(a, i5)')  '   CO2:   ', MeanBinSpec(nbins/2, 1)%cnt(co2)
-    write(*, '(a, i5)')  '   H2O:   ', nh2o
-    write(*, '(a, i5)')  '   CH4:   ', MeanBinSpec(nbins/2, 1)%cnt(ch4)
-    write(*, '(a, i5)')  '   Gas 4: ', MeanBinSpec(nbins/2, 1)%cnt(gas4)
-    write(*, '(a)') '  Done.'
+    call LogSay('  Imported gas binned spectra:')
+    !> One line per configured gas, named from its record. This used to be
+    !> four fixed lines labelled CO2/H2O/CH4/Gas 4, which on any project
+    !> whose records are ordered differently named the wrong species, and
+    !> which said nothing at all about gases past the fourth.
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        !> Water is binned by relative humidity class, everything else by
+        !> month - the same split SpectraSortingAndAveraging applies, so the
+        !> count has to be summed the same way or a hygrometer reads as zero.
+        if (GasSlotIsWater(gas)) then
+            cnt = sum(MeanBinSpec(nbins/2, RH10:RH90)%cnt(gas))
+        else
+            cnt = MeanBinSpec(nbins/2, 1)%cnt(gas)
+        end if
+        name = GasName(gas)
+        write(*, '(a, i5)') '   ' // trim(name) // ': ', cnt
+        write(ulog, '(a, i5)') '   ' // trim(name) // ': ', cnt
+    end do
+    call LogSay('  Done.')
 end subroutine ReportImportedSpectra

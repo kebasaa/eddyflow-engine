@@ -38,9 +38,15 @@ subroutine fisher(Set, nrow, ncol)
 
     write(*, '(a)', advance = 'no') &
         '  Computing correlation-matrix difference with/without repeated values..'
+    write(ulog, '(a)', advance = 'no') &
+        '  Computing correlation-matrix difference with/without repeated values..'
 
     nodup_set = Set
-    do ci = u, gas4
+    !> Every configured gas, here and in the two loops below: CorrDiff is
+    !> dimensioned (GHGNumVar, GHGNumVar) and the FLUXNET writer reads it for
+    !> every configured gas, so stopping at the fourth left the rest holding
+    !> whatever Essentials carried over rather than the error sentinel.
+    do ci = u, lastGas
         do rec = 2, nrow
             if (dabs(Set(rec, ci) - Set(rec-1, ci)) < 1d-6) &
                 nodup_set(rec, ci) = error
@@ -50,8 +56,8 @@ subroutine fisher(Set, nrow, ncol)
     call CorrelationMatrixNoError(Set, nrow, ncol, full_corr, error)
     call CorrelationMatrixNoError(nodup_set, nrow, ncol, nodup_corr, error)
 
-    do ci = u, gas4
-        do cj = u, gas4
+    do ci = u, lastGas
+        do cj = u, lastGas
             if (full_corr(ci,cj) /= error .and. nodup_corr(ci,cj) /= error) then
                 Essentials%CorrDiff(ci, cj) = dabs(full_corr(ci,cj) - nodup_corr(ci,cj))
             else
@@ -60,5 +66,5 @@ subroutine fisher(Set, nrow, ncol)
         end do
     end do
 
-    write(*, *) ' Done.'
+    call LogSayList(' Done.')
 end subroutine fisher

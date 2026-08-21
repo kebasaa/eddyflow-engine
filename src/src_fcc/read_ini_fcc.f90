@@ -41,6 +41,8 @@ subroutine ReadIniFCC(key)
 
     write(*,'(a)') ' Reading EddyFlow project file: ' &
                      // PrjPath(1:len_trim(PrjPath)) // '..'
+    write(ulog,'(a)') ' Reading EddyFlow project file: ' &
+                     // PrjPath(1:len_trim(PrjPath)) // '..'
 
     !> parse processing.eddypro file and store [Project] variables,
     !> common to all programs
@@ -60,7 +62,7 @@ subroutine ReadIniFCC(key)
     !> them in relevant variables
     call WriteVariablesFCC()
 
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine ReadIniFCC
 
 !***************************************************************************
@@ -79,12 +81,13 @@ subroutine WriteVariablesFCC()
     use m_fx_global_var
     implicit none
     !> local variables
-    integer :: i
-    integer :: j
     integer :: gas
-    integer :: skipped_classes
-    integer :: start
+    integer :: slot
+    integer :: month_class(12)
+    integer :: month_nclass
+    logical :: month_ok
     logical :: dirExists
+    logical, external :: GasSlotIsWater
 
 
     !> Spectra analysis time period
@@ -165,10 +168,15 @@ subroutine WriteVariablesFCC()
     if (EddyFlowProj%hf_meth == 'fratini_12') then
         inquire(file = Dir%full, exist=dirExists)
         if (.not. dirExists) then
-            call ExceptionHandler(88)
-            EddyFlowProj%hf_meth = 'moncrieff_97'
-            FCCsetup%SA%in_situ = .false.
-            FCCsetup%import_full_cospectra = .false.
+            !> Fratini needs measured full cospectra. Silently demoting to
+            !> Moncrieff produced a full set of fluxes under the wrong method's
+            !> name, which is what this used to do.
+            call AbortOnMissingPath('sa_full_spectra', Dir%full, &
+                'Correct the path to the full co-spectra directory, or choose ' &
+                // '"Full w/Ts cospectra files not available", which makes ' &
+                // 'EddyFlow write them during this run, or select an analytic ' &
+                // 'high-frequency correction (Moncrieff 1997, Massman 2000), ' &
+                // 'which needs no measured spectra.')
         end if
     end if
 
@@ -189,15 +197,16 @@ subroutine WriteVariablesFCC()
     if (FCCsetup%pass_thru_spectral_assessment) then
         inquire(file = Dir%binned, exist=dirExists)
         if (.not. dirExists) then
-            EddyFlowProj%out_avrg_cosp = .false.
-            EddyFlowProj%out_avrg_spec = .false.
-            FCCsetup%do_spectral_assessment = .false.
-            FCCsetup%pass_thru_spectral_assessment = .false.
-            if (FCCsetup%SA%in_situ) then
-                EddyFlowProj%hf_meth = 'moncrieff_97'
-                FCCsetup%SA%in_situ = .false.
-            end if
-            call ExceptionHandler(87)
+            !> The spectral assessment reads its binned (co)spectra from here.
+            !> Without them the assessment cannot run, and this used to answer
+            !> that by turning the in-situ method into Moncrieff and switching
+            !> off the ensemble outputs the project had asked for.
+            call AbortOnMissingPath('sa_bin_spectra', Dir%binned, &
+                'Correct the path to the binned co-spectra directory, or ' &
+                // 'select an analytic high-frequency correction (Moncrieff ' &
+                // '1997, Massman 2000), which needs no measured spectra. The ' &
+                // 'directory is written by a run with the binned spectra ' &
+                // 'output enabled, so an earlier run of this dataset supplies it.')
         end if
     end if
 
@@ -257,34 +266,60 @@ subroutine WriteVariablesFCC()
     FCCsetup%SA%min_smpl = idint(dble(SNTags(2)%value))
 
     !> Minimum and maximum frequencies for transfer functions regression
-    i = 3
-    do gas = co2, gas4
-        FCCsetup%SA%fmin(gas) = dble(SNTags(i)%value)
-        FCCsetup%SA%fmax(gas) = dble(SNTags(i+1)%value)
-        i = i + 2
+    !> Per-gas regression bounds, from the records. Zero for a gas the project
+    !> does not describe, as it was for gases past the fourth.
+    FCCsetup%SA%fmin = 0d0
+    FCCsetup%SA%fmax = 0d0
+
+    !> Per-gas records (offsets 0 and 1 from the record origin: sa_fmin,
+    !> sa_fmax, sa_hfn_fmin, ...).
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN)) &
+            FCCsetup%SA%fmin(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN)%value)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 1)) &
+            FCCsetup%SA%fmax(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 1)%value)
     end do
 
     !> Flux thresholds, used to include/exclude corresponding (co)spectra in
     !> ensemble averages and model fits. Also used to discriminate between
     !> direct method and model in spectral correction after Fratini et al. (2012).
+    !>
+    !> Not configured means not configured. Only slots co2/ch4/gas4 have
+    !> legacy keys, and only a gas with an sa_* record has an override, so
+    !> everything else must start at the sentinel: a threshold left at zero
+    !> would read as "accept every flux" for the minimum and "reject every
+    !> flux" for the maximum, and neither is a decision the project made.
+    FCCsetup%SA%min_un_gas = error
+    FCCsetup%SA%min_st_gas = error
+    FCCsetup%SA%max_gas    = error
     FCCsetup%SA%min_un_ustar = dble(SNTags(92)%value)
-    FCCsetup%SA%min_un_co2   = dble(SNTags(93)%value)
-    FCCsetup%SA%min_un_ch4   = dble(SNTags(94)%value)
-    FCCsetup%SA%min_un_gas4  = dble(SNTags(95)%value)
     FCCsetup%SA%min_un_LE    = dble(SNTags(96)%value)
     FCCsetup%SA%min_un_H     = dble(SNTags(97)%value)
     FCCsetup%SA%min_st_ustar = dble(SNTags(98)%value)
-    FCCsetup%SA%min_st_co2   = dble(SNTags(99)%value)
-    FCCsetup%SA%min_st_ch4   = dble(SNTags(100)%value)
-    FCCsetup%SA%min_st_gas4  = dble(SNTags(101)%value)
     FCCsetup%SA%min_st_LE    = dble(SNTags(102)%value)
     FCCsetup%SA%min_st_H     = dble(SNTags(103)%value)
     FCCsetup%SA%max_ustar    = dble(SNTags(104)%value)
-    FCCsetup%SA%max_co2      = dble(SNTags(105)%value)
-    FCCsetup%SA%max_ch4      = dble(SNTags(106)%value)
-    FCCsetup%SA%max_gas4     = dble(SNTags(107)%value)
     FCCsetup%SA%max_LE       = dble(SNTags(108)%value)
     FCCsetup%SA%max_H        = dble(SNTags(109)%value)
+
+    !> Per-gas thresholds, from the records. FCC record fields, in order from
+    !> fccGasOriginN: sa_fmin, sa_fmax, sa_hfn_fmin, sa_min_st, sa_min_un,
+    !> sa_max. The three flat sets this replaces named CO2, CH4 and the fourth
+    !> gas only - water is judged by LE - so record two keeps the `error`
+    !> default above, which is what it had before.
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 3)) &
+            FCCsetup%SA%min_st_gas(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 3)%value)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 4)) &
+            FCCsetup%SA%min_un_gas(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 4)%value)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 5)) &
+            FCCsetup%SA%max_gas(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 5)%value)
+    end do
 
     !> Whether to use results of Vickers and Mahrt tests to eliminate (co)spectra
     FCCsetup%SA%filter_cosp_by_vm_flags = SCTags(23)%value(1:1) == '1'
@@ -300,53 +335,60 @@ subroutine WriteVariablesFCC()
     if (SCTagFound(27)) FCCsetup%SA%automatic_config = SCTags(27)%value(1:1) == '1'
 
     !> Minimum frequency for high-frequency noise detection and elimination
-    FCCsetup%SA%hfn_fmin(co2)  = dble(SNTags(16)%value)
-    FCCsetup%SA%hfn_fmin(h2o)  = dble(SNTags(17)%value)
-    FCCsetup%SA%hfn_fmin(ch4)  = dble(SNTags(18)%value)
-    FCCsetup%SA%hfn_fmin(gas4) = dble(SNTags(19)%value)
+    FCCsetup%SA%hfn_fmin = 0d0
 
-    !> Assign each month the relevant CO2 class. Max number of groups is 12.
-    skipped_classes = 0
-    start = 19
-    do i = 1, MaxGasClasses
-        if (SNTags(start + 2*i - 1)%value > 0d0) then
-            do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(co2, j) = i
-            end do
-        else
-            skipped_classes = skipped_classes + 1
+    !> Per-gas records (offset 2: sa_hfn_fmin).
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)) &
+            FCCsetup%SA%hfn_fmin(firstGas + gas - 1) = &
+                dble(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 2)%value)
+    end do
+
+    !> Which months a gas pools before a transfer function is fitted.
+    !>
+    !> Cleared first, so "this gas has no group" is a fact rather than a bet on
+    !> the loader having zeroed .bss.
+    FCCsetup%SA%class  = 0
+    FCCsetup%SA%nclass = 0
+
+    !> A gas that says nothing gets one group spanning the calendar.
+    !>
+    !> Not "inherit the first record", which is what the three flat tables
+    !> forced: they were labelled for CO2, CH4 and the fourth gas, so a fifth
+    !> gas could only copy CO2's. That made a gas's spectral correction depend
+    !> on which gas the project happened to list first, and it had a case with
+    !> no answer at all - a project whose first record is water, which never
+    !> gets a table because water is classed by relative humidity, left every
+    !> trace gas at class 0 and silently falling back to the analytic model.
+    !>
+    !> One group over twelve months is what "the project said nothing about
+    !> seasons" means, and it is what every existing project declares.
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (GasSlotIsWater(gas)) cycle
+        FCCsetup%SA%class(gas, JAN:DEC) = 1
+        FCCsetup%SA%nclass(gas) = 1
+    end do
+
+    !> Per-gas records (the sole FCC text field: sa_months).
+    !>
+    !> A list the parser refuses is treated exactly as an absent key - the gas
+    !> keeps the default above - and reported. One malformed grouping must not
+    !> end a run that would otherwise produce every other gas correctly.
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        slot = firstGas + gas - 1
+        if (GasSlotIsWater(slot)) cycle
+        if (.not. SCTagFound(fccGasOriginC + (gas - 1) * fccGasLeapC)) cycle
+        call ParseMonthGrouping( &
+            SCTags(fccGasOriginC + (gas - 1) * fccGasLeapC)%value, &
+            month_class, month_nclass, month_ok)
+        if (.not. month_ok) then
+            call ExceptionHandler(102)
             cycle
         end if
+        FCCsetup%SA%class(slot, JAN:DEC) = month_class
+        FCCsetup%SA%nclass(slot) = month_nclass
     end do
-    FCCsetup%SA%nclass(co2) = 12 - skipped_classes
-    !> Assign each month the relevant CH4 class. Max number of groups is 12.
-    skipped_classes = 0
-    start = 19 + 24
-    do i = 1, MaxGasClasses
-        if (SNTags(start + 2*i - 1)%value > 0d0) then
-            do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(ch4, j) = i
-            end do
-        else
-            skipped_classes = skipped_classes + 1
-            cycle
-        end if
-    end do
-    FCCsetup%SA%nclass(ch4) = 12 - skipped_classes
-    !> Assign each month the relevant GAS4 class. Max number of groups is 12.
-    skipped_classes = 0
-    start = 19 + 48
-    do i = 1, MaxGasClasses
-        if (SNTags(start + 2*i - 1)%value > 0d0) then
-            do j = nint(SNTags(start + 2*i - 1)%value), nint(SNTags(start + 2*i)%value)
-            FCCsetup%SA%class(gas4, j) = i
-            end do
-        else
-            skipped_classes = skipped_classes + 1
-            cycle
-        end if
-    end do
-    FCCsetup%SA%nclass(gas4) = 12 - skipped_classes
 
     !> Whether to keep or delete parent fluxnet file
     FCCsetup%keep_parent = SCTags(26)%value(1:1) == '1'
@@ -357,6 +399,7 @@ subroutine WriteVariablesFCC()
     call AdjFilePath(AuxFile%ex, slash)
     call AdjFilePath(AuxFile%sa, slash)
     call InitializeGas4FullOutputUnitsFcc()
+
 end subroutine WriteVariablesFCC
 
 !***************************************************************************
@@ -367,33 +410,62 @@ subroutine InitializeGas4FullOutputUnitsFcc()
     use m_fx_global_var
     implicit none
     !> local variables
-    integer :: gas4_col
+    integer :: gas_col
+    integer :: gas, rec
     logical :: metadata_exists
+    logical :: metadata_read
     logical :: IniFileNotFound
-    character(32) :: gas4_unit
+    character(32) :: gas_unit
     type(ColType) :: MetadataCol(MaxNumCol)
     include '../src_common/interfaces_1.inc'
 
-    gas4_unit = 'ppm'
-
+    metadata_read = .false.
     if (AuxFile%metadata /= 'none') then
         inquire(file = AuxFile%metadata, exist = metadata_exists)
         if (metadata_exists) then
             call ReadMetadataFile(MetadataCol, AuxFile%metadata, IniFileNotFound, .false.)
-            gas4_col = EddyFlowProj%col(gas4)
-            if (.not. IniFileNotFound .and. gas4_col > 0 .and. gas4_col <= MaxNumCol) then
-                if (trim(adjustl(MetadataCol(gas4_col)%conversion_type)) /= 'none' &
-                    .and. len_trim(MetadataCol(gas4_col)%unit_out) > 0 &
-                    .and. trim(adjustl(MetadataCol(gas4_col)%unit_out)) /= 'none') then
-                    gas4_unit = MetadataCol(gas4_col)%unit_out
-                else
-                    gas4_unit = MetadataCol(gas4_col)%unit_in
-                end if
-            end if
+            metadata_read = .not. IniFileNotFound
         end if
     end if
 
-    call Gas4FullOutputUnits(gas4_unit, gas4_full_flux_sc, gas4_full_dens_sc, &
-        gas4_full_flux_label, gas4_full_conc_label, gas4_full_mixr_label, &
-        gas4_full_dens_label)
+    gas_full_flux_sc = 1d0
+    gas_full_dens_sc = 1d0
+    gas_full_flux_label = ''
+    gas_full_conc_label = ''
+    gas_full_mixr_label = ''
+    gas_full_dens_label = ''
+
+    !> Once per configured gas, not once for the fourth slot. Getting a unit
+    !> wrong does not corrupt the numbers - the label and the scale factor move
+    !> together - but the full output would silently switch basis.
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+
+        !> Water is on the mmol basis internally, so it keeps its own labels
+        !> rather than the umol default the unit lookup would hand back.
+        if (GasSlotIsWater(gas)) then
+            gas_full_flux_label(gas) = '[mmol+1s-1m-2]'
+            gas_full_conc_label(gas) = '[mmol+1mol_a-1]'
+            gas_full_mixr_label(gas) = '[mmol+1mol_d-1]'
+            gas_full_dens_label(gas) = '[mmol+1m-3]'
+            cycle
+        end if
+
+        gas_unit = 'ppm'
+        gas_col = EddyFlowProj%gas(rec)%col
+        if (metadata_read .and. gas_col > 0 .and. gas_col <= MaxNumCol) then
+            if (trim(adjustl(MetadataCol(gas_col)%conversion_type)) /= 'none' &
+                .and. len_trim(MetadataCol(gas_col)%unit_out) > 0 &
+                .and. trim(adjustl(MetadataCol(gas_col)%unit_out)) /= 'none') then
+                gas_unit = MetadataCol(gas_col)%unit_out
+            else
+                gas_unit = MetadataCol(gas_col)%unit_in
+            end if
+        end if
+
+        call GasFullOutputUnits(gas_unit, gas_full_flux_sc(gas), gas_full_dens_sc(gas), &
+            gas_full_flux_label(gas), gas_full_conc_label(gas), &
+            gas_full_mixr_label(gas), gas_full_dens_label(gas))
+    end do
 end subroutine InitializeGas4FullOutputUnitsFcc

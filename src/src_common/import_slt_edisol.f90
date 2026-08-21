@@ -95,7 +95,7 @@ subroutine ImportSLTEdiSol(rec_len, FirstRecord, LastRecord, LocCol, fRaw, nrow,
             jj = jj + 1
             TmpCol(jj) = LocCol(j)
             fRaw(1:N, jj) = TmpfRaw(1:N, j)
-             if (Gas4CalRefCol == j) Gas4CalRefCol = jj
+             where (GasCalRefCol == j) GasCalRefCol = jj
        end if
     end do
     LocCol = TmpCol

@@ -113,4 +113,6 @@ subroutine WriteOutPlanarFit(NumElem, N)
     close(udf)
     write(*,'(a)') '  Results written on file: ' &
         // PlanarFit_Path(1:len_trim(PlanarFit_Path))
+    write(ulog,'(a)') '  Results written on file: ' &
+        // PlanarFit_Path(1:len_trim(PlanarFit_Path))
 end subroutine WriteOutPlanarFit

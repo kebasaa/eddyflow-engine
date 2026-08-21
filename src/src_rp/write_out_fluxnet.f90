@@ -34,6 +34,8 @@
 subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     use m_rp_global_var
     implicit none
+    integer, external :: cellPressureSlot
+    real(kind = dbl), external :: ColumnAcFreq
     !> in/out variables
     type(QCType), intent(in) :: StDiff
     type(QCType), intent(in) :: DtDiff
@@ -48,18 +50,66 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     integer :: i
     integer :: indx
     integer :: int_doy
+    !> Hygrometers and their column suffixes, from WaterOutSlots, and how many
+    !> of them are not the designated one.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
+    integer :: n_w_flux
     real(kind = dbl) :: float_doy
     real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
-    character(16000) :: csv_row
+    character(LongOutstringLen) :: csv_row
     character(32) :: char_doy
     character(14) :: tsIso
     character(9) :: vm97flags(GHGNumVar)
+    !> One packed flag cell: a leading filler digit and one digit per variable
+    !> the cell's legend names, so FlagStrLen + 1 covers the widest of them.
+    character(FlagStrLen + 1) :: flag_cell
+    !> How many gases the time-lag flag string describes, from the helper the
+    !> header uses, so the cell and its legend cannot disagree.
+    integer :: n_tl_vars
+    character(LongOutstringLen) :: tl_legend
+    !> The row's variable order: the four anemometric slots, then the gas
+    !> layout. Every per-variable loop below walks this rather than counting
+    !> slots, because the layout is an order and not a range - the gas at
+    !> position one is whichever record the layout puts there, which after
+    !> the FLUXNET ordering rule need not be the first record.
+    !>
+    !> Deliberately the same shape as the bounds it replaces: rowVar(1:4) is
+    !> u,v,w,ts and rowVar(4+k) is the k-th gas, so a loop that ran
+    !> `u, ts + n` now runs `1, nRowVar`, one that ran `ts, ts + n` runs
+    !> `ts, nRowVar`, and one that ran `firstGas, ts + n` runs
+    !> `firstGas, nRowVar`. Same iteration counts, same order, one lookup.
+    integer :: rowVar(E2NumVar)
+    integer :: nRowVar
+    integer :: jg
+    integer :: jg2
+    !> FluxnetGasScale / FluxnetGasAdvScale arrive with interfaces.inc, whose
+    !> first line pulls in interfaces_1.inc.
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_fields
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 6 + 9)
+    logical :: cec_is_int(MaxNumCecTargets * 6 + 9)
     include '../src_common/interfaces.inc'
 
 
-    !> write FLUXNET output file (csv) 
+    !> write FLUXNET output file (csv)
     call clearstr(csv_row)
+
+    !> Anemometric slots first, then the gas layout the header was built from.
+    nRowVar = 0
+    do var = u, ts
+        nRowVar = nRowVar + 1
+        rowVar(nRowVar) = var
+    end do
+    do jg = 1, nFluxnetLayoutSlots
+        nRowVar = nRowVar + 1
+        rowVar(nRowVar) = FluxnetLayoutSlots(jg)
+    end do
 
     !> Start/end imestamps
     tsIso = Stats%start_date(1:4) // Stats%start_date(6:7) // Stats%start_date(9:10) &
@@ -107,12 +157,14 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> Number of valid records for anemometric data
     call AddIntDatumToDataline(Essentials%n(w), csv_row, EddyFlowProj%err_label)
     !> Number of valid records for IRGA data  (N_in – M_diag_IRGA)
-    do var = ts, gas4
+    do jg = ts, nRowVar
+        var = rowVar(jg)
         call AddIntDatumToDataline(Essentials%n(var), csv_row, EddyFlowProj%err_label)
         end do
     !> Number of valid records available for each main covariance (w/u, w/ts, w/co2, w/h2o, w/ch4, w/gas4)
     call AddIntDatumToDataline(Essentials%n_wcov(u), csv_row, EddyFlowProj%err_label)
-    do var = ts, gas4
+    do jg = ts, nRowVar
+        var = rowVar(jg)
         call AddIntDatumToDataline(Essentials%n_wcov(var), csv_row, EddyFlowProj%err_label)
         end do
 
@@ -122,45 +174,48 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(Flux3%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux3%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux3%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux3%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    !> Scaled to the FLUXNET basis of each gas's species, not of its slot.
+    !> FluxnetGasScale returns 1 for CO2 and H2O, so passing it for every gas
+    !> reproduces what the four fixed calls emitted.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Flux3%gas(gas), csv_row, EddyFlowProj%err_label, &
+            gain=FluxnetGasScale(gas), offset=0d0)
+    end do
 
     !> Flux random uncertainties
     call AddFloatDatumToDataline(Essentials%rand_uncer(u), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%rand_uncer(ts), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%rand_uncer_LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%rand_uncer_ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%rand_uncer(co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%rand_uncer(h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%rand_uncer(ch4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Essentials%rand_uncer(gas4), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Essentials%rand_uncer(gas), csv_row, &
+            EddyFlowProj%err_label, gain=FluxnetGasScale(gas), offset=0d0)
+    end do
 
     !> Additional flux terms (single-point calculation)
     !> Storage fluxes
     call AddFloatDatumToDataline(Stor%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Stor%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Stor%ET, csv_row, EddyFlowProj%err_label)
-    do gas = co2, h2o
-        call AddFloatDatumToDataline(Stor%of(gas), csv_row, EddyFlowProj%err_label)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Stor%of(gas), csv_row, EddyFlowProj%err_label, &
+            gain=FluxnetGasScale(gas), offset=0d0)
     end do
-    do gas = ch4, gas4
-        call AddFloatDatumToDataline(Stor%of(gas), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    end do
-    !> Advection fluxes
-    do gas = co2, gas4
+    !> Advection fluxes.
+    !>
+    !> The three-way slot switch this replaces had no final else: a slot past
+    !> gas4 matched none of its arms and emitted no datum at all, which would
+    !> shift every later column once the loop widened.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
         if (Stats5%Mean(w) /= error .and. Stats%d(gas) >= 0d0) then
             if (Stats5%Mean(w) /= error .and. Stats%d(gas) /= error) then
-                if (gas == co2) then
-                    call AddFloatDatumToDataline(Stats5%Mean(w) * Stats%d(gas), &
-                        csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-                else if (gas == h2o) then
-                    call AddFloatDatumToDataline(Stats5%Mean(w) * Stats%d(gas), csv_row, EddyFlowProj%err_label)
-                else if (gas == ch4 .or. gas == gas4) then
-                    call AddFloatDatumToDataline(Stats5%Mean(w) * Stats%d(gas), &
-                        csv_row, EddyFlowProj%err_label, gain=1d6, offset=0d0)
-                end if
+                call AddFloatDatumToDataline(Stats5%Mean(w) * Stats%d(gas), &
+                    csv_row, EddyFlowProj%err_label, &
+                    gain=FluxnetGasAdvScale(gas), offset=0d0)
             else
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             end if
@@ -211,6 +266,11 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(Ambient%Q, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Ambient%VPD, csv_row, EddyFlowProj%err_label, gain=1d-2, offset=0d0)
     call AddFloatDatumToDataline(Ambient%Td, csv_row, EddyFlowProj%err_label, gain=1d0, offset=-273.15d0)
+    !> The biomet humidity as a concentration. Carried here so FCC can put
+    !> it in the full output beside each hygrometer's own reading.
+    call AddFloatDatumToDataline(Ambient%chi_biomet, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Ambient%r_biomet, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Ambient%d_biomet, csv_row, EddyFlowProj%err_label)
     !> Dry air
     call AddFloatDatumToDataline(Ambient%p_d, csv_row, EddyFlowProj%err_label, gain=1d-3, offset=0d0)
     call AddFloatDatumToDataline(RHO%d, csv_row, EddyFlowProj%err_label)
@@ -226,7 +286,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> Concentrations, densities and "nature" of the raw data 
     !> (mixing ratio, mole fraction, molar density)
     !> Gas concentrations, densities and timelags
-    do gas = co2, gas4
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
         if (E2Col(gas)%present) then
             select case (E2Col(gas)%measure_type)
                 case('mixing_ratio')
@@ -235,15 +296,24 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
                     call AddDatum(csv_row, '1', separator)
                 case('molar_density')
                     call AddDatum(csv_row, '2', separator)
+                !> This file is also the essentials file, read back by FCC on
+                !> field position alone. Without this arm an unrecognised
+                !> measure type wrote no field at all - not an error label, a
+                !> field fewer - and every value after it in the row shifted
+                !> left by one. Four fields per gas is the contract the reader
+                !> counts on, so say "unknown" rather than say nothing.
+                case default
+                    call AddDatum(csv_row, &
+                        trim(adjustl(EddyFlowProj%err_label)), separator)
             end select
+            !> Molar density stays on the internal mmol m-3 basis for every
+            !> gas, as it always has in this file; only the mole-basis pair
+            !> follows the species.
             call AddFloatDatumToDataline(Stats%d(gas), csv_row, EddyFlowProj%err_label)
-            if (gas == ch4 .or. gas == gas4) then
-                call AddFloatDatumToDataline(Stats%r(gas), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-                call AddFloatDatumToDataline(Stats%chi(gas), csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-            else
-                call AddFloatDatumToDataline(Stats%r(gas), csv_row, EddyFlowProj%err_label)
-                call AddFloatDatumToDataline(Stats%chi(gas), csv_row, EddyFlowProj%err_label)
-            end if
+            call AddFloatDatumToDataline(Stats%r(gas), csv_row, EddyFlowProj%err_label, &
+                gain=FluxnetGasScale(gas), offset=0d0)
+            call AddFloatDatumToDataline(Stats%chi(gas), csv_row, EddyFlowProj%err_label, &
+                gain=FluxnetGasScale(gas), offset=0d0)
         else
             do i = 1, 4
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -252,7 +322,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     end do
     !> Timelags (calculated, used, min/max/nominal) for all gases
     !> Gas timelags
-    do gas = co2, gas4
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
         if (E2Col(gas)%present) then
             call AddFloatDatumToDataline(Essentials%actual_timelag(gas), csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Essentials%used_timelag(gas), csv_row, EddyFlowProj%err_label)
@@ -268,8 +339,17 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         end if
     end do
     !> PWB lag source (0=native, 1=S3 carry-forward, 2=instrument_shared, 3=nominal/default, 4=maxcov/default)
-    do gas = co2, gas4
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
         if (Meth%tlag == 'pwb' .and. E2Col(gas)%present) then
+            !> Where this period's time lag came from. 0 means the period
+            !> detected it; 1, 5 and 6 mean the gas's OWN lag reached here
+            !> from a period that did; 2 borrows it from another gas on the
+            !> same analyser; 3, 4 and 7 are the last resorts.
+            !>
+            !> 5, 6 and 7 were added with the gap-filling rework and used to
+            !> fall through to the default arm, so a period settled by
+            !> interpolation reported no source at all.
             select case(trim(PWBResult(gas)%fallback_source))
             case('native')
                 call AddDatum(csv_row, '0', separator)
@@ -281,6 +361,12 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
                 call AddDatum(csv_row, '3', separator)
             case('maxcov_default')
                 call AddDatum(csv_row, '4', separator)
+            case('interpolated')
+                call AddDatum(csv_row, '5', separator)
+            case('backfilled')
+                call AddDatum(csv_row, '6', separator)
+            case('median')
+                call AddDatum(csv_row, '7', separator)
             case default
                 call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
             end select
@@ -291,7 +377,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
 
 !> Basic stats
     !> 25-50-75%
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         if (var == ts) then
             call AddFloatDatumToDataline(Stats6%Median(var), csv_row, &
                 EddyFlowProj%err_label, gain=1d0, offset=-273.15d0)
@@ -299,7 +386,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddFloatDatumToDataline(Stats6%Median(var), csv_row, EddyFlowProj%err_label)
                 end if
     end do
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         if (var == ts) then
             call AddFloatDatumToDataline(Stats6%Q1(var), csv_row, &
                 EddyFlowProj%err_label, gain=1d0, offset=-273.15d0)
@@ -307,7 +395,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddFloatDatumToDataline(Stats6%Q1(var), csv_row, EddyFlowProj%err_label)
                 end if
     end do
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         if (var == ts) then
             call AddFloatDatumToDataline(Stats6%Q3(var), csv_row, &
                 EddyFlowProj%err_label, gain=1d0, offset=-273.15d0)
@@ -316,25 +405,32 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
                 end if
     end do
     !> Standard deviation
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         call AddFloatDatumToDataline(sqrt(Stats7%Cov(var, var)), csv_row, EddyFlowProj%err_label)
         end do
     !> Skwenesses
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         call AddFloatDatumToDataline(Stats7%Skw(var), csv_row, EddyFlowProj%err_label)
         end do
     !> Kurtosis
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         call AddFloatDatumToDataline(Stats7%Kur(var), csv_row, EddyFlowProj%err_label)
         end do
     !> w-covariances 
     call AddFloatDatumToDataline(Stats7%Cov(u, w), csv_row, EddyFlowProj%err_label)
-    do var = ts, gas4
+    do jg = ts, nRowVar
+        var = rowVar(jg)
         call AddFloatDatumToDataline(Stats7%Cov(w, var), csv_row, EddyFlowProj%err_label)
         end do
-    !> Gases covariance matrix
-    do gas1 = co2, ch4
-        do gas2 = gas1 + 1, gas4 
+    !> Gases covariance matrix: the upper triangle over configured gases, in
+    !> the same order the header pairs them.
+    do jg = firstGas, nRowVar - 1
+        gas1 = rowVar(jg)
+        do jg2 = jg + 1, nRowVar
+            gas2 = rowVar(jg2)
             call AddFloatDatumToDataline(Stats7%Cov(gas1, gas2), csv_row, EddyFlowProj%err_label)
         end do
     end do
@@ -358,28 +454,31 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(Flux0%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux0%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux0%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux0%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux0%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux0%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux0%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Flux0%gas(gas), csv_row, EddyFlowProj%err_label, &
+            gain=FluxnetGasScale(gas), offset=0d0)
+    end do
     !> Fluxes level 1
     call AddFloatDatumToDataline(Flux1%tau, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux1%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux1%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux1%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux1%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux1%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux1%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux1%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Flux1%gas(gas), csv_row, EddyFlowProj%err_label, &
+            gain=FluxnetGasScale(gas), offset=0d0)
+    end do
     !> Fluxes level 2
     call AddFloatDatumToDataline(Flux2%tau, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux2%H, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux2%LE, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Flux2%ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux2%co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux2%h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux2%ch4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
-    call AddFloatDatumToDataline(Flux2%gas4, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Flux2%gas(gas), csv_row, EddyFlowProj%err_label, &
+            gain=FluxnetGasScale(gas), offset=0d0)
+    end do
 
     !> Tin and Tout                 ******************************************** Add
 
@@ -390,18 +489,41 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(Ambient%Pcell, csv_row, EddyFlowProj%err_label, gain=1d-3, offset=0d0)
 
     !> Molar volume
-    do gas = co2, gas4
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
         call AddFloatDatumToDataline(E2Col(gas)%Va, csv_row, EddyFlowProj%err_label)
         end do
+    !> Cell conditions of the analyser that measured each gas, in SI so the
+    !> reader can take them unchanged. The two scalars above carry the degC
+    !> and kPa gains the reported columns want, which is why they cannot be
+    !> reused here.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Ambient%Tcell_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Ambient%Pcell_at(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Stats%cov(w, cellPressureSlot(gas)), &
+            csv_row, EddyFlowProj%err_label)
+    end do
     !> Evapotranspiration and sensible heat fluxes in the cell of 
     !> closed-paths (for WPL), with timelags of other gases
-    call AddFloatDatumToDataline(Flux3%E_co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%E_ch4, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%E_gas4, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%Hi_co2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%Hi_h2o, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%Hi_ch4, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Flux3%Hi_gas4, csv_row, EddyFlowProj%err_label)
+    !> Water flux inside the cell, for every gas that is not a hygrometer.
+    !> Every one of them: a site may carry more than one, and the reader has
+    !> to count them the same way or the record shifts.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        if (GasSlotIsWater(gas)) cycle
+        call AddFloatDatumToDataline(Flux3%E_gas(gas), csv_row, EddyFlowProj%err_label)
+    end do
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(Flux3%Hi_gas(gas), csv_row, EddyFlowProj%err_label)
+    end do
     !> Burba Terms 
     if (RPsetup%bu_corr /= 'none') then 
         call AddFloatDatumToDataline(Burba%h_bot, csv_row, EddyFlowProj%err_label)
@@ -413,8 +535,13 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
     !> LI-7700 multipliers
-    if (E2Col(ch4)%Instr%model(1:len_trim(E2Col(ch4)%Instr%model) - 2) &
-        == 'li7700') then
+    !>
+    !> Asked of the analyser, not of slot seven. Mul7700 is computed in the
+    !> main loop by scanning every slot for an li7700, so keying the column on
+    !> E2Col(ch4) let the two disagree: a 7700 on any other record produced
+    !> multipliers this suppressed, and a non-7700 methane record on slot seven
+    !> would have emitted multipliers nothing computed.
+    if (GasSlotByInstrModel('li7700') > 0) then
         call AddFloatDatumToDataline(Mul7700%A, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Mul7700%B, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(Mul7700%C, csv_row, EddyFlowProj%err_label)
@@ -436,36 +563,27 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(h2o)%present) then
-        call AddFloatDatumToDataline(BPCF%of(w_h2o), csv_row, EddyFlowProj%err_label)
+    if (E2Col(PrimaryWaterOutSlot())%present) then
+        call AddFloatDatumToDataline(BPCF%of(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(h2o)%present) then
-        call AddFloatDatumToDataline(BPCF%of(w_h2o), csv_row, EddyFlowProj%err_label)
+    if (E2Col(PrimaryWaterOutSlot())%present) then
+        call AddFloatDatumToDataline(BPCF%of(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(co2)%present) then
-        call AddFloatDatumToDataline(BPCF%of(w_co2), csv_row, EddyFlowProj%err_label)
-    else
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(h2o)%present) then
-        call AddFloatDatumToDataline(BPCF%of(w_h2o), csv_row, EddyFlowProj%err_label)
-    else
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(ch4)%present) then
-        call AddFloatDatumToDataline(BPCF%of(w_ch4), csv_row, EddyFlowProj%err_label)
-    else
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(gas4)%present) then
-        call AddFloatDatumToDataline(BPCF%of(w_gas4), csv_row, EddyFlowProj%err_label)
-    else
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
+    !> One spectral correction factor per configured gas. The w_* covariance
+    !> enumeration is numerically the variable enumeration, so the slot indexes
+    !> BPCF directly.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        if (E2Col(gas)%present) then
+            call AddFloatDatumToDataline(BPCF%of(gas), csv_row, EddyFlowProj%err_label)
+        else
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
+        end if
+    end do
 
     !> Increasingly filtered w/T covariances (for spectral assessment)
     call AddFloatDatumToDataline(Essentials%degH(NumDegH + 1), csv_row, EddyFlowProj%err_label)
@@ -473,7 +591,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(Essentials%degH(j), csv_row, EddyFlowProj%err_label)
     end do
     !>> Number of spikes per variable
-    do var = u, gas4
+    do jg = 1, nRowVar
+        var = rowVar(jg)
         call AddIntDatumToDataline(Essentials%e2spikes(var), csv_row, EddyFlowProj%err_label)
     end do
 !> QC
@@ -485,16 +604,26 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !>> Number or records whose anemometric data was eliminated based on Anemometer diagnostics
     call AddIntDatumToDataline(Essentials%m_diag_anem, csv_row, EddyFlowProj%err_label)
     !>> Number or records whose IRGA data was eliminated based on IRGA diagnostics
-    do gas = co2, gas4
-        call AddIntDatumToDataline(Essentials%m_diag_irga(gas), csv_row, EddyFlowProj%err_label)
-        end do
-    !>> Number of values eliminated by the Spike test
-    do var = u, gas4
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%m_diag_irga(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
+    !>> Number of values eliminated by the Spike test. The wind components and
+    !>> sonic temperature first, then one per configured gas.
+    do var = u, ts
         call AddIntDatumToDataline(Essentials%m_despiking(var), csv_row, EddyFlowProj%err_label)
     end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%m_despiking(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
     !>> Number of values eliminated by the Absolute Limits test
-    do j = u, gas4
-        call AddIntDatumToDataline(Essentials%al_s(j), csv_row, EddyFlowProj%err_label)
+    do var = u, ts
+        call AddIntDatumToDataline(Essentials%al_s(var), csv_row, EddyFlowProj%err_label)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(Essentials%al_s(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
     end do
 
     !> Uncomment to reintroduce VM details
@@ -527,9 +656,22 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     ! call AddFloatDatumToDataline(Essentials%ns_s_rns, csv_row, EddyFlowProj%err_label)
 
 
-    !> VM97 flags, here organized per variable instead of per test
-    do var = u, gas4
-        vm97flags(var)(1 : 1) = '8' 
+    !> VM97 flags, here organized per variable instead of per test.
+    !>
+    !> The wind components and sonic temperature first, then one field per
+    !> configured gas, matching the header. Each field stays 9 characters - a
+    !> filler digit plus the 8 test outcomes - because that width counts tests,
+    !> not gases. The CharHF/CharSF strings are indexed by variable and are
+    !> already FlagStrLen wide, so a gas slot past the fourth reads out of them
+    !> the same way as any other.
+    !> One contiguous range: firstGas is ts + 1, and SelectFluxnetGasSlots
+    !> assigns the layout its slots as firstGas + j - 1, so "u,v,w,ts then the
+    !> configured gases" is exactly u .. ts + nFluxnetLayoutSlots. This is the
+    !> same span the retired nExVar named as gas4 - u + 1, now following the
+    !> project instead of the fixed four.
+    do jg = 1, nRowVar
+        var = rowVar(jg)
+        vm97flags(var)(1 : 1) = '8'
         vm97flags(var)(2 : 2) = CharHF%sr(var + 1 : var + 1)
         vm97flags(var)(3 : 3) = CharHF%ar(var + 1 : var + 1)
         vm97flags(var)(4 : 4) = CharHF%do(var + 1 : var + 1)
@@ -542,84 +684,101 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     end do
 
     !> Uncomment to reintroduce flags for last 3 tests
-    call AddDatum(csv_row, '8'//CharHF%tl(6:9), separator)
-    call AddDatum(csv_row, '8'//CharSF%tl(6:9), separator)
-    call AddDatum(csv_row, '8'//CharHF%aa(9:9), separator)
-    call AddDatum(csv_row, '8'//CharHF%ns(9:9), separator)
+    !>
+    !> The time-lag pair names gases only, so it starts at the first gas.
+    !> Slicing from the end of the string was an artefact of the base-10
+    !> packing, which right-aligned four digits there.
+    !> Built into a named cell first, one per header name.
+    !>
+    !> These were concatenations passed straight to AddDatum, whose `datum`
+    !> dummy is intent(inout) and is rewritten by stripstr. An expression
+    !> cannot be an intent(inout) actual argument, so the compiler bound a
+    !> temporary and the result depended on its length - which is how widening
+    !> the time-lag slice from four characters to one per gas turned four
+    !> fields into six and shifted every column after them.
+    call TimelagFlagLegend(n_tl_vars, tl_legend)
+    flag_cell = '8' // CharHF%tl(firstGas + 1:firstGas + n_tl_vars)
+    call AddDatum(csv_row, flag_cell, separator)
+    flag_cell = '8' // CharSF%tl(firstGas + 1:firstGas + n_tl_vars)
+    call AddDatum(csv_row, flag_cell, separator)
+    flag_cell = '8' // CharHF%aa(FlagStrLen:FlagStrLen)
+    call AddDatum(csv_row, flag_cell, separator)
+    flag_cell = '8' // CharHF%ns(FlagStrLen:FlagStrLen)
+    call AddDatum(csv_row, flag_cell, separator)
 
-    !> Quality test results
+    !> Quality test results. Three variable-shaped families - the wind
+    !> components and sonic temperature, then one field per configured gas,
+    !> matching AddVariableFamily in the header.
     !> Longest Gap Duration (LGDs)
-    call AddFloatDatumToDataline(Essentials%LGD(u), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(v), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(w), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%LGD(gas4), csv_row, EddyFlowProj%err_label)
+    do jg = 1, nRowVar
+        var = rowVar(jg)
+        call AddFloatDatumToDataline(Essentials%LGD(var), csv_row, EddyFlowProj%err_label)
+    end do
     !> Kurtosis Index on Differenced variables (KIDs)
-    call AddFloatDatumToDataline(Essentials%KID(u), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(v), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(w), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%KID(gas4), csv_row, EddyFlowProj%err_label)
+    do jg = 1, nRowVar
+        var = rowVar(jg)
+        call AddFloatDatumToDataline(Essentials%KID(var), csv_row, EddyFlowProj%err_label)
+    end do
     !> Zero-Counts on Differences variables
-    call AddIntDatumToDataline(Essentials%ZCD(u), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(v), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(w), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(ts), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(co2), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(h2o), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(ch4), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(Essentials%ZCD(gas4), csv_row, EddyFlowProj%err_label)
-    !> Correlation differences with and without repeated values 
+    do jg = 1, nRowVar
+        var = rowVar(jg)
+        call AddIntDatumToDataline(Essentials%ZCD(var), csv_row, EddyFlowProj%err_label)
+    end do
+    !> Correlation differences with and without repeated values.
+    !>
+    !> Flux-shaped, so the first four are the momentum, heat and the two water
+    !> fluxes - and LE, ET and FH2O are all the same correlation, because all
+    !> three are water fluxes. Only the tail from FC onwards is per gas.
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, w), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, gas4), csv_row, EddyFlowProj%err_label)
-    !> Mahrt 1998 Nonstationarity Ratios
+    call AddFloatDatumToDataline(Essentials%CorrDiff(u, PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(Essentials%CorrDiff(u, PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%CorrDiff(u, FluxnetLayoutSlots(j)), &
+                                     csv_row, EddyFlowProj%err_label)
+    end do
+    !> Mahrt 1998 Nonstationarity Ratios. Flux-shaped without the water
+    !> fluxes: momentum and sensible heat, then one per configured gas.
+    !> Indexed by the w_* covariance enumeration, which is numerically the
+    !> variable enumeration - w_co2 and co2 are both 5 - so a gas slot indexes
+    !> this array directly.
     call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_u), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_co2), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_h2o), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_ch4), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_gas4), csv_row, EddyFlowProj%err_label)
-    !> Foken stats used to calculate flags
+    do j = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%mahrt98_NR(FluxnetLayoutSlots(j)), &
+                                     csv_row, EddyFlowProj%err_label)
+    end do
+    !> Foken stats used to calculate flags: the steady-state statistic per
+    !> flux, then the integral turbulence characteristics on u/w/ts.
     call AddIntDatumToDataline(STDiff%w_u, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(STDiff%w_ts, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_co2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_h2o, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_ch4, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(StDiff%w_gas4, csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(StDiff%w_gas(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
     call AddIntDatumToDataline(DtDiff%u, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DtDiff%w, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DtDiff%ts, csv_row, EddyFlowProj%err_label)
-    !> Partial Foken flags
+    !> Partial Foken flags. STFlg is indexed by the w_* covariance enumeration
+    !> and is already GHGNumVar wide, so a gas slot indexes it directly.
     call AddIntDatumToDataline(STFlg(w_u), csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(STFlg(w_ts), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_co2), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_h2o), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_ch4), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(STFlg(w_gas4), csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(STFlg(FluxnetLayoutSlots(j)), csv_row, EddyFlowProj%err_label)
+    end do
     call AddIntDatumToDataline(DTFlg(u), csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DTFlg(w), csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(DTFlg(ts), csv_row, EddyFlowProj%err_label)
-    !> Final Foken flags
+    !> Final Foken flags. Flux-shaped: momentum, sensible heat and the two
+    !> water fluxes carry the water flag, then one per configured gas.
     call AddIntDatumToDataline(QCFlag%tau, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(QCFlag%H, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)     !< This is for LE
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)     !< This is for ET
-    call AddIntDatumToDataline(QCFlag%co2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%h2o, csv_row, EddyFlowProj%err_label)     !< This is for h2o
-    call AddIntDatumToDataline(QCFlag%ch4, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%gas4, csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(QCFlag%gas(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)     !< This is for LE
+    call AddIntDatumToDataline(QCFlag%gas(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)     !< This is for ET
+    do j = 1, nFluxnetLayoutSlots
+        call AddIntDatumToDataline(QCFlag%gas(FluxnetLayoutSlots(j)), &
+                                   csv_row, EddyFlowProj%err_label)
+    end do
 
     !> LI-7x00 diagnostics breakdown
     if (Diag7200%present) then
@@ -670,13 +829,23 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         end do
     end if
     !> AGC/RSSI. Header may need to adapt to AGC/RSSI for 7200/7500.
-    if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
+    !>
+    !> Each column follows the firmware of the analyser its own heading names.
+    !> Both asked E2Col(co2), so a site carrying a 7200 and a 7500 of different
+    !> vintage had both signs decided by whichever one held slot five, and a
+    !> site whose first record sits on a third instrument had both decided by
+    !> something that is neither.
+    !>
+    !> A slot of 0 - no such analyser - leaves the version unset, which
+    !> compares older than 6.0.0 and takes the AGC arm. That is what an
+    !> unpopulated E2Col(co2)%instr%sw_ver did.
+    if(CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('6.0.0'))) then
         call AddIntDatumToDataline(nint(Essentials%AGC72), csv_row, EddyFlowProj%err_label)
     else
         call AddIntDatumToDataline(-nint(Essentials%AGC72), csv_row, EddyFlowProj%err_label)
     end if
     !> LI-7500
-    if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
+    if(CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('6.0.0'))) then
         call AddIntDatumToDataline(nint(Essentials%AGC75), csv_row, EddyFlowProj%err_label)
     else
         call AddIntDatumToDataline(-nint(Essentials%AGC75), csv_row, EddyFlowProj%err_label)
@@ -816,8 +985,14 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(E2Col(u)%Instr%hpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
     call AddFloatDatumToDataline(E2Col(u)%Instr%vpath_length, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
     call AddFloatDatumToDataline(E2Col(u)%Instr%tau, csv_row, EddyFlowProj%err_label)
-    !> gas analysers details
-    do gas = co2, gas4
+    !> Gas analyser details, one block per configured gas.
+    !>
+    !> Iterates the layout list rather than co2:gas4, so a fifth gas gets its
+    !> analyser columns here like any other. That list carries every gas the
+    !> project names - including one selected without a column - which is what
+    !> keeps this block exactly as wide as the header describing it.
+    do j = 1, nFluxnetLayoutSlots
+        gas = FluxnetLayoutSlots(j)
         call AddCharDatumToDataline(E2Col(gas)%Instr%firm, csv_row, EddyFlowProj%err_label)
         call AddCharDatumToDataline(E2Col(gas)%Instr%model, csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%nsep, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
@@ -826,7 +1001,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%tube_l, csv_row, EddyFlowProj%err_label, gain=1d2, offset=0d0)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%tube_d, csv_row, EddyFlowProj%err_label, gain=1d3, offset=0d0)
         call AddFloatDatumToDataline(E2Col(gas)%Instr%tube_f, csv_row, EddyFlowProj%err_label, gain=6d4, offset=0d0)
-        if (gas == h2o) then
+        if (GasSlotIsWater(gas)) then
             call AddFloatDatumToDataline(E2Col(gas)%Instr%kw, csv_row, EddyFlowProj%err_label)
             call AddFloatDatumToDataline(E2Col(gas)%Instr%ko, csv_row, EddyFlowProj%err_label)
         end if
@@ -842,6 +1017,122 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddFloatDatumToDataline(UserStats%Mean(var), csv_row, EddyFlowProj%err_label)
         end do
     end if
+
+    !> Per-gas water vapour terms, one pair per configured gas, in the same
+    !> order in which InitFluxnetFile_rp writes the matching headers. Keep this
+    !> block, that routine and ReadExRecord in step: the file is positional.
+    call AddIntDatumToDataline(nFluxnetGasSlots, csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetGasSlots
+        var = FluxnetGasSlots(j)
+        !> The slot is written explicitly: configured gases are not
+        !> necessarily contiguous, so position alone would not identify them.
+        call AddIntDatumToDataline(var, csv_row, EddyFlowProj%err_label)
+        !> The terms of the H2O that corrects this gas, not of the gas itself -
+        !> RHO%w_at is only populated for H2O slots, so writing it directly
+        !> would send nothing but error for every non-H2O gas.
+        indx = E2Col(var)%moist_ref
+        if (indx == biometMoistRef) then
+            !> The gas names the biomet. Its terms are the site's, and they
+            !> are written out here rather than left as error.
+            !>
+            !> FCC would reach the same numbers either way - its MoistTerms
+            !> defaults to lEx%sigma and lEx%RHO%w, which are these - but only
+            !> by falling through a bounds check, and a reader of the ex file
+            !> would see -9999 against a gas that is in fact being corrected.
+            !> Saying it costs six fields already in the row.
+            call AddFloatDatumToDataline(RHO%w, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%sigma, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%Q, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(RHO%a, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%RhoCp, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Stats%RH, csv_row, EddyFlowProj%err_label)
+        elseif (indx >= firstGas .and. indx <= lastGas) then
+            call AddFloatDatumToDataline(RHO%w_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%sigma_at(indx), csv_row, EddyFlowProj%err_label)
+            !> The air that hygrometer implies, for the sensible heat flux and
+            !> the stability computed from it, and its humidity for the
+            !> spectral corrections.
+            call AddFloatDatumToDataline(Ambient%Q_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%rho_a_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%RhoCp_at(indx), csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(Ambient%RH_at(indx), csv_row, EddyFlowProj%err_label)
+        else
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
+        end if
+    end do
+
+    !> Analyser of each gas past the four historical slots, in SI units and in
+    !> the same order as InitFluxnetFile_rp writes the matching headers.
+    call AddIntDatumToDataline(nFluxnetInstrSlots, csv_row, EddyFlowProj%err_label)
+    do j = 1, nFluxnetInstrSlots
+        var = FluxnetInstrSlots(j)
+        call AddIntDatumToDataline(var, csv_row, EddyFlowProj%err_label)
+        call AddCharDatumToDataline(E2Col(var)%Instr%firm, csv_row, EddyFlowProj%err_label)
+        call AddCharDatumToDataline(E2Col(var)%Instr%model, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%nsep, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%esep, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%vsep, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%tube_l, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%tube_d, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%tube_f, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%hpath_length, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%vpath_length, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%tau, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%kw, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(E2Col(var)%Instr%ko, csv_row, EddyFlowProj%err_label)
+        !> Resolved, not raw: an analyser that states no rate of its own runs
+        !> at the file's, and writing the sentinel here would leave FCC to
+        !> repeat that resolution with no metadata to do it from.
+        call AddFloatDatumToDataline(ColumnAcFreq(var), csv_row, EddyFlowProj%err_label)
+    end do
+
+
+    !> The non-designated hygrometers' H, LE, ET, momentum and stability, in
+    !> the same position and order as InitFluxnetFile_rp writes the matching
+    !> headers: after the analyser block and before biomet. Not at the end of
+    !> the row - the CEC descriptor there is found by taking the last eleven
+    !> fields, so anything after it would be read as the descriptor.
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    n_w_flux = 0
+    do j = 1, n_w_slots
+        if (len_trim(w_tags(j)) > 0) n_w_flux = n_w_flux + 1
+    end do
+    call AddIntDatumToDataline(n_w_flux, csv_row, EddyFlowProj%err_label)
+    do j = 1, n_w_slots
+        if (len_trim(w_tags(j)) == 0) cycle
+        var = w_slots(j)
+        call AddIntDatumToDataline(var, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%H_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%LE_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%ET_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%tau_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%L_at(var), csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Flux3%zL_at(var), csv_row, EddyFlowProj%err_label)
+    end do
+
+    !> The CEC descriptors, one self-describing block per pairing, ahead of
+    !> biomet - InitFluxnetFile_rp names them in this order and ReadExRecord
+    !> steps through them by the counts they carry.
+    call CecPairs(cec_pairs, n_cec_pairs)
+    call AddIntDatumToDataline(n_cec_pairs, csv_row, EddyFlowProj%err_label)
+    do cec_p = 1, n_cec_pairs
+        call CecExRowValues(cec_pairs(cec_p), CECDescriptor(cec_p), cec_values, cec_is_int, &
+            n_cec_fields)
+        do cec_k = 1, n_cec_fields
+            if (cec_is_int(cec_k)) then
+                call AddIntDatumToDataline(nint(cec_values(cec_k)), csv_row, &
+                    EddyFlowProj%err_label)
+            else
+                call AddFloatDatumToDataline(cec_values(cec_k), csv_row, &
+                    EddyFlowProj%err_label)
+            end if
+        end do
+    end do
 
     !> All aggregated biomet values in FLUXNET units
     call AddIntDatumToDataline(nbVars, csv_row, EddyFlowProj%err_label)
@@ -859,19 +1150,6 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
 
         if (allocated(bAggrOut)) deallocate(bAggrOut)
     end if
-
-    !> CEC partitioning ratios (always written; error when do_cec=0)
-    call AddFloatDatumToDataline(CECDescriptor%r_ET, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%r_Fc, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_valid, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_O1, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%n_O2, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%frac_O1, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(CECDescriptor%frac_O2, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%h2o_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(merge(1, 0, CECDescriptor%co2_valid), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%h2o_status, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(CECDescriptor%co2_status, csv_row, EddyFlowProj%err_label)
 
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')

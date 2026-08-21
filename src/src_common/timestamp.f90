@@ -17,6 +17,8 @@
 !***************************************************************************
 subroutine hms_current_hms(h, m, s, mm)
     use m_numeric_kinds
+    use m_index_parameters
+    use m_log
     implicit none
     !> in/out variables
     integer, intent(out) :: h
@@ -53,6 +55,8 @@ end subroutine hms_current_hms
 !>***************************************************************************
 subroutine hms_current_print(string1, string3, adv)
     use m_numeric_kinds
+    use m_index_parameters
+    use m_log
     implicit none
     !> in/out variables
     character(*), intent(in) ::  string1
@@ -64,8 +68,10 @@ subroutine hms_current_print(string1, string3, adv)
     call hms_current_string(string2)
     if (adv) then
         write (*, '(a,a,a)') string1, string2, trim(string3)
+        write(ulog, '(a,a,a)') string1, string2, trim(string3)
     else
         write (*, '(a,a,a)', advance = 'no') string1, string2, trim(string3)
+        write(ulog, '(a,a,a)', advance = 'no') string1, string2, trim(string3)
     end if
     return
 end
@@ -152,6 +158,8 @@ end subroutine hms_current_string
 !>***************************************************************************
 subroutine hms_delta_print(string1, string2)
     use m_numeric_kinds
+    use m_index_parameters
+    use m_log
     implicit none
     !> in/out variables
     character(*), intent(in) ::  string1
@@ -206,6 +214,9 @@ subroutine hms_delta_print(string1, string2)
     end if
 
     write (*, '(a,i2,a1,i2.2,a1,i2.2,a1,i3.3,2x,a)') &
+        trim(string1), h_del, ':', m_del, ':', s_del, '.', mm_del, &
+        trim (string2)
+    write(ulog, '(a,i2,a1,i2.2,a1,i2.2,a1,i3.3,2x,a)') &
         trim(string1), h_del, ':', m_del, ':', s_del, '.', mm_del, &
         trim (string2)
 !    write (123, '(a,i2,a1,i2.2,a1,i2.2,a1,i3.3,2x,a)') &
@@ -301,6 +312,8 @@ end subroutine hms_delta
 !>***************************************************************************
 subroutine timestamp()
     use m_numeric_kinds
+    use m_index_parameters
+    use m_log
     implicit none
     !> local variables
     integer :: d
@@ -347,6 +360,8 @@ subroutine timestamp()
     end if
 
     write (*, '(i2,1x,a,1x,i4,2x,i2,a1,i2.2,a1,i2.2,a1,i3.3,1x,a)') &
+        d, trim (month(m)), y, h, ':', n, ':', s, '.', mm, trim (ampm)
+    write(ulog, '(i2,1x,a,1x,i4,2x,i2,a1,i2.2,a1,i2.2,a1,i3.3,1x,a)') &
         d, trim (month(m)), y, h, ':', n, ':', s, '.', mm, trim (ampm)
   return
 end subroutine timestamp

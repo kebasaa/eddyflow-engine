@@ -49,6 +49,11 @@ subroutine SpectralAnalysis(date, time, bf, Set, N, M)
     integer :: bcnt(Meth%spec%nbins)
     real(kind = dbl) :: bnf(Meth%spec%nbins)
     real(kind = dbl) :: AuxSet(N, M)
+    !> Tapering and FourierTransform both work in place, and Set is
+    !> intent(in). The binned pass therefore transforms a copy - it used to
+    !> transform Set itself, which the compiler only allowed because both have
+    !> implicit interfaces, and which left the caller's array destroyed.
+    real(kind = dbl) :: WorkSet(N, M)
     real(kind = dbl) :: nf(N/2)
     real(kind = dbl) :: sumw, auxsumw
     character(13) :: Datestring
@@ -80,7 +85,7 @@ subroutine SpectralAnalysis(date, time, bf, Set, N, M)
 
     !> If binned (co)spectra or at least one full (co)spectrum are requested,
     !> perform all related calculations
-    write(*, '(a)') '  Calculating (co)spectra..'
+    call LogSay('  Calculating (co)spectra..')
     Datestring = date(1:4) // date(6:7) // date(9:10) &
                // '-' // time(1:2) // time(4:5)
 
@@ -104,9 +109,23 @@ subroutine SpectralAnalysis(date, time, bf, Set, N, M)
     call AllCospectra(AuxSet, auxsumw, AuxSpectrum, AuxCospectrum, &
         DoSpectrum, DoCospectrum, N, M)
 
+    !> Rebuild whatever runs slower than the file, from its own samples rather
+    !> than from the interpolation. Unnormalised, like everything on this path.
+    !>
+    !> Before the ogives, not after: an ogive is the integral of the spectrum
+    !> beside it, so rebuilding afterwards would leave the two files disagreeing
+    !> about the same column.
+    call SlowColumnSpectra(Set, N, M, 'squared', .false., &
+        DoSpectrum, DoCospectrum, AuxSpectrum, AuxCospectrum)
+
     !> Calculate ogives if requested
     if (RPsetup%out_bin_og) &
         call AllOgives(AuxSpectrum, AuxCospectrum, DoSpectrum, DoCospectrum, Ogive, CoOgive, N)
+
+    !> Nothing a column could not have measured reaches the file. Before the
+    !> write and before the degraded covariances, which read w_ts - the sonic,
+    !> which is never capped.
+    call CapSpectraAtColumnNyquist(nf, N/2, AuxSpectrum, AuxCospectrum)
 
     !> Write out full co-spectra as requested
     if (proceed) &
@@ -124,17 +143,26 @@ subroutine SpectralAnalysis(date, time, bf, Set, N, M)
     if (RPsetup%out_bin_sp .or. RPsetup%out_bin_og) then
         !> From here, tapering is applied.
         !> Taper dataset
-        call Tapering(RPsetup%tap_win, Set, N, M, sumw)
+        WorkSet = Set
+        call Tapering(RPsetup%tap_win, WorkSet, N, M, sumw)
         !> Fft and calculate cospectra
-        call FourierTransform(Set, N, M)
-        call AllCospectra(Set, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectrum, N, M)
+        call FourierTransform(WorkSet, N, M)
+        call AllCospectra(WorkSet, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectrum, N, M)
         !> Normalization by variances and covariances
         call NormalizeCoSpectra(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, N)
+        !> After the normalisation, not before: a rebuilt column is normalised
+        !> by the variance of its OWN series inside the routine, and passing it
+        !> through NormalizeCoSpectra as well would divide it twice by two
+        !> different numbers.
+        call SlowColumnSpectra(Set, N, M, RPsetup%tap_win, .true., &
+            DoSpectrum, DoCospectrum, Spectrum, Cospectrum)
         !> Binned cospectra session
         if (RPsetup%out_bin_sp) then
             !> Exponential binning of frequencies, spectra and co-spectra
             call ExpAvrgCospectra(bf, nf, Spectrum, Cospectrum, N, bnf &
                 , BinnedSpectrum, BinnedCospectrum, bcnt)
+            call CapSpectraAtColumnNyquist(bnf, Meth%spec%nbins, &
+                BinnedSpectrum, BinnedCospectrum)
             !> Write co-spectra on output file in csv format
             call WriteOutBinnedCoSpectra(Datestring, bnf, bcnt, BinnedSpectrum, BinnedCospectrum &
                 , DoSpectrum, DoCospectrum)
@@ -149,8 +177,201 @@ subroutine SpectralAnalysis(date, time, bf, Set, N, M)
                 , DoSpectrum, DoCospectrum)
         end if
     end if
-    write(*,'(a)') '  Done.'
+    call LogSay('  Done.')
 end subroutine SpectralAnalysis
+
+!***************************************************************************
+!
+! \brief       Blank whatever a column could not have measured.
+! \author      Jonathan Muller, ETH Zurich
+! \note        A column sampled below the file's rate resolves nothing above
+!              its OWN Nyquist. FixDatasetForSpectra interpolates its missing
+!              rows up onto the fast grid before the transform, so without this
+!              every bin up to the station's Nyquist carries a number - and
+!              every one above the column's own Nyquist is an artefact of that
+!              interpolation rather than a measurement.
+!
+!              Blanked to the error code and not to zero: a spectral density of
+!              zero is a claim about the data, and this is the absence of one.
+!              A column at the file's own rate is never touched, so a
+!              single-rate site is unaffected.
+! \sa          column_sampling.f90
+!***************************************************************************
+subroutine CapSpectraAtColumnNyquist(freq, nfreq, Spectrum, Cospectrum)
+    use m_rp_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: nfreq
+    real(kind = dbl), intent(in) :: freq(nfreq)
+    type (SpectralType), intent(inout) :: Spectrum(nfreq)
+    type (SpectralType), intent(inout) :: Cospectrum(nfreq)
+    !> local variables
+    integer :: i
+    integer :: j
+    real(kind = dbl) :: nyquist
+    real(kind = dbl), external :: ColumnAcFreq
+
+    do j = u, GHGNumVar
+        if (ColumnAcFreq(j) >= Metadata%ac_freq) cycle
+        nyquist = ColumnAcFreq(j) / 2d0
+        do i = 1, nfreq
+            !> A binned axis carries the error code for a bin no natural
+            !> frequency fell into, which is already the answer this gives.
+            if (freq(i) == error) cycle
+            if (freq(i) > nyquist) then
+                Spectrum(i)%of(j) = error
+                !> The cospectral index space is the same space as u..lastGas.
+                Cospectrum(i)%of(j) = error
+            end if
+        end do
+    end do
+end subroutine CapSpectraAtColumnNyquist
+
+!***************************************************************************
+!
+! \brief       Rebuild a slower column's (co)spectrum on its own grid.
+! \author      Jonathan Muller, ETH Zurich
+! \note        The full-rate pass transforms every column on the file's row
+!              grid, where a slower column has been interpolated up from one
+!              real sample in `stride`. Below its own Nyquist that spectrum is
+!              the column's own convolved with the interpolation kernel -
+!              attenuated, and increasingly so towards the cut-off. This takes
+!              the real samples instead.
+!
+!              Decimating by an integer factor over the same span leaves the
+!              natural-frequency grid ALONE: nf(i) = i * F / N becomes
+!              i * (F/k) / (N/k), the same number. So the result drops into the
+!              same arrays at the same indices, and the shared axis, the
+!              binning and the writers need no notion of a second rate. The
+!              two grids coincide exactly when k divides N and to within
+!              (k-1)/N - a twentieth of a per cent on a half-hour at 10 Hz -
+!              when it does not.
+!
+!              The cospectrum is a property of the pair, not of the gas: `w` is
+!              re-sampled onto the gas's grid, at the same instants, and how it
+!              is taken there follows the instrument. Point-sampled by default,
+!              because a point-sampled gas paired against an averaged `w`
+!              biases the covariance; block-averaged when the instrument says
+!              it integrates over its interval, which is the same thing the
+!              instrument did to the gas.
+! \sa          column_sampling.f90, fix_dataset_for_spectra.f90
+!***************************************************************************
+subroutine SlowColumnSpectra(Set, N, M, tap_win, normalise, &
+    DoSpectrum, DoCospectrum, Spectrum, Cospectrum)
+    use m_rp_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: N
+    integer, intent(in) :: M
+    character(*), intent(in) :: tap_win
+    logical, intent(in) :: normalise
+    logical, intent(in) :: DoSpectrum(GHGNumVar)
+    logical, intent(in) :: DoCospectrum(GHGNumVar)
+    real(kind = dbl), intent(in) :: Set(N, M)
+    type (SpectralType), intent(inout) :: Spectrum(N/2 + 1)
+    type (SpectralType), intent(inout) :: Cospectrum(N/2 + 1)
+    !> local variables
+    integer :: i
+    integer :: j
+    integer :: row
+    integer :: lo
+    integer :: stride
+    integer :: nd
+    integer :: phase
+    real(kind = dbl) :: freq
+    real(kind = dbl) :: sumw
+    real(kind = dbl) :: var_gas
+    real(kind = dbl) :: cov_wgas
+    real(kind = dbl) :: mean_gas
+    real(kind = dbl) :: mean_w
+    real(kind = dbl), allocatable :: DecSet(:, :)
+    real(kind = dbl), allocatable :: raw_w(:)
+    real(kind = dbl), allocatable :: raw_gas(:)
+    real(kind = dbl), allocatable :: dspec(:)
+    real(kind = dbl), allocatable :: dcosp(:)
+    real(kind = dbl), external :: ColumnAcFreq
+
+    do j = u, GHGNumVar
+        if (j == w) cycle
+        if (.not. DoSpectrum(j) .and. .not. DoCospectrum(j)) cycle
+
+        freq = ColumnAcFreq(j)
+        if (freq >= Metadata%ac_freq) cycle
+
+        stride = nint(Metadata%ac_freq / freq)
+        if (stride <= 1) cycle
+
+        !> The column's samples sit at a fixed offset inside each interval;
+        !> SpecPhase records it in E2Primes rows and SpecRowOffset is where
+        !> this set starts in those rows. Sampling at the wrong offset would
+        !> read interpolated blends of two real samples and quietly attenuate
+        !> the very thing this exists to measure.
+        phase = modulo(SpecPhase(j) - SpecRowOffset, stride)
+
+        !> Counted from the phase, so the last sample lands on or before row N
+        !> and there is nothing to clamp. Clamping would have repeated the last
+        !> row - a fabricated sample, in the one routine whose whole purpose is
+        !> to use only real ones.
+        !>
+        !> Even, because OneSidedPowerSpectrum walks the transform in pairs.
+        nd = (N - phase) / stride
+        nd = nd - mod(nd, 2)
+        !> Too few samples to say anything about a spectrum. Left as the
+        !> full-rate pass produced it, and capped at this column's Nyquist by
+        !> CapSpectraAtColumnNyquist either way.
+        if (nd < 16) cycle
+
+        allocate(raw_w(nd), raw_gas(nd), DecSet(nd, 2))
+        allocate(dspec(nd/2 + 1), dcosp(nd/2 + 1))
+
+        do i = 1, nd
+            row = phase + 1 + (i - 1) * stride
+            raw_gas(i) = Set(row, j)
+            if (E2Col(j)%instr%integrates) then
+                !> Averaged over the interval the sample closes, which is what
+                !> the instrument itself did to the gas.
+                lo = max(1, row - stride + 1)
+                raw_w(i) = sum(Set(lo:row, w)) / dble(row - lo + 1)
+            else
+                raw_w(i) = Set(row, w)
+            end if
+        end do
+
+        !> Normalised by what THIS series varies by, not by the full-rate
+        !> statistics: the two differ, and dividing by the wrong one would
+        !> rescale the whole curve.
+        mean_gas = sum(raw_gas) / dble(nd)
+        mean_w = sum(raw_w) / dble(nd)
+        var_gas = sum((raw_gas - mean_gas)**2) / dble(nd)
+        cov_wgas = sum((raw_w - mean_w) * (raw_gas - mean_gas)) / dble(nd)
+
+        DecSet(1:nd, 1) = raw_w(1:nd)
+        DecSet(1:nd, 2) = raw_gas(1:nd)
+        call Tapering(tap_win, DecSet, nd, 2, sumw)
+        call FourierTransform(DecSet, nd, 2)
+
+        if (DoSpectrum(j)) then
+            call OneSidedPowerSpectrum(DecSet(:, 2), DecSet(:, 2), &
+                freq, sumw, dspec, nd)
+            if (normalise .and. var_gas /= 0d0) dspec = dspec / var_gas
+            Spectrum(1:nd/2 + 1)%of(j) = dspec(1:nd/2 + 1)
+            Spectrum(nd/2 + 2:N/2 + 1)%of(j) = error
+        end if
+
+        if (DoCospectrum(j)) then
+            call OneSidedPowerSpectrum(DecSet(:, 1), DecSet(:, 2), &
+                freq, sumw, dcosp, nd)
+            if (normalise .and. cov_wgas /= 0d0) dcosp = dcosp / cov_wgas
+            !> The cospectral index space is the same space as u..lastGas.
+            Cospectrum(1:nd/2 + 1)%of(j) = dcosp(1:nd/2 + 1)
+            Cospectrum(nd/2 + 2:N/2 + 1)%of(j) = error
+        end if
+
+        deallocate(raw_w, raw_gas, DecSet, dspec, dcosp)
+    end do
+end subroutine SlowColumnSpectra
+
+
 
 !***************************************************************************
 !
@@ -217,7 +438,17 @@ subroutine AllCospectra(Set, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectru
     real(kind = dbl) :: xx(N)
     real(kind = dbl) :: yy(N)
 
-    write(*, '(a)', advance = 'no') '   Cospectral densities..'
+    call LogSayNoAdv('   Cospectral densities..')
+
+    !> Both are intent(out), so a slot the loops below skip is left undefined.
+    !> The binning downstream reads the whole range, so "skipped" has to be a
+    !> value and not whatever the stack held - error, meaning not performed.
+    !> One subscript per part reference: `Spectrum(:)%of(:)` would be two
+    !> nonzero-rank part references, which Fortran does not allow.
+    do j = u, GHGNumVar
+        Spectrum(1:N/2 + 1)%of(j) = error
+        Cospectrum(1:N/2 + 1)%of(j) = error
+    end do
 
     !> spectra
     do j = u, GHGNumVar
@@ -228,7 +459,7 @@ subroutine AllCospectra(Set, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectru
     end do
 
     !> Cospectra
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
         if (j /= w_w) then
             if (DoCospectrum(j)) then
                 xx(1:N) = Set(1:N, w)
@@ -237,7 +468,7 @@ subroutine AllCospectra(Set, sumw, Spectrum, Cospectrum, DoSpectrum, DoCospectru
             end if
         end if
     end do
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine AllCospectra
 
 !***************************************************************************
@@ -268,7 +499,14 @@ subroutine AllOgives(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, Ogive, CoOg
     integer :: j
     real(kind = dbl)  :: df
 
-    write(*, '(a)', advance = 'no') '   Ogives..'
+    call LogSayNoAdv('   Ogives..')
+
+    !> Same reason as in AllCospectra: intent(out), and the binning reads the
+    !> whole range, so a slot no loop fills must say "not performed".
+    do j = u, GHGNumVar
+        Ogive(1:N/2 + 1)%of(j) = error
+        CoOgive(1:N/2 + 1)%of(j) = error
+    end do
 
     df = Metadata%ac_freq / dble(N)
 
@@ -283,7 +521,7 @@ subroutine AllOgives(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, Ogive, CoOg
     end do
 
     !> CoOgive
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
         if (j /= w_w) then
             if (DoCospectrum(j)) then
                 CoOgive(N/2+1)%Of(j) = Cospectrum(N/2+1)%of(j)
@@ -300,12 +538,12 @@ subroutine AllOgives(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, Ogive, CoOg
             Ogive(1:N/2 + 1)%of(j) = Ogive(1:N/2 + 1)%of(j) / Stats%Cov(j, j)
     end do
 
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
     if (DoCospectrum(j) .and. Stats%Cov(w, j) /= 0d0 .and. Stats%Cov(w, j) /= error) &
         CoOgive(1:N/2 + 1)%of(j) = CoOgive(1:N/2 + 1)%of(j) / Stats%Cov(w, j)
     end do
 
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine AllOgives
 
 !***************************************************************************
@@ -331,12 +569,12 @@ subroutine NormalizeCoSpectra(Spectrum, Cospectrum, DoSpectrum, DoCospectrum, N)
     !> local variables
     integer :: j
 
-    do j = u, gas4
+    do j = u, GHGNumVar
         if (DoSpectrum(j) .and. Stats%Cov(j, j) /= 0d0 .and. Stats%Cov(j, j) /= error) &
             Spectrum(1:N/2 + 1)%of(j) = Spectrum(1:N/2 + 1)%of(j) / Stats%Cov(j, j)
     end do
 
-    do j = w_u, w_gas4
+    do j = w_u, w_lastGas
     if (DoCospectrum(j) .and. Stats%Cov(w, j) /= 0d0 .and. Stats%Cov(w, j) /= error) &
         Cospectrum(1:N/2 + 1)%of(j) = Cospectrum(1:N/2 + 1)%of(j) / Stats%Cov(w, j)
     end do
@@ -380,37 +618,37 @@ subroutine ExpAvrgCospectra(bf, nf, Spectrum, Cospectrum, N, bin_nf, &
     Spectrum(N/2 + 1)%of(:) = 0d0
     Cospectrum(N/2 + 1)%of(:) = 0d0
 
-    write(*, '(a)', advance = 'no') '   Binning spectra and cospectra..'
+    call LogSayNoAdv('   Binning spectra and cospectra..')
     !> average variables in the exp-spaced ranges
 
     do i = 1, Meth%spec%nbins
         bin_cnt(i) = 0
         bin_nf(i) = 0.d0
-        BinnedSpectrum(i)%of(u:gas4) = 0d0
-        BinnedCospectrum(i)%of(w_u:w_gas4) = 0d0
+        BinnedSpectrum(i)%of(u:GHGNumVar) = 0d0
+        BinnedCospectrum(i)%of(w_u:w_lastGas) = 0d0
         do j = 1, N/2
             if(nf(j) > bf(i) .and. nf(j) <= bf(i + 1)) then
                 bin_nf(i) = bin_nf(i) + nf(j)
-                BinnedSpectrum(i)%of(u:gas4) = &
-                    BinnedSpectrum(i)%of(u:gas4) + Spectrum(j)%of(u:gas4)
-                BinnedCospectrum(i)%of(w_u:w_gas4) = &
-                    BinnedCospectrum(i)%of(w_u:w_gas4) + Cospectrum(j)%of(w_u:w_gas4)
+                BinnedSpectrum(i)%of(u:GHGNumVar) = &
+                    BinnedSpectrum(i)%of(u:GHGNumVar) + Spectrum(j)%of(u:GHGNumVar)
+                BinnedCospectrum(i)%of(w_u:w_lastGas) = &
+                    BinnedCospectrum(i)%of(w_u:w_lastGas) + Cospectrum(j)%of(w_u:w_lastGas)
                 bin_cnt(i) = bin_cnt(i) + 1
             end if
         end do
         if(bin_cnt(i) /= 0) then
             bin_nf(i)    = bin_nf(i) / dble(bin_cnt(i))
-            BinnedSpectrum(i)%of(u:gas4) = &
-                BinnedSpectrum(i)%of(u:gas4) / dble(bin_cnt(i))
-            BinnedCospectrum(i)%of(w_u:w_gas4) = &
-                BinnedCospectrum(i)%of(w_u:w_gas4) / dble(bin_cnt(i))
+            BinnedSpectrum(i)%of(u:GHGNumVar) = &
+                BinnedSpectrum(i)%of(u:GHGNumVar) / dble(bin_cnt(i))
+            BinnedCospectrum(i)%of(w_u:w_lastGas) = &
+                BinnedCospectrum(i)%of(w_u:w_lastGas) / dble(bin_cnt(i))
         else
             bin_nf(i)    = error
-            BinnedSpectrum(i)%of(u:gas4) = error
-            BinnedCospectrum(i)%of(w_u:w_gas4) = error
+            BinnedSpectrum(i)%of(u:GHGNumVar) = error
+            BinnedCospectrum(i)%of(w_u:w_lastGas) = error
         end if
     end do
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine ExpAvrgCospectra
 
 !***************************************************************************
@@ -450,36 +688,36 @@ subroutine ExpAvrgOgives(bf, nf, Ogive, CoOgive, N, bin_nf, &
     Ogive(N/2 + 1)%of(:) = 0d0
     CoOgive(N/2 + 1)%of(:) = 0d0
 
-    write(*, '(a)', advance = 'no') '   Binning ogives..'
+    call LogSayNoAdv('   Binning ogives..')
     !> average variables in the exp-spaced ranges
     do i = 1, Meth%spec%nbins
         bin_cnt(i) = 0
         bin_nf(i) = 0.d0
-        BinnedOgive(i)%of(u:gas4) = 0d0
-        BinnedCoOgive(i)%of(w_u:w_gas4) = 0d0
+        BinnedOgive(i)%of(u:GHGNumVar) = 0d0
+        BinnedCoOgive(i)%of(w_u:w_lastGas) = 0d0
         do j = 1, N/2
             if(nf(j) >= bf(i) .and. nf(j) < bf(i + 1)) then
                 bin_nf(i) = bin_nf(i) + nf(j)
-                BinnedOgive(i)%of(u:gas4) = &
-                    BinnedOgive(i)%of(u:gas4) + Ogive(j)%of(u:gas4)
-                BinnedCoOgive(i)%of(w_u:w_gas4) = &
-                    BinnedCoOgive(i)%of(w_u:w_gas4) + CoOgive(j)%of(w_u:w_gas4)
+                BinnedOgive(i)%of(u:GHGNumVar) = &
+                    BinnedOgive(i)%of(u:GHGNumVar) + Ogive(j)%of(u:GHGNumVar)
+                BinnedCoOgive(i)%of(w_u:w_lastGas) = &
+                    BinnedCoOgive(i)%of(w_u:w_lastGas) + CoOgive(j)%of(w_u:w_lastGas)
                 bin_cnt(i) = bin_cnt(i) + 1
             end if
         end do
         if(bin_cnt(i) /= 0) then
             bin_nf(i)    = bin_nf(i)    / dble(bin_cnt(i))
-            BinnedOgive(i)%of(u:gas4) = &
-                BinnedOgive(i)%of(u:gas4) / dble(bin_cnt(i))
-            BinnedCoOgive(i)%of(w_u:w_gas4) = &
-                BinnedCoOgive(i)%of(w_u:w_gas4) / dble(bin_cnt(i))
+            BinnedOgive(i)%of(u:GHGNumVar) = &
+                BinnedOgive(i)%of(u:GHGNumVar) / dble(bin_cnt(i))
+            BinnedCoOgive(i)%of(w_u:w_lastGas) = &
+                BinnedCoOgive(i)%of(w_u:w_lastGas) / dble(bin_cnt(i))
         else
             bin_nf(i)    = error
-            BinnedOgive(i)%of(u:gas4) = error
-            BinnedCoOgive(i)%of(w_u:w_gas4) = error
+            BinnedOgive(i)%of(u:GHGNumVar) = error
+            BinnedCoOgive(i)%of(w_u:w_lastGas) = error
         end if
     end do
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine ExpAvrgOgives
 
 !***************************************************************************
@@ -508,13 +746,40 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
     !> local variables
     integer :: i
     integer :: j
+    integer :: k
+    integer :: n_spec, n_cosp
+    integer :: spec_slots(E2NumVar), cosp_slots(E2NumVar)
     character(64) :: e2sg(E2NumVar)
     character(PathLen) :: BinCospectraPath
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
-    e2sg(gas4) = SpecCol(gas4)%label(1:len_trim(SpecCol(gas4)%label))
+    !> Column names from the records, the same helper the reader uses so the
+    !> two cannot drift. This used to be a literal naming u..ch4 with only
+    !> slot 8 substituted - from SpecCol, a third spelling, uppercase where
+    !> the other files are lower - and 18 fixed columns, so a project with
+    !> more than four gases wrote none of them here at all. That is what kept
+    !> the on-the-fly spectral assessment four-gas: this file is its input.
+    call SpectralVarTags(e2sg)
+    n_spec = 0
+    do j = u, ts
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+    end do
+    n_cosp = 0
+    do j = w_u, w_ts
+        if (j == w_w) cycle
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
+    do j = firstGas, lastGas
+        if (j - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
 
     !> Open output file for binned co-spectra
     BinCospectraPath = BinCospectraDir(1:len_trim(BinCospectraDir)) // String &
@@ -531,12 +796,18 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
     write(udf, '(a, i7)')   'averaging_interval_[min]_=_', RPsetup%avrg_len
     write(udf, '(a, i4)')   'number_of_bins_=_', Meth%spec%nbins
     write(udf, '(a, a)')    'tapering_window_=_', RPsetup%tap_win(1:len_trim(RPsetup%tap_win))
-    write(udf, *) '#_freq,natural_frequency,normalized_frequency,f_nat*spec(u)/var(u),f_nat*spec(v)/var(v)&
-        &,f_nat*spec(w)/var(w),f_nat*spec(ts)/var(ts),f_nat*spec(co2)/var(co2),f_nat*spec(h2o)/var(h2o),f_nat*spec(ch4)/var(ch4)&
-        &,f_nat*spec(' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')/var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')&
-        &,f_nat*cospec(w_u)/cov(w_u),f_nat*cospec(w_v)/cov(w_v),f_nat*cospec(w_ts)/cov(w_ts),f_nat*cospec(w_co2)/cov(w_co2)&
-        &,f_nat*cospec(w_h2o)/cov(w_h2o),f_nat*cospec(w_ch4)/cov(w_ch4)&
-        &,f_nat*cospec(w_' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')/cov(w_' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')'
+    dataline = '#_freq,natural_frequency,normalized_frequency'
+    do k = 1, n_spec
+        dataline = trim(dataline) // ',f_nat*spec(' &
+            // trim(e2sg(spec_slots(k))) // ')/var(' &
+            // trim(e2sg(spec_slots(k))) // ')'
+    end do
+    do k = 1, n_cosp
+        dataline = trim(dataline) // ',f_nat*cospec(w_' &
+            // trim(e2sg(cosp_slots(k))) // ')/cov(w_' &
+            // trim(e2sg(cosp_slots(k))) // ')'
+    end do
+    write(udf, '(a)') trim(dataline)
 
     !> Write to output file in csv style
     do i = 1, Meth%spec%nbins
@@ -553,7 +824,8 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
         end if
 
         !> Spectra
-        do j = u, gas4
+        do k = 1, n_spec
+            j = spec_slots(k)
             if (DoSpectrum(j) .and. bnf(i) /= error .and. BinnedSpectrum(i)%of(j) /= error) then
                 call WriteDatumFloat(bnf(i) * BinnedSpectrum(i)%of(j), datum, '-9999.0')
                 call AddDatum(dataline, datum, separator)
@@ -562,14 +834,14 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
             end if
         end do
         !> Cospectra
-        do j = w_u, w_gas4
-            if (j /= w_w) then
-                if (DoCospectrum(j) .and. bnf(i) /= error .and. BinnedCospectrum(i)%of(j) /= error) then
-                    call WriteDatumFloat(bnf(i) * BinnedCospectrum(i)%of(j), datum, '-9999.0')
-                    call AddDatum(dataline, datum, separator)
-                else
-                    call AddDatum(dataline, '-9999.0', separator)
-                end if
+        do k = 1, n_cosp
+            j = cosp_slots(k)
+            if (DoCospectrum(j) .and. bnf(i) /= error &
+                .and. BinnedCospectrum(i)%of(j) /= error) then
+                call WriteDatumFloat(bnf(i) * BinnedCospectrum(i)%of(j), datum, '-9999.0')
+                call AddDatum(dataline, datum, separator)
+            else
+                call AddDatum(dataline, '-9999.0', separator)
             end if
         end do
         write(udf, '(a)') dataline(1:len_trim(dataline) - 1)
@@ -603,13 +875,35 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
     !> local variables
     integer :: i
     integer :: j
+    integer :: k
+    integer :: n_spec, n_cosp
+    integer :: spec_slots(E2NumVar), cosp_slots(E2NumVar)
     character(64) :: e2sg(E2NumVar)
     character(PathLen) :: BinOgivesPath
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
-    e2sg(gas4) = SpecCol(gas4)%label(1:len_trim(SpecCol(gas4)%label))
+    !> Same slot list and the same helper as the binned (co)spectra above.
+    call SpectralVarTags(e2sg)
+    n_spec = 0
+    do j = u, ts
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+    end do
+    n_cosp = 0
+    do j = w_u, w_ts
+        if (j == w_w) cycle
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
+    do j = firstGas, lastGas
+        if (j - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        n_spec = n_spec + 1
+        spec_slots(n_spec) = j
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = j
+    end do
 
     !> Open output file for binned co-spectra
     BinOgivesPath = BinOgivesDir(1:len_trim(BinOgivesDir)) // String &
@@ -626,9 +920,15 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
     write(udf, '(a, i7)')   'averaging_interval_[min]_=_', RPsetup%avrg_len
     write(udf, '(a, i4)')   'number_of_bins_=_', Meth%spec%nbins
     write(udf, '(a, a)')    'tapering_window_=_', RPsetup%tap_win(1:len_trim(RPsetup%tap_win))
-    write(udf, *) '#_freq,natural_frequency,normalized_frequency,og(u),og(v),og(w),og(ts),og(co2),og(h2o),og(ch4)&
-        &,og(' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')&
-        &,og(w_u),og(w_v),og(w_ts),og(w_co2),og(w_h2o),og(w_ch4),og(w_' // e2sg(gas4)(1:len_trim(e2sg(gas4)))// ')'
+    dataline = '#_freq,natural_frequency,normalized_frequency'
+    do k = 1, n_spec
+        dataline = trim(dataline) // ',og(' // trim(e2sg(spec_slots(k))) // ')'
+    end do
+    do k = 1, n_cosp
+        dataline = trim(dataline) // ',og(w_' &
+            // trim(e2sg(cosp_slots(k))) // ')'
+    end do
+    write(udf, '(a)') trim(dataline)
 
     !> Write to output file in csv style
     do i = 1, Meth%spec%nbins
@@ -646,7 +946,8 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
         end if
 
         !> Ogives
-        do j = u, gas4
+        do k = 1, n_spec
+            j = spec_slots(k)
             if (DoSpectrum(j)) then
                 call WriteDatumFloat(BinnedOgive(i)%of(j), datum, '-9999.0')
                 call AddDatum(dataline, datum, separator)
@@ -655,14 +956,13 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
             end if
         end do
         !> Co-ogives
-        do j = w_u, w_gas4
-            if (j /= w_w) then
-                if (DoCospectrum(j)) then
-                    call WriteDatumFloat(BinnedCoOgive(i)%of(j), datum, '-9999.0')
-                    call AddDatum(dataline, datum, separator)
-                else
-                    call AddDatum(dataline, '-9999.0', separator)
-                end if
+        do k = 1, n_cosp
+            j = cosp_slots(k)
+            if (DoCospectrum(j)) then
+                call WriteDatumFloat(BinnedCoOgive(i)%of(j), datum, '-9999.0')
+                call AddDatum(dataline, datum, separator)
+            else
+                call AddDatum(dataline, '-9999.0', separator)
             end if
         end do
         write(udf, '(a)') dataline(1:len_trim(dataline) - 1)
@@ -702,20 +1002,19 @@ subroutine WriteOutFullCoSpectra(String, nf, Spectrum, Cospectrum, &
     character(LongOutstringLen) :: dataline2
     character(LongOutstringLen) :: dataline3
     character(DatumLen) :: datum = ''
-    character(4) :: e2sg(GHGNumVar)
+    !> Wide enough for a record-derived species tag; the historical eight are
+    !> three or four characters, but a disambiguated one such as `cos_2` is not.
+    character(64) :: e2sg(GHGNumVar)
     include '../src_common/interfaces.inc'
 
-    write(*, '(a)', advance = 'no') '   Writing requested full (co)spectra on output file..'
+    call LogSayNoAdv('   Writing requested full (co)spectra on output file..')
 
-    !> Convenient strings
-    e2sg(u)   = 'u'
-    e2sg(v)   = 'v'
-    e2sg(w)   = 'w'
-    e2sg(ts)  = 'ts'
-    e2sg(co2) = 'co2'
-    e2sg(h2o) = 'h2o'
-    e2sg(ch4) = 'ch4'
-    e2sg(gas4) = 'gas4'
+    !> Column names per slot. Shared with the reader that imports this file
+    !> back for the in-situ corrections: a name the two spell differently is
+    !> simply not imported, and that gas silently gets no correction factor.
+    !> Slots 1-8 keep their literal names, `gas4` included - those strings are
+    !> the shipped file format.
+    call SpectralVarTags(e2sg)
 
     !> Open output file for binned co-spectra
     CospectraPath = CospectraDir(1:len_trim(CospectraDir)) // String &
@@ -797,5 +1096,5 @@ subroutine WriteOutFullCoSpectra(String, nf, Spectrum, Cospectrum, &
         write(udf, '(a)') dataline(1:len_trim(dataline) - 1)
     end do
     close(udf)
-    write(*,'(a)') '  Done.'
+    call LogSay('  Done.')
 end subroutine WriteOutFullCoSpectra

@@ -42,9 +42,11 @@ subroutine CrossCorrTest(Set, nrow, ncol)
 
     write(*, '(a)', advance = 'no') &
         '  Evaluating R2 on CCFs with and without repeated values..'
+    write(ulog, '(a)', advance = 'no') &
+        '  Evaluating R2 on CCFs with and without repeated values..'
 
     dedup_set = Set
-    do icol = u, gas4
+    do icol = u, lastGas
         if (OutVarPresent(icol)) then
             do irec = 2, nrow
                 if (dabs(Set(irec, icol) - Set(irec-1, icol)) < 1d-8) then
@@ -54,7 +56,7 @@ subroutine CrossCorrTest(Set, nrow, ncol)
         end if
     end do
 
-    do icol = ts, gas4
+    do icol = ts, lastGas
         if (OutVarPresent(icol)) then
             call CrossCorrelation(Set(:, w), Set(:, icol), nrow, lagmin, lagmax, raw_ccf)
             call CrossCorrelation(dedup_set(:, w), dedup_set(:, icol), &
@@ -66,5 +68,5 @@ subroutine CrossCorrTest(Set, nrow, ncol)
         end if
     end do
 
-    write(*, *) ' Done.'
+    call LogSayList(' Done.')
 end subroutine CrossCorrTest

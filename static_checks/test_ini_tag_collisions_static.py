@@ -1,0 +1,284 @@
+"""Guards the INI tag-matching contract.
+
+The parser used to match a wanted tag against a file key by SUBSTRING, taking
+the first hit in file order. That silently bound 'err_label' to
+'fluxnet_err_label', so the missing-value token written into every output file
+came from the wrong key. It also made indexed keys such as 'gas_1_col' unsafe
+to introduce, because 'col_co2' is a substring of 'col_co2_something'.
+
+SearchLocalTags now matches by exact equality. These checks keep it that way
+and keep the tag tables free of the ambiguities that motivated the change.
+"""
+
+import re
+from collections import defaultdict
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(path):
+    return (ROOT / path).read_text(encoding="utf-8", errors="replace")
+
+
+# e.g.:  data EPPrjNTags(3)%Label / 'col_ts' / &
+#             EPPrjCTags(36)%Label / 'err_label'        / &
+TAG_RE = re.compile(
+    r"^\s*(?:data\s+)?([A-Za-z]\w*Tags)\((\d+)\)%Label\s*/\s*'([^']*)'\s*/"
+)
+
+# module file -> tag tables declared in it, and the INI scope each is parsed with.
+# Tables sharing a scope are searched against the same set of file lines.
+TABLES = {
+    "src/src_common/m_common_global_var.f90": {
+        "EPPrjNTags": "project",
+        "EPPrjCTags": "project",
+        "ANTags": "metadata",
+        "ACTags": "metadata",
+    },
+    "src/src_rp/m_rp_global_var.f90": {
+        "SNTags": "rawprocess",
+        "SCTags": "rawprocess",
+    },
+    "src/src_fcc/m_fx_global_var_mod.f90": {
+        "SNTags": "fluxcorrection",
+        "SCTags": "fluxcorrection",
+    },
+}
+
+
+def tag_tables():
+    """(module, table) -> {slot index: label}, skipping commented-out slots."""
+    out = defaultdict(dict)
+    for rel, names in TABLES.items():
+        for line in read(rel).splitlines():
+            if line.lstrip().startswith("!"):
+                continue
+            m = TAG_RE.match(line)
+            if m and m.group(1) in names:
+                out[(rel, m.group(1))][int(m.group(2))] = m.group(3)
+    return out
+
+
+class IniTagCollisionStaticTests(unittest.TestCase):
+    def test_tag_tables_are_discoverable(self):
+        """If the data-block format changes, the other checks here go silently vacuous."""
+        tables = tag_tables()
+        assert len(tables) == 8, sorted(tables)
+        for key, slots in tables.items():
+            assert slots, f"no labels parsed for {key}"
+
+
+    def test_search_local_tags_matches_tag_names_exactly(self):
+        source = read("src/src_common/parse_ini_file.f90")
+        body = source[source.index("subroutine SearchLocalTags"):]
+
+        assert "trim(adjustl(Tags(j)%Label)) == trim(adjustl(NumTags(i)%label))" in body
+        assert "trim(adjustl(Tags(j)%Label)) == trim(adjustl(CharTags(i)%label))" in body
+        # the substring form must not come back
+        assert "index(Tags(j)%Label" not in body
+
+
+    def test_search_local_tags_does_not_declare_wanted_tags_intent_out(self):
+        """%label is read inside the routine, so intent(out) would be undefined on entry."""
+        body = read("src/src_common/parse_ini_file.f90")
+        body = body[body.index("subroutine SearchLocalTags"):]
+        assert "type(Numerical), intent(inout) :: NumTags(nnum)" in body
+        assert "type(Text), intent(inout) :: CharTags(nchar)" in body
+
+
+    def test_no_duplicate_labels_within_a_tag_table(self):
+        """Two slots sharing a label both bind to the same key -- always a mistake."""
+        for (rel, name), slots in tag_tables().items():
+            seen = defaultdict(list)
+            for index, label in slots.items():
+                if label:
+                    seen[label].append(index)
+            dupes = {k: v for k, v in seen.items() if len(v) > 1}
+            assert not dupes, f"{name} in {rel} has duplicate labels: {dupes}"
+
+
+    def test_no_tag_label_is_a_substring_of_another_in_the_same_scope(self):
+        """Exact matching makes these harmless, but they signal a naming mistake.
+
+        Known and accepted: the legacy 'prof_<gas>' profile tags are prefixes of
+        'prof_<gas>_z1'..'_z7'. The GUI writes no 'prof_' keys at all, so they are
+        dead weight rather than a live hazard; they are listed explicitly so that a
+        NEW collision cannot slip in unnoticed.
+        """
+        accepted = {
+            (f"prof_{gas}", f"prof_{gas}_z{z}")
+            for gas in ("co2", "h2o", "ch4", "gas4")
+            for z in range(1, 8)
+        }
+        # 'err_label' / 'fluxnet_err_label' is the bug this module exists for. It is
+        # deliberately NOT accepted here: exact matching is what makes it safe, and
+        # test_search_local_tags_matches_tag_names_exactly is what enforces that.
+        accepted.add(("err_label", "fluxnet_err_label"))
+        # Same shape in the metadata file: a standalone 'head_corr' alongside the
+        # per-instrument 'instr_<K>_head_corr'. Under the old substring matching the
+        # standalone tag would bind to whichever instrument block came first in the
+        # file; exact matching is what makes it harmless.
+        n_instr = int(
+            re.search(
+                r"integer, parameter :: MaxNumInstruments = (\d+)",
+                read("src/src_common/m_typedef.f90"),
+            ).group(1)
+        )
+        accepted |= {("head_corr", f"instr_{k}_head_corr") for k in range(1, n_instr + 2)}
+        # And in the project file: the project-wide 'max_lack' alongside the
+        # per-instrument 'instr_<K>_max_lack'. Same shape, same reason it is
+        # harmless - the two mean the same thing at two scopes, and exact
+        # matching keeps the shorter one from swallowing the longer.
+        accepted |= {("max_lack", f"instr_{k}_max_lack") for k in range(1, n_instr + 1)}
+
+        by_scope = defaultdict(set)
+        for rel, names in TABLES.items():
+            for name, scope in names.items():
+                by_scope[scope] |= {
+                    label for label in tag_tables()[(rel, name)].values() if label
+                }
+
+        unexpected = []
+        for scope, labels in by_scope.items():
+            for short in labels:
+                for long in labels:
+                    if short != long and short in long and (short, long) not in accepted:
+                        unexpected.append((scope, short, long))
+        assert not unexpected, f"new tag-name collisions: {unexpected}"
+
+
+    def test_metadata_tag_tables_match_the_generator(self):
+        """The .metadata tables are generated; a hand edit or a changed
+        MaxNumInstruments without re-running gen_metadata_tags.py silently
+        desynchronises the tag indices from the stride arithmetic that reads them."""
+        import subprocess
+        import sys
+
+        gen = ROOT / "prj" / "gen_metadata_tags.py"
+        assert gen.exists(), gen
+
+        n = int(
+            re.search(
+                r"integer, parameter :: MaxNumInstruments = (\d+)",
+                read("src/src_common/m_typedef.f90"),
+            ).group(1)
+        )
+        r = subprocess.run(
+            [sys.executable, str(gen), "--instruments", str(n), "--check"],
+            capture_output=True, text=True, cwd=str(ROOT / "prj"),
+        )
+        assert r.returncode == 0, (
+            f"metadata tag tables are stale for MaxNumInstruments={n}; "
+            f"re-run prj/gen_metadata_tags.py --instruments {n}\n{r.stdout}{r.stderr}"
+        )
+
+
+    def test_project_tag_tables_match_the_generator(self):
+        """The [Project]/RP/FCC tables are generated too; a hand edit desynchronises
+        the tag indices from the positional code that consumes them."""
+        import subprocess
+        import sys
+
+        gen = ROOT / "prj" / "gen_project_tags.py"
+        assert gen.exists(), gen
+        r = subprocess.run(
+            [sys.executable, str(gen), "--check"],
+            capture_output=True, text=True, cwd=str(ROOT / "prj"),
+        )
+        assert r.returncode == 0, (
+            f"project tag tables are stale; re-run prj/gen_project_tags.py"
+            f"\n{r.stdout}{r.stderr}"
+        )
+
+
+    def test_a_new_project_tag_does_not_move_the_record_origin(self):
+        """The generator appends its 1600 per-gas slots at max(index) + 1, so a
+        tag written past the last hand-written one lifts that origin and
+        re-indexes every per-gas setting. Adding instr_1..8_max_lack that way
+        took rpGasOriginN from 425 to 2033 and Nsn from 2024 to 3632 once
+        already; they live in a gap below the origin now.
+        """
+        sn = tag_tables()[("src/src_rp/m_rp_global_var.f90", "SNTags")]
+        common = read("src/src_common/m_common_global_var.f90")
+
+        origin = min(i for i, l in sn.items() if l.startswith("gas_1_"))
+        declared = int(
+            re.search(r"integer, parameter :: rpGasOriginN = (\d+)", common).group(1)
+        )
+        assert declared == origin, (
+            f"rpGasOriginN is {declared} but gas_1_* starts at {origin}; "
+            "read_ini_rp.f90 addresses the records by that parameter"
+        )
+        # The literal, because the structural check above would happily follow
+        # the origin wherever a re-run moved it. Moving it is not wrong in
+        # principle - it is wrong by accident, which is what this catches.
+        assert declared == 425, (
+            f"the per-gas record block moved to {declared}; if that is "
+            "deliberate, say so here, and check nothing appended a tag past "
+            "the last hand-written one"
+        )
+
+        lack = {i for i, l in sn.items() if re.fullmatch(r"instr_\d+_max_lack", l)}
+        n_instr = int(
+            re.search(
+                r"integer, parameter :: MaxNumInstruments = (\d+)",
+                read("src/src_common/m_typedef.f90"),
+            ).group(1)
+        )
+        assert len(lack) == n_instr, sorted(lack)
+        assert max(lack) < origin, (
+            f"instr_<K>_max_lack reaches {max(lack)}, at or past the record "
+            f"origin {origin}"
+        )
+        # Contiguous and addressed from one named parameter, because
+        # read_ini_rp.f90 walks them by stride.
+        first = int(
+            re.search(r"integer, parameter :: rpInstrMaxLackN = (\d+)", common).group(1)
+        )
+        assert sorted(lack) == list(range(first, first + n_instr)), sorted(lack)
+
+
+    def test_metadata_group_origins_match_the_generated_layout(self):
+        """read_metadata_file.f90 addresses the groups by arithmetic, so its
+        origins must match where the generator actually put them."""
+        src = read("src/src_common/read_metadata_file.f90")
+        tables = tag_tables()
+        an = tables[("src/src_common/m_common_global_var.f90", "ANTags")]
+        ac = tables[("src/src_common/m_common_global_var.f90", "ACTags")]
+
+        an_col = min(i for i, l in an.items() if l.startswith("col_1_"))
+        ac_col = min(i for i, l in ac.items() if l.startswith("col_1_"))
+        assert f"init_an_col = {an_col} - leap_an_col" in src
+        assert f"init_ac_col = {ac_col} - leap_ac_col" in src
+
+        data_label = next(i for i, l in ac.items() if l == "data_label")
+        assert f"ACTags({data_label})%value" in src
+
+
+    def test_full_spectra_gas4_tag_keeps_the_spelling_the_gui_wrote(self):
+        """The GUI writes 'out_full_sp_gas4'; the engine once looked for
+        'out_full_sp_n2o', so the setting was silently dropped and the flag
+        always read false.
+
+        The tag is retired now - the flag comes from gas_<i>_out_full_sp - but
+        the label stays in the table under its original spelling, because the
+        tables are positional and a retired key is blanked rather than
+        removed. Reintroducing the n2o spelling would put a live key at a
+        retired index.
+        """
+        source = read("src/src_rp/m_rp_global_var.f90")
+        assert "'out_full_sp_n2o'" not in source
+        reader = read("src/src_rp/read_ini_rp.f90")
+        assert "RPsetup%out_full_sp(gas4)" not in reader, (
+            "the flat per-gas spectra flags are read again; they come from "
+            "the records now"
+        )
+        assert "SCTagFound(rpGasOriginC + (i - 1) * rpGasLeapC)" in reader, (
+            "the per-record spectra flag must be the one that is read"
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

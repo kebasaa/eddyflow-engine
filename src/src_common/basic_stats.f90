@@ -53,9 +53,10 @@ subroutine BasicStats(Set, nrow, ncol, nfold, printout)
     
     if (printout) then
         if (nfold == 1) then
-            write(*, '(a)', advance = 'no') '  Calculating statistics..'
+            call LogSayNoAdv('  Calculating statistics..')
         else
             write(*, '(a,i1,a)', advance = 'no') '  Re-calculating statistics (',nfold,')..'
+            write(ulog, '(a,i1,a)', advance = 'no') '  Re-calculating statistics (',nfold,')..'
         end if
     end if
 
@@ -134,6 +135,7 @@ subroutine BasicStats(Set, nrow, ncol, nfold, printout)
         end if
     end do
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 
     !> TKE (e.g. Stull, 1988)
     if (nfold == 7) then

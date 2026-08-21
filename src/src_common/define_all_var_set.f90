@@ -45,12 +45,43 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
     real(kind = sgl), intent(inout) :: fRaw(nrow, ncol)
     !> local variables
     integer :: j
+    integer :: gasSlot
     real(kind = sgl) :: DumVec(N)
+    integer, external :: RecordGasSlot
+    integer, external :: HistoricGasSlot
+    logical, external :: IsHistoricGasVar
+
+    !> Whatever the file says is missing, recognised in the units the file is
+    !> written in and before anything scales it.
+    !>
+    !> Here rather than later because a fill value is only recognisable while it
+    !> still looks like itself: CleanUpE2Set's -300 floor runs on E2Set, after
+    !> conversion, so a -9999 in a nmol mol-1 column reached it as -9.999 and
+    !> walked straight through. This is also the one funnel every importer
+    !> passes through - ASCII, binary, TOB1, SLT - so each of them gets it.
+    do j = 1, NumAllVar
+        call BlankMissingValues(fRaw(1:N, j), N, LocCol(j)%err_value)
+    end do
 
     !> Converts units, according to information in the metadata file
     !> Physical, non-standard units are detected and converted into standard
     !> Volt (or any other "non-physical") are converted as well, using conversion parameters
     do j = 1, NumAllVar
+        !> A gas named by a record is a trace gas whatever its species, but the
+        !> select below can only match literal names. Without this, a column
+        !> holding COS - or any gas in a slot past the fourth - falls through
+        !> to `case default` and receives no unit conversion at all: a ppb
+        !> reading is then used as though it were ppm, a silent factor of 1000.
+        !> Legacy projects escaped this only because DefineUsedVariables
+        !> renamed the fourth gas's column to 'n2o' so it borrowed N2O's arm.
+        gasSlot = RecordGasSlot(LocCol(j)%orig_col)
+        if (gasSlot > 0) then
+            if (.not. IsHistoricGasVar(LocCol(j)%var)) then
+                call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, gasSlot)
+                cycle
+            end if
+        end if
+
         select case (LocCol(j)%var)
             !> Wind components, taken to [m s-1]
             case('u', 'v', 'w', 'sos')
@@ -188,132 +219,26 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                     end select
                 end if
 
-            !> Concentrations of trace gases
+            !> Concentrations of trace gases. The conversion is identical for
+            !> every species once the molecular weight is known, so it lives in
+            !> one place and is keyed on the gas slot.
+            !>
+            !> The column's *own* slot, when a record claims it. Mapping the
+            !> species name to a fixed slot sent every column named 'co2' to
+            !> slot 5 whatever slot it occupied, so a site measuring CO2 on
+            !> two analysers converted both with the first record's molecular
+            !> weight - and an N2O column went to slot 8 regardless. Falls
+            !> back to the species map only for a column no record names.
             case('co2', 'ch4', 'n2o')
-                if (LocCol(j)%conversion_type == 'none') then
-                    select case(LocCol(j)%unit_in(1:len_trim(LocCol(j)%unit_in)))
-                        case ('mmol_m3', 'ppm')
-                            cycle
-                        case ('ppt')
-                            fRaw(1:N, j) = fRaw(1:N, j) * 1e3
-                        case ('umol_m3', 'ppb')
-                            fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
-                        case ('pmol_mol')
-                            fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
-                        case ('g_m3')
-                            select case (LocCol(j)%var)
-                                case('co2')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(co2)
-                                    end where
-                                case('ch4')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(ch4)
-                                    end where
-                                case('n2o')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(gas4)
-                                    end where
-                            end select
-                        case ('mg_m3')
-                            select case (LocCol(j)%var)
-                                case('co2')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(co2) * 1e-3
-                                    end where
-                                case('ch4')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(ch4) * 1e-3
-                                    end where
-                                case('n2o')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(gas4) * 1e-3
-                                    end where
-                            end select
-                        case ('ug_m3')
-                            select case (LocCol(j)%var)
-                                case('co2')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(co2) * 1e-6
-                                    end where
-                                case('ch4')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(ch4) * 1e-6
-                                    end where
-                                case('n2o')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(gas4) * 1e-6
-                                    end where
-                            end select
-                        case default
-                            cycle
-                    end select
+                if (gasSlot > 0) then
+                    call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, &
+                                              gasSlot)
                 else
-                    DumVec(1:N) = fRaw(1:N, j)
-                    call LinearConversion(LocCol, DumVec(1:N), N, j)
-                    fRaw(1:N, j) = DumVec(1:N)
-                    select case(LocCol(j)%unit_out(1:len_trim(LocCol(j)%unit_out)))
-                        case ('ppt')
-                            where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) * 1e3
-                            end where
-                        case ('umol_m3', 'ppb')
-                            where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
-                            end where
-                        case ('pmol_mol')
-                            where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
-                            end where
-                        case ('g_m3')
-                            select case (LocCol(j)%var)
-                                case('co2')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(co2)
-                                    end where
-                                case('ch4')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(ch4)
-                                    end where
-                                case('n2o')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(gas4)
-                                    end where
-                            end select
-                        case ('mg_m3')
-                            select case (LocCol(j)%var)
-                                case('co2')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(co2) * 1e-3
-                                    end where
-                                case('ch4')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(ch4) * 1e-3
-                                    end where
-                                case('n2o')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(gas4) * 1e-3
-                                    end where
-                            end select
-                        case ('ug_m3')
-                            select case (LocCol(j)%var)
-                                case('co2')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(co2) * 1e-6
-                                    end where
-                                case('ch4')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(ch4) * 1e-6
-                                    end where
-                                case('n2o')
-                                    where(fRaw(1:N, j) /= error)
-                                        fRaw(1:N, j) = fRaw(1:N, j) / MW(gas4) * 1e-6
-                                    end where
-                            end select
-                        case default
-                            cycle
-                    end select
+                    call ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, &
+                                              HistoricGasSlot(LocCol(j)%var))
                 end if
+                cycle
+
 
             !> Concentrations of water vapour
             case('h2o')
@@ -331,15 +256,15 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                             end where
                         case ('g_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o)
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O
                             end where
                         case ('mg_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-3
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-3
                             end where
                         case ('ug_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-6
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-6
                             end where
                         case default
                             cycle
@@ -359,15 +284,15 @@ subroutine DefineAllVarSet(LocCol, fRaw, nrow, ncol, N)
                             end where
                         case ('g_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o)
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O
                             end where
                         case ('mg_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-3
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-3
                             end where
                         case ('ug_m3')
                             where(fRaw(1:N, j) /= error)
-                                fRaw(1:N, j) = fRaw(1:N, j) / MW(h2o) * 1e-6
+                                fRaw(1:N, j) = fRaw(1:N, j) / MW_H2O * 1e-6
                             end where
                         case default
                             cycle
@@ -476,3 +401,333 @@ subroutine LinearConversion(LocCol, Vec, nrow, j)
             continue
     end select
 end subroutine LinearConversion
+
+!***************************************************************************
+!
+! \brief       Gas slot a metadata column is assigned to by the project's
+!              gas records, or 0 if no record names it.
+! \author      Jonathan Muller
+! \note        Runs while LocCol is still indexed by metadata column number,
+!              which is exactly what a record stores, so no translation is
+!              needed here.
+!***************************************************************************
+integer function RecordGasSlot(orig_col)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: orig_col
+    integer :: i
+
+    RecordGasSlot = 0
+    if (orig_col <= 0) return
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (EddyFlowProj%gas(i)%col /= orig_col) cycle
+        if (firstGas + i - 1 > lastGas) return
+        RecordGasSlot = firstGas + i - 1
+        return
+    end do
+end function RecordGasSlot
+
+!***************************************************************************
+!
+! \brief       Whether a column name is one the unit conversion already
+!              dispatches on by name.
+! \author      Jonathan Muller
+! \note        h2o is included so a record naming water vapour keeps using
+!              the water arm, whose conversions differ from the trace gases'.
+!***************************************************************************
+logical function IsHistoricGasVar(var)
+    implicit none
+    character(*), intent(in) :: var
+
+    select case (trim(adjustl(var)))
+        case ('co2', 'h2o', 'ch4', 'n2o'); IsHistoricGasVar = .true.
+        case default;                      IsHistoricGasVar = .false.
+    end select
+end function IsHistoricGasVar
+
+!***************************************************************************
+!
+! \brief       Whether a metadata column names a gas this project measures.
+! \author      Jonathan Muller
+! \note        The metadata validator gated three of its checks on
+!              `case ('co2','h2o','ch4','n2o')`. A column naming any other
+!              species - COS, or a second N2O - fell to the default arm and
+!              was not checked at all: its measure type and its units went
+!              unvalidated, so a mis-declared column reached the processing
+!              chain and produced a plausible-looking wrong flux.
+!
+!              The four historic names stay true whatever the project holds,
+!              because a legacy file names its fourth gas 'n2o' regardless of
+!              what it is. Beyond them the question is answered from the
+!              records, which is where a project declares its species.
+!***************************************************************************
+logical function IsGasVar(var)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: var
+    character(32) :: want
+    character(32) :: species
+    integer :: i
+    logical, external :: IsHistoricGasVar
+
+    IsGasVar = .true.
+    if (IsHistoricGasVar(var)) return
+
+    want = var
+    call lowercase(want)
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        species = EddyFlowProj%gas(i)%var
+        call lowercase(species)
+        if (len_trim(species) == 0) cycle
+        if (trim(adjustl(species)) == trim(adjustl(want))) return
+    end do
+    IsGasVar = .false.
+end function IsGasVar
+
+!***************************************************************************
+!
+! \brief       Gas slot behind one of the historically named gas columns.
+! \author      Jonathan Muller
+! \note        'n2o' maps to gas4: the fourth slot has always been N2O's by
+!              default, and legacy projects renamed whatever gas occupied it
+!              to 'n2o' so that it would reach this mapping at all.
+!***************************************************************************
+integer function HistoricGasSlot(var)
+    use m_common_global_var
+    implicit none
+    character(*), intent(in) :: var
+
+    select case (trim(adjustl(var)))
+        case ('co2'); HistoricGasSlot = histGas1
+        case ('h2o'); HistoricGasSlot = histGas2
+        case ('ch4'); HistoricGasSlot = histGas3
+        case ('n2o'); HistoricGasSlot = histGas4
+        case default; HistoricGasSlot = histGas4
+    end select
+end function HistoricGasSlot
+
+!***************************************************************************
+!
+! \brief       Converts one trace-gas column to the standard mixing-ratio
+!              units, using the molecular weight of the slot it occupies.
+! \author      Gerardo Fratini, generalised by Jonathan Muller
+! \note        Extracted verbatim from the co2/ch4/n2o arm of DefineAllVarSet
+!              so that the named gases and the record-named gases cannot
+!              drift apart. The only change is that the molecular weight is
+!              taken from the gas slot instead of a three-way switch on the
+!              column name, which is what allows any species to be handled.
+!***************************************************************************
+subroutine ConvertTraceGasUnits(LocCol, fRaw, nrow, ncol, N, j, gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: nrow, ncol, N, j, gas_slot
+    type(ColType), intent(in) :: LocCol(MaxNumCol)
+    real(kind = sgl), intent(inout) :: fRaw(nrow, ncol)
+    real(kind = sgl) :: DumVec(N)
+
+    if (LocCol(j)%conversion_type == 'none') then
+        select case(LocCol(j)%unit_in(1:len_trim(LocCol(j)%unit_in)))
+            case ('mmol_m3', 'ppm')
+                return
+            !> Guarded like every other arm here, because the error code is a
+            !> number: `error` is -9999, so scaling it made a missing sample
+            !> into -9.999 - past CleanUpE2Set's -300 test, past every
+            !> `/= error` downstream, and into the flux as a plausible mixing
+            !> ratio. These three were the arms that scaled the whole column.
+            !>
+            !> Measured on tests/regression/base_slow_naive, whose analyser
+            !> writes -9999 on nine rows in ten: N2O reported a mole fraction
+            !> of -8954 - the mean of a column nine tenths full of fill - and a
+            !> flux computed from it, while COS, which that project happens to
+            !> give absolute limits, was correctly dropped.
+            case ('ppt')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e3
+                end where
+            case ('umol_m3', 'ppb')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
+                end where
+            case ('pmol_mol')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
+                end where
+            case ('g_m3')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot)
+                end where
+            case ('mg_m3')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot) * 1e-3
+                end where
+            case ('ug_m3')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot) * 1e-6
+                end where
+            case default
+                return
+        end select
+    else
+        DumVec(1:N) = fRaw(1:N, j)
+        call LinearConversion(LocCol, DumVec(1:N), N, j)
+        fRaw(1:N, j) = DumVec(1:N)
+        select case(LocCol(j)%unit_out(1:len_trim(LocCol(j)%unit_out)))
+            case ('ppt')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e3
+                end where
+            case ('umol_m3', 'ppb')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e-3
+                end where
+            case ('pmol_mol')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) * 1e-6
+                end where
+            case ('g_m3')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot)
+                end where
+            case ('mg_m3')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot) * 1e-3
+                end where
+            case ('ug_m3')
+                where(fRaw(1:N, j) /= error)
+                    fRaw(1:N, j) = fRaw(1:N, j) / MW(gas_slot) * 1e-6
+                end where
+        end select
+    end if
+end subroutine ConvertTraceGasUnits
+
+!***************************************************************************
+!
+! \brief       Label to use for a gas slot in output headers.
+! \author      Jonathan Muller
+! \note        Headers are written before the first data file is read, so
+!              E2Col is still empty in a record project - ApplyGasRecords
+!              fills it per file. Legacy projects had the label by then
+!              because the retired col_gas4 tag pointed straight at the
+!              metadata column. The record names the same column, so this
+!              resolves it the same way and yields the same label.
+!
+!              Takes the slot rather than assuming the fourth: the full
+!              output carries a column set per configured gas, so every slot
+!              needs a name, and deriving one only for slot four is what left
+!              gases 5+ out of that file entirely.
+!***************************************************************************
+function GasOutputLabel(gas_slot) result(label)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    character(32) :: label
+    integer :: rec4
+    integer :: i
+
+    rec4 = gas_slot - firstGas + 1
+
+    call clearstr(label)
+    !> The record is the authority, exactly as it is for the input unit. It
+    !> was tempting to prefer E2Col when populated, on the grounds that the
+    !> per-file path has "already resolved" the slot - but E2Col is also
+    !> filled by name matching before the records are applied, so with five
+    !> gases configured it could hand back the species of a different slot.
+    !> That produced a FLUXNET row with two sets of N2O_* columns and no COS
+    !> columns at all.
+    if (EddyFlowProj%gas_num >= rec4) then
+        if (EddyFlowProj%gas(rec4)%col > 0) then
+            !> Prefer the metadata column's own label, which is what the
+            !> legacy path used, so an upgraded project keeps its column names.
+            do i = 1, MaxNumCol
+                if (Col(i)%orig_col /= EddyFlowProj%gas(rec4)%col) cycle
+                if (.not. UsableLabel(Col(i)%label)) exit
+                label = trim(Col(i)%label)
+                return
+            end do
+        end if
+        !> Fall back to the species the record names. This is deliberately
+        !> outside the column test: a gas configured *without* a column still
+        !> declares a species, and it still has to be named - it appears in
+        !> the spectral readiness report and in the assessment file. While
+        !> this sat inside the branch, such a gas fell through to E2Col below.
+        if (UsableLabel(EddyFlowProj%gas(rec4)%var)) then
+            label = trim(EddyFlowProj%gas(rec4)%var)
+            return
+        end if
+    end if
+
+    !> No record for this slot: fall back to whatever the per-file path
+    !> resolved, then to the slot name. 'gas4' is kept for the fourth slot so
+    !> a project that resolves nothing still produces the historical name.
+    if (UsableLabel(E2Col(gas_slot)%label)) then
+        label = trim(E2Col(gas_slot)%label)
+        return
+    end if
+    if (gas_slot == histGas4) then
+        label = 'gas4'
+    else
+        write(label, '(a,i0)') 'gas', gas_slot - firstGas + 1
+    end if
+
+contains
+
+!> Whether a candidate label can be used as a name.
+!>
+!> Blank and 'none' are the declared "unset" values. The printable test is
+!> the one that matters: E2Col is never populated in FCC, so its %label holds
+!> whatever the module default left there - in practice NUL bytes, which
+!> len_trim counts as content. That made this function hand back 32 NULs for
+!> a gas configured without a column, and callers then wrote them into
+!> report headers as `avrg_cosp(w/^@^@^@...)`. Every caller treated a blank
+!> as "no name" and none of them could recognise that.
+logical function UsableLabel(text)
+    implicit none
+    character(*), intent(in) :: text
+    integer :: k
+
+    UsableLabel = .false.
+    if (len_trim(text) == 0) return
+    if (trim(text) == 'none') return
+    do k = 1, len_trim(text)
+        if (iachar(text(k:k)) < 32 .or. iachar(text(k:k)) > 126) return
+    end do
+    UsableLabel = .true.
+end function UsableLabel
+
+end function GasOutputLabel
+
+!***************************************************************************
+!
+! \brief       Input unit of a gas slot, for the output-units decision.
+! \author      Jonathan Muller
+! \note        Same problem, and same resolution, as GasOutputLabel: the unit
+!              decides whether the full output is written in nmol or umol,
+!              and it is consulted where E2Col has not been filled from the
+!              records yet. Getting it wrong does not corrupt the numbers -
+!              the label and the scaling move together - but it silently
+!              changes the units an upgraded project reports in.
+!***************************************************************************
+function GasUnitIn(gas_slot) result(unit_in)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    character(32) :: unit_in
+    integer :: rec4
+    integer :: i
+
+    rec4 = gas_slot - firstGas + 1
+    call clearstr(unit_in)
+    !> The metadata column is the authority here: unit_in describes what the
+    !> data file contains, which no amount of processing changes. E2Col's copy
+    !> is only a fallback, for a project that names no records.
+    if (EddyFlowProj%gas_num >= rec4 .and. EddyFlowProj%gas(rec4)%col > 0) then
+        do i = 1, MaxNumCol
+            if (Col(i)%orig_col /= EddyFlowProj%gas(rec4)%col) cycle
+            if (len_trim(Col(i)%unit_in) > 0) unit_in = trim(Col(i)%unit_in)
+            return
+        end do
+    end if
+
+    if (len_trim(E2Col(gas_slot)%unit_in) > 0 .and. &
+        trim(E2Col(gas_slot)%unit_in) /= 'none') unit_in = trim(E2Col(gas_slot)%unit_in)
+end function GasUnitIn

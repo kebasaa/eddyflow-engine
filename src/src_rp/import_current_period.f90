@@ -138,8 +138,12 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
             if (CurrentFile > FirstFile)  then
                 write(*, *) '          ..' // slash, &
                 trim(adjustl(FileList(CurrentFile)%name))
+                write(ulog, *) '          ..' // slash, &
+                trim(adjustl(FileList(CurrentFile)%name))
             else
                 write(*, *) ' File(s): ..' // slash, &
+                trim(adjustl(FileList(CurrentFile)%name))
+                write(ulog, *) ' File(s): ..' // slash, &
                 trim(adjustl(FileList(CurrentFile)%name))
             end if
         end if

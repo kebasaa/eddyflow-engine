@@ -42,6 +42,10 @@ subroutine OutputSpectralAssessmentResults(nbins)
     integer :: i
     integer :: pick
     integer :: goodj
+    !> Gases with a fit of their own, and whether any gas is missing one.
+    !> The file is written for the first; the second is what makes it partial.
+    integer :: n_fitted
+    integer :: n_unfitted
     integer :: cls
     integer :: gas
     integer :: month
@@ -49,12 +53,32 @@ subroutine OutputSpectralAssessmentResults(nbins)
     integer :: mkdir_status
     real(kind = dbl), external :: func
     real(kind = dbl), external :: kaimal
+    character(64), external :: MonthGroupingText
     character(128) :: Filename
+    character(64) :: sa_tags(GHGNumVar)
+    character(64) :: sa_name
+    !> `var=<species> instr=<analyser>` for the block being written, so a later
+    !> project can resolve it by what it measures rather than by its position
+    !> among repeats of its species.
+    character(96) :: sa_stamp
+    !> `exp=<e1>,<e2>,<e3>` for a hygrometer's block, so its RH dependence
+    !> survives the round trip rather than being refitted or borrowed.
+    character(96) :: sa_exp
+    integer :: cosp_slots(1 + MaxNumGases)
+    integer :: n_cosp
+    integer :: k
+    !> The site's water record. The RH-class assessment is water's, and it
+    !> used to read the sixth slot regardless of what that record held.
+    integer :: wsl
+    character(64) :: sa_var_tags(GHGNumVar)
+    character(64) :: wtag
+    character(32) :: rh_label
     character(PathLen) :: FilePath
     character(PathLen) :: SpecDir
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum
     logical :: proceed
+    logical, external :: GasHasSpectralFit
     include '../src_common/interfaces_1.inc'
 
     !> Create output directory
@@ -65,23 +89,71 @@ subroutine OutputSpectralAssessmentResults(nbins)
     !> Select one frequency vector which does not contain only -9999.
     !> If none, it means all spectra are -9999. Basically, spectral
     !> assessment failed.
+    !> The RH-class assessment is water's, so it reads the site's water
+    !> record rather than the sixth slot - which is water only when record
+    !> two happens to hold it.
+    wsl = PrimaryWaterOutSlot()
+
     goodj = ierror
     ol: do cls = RH10, RH90
         il: do i = 1, nbins - 1
-                if (MeanBinSpec(i, cls)%fn(h2o) /= error) then
+                if (MeanBinSpec(i, cls)%fn(wsl) /= error) then
                     goodj = cls
                     exit ol
                 end if
         end do il
     end do ol
 
+    !> Whether the assessment has anything to say, asked of every gas rather
+    !> than of water alone. goodj is water's first usable RH class and stays
+    !> that, because the H2O spectra file below is written from it - but it
+    !> used to decide whether the assessment file existed at all, so a site
+    !> whose hygrometers could not be fitted lost the CO2, N2O and COS blocks
+    !> that had been fitted perfectly well, and every gas fell back to the
+    !> analytic correction.
+    n_fitted = 0
+    n_unfitted = 0
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (.not. fcc_var_present(gas)) cycle
+        if (GasHasSpectralFit(gas)) then
+            n_fitted = n_fitted + 1
+        else
+            n_unfitted = n_unfitted + 1
+        end if
+    end do
+
+    !> Species names for every block header written below. Hoisted: the
+    !> passive-gas spectra file further down is written under its own
+    !> condition and is reachable without the assessment block.
+    call SpectralGasNames(sa_tags)
+
+    !> The cospectrum column set, built once and walked by both the headers
+    !> and the row writers below. They used to be a literal naming w/T and
+    !> four gases against a loop over w_ts..w_gas4; on a project with more
+    !> gases the rows grew and the header did not, so the extra columns were
+    !> unlabelled. A gas slot is its own w_ index, so the slot list serves
+    !> both. Water is included: unlike the transfer-function blocks, a
+    !> cospectrum with w is meaningful for every gas.
+    n_cosp = 1
+    cosp_slots(1) = w_ts
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        n_cosp = n_cosp + 1
+        cosp_slots(n_cosp) = gas
+    end do
+
     !> SPECTRAL ASSESSMENT
     if (FCCsetup%do_spectral_assessment) then
 
-        if (goodj == ierror) then
+        if (n_fitted == 0) then
             call ExceptionHandler(76)
         else
-            write(*,'(a)') ' Writing spectral assessment results on file.. '
+            !> Some gases fitted and some not: the file is written and covers
+            !> only the first group. Said once, here, because this is where it
+            !> is decided - the correction then falls back per gas.
+            if (n_unfitted > 0) call ExceptionHandler(110)
+            call LogSay(' Writing spectral assessment results on file.. ')
 
             !> Transfer function parameters
             Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // SA_FilePadding  &
@@ -95,48 +167,54 @@ subroutine OutputSpectralAssessmentResults(nbins)
             write(udf,'(a)') 'fc:_IIR_cut-off_frequency'
             write(udf,'(a)') 'Fn:_normalization_parameter'
             write(udf,'(a)') 'Water_vapour_TFP_are_calculated_for_9_RH_classes.'
-            write(udf,'(a)') 'Other_gases_TFP_are_calculated_on_a_monthly_base_&
-                &(currently_all_months_together_).'
+            !> One line, because the reader skips exactly seven. It used to
+            !> say "currently all months together", which stopped being true
+            !> the moment a gas could state its own grouping - each block
+            !> header carries that gas's groups now.
+            write(udf,'(a)') 'Other_gases_TFP_are_calculated_on_a_monthly_base.'
             write(udf,'(a)') '-----------------------------------------------------&
                 &-----------------------------'
-            write(udf,'(a)') 'Water vapour TFP              Fn          fc    numerosity'
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class   5 - 15% = ', &
-                RegPar(h2o, RH10)%Fn, RegPar(h2o, RH10)%fc, &
-                MeanBinSpec(nbins/2, RH10)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  15 - 25% = ', &
-                RegPar(h2o, RH20)%Fn, RegPar(h2o, RH20)%fc, &
-                MeanBinSpec(nbins/2, RH20)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  25 - 35% = ', &
-                RegPar(h2o, RH30)%Fn, RegPar(h2o, RH30)%fc, &
-                MeanBinSpec(nbins/2, RH30)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  35 - 45% = ', &
-                RegPar(h2o, RH40)%Fn, RegPar(h2o, RH40)%fc, &
-                MeanBinSpec(nbins/2, RH40)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  45 - 55% = ', &
-                RegPar(h2o, RH50)%Fn, RegPar(h2o, RH50)%fc, &
-                MeanBinSpec(nbins/2, RH50)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  55 - 65% = ', &
-                RegPar(h2o, RH60)%Fn, RegPar(h2o, RH60)%fc, &
-                MeanBinSpec(nbins/2, RH60)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  65 - 75% = ', &
-                RegPar(h2o, RH70)%Fn, RegPar(h2o, RH70)%fc, &
-                MeanBinSpec(nbins/2, RH70)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  75 - 85% = ', &
-                RegPar(h2o, RH80)%Fn, RegPar(h2o, RH80)%fc, &
-                MeanBinSpec(nbins/2, RH80)%cnt(h2o)
-            write(udf,'(a, 2(f11.5,1x), i13)') 'RH class  85 - 95% = ', &
-                RegPar(h2o, RH90)%Fn, RegPar(h2o, RH90)%fc, &
-                MeanBinSpec(nbins/2, RH90)%cnt(h2o)
+            !> Stamped like every other block. The primary's table has no name
+            !> - it is identified by sitting here, which is fine until a later
+            !> project designates a different hygrometer as primary and this
+            !> table lands on it. The stamp says which analyser measured it, so
+            !> a reader can put it on that one instead of on whichever record
+            !> happens to be first.
+            call SpectralBlockStamp(wsl, sa_stamp)
+            write(udf,'(a)') 'Water vapour TFP              Fn          fc    &
+                &numerosity' // trim(sa_stamp)
+            !> Nine classes, one loop. Nine copies of the same three-line
+            !> write differing only in the class index and the label they
+            !> spell out - and each naming the h2o slot rather than the site's
+            !> water. The label is generated from the class, so the bounds it
+            !> announces cannot disagree with the class it reports.
+            do cls = RH10, RH90
+                write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
+                    10 * cls - 5, ' - ', 10 * cls + 5, '% = '
+                write(udf,'(a, 2(f11.5,1x), i13)') rh_label, &
+                    RegPar(wsl, cls)%Fn, RegPar(wsl, cls)%fc, &
+                    MeanBinSpec(nbins/2, cls)%cnt(wsl)
+            end do
             write(udf,'(a)') ''
 
-            do gas = co2, gas4
-                if (gas == co2)  write(udf,'(a)') 'CO2            TFP            &
-                    &Fn          fc'
-                if (gas == h2o)  cycle
-                if (gas == ch4)  write(udf,'(a)') 'CH4            TFP            &
-                    &Fn          fc'
-                if (gas == gas4) write(udf,'(a)') g4lab(1:g4l) // '           &
-                    &TFP            Fn          fc'
+            !> One block per configured gas but water, whose cutoffs are the
+            !> RH-class table above. The reader consumes these blocks
+            !> positionally over the same range, so the two must agree on the
+            !> count; the header line names the gas so the file stays readable.
+            do gas = firstGas, lastGas
+                if (GasSlotIsWater(gas)) cycle
+                if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                sa_name = sa_tags(gas)
+                call uppercase(sa_name)
+                !> The grouping goes past `fc`, where every reader of this
+                !> format has always stopped - the block name is sliced at the
+                !> word TFP. So a file written here still parses in an older
+                !> build, and a newer one can check the file's grouping against
+                !> the project's instead of guessing from repeated values.
+                call SpectralBlockStamp(gas, sa_stamp)
+                write(udf,'(a)') trim(sa_name) // '            TFP            &
+                    &Fn          fc   groups=' // trim(MonthGroupingText(gas)) &
+                    // trim(sa_stamp)
 
                 if (FCCsetup%SA%class(gas, JAN) /= 0) then
                     write(udf,'(a, 2(f11.5,1x))') 'January            = ', &
@@ -226,6 +304,54 @@ subroutine OutputSpectralAssessmentResults(nbins)
             end do
 
             !> Exponential fit f_co vs. RH
+            !> One RH block per hygrometer past the primary.
+            !>
+            !> The primary's table is written above, in the fixed position
+            !> the reader's seven-line skip expects. A second hygrometer is
+            !> RH-binned too - SpectraSortingAndAveraging bins every water
+            !> slot by relative humidity and FitTfModels fits each one - but
+            !> the file had nowhere to put the result, so it was fitted and
+            !> discarded, while the readiness check went on demanding it.
+            !>
+            !> Named like the per-gas blocks so the reader resolves it the
+            !> same way, and keeping `numerosity` in the header, which is
+            !> what tells the reader these are nine RH rows and not twelve
+            !> monthly ones.
+            !>
+            !> The name is the bare tag, with no ' vapour' after it. The reader
+            !> takes everything before the word TFP as the block name, so that
+            !> one word made the name 'H2O_2 VAPOUR', which matches no tag; the
+            !> block was consumed and discarded on every read, and the second
+            !> hygrometer went back to being fitted and thrown away - the very
+            !> thing writing the block was meant to stop.
+            do gas = firstGas, lastGas
+                if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                if (.not. GasSlotIsWater(gas)) cycle
+                if (gas == wsl) cycle
+                sa_name = sa_tags(gas)
+                call uppercase(sa_name)
+                call SpectralBlockStamp(gas, sa_stamp)
+                !> This hygrometer's own RH/cut-off coefficients, alongside the
+                !> stamp and past `numerosity` where readers stop. The primary's
+                !> keep their standalone section below, so no line moves and a
+                !> build that does not know this token is unaffected - the same
+                !> bargain `groups=` made.
+                write(sa_exp, '(a, 3(g0.6, a))') '   exp=', &
+                    RegPar(gas, dum)%e1, ',', RegPar(gas, dum)%e2, ',', &
+                    RegPar(gas, dum)%e3, ''
+                write(udf,'(a)') trim(sa_name) // '            TFP           &
+                    &   Fn          fc    numerosity' // trim(sa_stamp) &
+                    // trim(sa_exp)
+                do cls = RH10, RH90
+                    write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
+                        10 * cls - 5, ' - ', 10 * cls + 5, '% = '
+                    write(udf,'(a, 2(f11.5,1x), i13)') rh_label, &
+                        RegPar(gas, cls)%Fn, RegPar(gas, cls)%fc, &
+                        MeanBinSpec(nbins/2, cls)%cnt(gas)
+                end do
+                write(udf,'(a)') ''
+            end do
+
             write(udf,'(a)') 'RH/fc_exponential_fit_parameters_for_water_vapour&
                 &_spectral_corrections'
             write(udf,'(a)') '-----------------------------------'
@@ -269,7 +395,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             dataline = ''
             call AddDatum(dataline, '', separator)
             do cls = RH10, RH90
-                call WriteDatumInt(MeanBinSpec(1, cls)%cnt(h2o), datum, &
+                call WriteDatumInt(MeanBinSpec(1, cls)%cnt(wsl), datum, &
                     EddyFlowProj%err_label)
                 call AddDatum(dataline, 'n_=_' // datum(1:len_trim(datum)), &
                     separator)
@@ -278,45 +404,51 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 call AddDatum(dataline, '', separator)
             end do
             write(udf,'(a)') dataline(1:len_trim(dataline) - 1)
-            write(udf,'(a)') 'nat_freq,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)&
-                            &,avrg_sp(T),avrg_sp(h2o),denoised_avrg_sp(h2o),pred_sp(h2o)'
+            !> One four-column group per RH class, generated rather than
+            !> spelled out nine times. The water tag comes from the record, so
+            !> a project measuring its water on a second analyser reads
+            !> avrg_sp(h2o_2) and not a column that claims to be the first.
+            call SpectralVarTags(sa_var_tags)
+            wtag = sa_var_tags(wsl)
+            if (len_trim(wtag) == 0) wtag = 'h2o'
+            dataline = 'nat_freq'
+            do cls = RH10, RH90
+                dataline = trim(dataline) // ',avrg_sp(T)' &
+                    // ',avrg_sp(' // trim(wtag) // ')' &
+                    // ',denoised_avrg_sp(' // trim(wtag) // ')' &
+                    // ',pred_sp(' // trim(wtag) // ')'
+            end do
+            write(udf,'(a)') trim(dataline)
 
             do i = 1, nbins - 1
                 call clearstr(dataline)
-                if (MeanBinSpec(i, goodj)%fn(h2o) /= error) then
-                    call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o), &
+                if (MeanBinSpec(i, goodj)%fn(wsl) /= error) then
+                    call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl), &
                         datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, datum, separator)
                     do cls = RH10, RH90
-                        if (MeanBinSpecAvailable(cls, h2o)) then
+                        if (MeanBinSpecAvailable(cls, wsl)) then
                             !> Natural frequency
-                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
-                                * MeanBinSpec(i, cls)%ts(h2o), datum, &
+                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl) &
+                                * MeanBinSpec(i, cls)%ts(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Ensemble averaged spectrum
-                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
-                                * MeanBinSpec(i, cls)%of(h2o), datum, &
+                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl) &
+                                * MeanBinSpec(i, cls)%of(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Denoised ensemble averaged spectrum
-                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(h2o) &
-                                * dMeanBinSpec(i, cls)%of(h2o), datum, &
+                            call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(wsl) &
+                                * dMeanBinSpec(i, cls)%of(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
                             !> Modelled spectrum
-                            call WriteDatumFloat(RegPar(h2o, cls)%Fn &
-                                * (1d0 / (1d0 + (MeanBinSpec(i, goodj)%fn(h2o) &
-                                / RegPar(h2o, cls)%fc)**2 )) &
-                                * MeanBinSpec(i, cls)%ts(h2o) &
-                                * MeanBinSpec(i, goodj)%fn(h2o), datum, &
+                            call WriteDatumFloat(RegPar(wsl, cls)%Fn &
+                                * (1d0 / (1d0 + (MeanBinSpec(i, goodj)%fn(wsl) &
+                                / RegPar(wsl, cls)%fc)**2 )) &
+                                * MeanBinSpec(i, cls)%ts(wsl) &
+                                * MeanBinSpec(i, goodj)%fn(wsl), datum, &
                                 EddyFlowProj%err_label)
                             call AddDatum(dataline, datum, separator)
 
@@ -347,8 +479,14 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 size(MeanBinSpec, 1), size(MeanBinSpec, 2), goodj, pick)
 
             !> Write output file if valid goodj and pick were found
+            !>
+            !> `pick < gas4` rejected the fourth slot even though the search
+            !> above could return it, so a project whose only usable frequency
+            !> vector was the fourth gas's wrote no passive-gas file at all.
+            !> Now that the search covers the whole gas block the bound is the
+            !> variable range itself.
             if (goodj > 0 .and. goodj < MaxGasClasses &
-                .and. pick > 0 .and. pick < gas4) then
+                .and. pick >= u .and. pick <= lastGas) then
                 Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // PASGAS_Avrg_FilePadding  &
                     // Timestamp_FilePadding // CsvExt
                 FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
@@ -359,8 +497,10 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 dataline = ''
                 call AddDatum(dataline, '', separator)
                 do month = JAN, JAN
-                    do gas = co2, gas4
-                        if (gas /= h2o) then
+                    do gas = firstGas, lastGas
+                        if (gas - firstGas + 1 > &
+                            min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                        if (.not. GasSlotIsWater(gas)) then
                             if (FCCsetup%SA%class(gas, month) /= 0) then
                                 call WriteDatumInt(MeanBinSpec(1, FCCsetup%SA%class(gas, month))%cnt(gas) &
                                     , datum, EddyFlowProj%err_label)
@@ -375,11 +515,24 @@ subroutine OutputSpectralAssessmentResults(nbins)
                     end do
                 end do
                 write(udf,'(a)') dataline(1:len_trim(dataline) - 1)
-                write(udf,'(a)') 'nat_freq,&
-                    &avrg_sp(T),avrg_sp(co2),denoised_avrg_sp(co2),pred_sp(co2),&
-                    &avrg_sp(T),avrg_sp(ch4),denoised_avrg_sp(ch4),pred_sp(ch4),&
-                    &avrg_sp(T),avrg_sp(' // g4lab(1:g4l) // '),denoised_avrg_sp(' // g4lab(1:g4l) // '),&
-                    &pred_sp(' // g4lab(1:g4l) // ')' !,&
+
+                !> Header generated over the same range as the row writer
+                !> below, four columns per gas. It used to be a literal
+                !> naming co2, ch4 and the fourth gas, so on a project with
+                !> more gases the rows grew and the header did not - the
+                !> columns past the third were unlabelled and misread.
+                dataline = 'nat_freq'
+                do gas = firstGas, lastGas
+                    if (gas - firstGas + 1 > &
+                        min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                    if (GasSlotIsWater(gas)) cycle
+                    sa_name = sa_tags(gas)
+                    dataline = trim(dataline) // ',avrg_sp(T),avrg_sp(' &
+                        // trim(sa_name) // '),denoised_avrg_sp(' &
+                        // trim(sa_name) // '),pred_sp(' &
+                        // trim(sa_name) // ')'
+                end do
+                write(udf,'(a)') trim(dataline)
 
                 do i = 1, nbins - 1
                     call clearstr(dataline)
@@ -387,8 +540,10 @@ subroutine OutputSpectralAssessmentResults(nbins)
                         call WriteDatumFloat(MeanBinSpec(i, goodj)%fn(pick), datum, EddyFlowProj%err_label)
                         call AddDatum(dataline, datum, separator)
                         do month = JAN, JAN
-                            do gas = co2, gas4
-                                if (gas == h2o) cycle
+                            do gas = firstGas, lastGas
+                                if (gas - firstGas + 1 > &
+                                    min(EddyFlowProj%gas_num, MaxNumGases)) exit
+                                if (GasSlotIsWater(gas)) cycle
                                 if (FCCsetup%SA%class(gas, month) /= 0) then
                                     if (MeanBinSpecAvailable(FCCsetup%SA%class(gas, month), gas))then
                                         !> Natural frequency
@@ -465,7 +620,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
             dataline = ''
             call AddDatum(dataline, '', separator)
             do cls = 1, 8
-                do gas = w_ts, w_gas4
+                do k = 1, n_cosp
+                    gas = cosp_slots(k)
                     call WriteDatumInt(MeanBinCosp(1, cls)%cnt(gas), &
                         datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, 'n_=_' // trim(adjustl(datum)), &
@@ -473,24 +629,22 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 end do
             end do
             write(udf,'(a)') dataline(1:len_trim(dataline) - 1)
-            !> Add header piece
-            write(udf,'(a)') &
-                'nat_freq,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')&
-                &,avrg_cosp(w/T),avrg_cosp(w/co2),avrg_cosp(w/h2o),&
-                &avrg_cosp(w/ch4),avrg_cosp(w/' // g4lab(1:g4l) //')'
+            !> Add header piece, one group per time-of-day class and one
+            !> column per cospectrum slot, walked in the same order as the
+            !> rows below.
+            dataline = 'nat_freq'
+            do cls = 1, 8
+                do k = 1, n_cosp
+                    if (cosp_slots(k) == w_ts) then
+                        sa_name = 'T'
+                    else
+                        sa_name = sa_tags(cosp_slots(k))
+                    end if
+                    dataline = trim(dataline) // ',avrg_cosp(w/' &
+                        // trim(sa_name) // ')'
+                end do
+            end do
+            write(udf,'(a)') trim(dataline)
 
             do i = 1, nbins - 1
                 call clearstr(dataline)
@@ -499,7 +653,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
                         datum, EddyFlowProj%err_label)
                     call AddDatum(dataline, datum, separator)
                     do cls = 1, 8
-                        do gas = w_ts, w_gas4
+                        do k = 1, n_cosp
+                            gas = cosp_slots(k)
                             if (MeanBinCospAvailable(cls, gas))then
                                 call WriteDatumFloat(MeanBinCosp(i, goodj)%fn(pick) &
                                     * MeanBinCosp(i, cls)%of(gas), datum, &
@@ -521,8 +676,14 @@ subroutine OutputSpectralAssessmentResults(nbins)
         !> =====================================================================
         !> Stability-sorted cospectra and models,
         !> only if at least one fit succeed
+        !> Any variable that fitted, not just sonic temperature and the first
+        !> gas. `w_ts, w_co2` is slots four and five, so a run in which only a
+        !> later gas fitted reported "no fit succeeded" and raised
+        !> ExceptionHandler(45) with the fits sitting there unused.
         proceed = .false.
-        do gas = w_ts, w_co2
+        do gas = w_ts, w_lastGas
+            if (gas > w_firstGas .and. &
+                gas - w_firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
             if ((MassPar(gas, unstable)%a0   /= error .or. &
                 MassPar(gas, unstable)%fpeak /= error .or. &
                 MassPar(gas, unstable)%mu    /= error) .and. &
@@ -560,69 +721,63 @@ subroutine OutputSpectralAssessmentResults(nbins)
             &corresponding_to_z/L=0.01_(slightly_stable)_and_to_z/L=10.0_(very_stable).'
         write(udf,'(a)') '-----------------------------------------------------------------------'
         write(udf,'(a)') 'Massman_model_fit_parameters_for_this_run:'
-        write(udf,'(a)') 'w/T (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ts, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ts, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ts, unstable)%mu
-        write(udf,'(a)') 'w/T (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ts, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ts, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ts, stable)%mu
-        write(udf,'(a)') 'w/CO2 (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_co2, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_co2, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_co2, unstable)%mu
-        write(udf,'(a)') 'w/CO2 (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_co2, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_co2, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_co2, stable)%mu
-        write(udf,'(a)') 'w/H2O (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_h2o, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_h2o, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_h2o, unstable)%mu
-        write(udf,'(a)') 'w/H2O (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_h2o, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_h2o, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_h2o, stable)%mu
-        write(udf,'(a)') 'w/CH4 (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ch4, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ch4, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ch4, unstable)%mu
-        write(udf,'(a)') 'w/CH4 (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_ch4, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_ch4, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_ch4, stable)%mu
-        write(udf,'(a)') 'w/'// g4lab(1:g4l) // ' (unstable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_gas4, unstable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_gas4, unstable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_gas4, unstable)%mu
-        write(udf,'(a)') 'w/'// g4lab(1:g4l) // ' (stable):'
-        write(udf,'(a, f10.4)') 'a0,', MassPar(w_gas4, stable)%a0
-        write(udf,'(a, f10.4)') 'fpeak,', MassPar(w_gas4, stable)%fpeak
-        write(udf,'(a, f10.4)') 'mu,', MassPar(w_gas4, stable)%mu
+        !> One pair of blocks per cospectrum slot. These were five
+        !> hand-written pairs naming CO2, H2O, CH4 and whatever g4lab had
+        !> parsed out of the FLUXNET header, so a project with more gases
+        !> reported fit parameters for four of them and no way to tell which.
+        do k = 1, n_cosp
+            gas = cosp_slots(k)
+            if (gas == w_ts) then
+                sa_name = 'T'
+            else
+                sa_name = sa_tags(gas)
+                call uppercase(sa_name)
+            end if
+            write(udf,'(a)') 'w/' // trim(sa_name) // ' (unstable):'
+            write(udf,'(a, f10.4)') 'a0,', MassPar(gas, unstable)%a0
+            write(udf,'(a, f10.4)') 'fpeak,', MassPar(gas, unstable)%fpeak
+            write(udf,'(a, f10.4)') 'mu,', MassPar(gas, unstable)%mu
+            write(udf,'(a)') 'w/' // trim(sa_name) // ' (stable):'
+            write(udf,'(a, f10.4)') 'a0,', MassPar(gas, stable)%a0
+            write(udf,'(a, f10.4)') 'fpeak,', MassPar(gas, stable)%fpeak
+            write(udf,'(a, f10.4)') 'mu,', MassPar(gas, stable)%mu
+        end do
         write(udf,'(a, f10.4)') '-----------------------------------------------------------------------'
 
 
         write(udf,'(a)') 'unstable_(-650<L<0),,,,,,,,,,,,,,,,,,,,,,,,,stable(0<L<1000)'
-        !> Add header piece
-        write(udf,'(a)') 'fn,avrg_cosp(w/T),fit_cosp(w/T),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/co2),fit_cosp(w/co2),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/h2o),fit_cosp(w/h2o),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/ch4),fit_cosp(w/ch4),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/' // g4lab(1:g4l) //'),fit_cosp(w/' &
-                        // g4lab(1:g4l) //'),kaimal_cosp,,&
-                        &fn,avrg_cosp(w/T),fit_cosp(w/T),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/co2),fit_cosp(w/co2),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/h2o),fit_cosp(w/h2o),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/ch4),fit_cosp(w/ch4),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,&
-                        &fn,avrg_cosp(w/' // g4lab(1:g4l) //'),fit_cosp(w/' &
-                        // g4lab(1:g4l) //'),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0'
+        !> Add header piece: the unstable groups, then the stable ones,
+        !> each walking the same slot list as the rows below.
+        dataline = ''
+        do k = 1, n_cosp
+            gas = cosp_slots(k)
+            if (gas == w_ts) then
+                sa_name = 'T'
+            else
+                sa_name = sa_tags(gas)
+            end if
+            dataline = trim(dataline) // 'fn,avrg_cosp(w/' // trim(sa_name) &
+                // '),fit_cosp(w/' // trim(sa_name) // '),kaimal_cosp,,'
+        end do
+        do k = 1, n_cosp
+            gas = cosp_slots(k)
+            if (gas == w_ts) then
+                sa_name = 'T'
+            else
+                sa_name = sa_tags(gas)
+            end if
+            dataline = trim(dataline) // 'fn,avrg_cosp(w/' // trim(sa_name) &
+                // '),fit_cosp(w/' // trim(sa_name) &
+                // '),kaimal_cosp_zL_0.01,kaimal_cosp_zL_10.0,,'
+        end do
+        write(udf,'(a)') dataline(1:len_trim(dataline) - 2)
 
 
         do i = 1, ndkf
             call clearstr(dataline)
             !> Unstable
-            do gas = w_ts, w_gas4
+            do k = 1, n_cosp
+                gas = cosp_slots(k)
                 if (MeanStabCospAvailable(unstable, gas))then
                     if (MeanStabilityCosp(i, unstable)%fn(gas) /= error .and. MeanStabilityCosp(i, unstable)%fn(gas) /= 0d0) then
                         call WriteDatumFloat(MeanStabilityCosp(i, unstable)%fn(gas), datum, EddyFlowProj%err_label)
@@ -661,7 +816,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
             end do
 
             !> Stable
-            do gas = w_ts, w_gas4
+            do k = 1, n_cosp
+                gas = cosp_slots(k)
                 if (MeanStabCospAvailable(stable, gas))then
                     if (MeanStabilityCosp(i, stable)%fn(gas) /= error .and. MeanStabilityCosp(i, stable)%fn(gas) /= 0d0) then
                             call WriteDatumFloat(MeanStabilityCosp(i, stable)%fn(gas), datum, EddyFlowProj%err_label)
@@ -707,7 +863,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
         end do
         close(udf)
     end if
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 
 end subroutine OutputSpectralAssessmentResults
 
@@ -734,8 +890,17 @@ subroutine GetFnIndex(LocSpec, nrow, ncol, goodj, pick)
     !> local variables
     integer :: i
     integer :: cls
+    integer :: gas
 
 
+    !> Sonic temperature first, then every configured gas in record order.
+    !>
+    !> `pick` names nothing but a frequency axis - every use of it is
+    !> %fn(pick) - so any slot carrying a positive natural frequency serves.
+    !> This was ts followed by three unrolled blocks naming co2, ch4 and the
+    !> fourth slot, which both skipped water entirely and gave up at the
+    !> fourth: a project whose only usable vector belongs to a later gas found
+    !> none, and wrote no passive-gas file at all.
     goodj = ierror
     pick = ierror
 
@@ -748,37 +913,18 @@ subroutine GetFnIndex(LocSpec, nrow, ncol, goodj, pick)
                 end if
         end do il
     end do ol
-    if (goodj == ierror) then
-        ol1: do cls = 1, ncol
-            il1: do i = 1, nrow - 1
-                    if (LocSpec(i, cls)%fn(co2) > 0d0) then
-                        goodj = cls
-                        pick = co2
-                        exit ol1
-                    end if
-            end do il1
-        end do ol1
-    end if
-    if (goodj == ierror) then
-        ol2: do cls = 1, ncol
-            il2: do i = 1, nrow - 1
-                    if (LocSpec(i, cls)%fn(ch4) > 0d0) then
-                        goodj = cls
-                        pick = ch4
-                        exit ol2
-                    end if
-            end do il2
-        end do ol2
-    end if
-    if (goodj == ierror) then
-        ol3: do cls = 1, ncol
-            il3: do i = 1, nrow - 1
-                    if (LocSpec(i, cls)%fn(gas4) > 0d0) then
-                        goodj = cls
-                        pick = gas4
-                        exit ol3
-                    end if
-            end do il3
-        end do ol3
-    end if
+    if (goodj /= ierror) return
+
+    olg: do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        do cls = 1, ncol
+            do i = 1, nrow - 1
+                if (LocSpec(i, cls)%fn(gas) > 0d0) then
+                    goodj = cls
+                    pick = gas
+                    exit olg
+                end if
+            end do
+        end do
+    end do olg
 end subroutine GetFnIndex

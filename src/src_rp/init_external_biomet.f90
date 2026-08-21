@@ -57,9 +57,10 @@ subroutine InitExternalBiomet(bFileList, N)
     character(len(dataline)), external :: replace
     type(BiometVarsType), allocatable :: lbVars(:)
     logical :: excluded_file(N)
+    logical :: missing
 
 
-    write(*, '(a)', advance = 'no') ' Interpreting biomet data..'
+    call LogSayNoAdv(' Interpreting biomet data..')
 
     !> Retrieve list of biomet files
     if (EddyFlowProj%biomet_data == 'ext_file') then
@@ -79,14 +80,39 @@ subroutine InitExternalBiomet(bFileList, N)
 
         !> Count number of items and rows in file
         call scanCsvFile(bFileList(nfl)%path, ',', 1, &
-            fnRec, fnbItems, failed)
+            fnRec, fnbItems, failed, missing)
+
+        !> A file the project NAMED and that is not there is a mistake worth
+        !> stopping for, and every other user-named path in the engine already
+        !> stops for it - pf_file, to_file, sa_file, proj_file all abort
+        !> through the same helper. Biomet was the one that did not, so a
+        !> mistyped or corrupted path produced a run that quietly carried no
+        !> biomet data and blamed the file's contents for it.
+        !>
+        !> Only in ext_file mode. A file that came from a directory listing
+        !> existed a moment ago, so its disappearance is a different and much
+        !> rarer event, and taking the whole run down for it would be wrong.
+        if (missing .and. EddyFlowProj%biomet_data == 'ext_file') then
+            call AbortOnMissingPath('biom_file', trim(AuxFile%biomet), &
+                'Correct the path to the biomet file, or select a biomet ' &
+                // 'directory instead, or set biomet data to "none" so the ' &
+                // 'run proceeds without it.')
+        end if
 
         !> If above failed, pass to next one
         if (failed) then
             excluded_file(nfl) = .true.
             write(*,*)
+            write(ulog,*)
             write(*, '(a)') '  File: ' // trim(adjustl(bFileList(nfl)%path))
-            call ExceptionHandler(2)
+            write(ulog, '(a)') '  File: ' // trim(adjustl(bFileList(nfl)%path))
+            !> Say which of the two happened. Error(2) describes a file that
+            !> scanned badly, which is right only when the file is there.
+            if (missing) then
+                call LogSay('  The file named above is not there.')
+            else
+                call ExceptionHandler(2)
+            end if
             cycle size_loop
         end if
 
@@ -97,6 +123,7 @@ subroutine InitExternalBiomet(bFileList, N)
         else
             if (fnbItems /= nbItems) then
                 write(*,*)
+                write(ulog,*)
                 call ExceptionHandler(70)
                 EddyFlowProj%biomet_data = 'none'
                 return
@@ -178,6 +205,7 @@ subroutine InitExternalBiomet(bFileList, N)
                 .or. (any(lbVars(:)%label /= bVars(:)%label) &
                 .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
                 write(*,'(a)')
+                write(ulog,'(a)')
                 call ExceptionHandler(79)
                 EddyFlowProj%biomet_data = 'none'
                 return
@@ -192,6 +220,7 @@ subroutine InitExternalBiomet(bFileList, N)
         !         .or. (any(lbVars(:)%label /= bVars(:)%label) &
         !         .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
         !         write(*,'(a)')
+        !         write(ulog,'(a)')
         !         call ExceptionHandler(79)
         !         EddyFlowProj%biomet_data = 'none'
         !         return
@@ -224,9 +253,14 @@ subroutine InitExternalBiomet(bFileList, N)
     bFileMetadata%time_step = int(tsInferTimestep(bTimestamp(:nRec), nRec) / 60)
     bFileMetadata%tolerance = bFileMetadata%time_step / 2
     write(*, '(a)')
+    write(ulog, '(a)')
     write(*, '(a, i6)')    '  Number of variables: ', nbVars
+    write(ulog, '(a, i6)')    '  Number of variables: ', nbVars
     write(*, '(a, i6)')    '  Number of records:   ', nRec
+    write(ulog, '(a, i6)')    '  Number of records:   ', nRec
     write(*, '(a, i6, a)') '  Inferred time-step:  ', &
+        bFileMetadata%time_step, ' min'
+    write(ulog, '(a, i6, a)') '  Inferred time-step:  ', &
         bFileMetadata%time_step, ' min'
 
     !> Determine nbRecs, the maximum number of biomet data available for
@@ -262,5 +296,5 @@ subroutine InitExternalBiomet(bFileList, N)
     !> NOT DONE FOR THE MOMENT
 !    call BiometOrderVars()
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine InitExternalBiomet

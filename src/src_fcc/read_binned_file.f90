@@ -45,11 +45,24 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
     integer, intent(out) :: nbins
     !> local variables
     integer :: i
+    integer :: j
     integer :: var
+    integer :: nvar
     integer :: open_status
     integer :: read_status
-    real(kind = dbl) :: aux
-
+    integer :: spec_ord(GHGNumVar)
+    integer :: cosp_ord(GHGNumVar)
+    real(kind = dbl), allocatable :: aux(:)
+    character(ShortInstringLen) :: dataline
+    character(72) :: field
+    character(72) :: probe
+    character(72) :: speclabs(GHGNumVar)
+    character(72) :: cosplabs(GHGNumVar)
+    character(72) :: oldspeclabs(GHGNumVar)
+    character(72) :: oldcosplabs(GHGNumVar)
+    character(64) :: vartags(GHGNumVar)
+    character(32), external :: LegacySpectralVarTag
+    include '../src_common/interfaces_1.inc'
 
     !> Open file
     open(udf, file = InFile%path, iostat = open_status)
@@ -61,30 +74,129 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
         return
     end if
 
-    !> Read frequency and (co)spectra of w, Ts, co2, h2o, ch4, gas4
     BinSpec = ErrSpec
     BinCosp = ErrSpec
+
+    !> The column names this file should carry, from the same helper the
+    !> writer uses. This replaced a single positional read of exactly 18
+    !> items - three frequencies, eight spectra, seven cospectra - which is
+    !> why the on-the-fly spectral assessment could never see a fifth gas
+    !> however wide the loops downstream were: its input had four.
+    call SpectralVarTags(vartags)
+    speclabs = ''
+    cosplabs = ''
+    oldspeclabs = ''
+    oldcosplabs = ''
+    do j = 1, GHGNumVar
+        if (len_trim(vartags(j)) > 0) then
+            speclabs(j) = 'f_nat*spec(' // trim(vartags(j)) // ')/var(' &
+                // trim(vartags(j)) // ')'
+            cosplabs(j) = 'f_nat*cospec(w_' // trim(vartags(j)) &
+                // ')/cov(w_' // trim(vartags(j)) // ')'
+            call uppercase(speclabs(j))
+            call uppercase(cosplabs(j))
+        end if
+        !> A file written before the tags became record-derived spells the
+        !> first four gas slots co2/h2o/ch4/gas4. Accepted as well, so an
+        !> existing binned directory still imports.
+        if (len_trim(LegacySpectralVarTag(j)) > 0) then
+            oldspeclabs(j) = 'f_nat*spec(' // trim(LegacySpectralVarTag(j)) &
+                // ')/var(' // trim(LegacySpectralVarTag(j)) // ')'
+            oldcosplabs(j) = 'f_nat*cospec(w_' &
+                // trim(LegacySpectralVarTag(j)) // ')/cov(w_' &
+                // trim(LegacySpectralVarTag(j)) // ')'
+            call uppercase(oldspeclabs(j))
+            call uppercase(oldcosplabs(j))
+        end if
+    end do
+
+    !> Skip to the column-name line. Counting header lines would break the
+    !> moment the preamble changed length, and the previous reader discarded
+    !> it only by letting the numeric read fail - which cannot tell a header
+    !> from a corrupt row.
+    dataline = ''
+    do
+        read(udf, '(a)', iostat = read_status) dataline
+        if (read_status /= 0) exit
+        if (index(dataline, '#_freq') > 0) exit
+    end do
+    if (read_status /= 0) then
+        close(udf)
+        skip = .true.
+        call ExceptionHandler(62)
+        return
+    end if
+
+    !> Match each column by name. A slot with no column keeps ErrSpec and so
+    !> declines to be assessed, rather than picking up its neighbour's data.
+    spec_ord = 0
+    cosp_ord = 0
+    nvar = 0
+    do
+        if (index(dataline, ',') /= 0) then
+            field = dataline(1:index(dataline, ',') - 1)
+        else
+            field = dataline(1:len_trim(dataline))
+        end if
+        nvar = nvar + 1
+        !> Case-insensitively. The writer this replaces named the fourth gas
+        !> from SpecCol%label, which carries whatever case the metadata used
+        !> - 'COS' where every other file says 'cos'. A binned directory kept
+        !> from an earlier run is the normal case rather than the exception:
+        !> the project points sa_bin_spectra at one.
+        probe = field
+        call uppercase(probe)
+        do j = 1, GHGNumVar
+            if (len_trim(speclabs(j)) > 0 .and. probe == speclabs(j)) &
+                spec_ord(j) = nvar
+            if (len_trim(cosplabs(j)) > 0 .and. probe == cosplabs(j)) &
+                cosp_ord(j) = nvar
+        end do
+        do j = 1, GHGNumVar
+            if (spec_ord(j) == 0 .and. len_trim(oldspeclabs(j)) > 0 &
+                .and. probe == oldspeclabs(j)) spec_ord(j) = nvar
+            if (cosp_ord(j) == 0 .and. len_trim(oldcosplabs(j)) > 0 &
+                .and. probe == oldcosplabs(j)) cosp_ord(j) = nvar
+        end do
+        if (index(dataline, ',') == 0) exit
+        dataline = dataline(index(dataline, ',') + 1:len_trim(dataline))
+    end do
+
+    if (nvar < 4) then
+        close(udf)
+        skip = .true.
+        call ExceptionHandler(62)
+        return
+    end if
+
+    allocate(aux(nvar))
     i = 0
     do
         i = i + 1
         if (i > nrow) exit
-        read(udf, *, iostat = read_status) BinSpec(i)%fnum, BinSpec(i)%fn, BinSpec(i)%fnorm, aux, aux, BinSpec(i)%of(w),  &
-            BinSpec(i)%of(ts), BinSpec(i)%of(co2), BinSpec(i)%of(h2o), BinSpec(i)%of(ch4), BinSpec(i)%of(gas4), &
-            aux, aux, BinCosp(i)%of(w_ts), BinCosp(i)%of(w_co2), BinCosp(i)%of(w_h2o), &
-            BinCosp(i)%of(w_ch4), BinCosp(i)%of(w_gas4)
+        read(udf, *, iostat = read_status) aux(1:nvar)
         if (read_status > 0) then
             i = i - 1
             cycle
         end if
         if (read_status < 0) exit
+        BinSpec(i)%fnum  = nint(aux(1))
+        BinSpec(i)%fn    = aux(2)
+        BinSpec(i)%fnorm = aux(3)
+        do j = 1, GHGNumVar
+            if (spec_ord(j) > 0) BinSpec(i)%of(j) = aux(spec_ord(j))
+            if (cosp_ord(j) > 0) BinCosp(i)%of(j) = aux(cosp_ord(j))
+        end do
         BinCosp(i)%fnum = BinSpec(i)%fnum
         BinCosp(i)%fn   = BinSpec(i)%fn
         BinCosp(i)%fnorm = BinSpec(i)%fnorm
     end do
     nbins = i - 1
+    close(udf)
+    if (allocated(aux)) deallocate(aux)
 
     !> Un-normalize binned spectra by dividing by the frequency
-    do var = w, gas4
+    do var = w, lastGas
         where (BinSpec(1:nbins)%fn /= error &
             .and. BinSpec(1:nbins)%fn /= 0d0 .and. BinSpec(1:nbins)%of(var) /= error)
             BinSpec(1:nbins)%of(var) = BinSpec(1:nbins)%of(var) / BinSpec(1:nbins)%fn
@@ -94,7 +206,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
     end do
 
     !> Un-normalize binned cospectra by dividing by the frequency
-    do var = w_ts, w_gas4
+    do var = ts, lastGas
         where (BinCosp(1:nbins)%fn /= error &
             .and. BinCosp(1:nbins)%fn /= 0d0 .and. BinCosp(1:nbins)%of(var) /= error)
             BinCosp(1:nbins)%of(var) = BinCosp(1:nbins)%of(var) / BinCosp(1:nbins)%fn
@@ -107,7 +219,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
     !> Individually discard spectra if this is not the case
     !> This is somewhat arbitrary, introduced to eliminate observed implausible spectra
     !> It's very strict: one only outranged value will eliminate the whole (co)spectrum
-    ol: do var = w, gas4
+    ol: do var = w, lastGas
         il: do i = 1, nbins
             if (BinSpec(i)%of(var) > MaxNormSpecValue) then
                 BinSpec(:)%of(var) = error
@@ -116,7 +228,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
         end do il
     end do ol
 
-    ol2: do var = w_ts, w_gas4
+    ol2: do var = ts, lastGas
         il2: do i = 1, nbins
             if (dabs(BinCosp(i)%of(var)) > MaxNormSpecValue) then
                 BinCosp(:)%of(var) = error
@@ -126,7 +238,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
     end do ol2
 
     !> Similar filter as above, but now imposes that f*spectrum < 1 for each frequency
-    ol3: do var = w, gas4
+    ol3: do var = w, lastGas
         il3: do i = 1, nbins
             if (BinSpec(i)%fn /= error .and. BinSpec(i)%of(var) /= error &
                 .and. BinSpec(i)%fn * BinSpec(i)%of(var) > 1d0) then
@@ -136,7 +248,7 @@ subroutine ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
         end do il3
     end do ol3
 
-    ol4: do var = w_ts, w_gas4
+    ol4: do var = ts, lastGas
         il4: do i = 1, nbins
             if (BinCosp(i)%fn /= error .and. BinCosp(i)%of(var) /= error .and. &
                 dabs(BinCosp(i)%fn * BinCosp(i)%of(var)) > 10d0) then

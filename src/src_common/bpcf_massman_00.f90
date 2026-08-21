@@ -76,6 +76,7 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
 
 
     if (printout) write(*,'(a)') '   Band-pass correction for all fluxes. Method: Massman (2000, 2001)..'
+    if (printout) write(ulog,'(a)') '   Band-pass correction for all fluxes. Method: Massman (2000, 2001)..'
 
     !> Initialization
     t_e = 1d-10
@@ -85,17 +86,21 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
     t_sonic_hla_4tau    = LocInstr(sonic)%hpath_length / (2.8d0 * wind_speed) !< sonic line averaging (horizontal, for momentum)
     t_sonic_vla_4tau    = LocInstr(sonic)%vpath_length / (5.7d0 * wind_speed) !< sonic line averaging (vertical, for momentum)
     t_sonic_la_4scalar  = LocInstr(sonic)%vpath_length / (8.4d0 * wind_speed) !< sonic line averaging (for scalar flux)
-    t_lat(co2:gas4)     = LocInstr(co2:gas4)%hsep  / (1.1d0 * wind_speed) !< lateral separation for all gases
-    !t_lon(co2:gas4)     = LocInstr(co2:gas4)%lsep / (1.05d0 * wind_speed)  !< longitudinal separation (not used for now)
-    t_irga_la(co2:gas4) = LocInstr(co2:gas4)%vpath_length / (4d0 * wind_speed) !< Line averaging scalar sensor
-    t_irga_va(co2:gas4) = (0.2d0 + 0.4d0 * LocInstr(co2:gas4)%hpath_length / LocInstr(co2:gas4)%vpath_length) &
-        *(LocInstr(co2:gas4)%vpath_length / wind_speed)   !< Volume averaging scalar sensor
+    !< lateral separation for all gases
+    t_lat(firstGas:lastGas)     = LocInstr(firstGas:lastGas)%hsep  / (1.1d0 * wind_speed)
+    !t_lon(firstGas:lastGas)     = LocInstr(firstGas:lastGas)%lsep / (1.05d0 * wind_speed)  !< longitudinal separation (not used for now)
+    t_irga_la(firstGas:lastGas) = LocInstr(firstGas:lastGas)%vpath_length / (4d0 * wind_speed) !< Line averaging scalar sensor
+    !< Volume averaging scalar sensor
+    t_irga_va(firstGas:lastGas) = (0.2d0 + 0.4d0 &
+        * LocInstr(firstGas:lastGas)%hpath_length &
+        / LocInstr(firstGas:lastGas)%vpath_length) &
+        * (LocInstr(firstGas:lastGas)%vpath_length / wind_speed)
 
     !> Bandwidth limitation             !<<<<<< add bandwidth limitations for analysers other than 7500x
-    where (index(LocInstr(co2:gas4)%model, '7500') /= 0)
-        t_bw(co2:gas4) = 0.016d0
+    where (index(LocInstr(firstGas:lastGas)%model, '7500') /= 0)
+        t_bw(firstGas:lastGas) = 0.016d0
     elsewhere
-        t_bw(co2:gas4) = 1d-10  !< a very small value.
+        t_bw(firstGas:lastGas) = 1d-10  !< a very small value.
     endwhere
 
     !> Tube attenuation
@@ -105,7 +110,7 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
         + (9.5728d-11 * t_air**2) + (3.7604d-8 * t_air) - 3.4484d-6
 
     lambda = error
-    do var = co2, gas4
+    do var = firstGas, lastGas
         if (loc_var_present(var)) then
             if (LocInstr(var)%path_type == 'closed') then
                 TubeVel     = LocInstr(var)%tube_f / (p * (LocInstr(var)%tube_d / 2d0)**2)
@@ -141,11 +146,12 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
 
     !> Combination of all time constants (Massman 2000, Eq. 9)
     !> For scalar fluxes
-    where (loc_var_present(co2:gas4))
-        t_e(w_co2:w_gas4) = dsqrt(t_sonic_la_4scalar**2 + t_lat(co2:gas4)**2 &
-            + t_irga_la(co2:gas4)**2 + t_irga_va(co2:gas4)**2 + t_tube(co2:gas4)**2 + t_bw(co2:gas4)**2)
+    where (loc_var_present(firstGas:lastGas))
+        t_e(firstGas:lastGas) = dsqrt(t_sonic_la_4scalar**2 + t_lat(firstGas:lastGas)**2 &
+            + t_irga_la(firstGas:lastGas)**2 + t_irga_va(firstGas:lastGas)**2 &
+            + t_tube(firstGas:lastGas)**2 + t_bw(firstGas:lastGas)**2)
     elsewhere
-        t_e(w_co2:w_gas4) = error
+        t_e(firstGas:lastGas) = error
     endwhere
 
     !> For sensible heat
@@ -165,14 +171,14 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
     !> Parameters a, b and p, Massman(2000, Eq. 11)
     aaa = (2d0 * p * fx * t_det)**alpha
     bbb = (2d0 * p * fx * t_ba )**alpha
-    where (t_e(w_u:w_gas4) /= error)
-        pp(w_u:w_gas4) = (2d0 * p * fx * t_e(w_u:w_gas4))**alpha
+    where (t_e(u:lastGas) /= error)
+        pp(u:lastGas) = (2d0 * p * fx * t_e(u:lastGas))**alpha
     elsewhere
-        pp(w_u:w_gas4) = error
+        pp(u:lastGas) = error
     endwhere
 
     !> Correction factors, Massman(2001, Table 1; refining Table 2 in Massman, 2000)
-    do var = w_u, w_gas4
+    do var = w_u, w_lastGas
         if (pp(var) /= error .and. unstable_corr_fact(var) /= error) then
             BPCF%of(var) = (aaa*bbb/((aaa+1d0)*(bbb+1d0))) * (aaa*bbb/((aaa+pp(var))*(bbb+pp(var)))) &
                          * (1d0/(pp(var)+1d0)) * (1d0+(pp(var)+1d0)/(aaa+bbb))
@@ -181,13 +187,14 @@ subroutine bpcf_Massman00(measuring_height, displ_height, loc_var_present, LocIn
         end if
     end do
 
-    where (BPCF%of(w_u:w_gas4) /= 0d0 .and. BPCF%of(w_u:w_gas4) /= error)
-        BPCF%of(w_u:w_gas4) = 1d0 / BPCF%of(w_u:w_gas4)
+    where (BPCF%of(u:lastGas) /= 0d0 .and. BPCF%of(u:lastGas) /= error)
+        BPCF%of(u:lastGas) = 1d0 / BPCF%of(u:lastGas)
     elsewhere
-        BPCF%of(w_u:w_gas4) = error
+        BPCF%of(u:lastGas) = error
     end where
 
     if (printout) write(*,'(a)') '   Done.'
+    if (printout) write(ulog,'(a)') '   Done.'
 end subroutine BPCF_Massman00
 
 !***************************************************************************
@@ -217,6 +224,7 @@ double precision function LUT_delta(Re, var)
     real(kind = dbl) :: Lambda_ch4(naux)
     real(kind = dbl) :: Reynolds(naux)
     real(kind = dbl) :: Lambda(naux)
+    character(32) :: species
 
     data (Lambda_co2(mmm), mmm = 1, naux) &
         / 24.39, 12.21, 10.33, 8.13, 6.83, 5.3, 4.05, 2.97, 2.37, 1.99, &
@@ -236,13 +244,27 @@ double precision function LUT_delta(Re, var)
          17000, 18000, 19000, 20000, 30000, 40000, 60000, 80000, 100000 /
 
 
-    select case(var)
-        case (co2, gas4)
-            Lambda = Lambda_co2
-        case (h2o)
+    !> Tube-wall adsorption is a property of the molecule, so it is chosen by
+    !> species and not by slot. Keyed on the slot number, a project that put
+    !> water anywhere but record two gave the gas at slot 6 water's adsorption
+    !> curve and water none at all - and slots past the fourth matched no case
+    !> whatever, leaving Lambda undefined rather than defaulted. The two gases
+    !> then swapped correction factors.
+    !>
+    !> Everything but water and methane takes the CO2 curve, which is what the
+    !> fourth slot always did: these are the weakly-adsorbing species.
+    species = ''
+    if (var >= firstGas .and. var <= lastGas) then
+        species = EddyFlowProj%gas(var - firstGas + 1)%var
+        call uppercase(species)
+    end if
+    select case (trim(adjustl(species)))
+        case ('H2O')
             Lambda = Lambda_h2o
-        case (ch4)
+        case ('CH4')
             Lambda = Lambda_ch4
+        case default
+            Lambda = Lambda_co2
     end select
 
     !> Detect closest (smaller) Reynolds

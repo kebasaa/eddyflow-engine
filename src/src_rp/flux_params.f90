@@ -42,9 +42,26 @@ subroutine FluxParams(printout)
     ! real(kind = dbl) :: Ma
     real(kind = dbl) :: Cpd
     real(kind = dbl) :: Cpv
+    !> Per-hygrometer counterparts of Cpv and the dry air partial pressure,
+    !> both of which follow that hygrometer's own humidity.
+    real(kind = dbl) :: Cpv_at
+    real(kind = dbl) :: p_d_at
+    integer :: msl
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
 
     if (printout) write(*,'(a)', advance = 'no') &
         '  Calculating auxiliary variables..'
+    if (printout) write(ulog,'(a)', advance = 'no') &
+        '  Calculating auxiliary variables..'
+
+    !> The scalar humidity, and everything derived from it, comes from the
+    !> designated water record - not from the h2o slot, which is record two and
+    !> holds water only by convention. Every hygrometer's own regime is
+    !> computed into the per-slot arrays at the end of this routine; the
+    !> scalars are the designated one's, so they are what a single-hygrometer
+    !> site has always had.
+    wsl = PrimaryWaterSlot()
 
     Ambient%alpha = 0.51d0
 
@@ -59,6 +76,22 @@ subroutine FluxParams(printout)
     else
         Ambient%es = error
     end if
+
+    !> Humidity, from whichever source the site has.
+    !>
+    !> The order of these tests matters. It asks "is any humidity available?"
+    !> before "is there a hygrometer?", because a biomet RH sensor is enough
+    !> for the moist-air correction and a site may have one without an IRGA
+    !> water channel. Testing for the hygrometer first discarded that: the
+    !> guard that stopped the engine reading a non-water slot ran instead of
+    !> the biomet branch, so such a site got no correction at all.
+    !> Outside the branch below, because Ambient is a module global with no
+    !> per-period reset: left to the branch, a period without biomet humidity
+    !> would report the previous period's. The same trap RHO%w_at was written
+    !> to avoid, a few dozen lines down.
+    Ambient%chi_biomet = error
+    Ambient%r_biomet   = error
+    Ambient%d_biomet   = error
 
     if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
         !> If meteo RH is available, uses it for all slow parameters,
@@ -82,36 +115,43 @@ subroutine FluxParams(printout)
         else
             RHO%w = error
         end if
-        !> Water vapour concentrations and densities
-        !> Water vapour mole fractions
+        !> The biomet humidity as a concentration, in its own right.
+        !>
+        !> These three used to be written straight into Stats%chi/r/d of the
+        !> primary hygrometer. That instrument then reported the biomet value
+        !> instead of its own measurement, and on a two-hygrometer site the
+        !> other one reported itself - so which instrument's number was real
+        !> followed the primary designation, a naming choice. On CH-LAE the
+        !> tell was a mixing ratio of 19.9081 that followed the primary slot
+        !> between two runs and matched neither instrument: the LI-7200 read
+        !> 17.1089 and the MIRO 16.354.
+        !>
+        !> One variable was doing two jobs - the reported column of a
+        !> hygrometer, and the humidity fed to the drift correction, the
+        !> LI-7700 multipliers and the WPL ratio. Separating them lets the
+        !> reporting stop lying without moving any correction: a gas whose
+        !> moisture reference names the biomet is corrected from these, and
+        !> every hygrometer reports what it measured.
+        !>
+        !> Reported as h2o_biomet_*, so the number v7.2.5 put in h2o_mixing_ratio
+        !> is still on the file and the two can be compared.
+        !>
+        !> Ambient throughout, including the molar density, where the overwrite
+        !> divided by the primary analyser's cell volume. A site humidity is
+        !> not measured in anybody's cell.
         if (RHO%w /= error .and. Ambient%Va /= error) then
-            Stats%chi(h2o) = RHO%w * Ambient%Va / MW(h2o) * 1d3
-            !> Water vapour mixing ratio
-            Stats%r(h2o)   = Stats%chi(h2o) / (1.d0 - Stats%chi(h2o) * 1d-3)
-            !> Water vapour molar density
-            if (E2Col(h2o)%instr%path_type == 'closed') then
-                if (E2Col(h2o)%Va > 0d0) then
-                    Stats%d(h2o) = Stats%chi(h2o) / E2Col(h2o)%Va
-                else
-                    Stats%d(h2o) = error
-                    Stats%r(h2o) = error
-                    Stats%chi(h2o) = error
-                end if
-            else
-                Stats%d(h2o) = Stats%chi(h2o) / Ambient%Va
-            end if
-        else
-            Stats%chi(h2o) = error
-            Stats%r(h2o) = error
-            Stats%d(h2o) = error
+            Ambient%chi_biomet = RHO%w * Ambient%Va / MW_H2O * 1d3
+            Ambient%r_biomet   = Ambient%chi_biomet &
+                / (1.d0 - Ambient%chi_biomet * 1d-3)
+            Ambient%d_biomet   = Ambient%chi_biomet / Ambient%Va
         end if
-    else
+    elseif (wsl >= firstGas) then
         !> If meteo RH is not available or out of range, uses H2O from raw data
         !> Molecular weight of wet air:
-        !> Ma = chi(h2o) * MW(h2o) + chi(dry_air) * Md
+        !> Ma = chi(h2o) * MW_H2O + chi(dry_air) * Md
         !> if chi(dry_air) = 1 - chi(h2o) (assumes chi(h2o) in mmol mol_a-1)
         ! if (Stats%chi(h2o) > 0d0) then
-        !     Ma = (Stats%chi(h2o) * 1d-3) * MW(h2o) &
+        !     Ma = (Stats%chi(h2o) * 1d-3) * MW_H2O &
         !        + (1d0 - Stats%chi(h2o) * 1d-3) * Md
         ! else
         !     Ma = error
@@ -120,8 +160,8 @@ subroutine FluxParams(printout)
         !> Water vapour mass density [kg_w m-3]
         !> from mole fraction [mmol_w / mol_a]
         !> (good also when native is molar density)
-        if (Stats%chi(h2o) > 0d0 .and. Ambient%Va > 0d0) then
-            RHO%w = (Stats%chi(h2o) / Ambient%Va) * MW(h2o) * 1d-3
+        if (Stats%chi(wsl) > 0d0 .and. Ambient%Va > 0d0) then
+            RHO%w = (Stats%chi(wsl) / Ambient%Va) * MW_H2O * 1d-3
         else
             RHO%w = error
         end if
@@ -152,7 +192,36 @@ subroutine FluxParams(printout)
             Stats%RH = 100d0 !< RH slightly higher than 100% is set to 100%
             Ambient%VPD = 0d0 !< RH slightly higher than 100%, VPD is set to 0
         end if
+    else
+        !> No humidity from any source - no hygrometer and no usable biomet
+        !> RH. Every humidity-derived quantity is *not performed* rather than
+        !> computed from a slot that holds something else, which is what
+        !> reading the h2o slot did. WarnIfNoHumidity below says what that
+        !> costs.
+        RHO%w = error
+        Ambient%e = error
+        Ambient%VPD = error
+        Stats%RH = error
     end if
+
+    !> Water vapour mass density for every H2O measurement the project
+    !> describes, so a gas can be corrected with the humidity from its own
+    !> analyser. With a single H2O this reduces to RHO%w above, which is why
+    !> the existing configuration comes out unchanged.
+    !>
+    !> Outside the branches, because it belongs to all of them. It used to sit
+    !> inside the raw-data arm alone, so a site with biomet RH kept whatever
+    !> the *previous* averaging period left here - RHO is a module global with
+    !> no per-period reset - and every gas was then WPL-corrected with last
+    !> half-hour's humidity. Where humidity comes from biomet and there is no
+    !> hygrometer at all there is nothing to fill, and these stay `error`.
+    RHO%w_at = error
+    do msl = firstGas, lastGas
+        if (.not. E2Col(msl)%present) cycle
+        if (.not. GasSlotIsWater(msl)) cycle
+        if (Stats%chi(msl) > 0d0 .and. Ambient%Va > 0d0) &
+            RHO%w_at(msl) = (Stats%chi(msl) / Ambient%Va) * MW_H2O * 1d-3
+    end do
 
     !> Dew-point temperature [K], after Campbell and Norman (1998)
     !> Environmental Biophysics. Here e is in Pa, thus it must be divided
@@ -200,7 +269,7 @@ subroutine FluxParams(printout)
             RHO%a = RHO%d + RHO%w
             !> alternative: analytically derived from RHO%a = Pa * Ma / (Ru * T)
             !> Gives identical result.
-            !RHO%a = (Stats%Pr - (1d0-MW(h2o)/Md) * Ambient%e) / (Rd*Stats%T)
+            !RHO%a = (Stats%Pr - (1d0-MW_H2O/Md) * Ambient%e) / (Rd*Stats%T)
         else
             RHO%a = RHO%d
         end if
@@ -340,6 +409,105 @@ subroutine FluxParams(printout)
         Ambient%sigma = error
     end if
 
+    !> The whole moisture regime, once per hygrometer.
+    !>
+    !> Each of these is the corresponding scalar above, recomputed from one
+    !> hygrometer's own vapour density. Not merely sigma: a second hygrometer
+    !> reads a different humidity, which is a different water vapour partial
+    !> pressure, which leaves a different dry-air partial pressure and so its
+    !> own dry- and wet-air density, specific humidity and heat capacity. Take
+    !> sigma from one hygrometer and RhoCp from another and the two halves of
+    !> the same correction describe different air.
+    !>
+    !> All on the one settled Ambient%Ta, which is why this sits at the end of
+    !> the routine rather than inside the branches that establish it. Cpd is a
+    !> function of Ta alone and so is shared; Cpv depends on RH and is not.
+    !>
+    !> This loop very nearly reproduces the scalars for the designated
+    !> hygrometer, but not to the last digit - see the assignment below it,
+    !> which is what actually makes them equal.
+    Ambient%e_at     = error
+    Ambient%RH_at    = error
+    Ambient%rho_d_at = error
+    Ambient%rho_a_at = error
+    Ambient%Q_at     = error
+    Ambient%RhoCp_at = error
+    Ambient%sigma_at = error
+
+    do msl = firstGas, lastGas
+        if (RHO%w_at(msl) < 0d0) cycle
+        if (Ambient%Ta <= 0d0 .or. Stats%Pr <= 0d0) cycle
+
+        !> Water vapour partial pressure [Pa] and relative humidity [%]
+        Ambient%e_at(msl) = RHO%w_at(msl) * Rw * Ambient%Ta
+        if (Ambient%es > 0d0) then
+            Ambient%RH_at(msl) = Ambient%e_at(msl) * 1d2 / Ambient%es
+            !> Clamped as Stats%RH is: slightly over saturation is measurement
+            !> noise, far over is a fault and disqualifies the value.
+            if (Ambient%RH_at(msl) < 0d0 &
+                .or. Ambient%RH_at(msl) > RHmax) then
+                Ambient%RH_at(msl) = error
+            elseif (Ambient%RH_at(msl) > 1d2) then
+                Ambient%RH_at(msl) = 1d2
+            end if
+        end if
+
+        !> Dry and wet air density [kg m-3]
+        p_d_at = Stats%Pr - Ambient%e_at(msl)
+        if (p_d_at <= 0d0) cycle
+        Ambient%rho_d_at(msl) = p_d_at / (Rd * Ambient%Ta)
+        if (Ambient%rho_d_at(msl) <= 0d0) cycle
+        Ambient%rho_a_at(msl) = Ambient%rho_d_at(msl) + RHO%w_at(msl)
+
+        !> Specific humidity [kg_w kg_a-1] and density ratio [adim.]
+        if (Ambient%rho_a_at(msl) > 0d0) &
+            Ambient%Q_at(msl) = RHO%w_at(msl) / Ambient%rho_a_at(msl)
+        if (RHO%w_at(msl) > 0d0) &
+            Ambient%sigma_at(msl) = RHO%w_at(msl) / Ambient%rho_d_at(msl)
+
+        !> Wet air heat capacity [J K-1 m-3]. Cpv follows this hygrometer's RH;
+        !> where that is unavailable the dry-air term stands alone, as it does
+        !> in the scalar path when there is no vapour density at all.
+        if (Ambient%RH_at(msl) /= error) then
+            Cpv_at = 1859d0 + 0.13d0 * Ambient%RH_at(msl) &
+                + (0.193d0 + 5.6d-3 * Ambient%RH_at(msl)) &
+                  * (Ambient%Ta - 273.15d0) &
+                + (1d-3 + 5d-5 * Ambient%RH_at(msl)) &
+                  * (Ambient%Ta - 273.15d0)**2
+            Ambient%RhoCp_at(msl) = Cpv_at * RHO%w_at(msl) &
+                + Cpd * Ambient%rho_d_at(msl)
+        else
+            Ambient%RhoCp_at(msl) = Cpd * Ambient%rho_d_at(msl)
+        end if
+    end do
+
+    !> The designated hygrometer's entries are the scalars themselves.
+    !>
+    !> The loop above is meant to reproduce them and very nearly does, but not
+    !> to the last digit: it takes RHO%w_at(wsl), built from Stats%chi, where
+    !> the scalar path reaches RHO%w. On CH-LAE the two RH values differ in the
+    !> fourth decimal - nothing, until it decides which side of an RH-class
+    !> boundary a period falls on, and then it moves a cutoff frequency and
+    !> every flux behind it.
+    !>
+    !> Assigning removes the question. A project with one hygrometer gets
+    !> exactly the numbers it got before this existed, because they *are* those
+    !> numbers rather than a recomputation that agrees to four places.
+    !>
+    !> sigma_at is deliberately not in this list: it predates the per-
+    !> hygrometer work, the WPL dilution already reads it, and its designated
+    !> entry has been carrying the loop's value all along. Assigning it here
+    !> would move output that has been verified against v7.2.5.
+    if (wsl >= firstGas .and. wsl <= lastGas) then
+        Ambient%e_at(wsl)     = Ambient%e
+        Ambient%RH_at(wsl)    = Stats%RH
+        Ambient%rho_d_at(wsl) = RHO%d
+        Ambient%rho_a_at(wsl) = RHO%a
+        Ambient%Q_at(wsl)     = Ambient%Q
+        Ambient%RhoCp_at(wsl) = Ambient%RhoCp
+    end if
+
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine FluxParams
 

@@ -30,6 +30,7 @@ Program EddyFlowFCC
 
     integer, external :: CreateDir
     integer :: i
+    integer :: gas
     integer :: month
     integer :: nbins
     integer :: open_status
@@ -83,6 +84,11 @@ Program EddyFlowFCC
     type(QCType) :: StDiff
     type(QCType) :: DtDiff
     type(ExType) :: lEx
+    integer :: cec_p
+    integer :: cec_k
+    integer :: cec_slot
+    real(kind = dbl) :: cec_totals(MaxNumCecTargets)
+    real(kind = dbl) :: cec_errors(MaxNumCecTargets)
 
     !> Allocatable variabled
     type(DateType), allocatable :: exTimeSeries(:)
@@ -100,17 +106,22 @@ Program EddyFlowFCC
     !*******************************************************************************
     !*******************************************************************************
 
+    !> Connect the log before anything is said - see the RP main.
+    call LogStart()
+
     app = fcc_app
 
     !> Initialize environment
     write(*, '(a)')
+    write(ulog, '(a)')
     call InitEnv()
 
     !> By detault, create FLUXNET output
     EddyFlowProj%out_fluxnet = .true.
 
-    write(*, '(a)') 'Starting flux computation and correction session..'
+    call LogSay('Starting flux computation and correction session..')
     write(*, '(a)')
+    write(ulog, '(a)')
 
     !> Read ".eddypro" file for both spectral analysis and flux correction
     call ReadIniFCC('FluxCorrection')
@@ -119,11 +130,22 @@ Program EddyFlowFCC
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
 
+    !> The run log. The output folder is RP's and already exists by the time
+    !> FCC runs; the timestamp is FCC's own, so the two logs never collide.
+    call InitRunLog()
+
     !> If running in embedded mode, override some settings
     if (EddyFlowProj%run_env == 'embedded') &
         call ConfigureForEmbedded('EddyFlow-FCC')
 
     if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
+
+    !> Before anything reads a record. InitExVars parses the whole file by
+    !> field position, so a file from an older RP does not announce itself -
+    !> every record simply fails and the run dies on "no valid data records",
+    !> which tells the user nothing about why. The check used to sit after
+    !> this and could therefore never fire.
+    call CheckExFileVintageAt(AuxFile%ex)
 
     !> Preliminarily read essential files and retrieve a few information
     call InitExVars(exStartTimestamp, exEndTimestamp, &
@@ -201,10 +223,13 @@ Program EddyFlowFCC
         call ResetSpectralAssessmentDiagnostics()
         if (FCCsetup%do_spectral_assessment) write(*, '(a)') &
             ' Starting "spectral assessment" session..'
+        if (FCCsetup%do_spectral_assessment) write(ulog, '(a)') &
+            ' Starting "spectral assessment" session..'
         if (EddyFlowProj%out_avrg_cosp .or. EddyFlowProj%out_avrg_spec) then
-            write(*, '(a)') ' Reading (co)spectra from:'
+            call LogSay(' Reading (co)spectra from:')
             write(*, '(a)') '  ' // trim(adjustl(Dir%binned))
-            write(*, '(a)') ''
+            write(ulog, '(a)') '  ' // trim(adjustl(Dir%binned))
+            call LogSay('')
         end if
 
         !> Convert start/end to timestamps
@@ -268,23 +293,29 @@ Program EddyFlowFCC
         !> Some logging
         call DateTypeToDateTime(binStartTimestamp - DateStep, sDate, sTime)
         call DateTypeToDateTime(binEndTimestamp, eDate, eTime)
-        write(*, '(a)') ''
-        write(*, '(a)') '  Period covered by available binned (co)spectra files:'
+        call LogSay('')
+        call LogSay('  Period covered by available binned (co)spectra files:')
         write(*, '(a)') '   Start: ' // sDate // ' ' // sTime
+        write(ulog, '(a)') '   Start: ' // sDate // ' ' // sTime
         write(*, '(a)') '   End:   ' // eDate // ' ' // eTime
+        write(ulog, '(a)') '   End:   ' // eDate // ' ' // eTime
 
         if (FCCsetup%SA%subperiod) then
             call DateTypeToDateTime(saStartTimestamp, sDate, sTime)
             call DateTypeToDateTime(saEndTimestamp + Datetype(0, 0, 0, 0, 1), eDate, eTime)
-            write(*, '(a)') ''
-            write(*, '(a)') '  Selected (co)spectra sub-period:'
+            call LogSay('')
+            call LogSay('  Selected (co)spectra sub-period:')
             write(*, '(a)') '   Start: ' // sDate // ' ' // sTime
+            write(ulog, '(a)') '   Start: ' // sDate // ' ' // sTime
             write(*, '(a)') '   End:   ' // eDate // ' ' // eTime
+            write(ulog, '(a)') '   End:   ' // eDate // ' ' // eTime
         end if
 
-        write(*, '(a)') ''
+        call LogSay('')
         write(LogInteger, '(i8)') saEndTimestampIndx - saStartTimestampIndx + 1
         write(*, '(a)') '  Importing, sorting and ensemble-averaging up to ' &
+            // trim(adjustl(LogInteger)) // ' binned (co)spectra from files.. '
+        write(ulog, '(a)') '  Importing, sorting and ensemble-averaging up to ' &
             // trim(adjustl(LogInteger)) // ' binned (co)spectra from files.. '
 
         !> Create an exponentially spaced frequency array in a range \n
@@ -301,8 +332,9 @@ Program EddyFlowFCC
         open(uex, file = AuxFile%ex, status = 'old', iostat = open_status)
         if (open_status /= 0) call ExceptionHandler(60)
 
-        !> Skip header in Ex file
-        read(uex, *)
+        !> Skip header in Ex file, after checking it was written by this
+        !> version - see CheckExFileVintage.
+        call CheckExFileVintage()
 
         !> Loop to import binned (co)spectra
         month = 0
@@ -388,7 +420,7 @@ Program EddyFlowFCC
             end if
         end do binned_loop
         close(uex)
-        write(*,'(a)') '  Done.'
+        call LogSay('  Done.')
 
         !> Write number of imported spectra and cospectra on stdout
         if (EddyFlowProj%out_avrg_spec .or. FCCsetup%do_spectral_assessment) &
@@ -436,6 +468,7 @@ Program EddyFlowFCC
         !> Write everything on output files
         call OutputSpectralAssessmentResults(nbins)
         write(*,'(a)')
+        write(ulog,'(a)')
 
 
     else
@@ -459,8 +492,13 @@ Program EddyFlowFCC
     !> and exit with error in case of problems opening the file
     open(uex, file = AuxFile%ex, status = 'old', iostat = open_status)
     if (open_status /= 0) call ExceptionHandler(60)
-    !> Skip first line for header
-    read(uex, *)
+    !> The header was skipped unread. ReadExRecord parses this file by field
+    !> position, so a file written by an older RP is not merely out of date -
+    !> its per-gas moisture records are three fields wide where the reader now
+    !> expects seven, and a list-directed read simply continues into the next
+    !> gas's fields and returns plausible numbers for the wrong slot. Nothing
+    !> downstream can notice. Checking one column name turns that into a stop.
+    call CheckExFileVintage()
 
 
 
@@ -509,7 +547,14 @@ Program EddyFlowFCC
         !> Create aux variables to pass to BandPassSpectralCorrections
         AuxInstrument = NullInstrument
         AuxInstrument(sonic) = lEx%instr(sonic)
-        AuxInstrument(co2:gas4) = lEx%instr(ico2:igas4)
+        !> Indexed by gas *slot*, not by instrument role. lEx%instr is indexed
+        !> by role (ico2..igas4) and so only ever reaches four gases; past that
+        !> the role index addresses an unrelated instrument. lEx%gas_instr is
+        !> the per-slot view, mirrored from those four after their unit
+        !> conversions, so the historical slots are unchanged.
+        do gas = firstGas, lastGas
+            AuxInstrument(gas) = lEx%gas_instr(gas)
+        end do
         if (.not. allocated(FullFileList)) allocate(FullFileList(1))
 
         !> Bad pass spectral correction factors
@@ -525,11 +570,31 @@ Program EddyFlowFCC
         !> Calculate fluxes at Level 2 and Level 3
         call Fluxes23(lEx)
 
-        !> Apply RP's high-frequency CEC descriptor to FCC's authoritative
-        !> corrected totals.
-        if (EddyFlowProj%do_cec > 0) &
-            call ApplyCecDescriptor(lEx%cec, Flux3%h2o, Flux3%co2, &
-                EddyFlowProj%do_cec, CECFlux)
+        !> Apply RP's high-frequency CEC descriptors to FCC's authoritative
+        !> corrected totals - one per pairing.
+        !>
+        !> The target slots come from the descriptor, not from the project: the
+        !> descriptor is what RP actually computed, and reading the totals for
+        !> some other list would pair a ratio with a flux it does not describe.
+        do cec_p = 1, MaxNumCecPairs
+            call ResetCecFlux(CECFlux(cec_p))
+        end do
+        if (EddyFlowProj%do_cec > 0) then
+            do cec_p = 1, min(lEx%n_cec, MaxNumCecPairs)
+                cec_totals = error
+                cec_errors = error
+                do cec_k = 1, lEx%cec(cec_p)%n_target
+                    cec_slot = lEx%cec(cec_p)%target(cec_k)%slot
+                    if (cec_slot < firstGas .or. cec_slot > lastGas) cycle
+                    cec_totals(cec_k) = Flux3%gas(cec_slot)
+                    !> RP estimated it and the essentials row carried it here,
+                    !> from the same slot as the total beside it.
+                    cec_errors(cec_k) = lEx%rand_uncer(cec_slot)
+                end do
+                call ApplyCecDescriptor(lEx%cec(cec_p), cec_totals, &
+                    cec_errors, EddyFlowProj%cec, CECFlux(cec_p))
+            end do
+        end if
 
         !> Calculate footprint estimation   
         foot_model_used = Meth%foot(1:len_trim(Meth%foot))
@@ -539,10 +604,17 @@ Program EddyFlowFCC
         !> Calculate quality flags
         StDiff%w_u    = nint(lEx%TAU_SS)
         StDiff%w_ts   = nint(lEx%H_SS)
-        StDiff%w_co2  = nint(lEx%FC_SS)
-        StDiff%w_h2o  = nint(lEx%FH2O_SS)
-        StDiff%w_ch4  = nint(lEx%FCH4_SS)
-        StDiff%w_gas4 = nint(lEx%FGS4_SS)
+        !> Every configured gas. lEx%F_SS is slot-indexed and read_ex_record
+        !> already fills firstGas..firstGas+n_layout_gas-1 from the file, so
+        !> the data was there all along - only this copy stopped at the fourth
+        !> slot, leaving QualityFlags to make a flag out of unset memory for
+        !> every gas past it. That reached the full output as qc_LE whenever
+        !> the site's water sat further out.
+        StDiff%w_gas = nint(error)
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            StDiff%w_gas(gas) = nint(lEx%F_SS(gas))
+        end do
         DtDiff%u      = nint(lEx%U_ITC)
         DtDiff%w      = nint(lEx%W_ITC)
         DtDiff%ts     = nint(lEx%TS_ITC)
@@ -567,7 +639,9 @@ Program EddyFlowFCC
     close(uflxnt)
 
     write(*,*)
+    write(ulog,*)
     write(*,*)
+    write(ulog,*)
     call sleep(1)
 
     !> Creating datasets from output files
@@ -596,10 +670,89 @@ Program EddyFlowFCC
         // Timestamp_FilePadding // '.eddyflow')
 
 
-    write(*, '(a)') ''
-    write(*, '(a)') ' ****************************************************'
-    write(*, '(a)') ' Program EddyFlow executed gracefully.'
-    write(*, '(a)') ' Check results in the selected output directory.     '
-    write(*, '(a)') ' ****************************************************'
+    call LogSay('')
+    call LogSay(' ****************************************************')
+    call LogSay(' Program EddyFlow executed gracefully.')
+    call LogSay(' Check results in the selected output directory.     ')
+    call LogSay(' ****************************************************')
     stop ''
+
+contains
+
+!***************************************************************************
+!
+! \brief       Read past the ex-file header, refusing one this version cannot
+!              parse.
+! \author      Jonathan Muller
+! \note        Both places that open the ex file used to `read(uex, *)` and
+!              throw the header away. That was harmless while the format only
+!              ever grew at the end - a reader stops when it has what it wants.
+!              It stopped being harmless when the per-gas moisture records went
+!              from three fields to seven: a list-directed read of seven values
+!              from a three-field record does not fail, it continues into the
+!              next gas's fields and returns numbers that look entirely
+!              ordinary for the wrong slot, and every flux computed from them
+!              is quietly wrong.
+!
+!              So one column name is checked. NUM_WATER_FLUX appears only in
+!              files written by this version, and its absence means the
+!              moisture records are the narrow ones. Re-running RP regenerates
+!              the file; there is nothing to migrate.
+!***************************************************************************
+!> Read the header off an already-open essentials unit, and judge it. Doubles
+!> as the header skip both callers need.
+subroutine CheckExFileVintage()
+    implicit none
+    character(LongOutstringLen) :: header
+
+    header = ''
+    read(uex, '(a)', iostat = open_status) header
+    if (open_status /= 0) call ExceptionHandler(60)
+    call JudgeExHeader(header)
+end subroutine CheckExFileVintage
+
+!> The same judgement, on a file nothing has opened yet.
+!>
+!> Wanted separately because the only useful place to make it is before
+!> InitExVars, which is before any unit is open - and after InitExVars is too
+!> late, the records having already failed to parse.
+subroutine CheckExFileVintageAt(path)
+    implicit none
+    character(*), intent(in) :: path
+
+    integer :: unt
+    integer :: ios
+    character(LongOutstringLen) :: header
+
+    open(newunit = unt, file = path, status = 'old', iostat = ios)
+    if (ios /= 0) call ExceptionHandler(60)
+    header = ''
+    read(unt, '(a)', iostat = ios) header
+    close(unt)
+    if (ios /= 0) call ExceptionHandler(60)
+    call JudgeExHeader(header)
+end subroutine CheckExFileVintageAt
+
+!> Which column names a file must carry to be readable by this version.
+subroutine JudgeExHeader(header)
+    implicit none
+    character(*), intent(in) :: header
+
+    !> Two markers, because the row grew twice. NUM_WATER_FLUX arrived with
+    !> the per-hygrometer families and H2O_BIOMET_MOLE_FRACTION with the
+    !> biomet triple, which sits in the *fixed* part - a file carrying the
+    !> first but not the second parses three fields short from there on.
+    if (index(header, 'NUM_WATER_FLUX') <= 0 &
+        .or. index(header, 'H2O_BIOMET_MOLE_FRACTION') <= 0) &
+        call ExceptionHandler(107)
+
+    !> The third marker is conditional, because a project with the partition
+    !> off writes no CEC block at all and a header without one is not old. But
+    !> a header that HAS the block and lacks CEC_NS_ was written before the
+    !> partition-stability statistic joined the per-target fields, and would
+    !> parse one field short per target from there to the end of the row.
+    if (index(header, 'CEC_METH') > 0 .and. index(header, 'CEC_NS_') <= 0) &
+        call ExceptionHandler(107)
+end subroutine JudgeExHeader
+
 end program EddyFlowFCC

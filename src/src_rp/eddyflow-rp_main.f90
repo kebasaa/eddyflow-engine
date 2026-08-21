@@ -38,6 +38,7 @@ program EddyFlowRP
     use m_cec
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
+        PostProcessPwbTimelagCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     !use netcdf
     !use iso_c_binding
@@ -54,8 +55,18 @@ program EddyFlowRP
     integer :: NumberOfPeriods
     integer :: i
     integer :: j
-    integer :: cec_co2_signal_col
-    integer :: cec_h2o_signal_col
+    !> The hygrometer a gas is corrected with, from its own record.
+    integer :: msl
+    !> Mole fraction of the water a gas names, from whichever source.
+    real(kind = dbl) :: chi_moist
+    integer :: cec_p
+    integer :: cec_k
+    integer :: cec_ntarget
+    integer :: cec_slots(MaxNumCecTargets)
+    real(kind = dbl) :: cec_totals(MaxNumCecTargets)
+    real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    real(kind = dbl), allocatable :: CecPrimes(:, :)
+    logical :: cec_ok
     integer :: SpecRow
     integer :: Nmax
     integer :: Nmin
@@ -85,7 +96,7 @@ program EddyFlowRP
     integer :: tlagn(E2NumVar)
     integer :: MaxNumFileRecords
     integer :: NextRawFileIndx
-    integer :: InitGas4CalRefCol
+    integer :: InitGasCalRefCol(GHGNumVar)
     integer :: nCalibEvents
     integer :: NumDynRecords
     integer :: clean
@@ -129,6 +140,8 @@ program EddyFlowRP
     character(128) ::  PeriodSkipMessage
 
     logical :: skip_period
+    !> Whether any configured gas needs the FCC-only spectral path.
+    logical :: has_fcc_only_gas
     logical :: passed(32)
     logical :: MetaIsNeeded = .true.
     logical :: EmbBiometDataExist = .false.
@@ -190,11 +203,18 @@ program EddyFlowRP
     !****** INITIALIZATION PART COMMON TO ALL SW COMPONENTS ********************
     !***************************************************************************
     !***************************************************************************
-    write(*, '(a)') ''
-    write(*, '(a)') ' *******************'
-    write(*, '(a)') '  Executing EddyFlow '
-    write(*, '(a)') ' *******************'
-    write(*, '(a)') ''
+    !> Connect the log before anything is said. It has no name yet - the
+    !> output folder is not known until the project is read - so it starts on a
+    !> scratch file, and LogInit copies it across once there is somewhere to
+    !> put it. Late instead, and every line up to that point would write to a
+    !> stray fort.163 in whatever directory the run started in.
+    call LogStart()
+
+    call LogSay('')
+    call LogSay(' *******************')
+    call LogSay('  Executing EddyFlow ')
+    call LogSay(' *******************')
+    call LogSay('')
 
     app = rp_app
 
@@ -209,6 +229,13 @@ program EddyFlowRP
     AssessmentOnly = RPsetup%pf_assessment_only .or. &
         RPsetup%tlag_assessment_only
     allocate(bf(Meth%spec%nbins + 1))
+
+    !> A project with no analyser is a legitimate configuration - an
+    !> anemometer still measures momentum, sensible heat and stability - but
+    !> the gas half of every output file is error codes, and that is worth
+    !> saying before the user goes looking for the cause. Here rather than in
+    !> the period loop, so it is said once.
+    if (EddyFlowProj%gas_num <= 0) call ExceptionHandler(108)
 
     !> Add run-mode tag to Timestamp_FilePadding
     call TagRunMode()
@@ -266,6 +293,11 @@ program EddyFlowRP
     !> Create output directory if it does not exist, otherwise is silent
     mkdir_status = CreateDir('"' //trim(adjustl(Dir%main_out)) // '"')
 
+    !> The run log, as soon as there is a folder to put it in. Everything said
+    !> before this - the banner, the project file, any exception raised while
+    !> reading it - was buffered and is flushed here.
+    call InitRunLog()
+
     !> Check on filename template
     call tsValidateTemplate(EddyFlowProj%fname_template)
 
@@ -291,9 +323,12 @@ program EddyFlowRP
         !> explicitly selects an alternative metadata file
         write(*,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
             // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
+        write(ulog,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
+            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
         call ReadMetadataFile(Col, AuxFile%metadata, IniFileNotFound, .true.)
         if (IniFileNotFound) then
             write(*, *)
+            write(ulog, *)
             call ExceptionHandler(22)
         end if
         !> Retrieve variables to be used (from EddyFlow project file) \n
@@ -303,10 +338,11 @@ program EddyFlowRP
         call MetadataFileValidation(Col, passed, faulty_col)
         if (.not. passed(1)) then
             write(*, *)
+            write(ulog, *)
             call InformOfMetadataProblem(passed, faulty_col)
             call ExceptionHandler(23)
         end if
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     else
         !> In case of standard GHG processing, without alternative metadata \n
         !> file one GHG file must be opened to read the metadata content for \n
@@ -367,8 +403,9 @@ program EddyFlowRP
     !> Initialize external biomet data
     if (index(EddyFlowProj%biomet_data, 'ext_') /= 0) then
         if (EddyFlowProj%biomet_data == 'ext_dir') then
-            write(*,'(a)') ' Reading external biomet file(s) from:'
+            call LogSay(' Reading external biomet file(s) from:')
             write(*,'(a)') '  ' // trim(adjustl(Dir%biomet))
+            write(ulog,'(a)') '  ' // trim(adjustl(Dir%biomet))
             call NumberOfFilesInDir(Dir%biomet, &
                 trim(adjustl(EddyFlowProj%biomet_tail)), &
                 .false., 'none', TotNumFile, NumFileNoRecurse)
@@ -377,7 +414,7 @@ program EddyFlowRP
             else
                 NumBiometFiles = NumFileNoRecurse
             end if
-            write(*, '(a)') ' Done.'
+            call LogSay(' Done.')
         else
             NumBiometFiles = 1
         end if
@@ -456,12 +493,12 @@ program EddyFlowRP
     !***************************************************************************
 
     if (AssessmentOnly) then
-        write(*,'(a)') ' Auxiliary assessment-only session requested.'
+        call LogSay(' Auxiliary assessment-only session requested.')
         if (RPsetup%tlag_assessment_only) &
-            write(*,'(a)') '  Time-lag optimization will be created.'
+            call LogSay('  Time-lag optimization will be created.')
         if (RPsetup%pf_assessment_only) &
-            write(*,'(a)') '  Planar-fit file will be created.'
-        write(*,'(a)') ''
+            call LogSay('  Planar-fit file will be created.')
+        call LogSay('')
     end if
 
     !> Method 5 uses a per-period cache when an existing time-lag file was
@@ -469,20 +506,21 @@ program EddyFlowRP
     if (trim(adjustl(Meth%tlag)) == 'pwb' .and. PwbCacheUpdateRequested) then
         call ReadPwbTimelagCache(AuxFile%to, PwbCacheRecognized, PwbCacheValid)
         if (PwbCacheRecognized) then
-            if (.not. PwbCacheValid) error stop 'PWB time-lag cache could not be read safely.'
-            write(*, '(a)') ' PWB per-period time-lag cache found, retrieving content..'
-            write(*, '(a)') ' PWB mode: exact per-period cache reuse; missing entries will be detected.'
+            if (.not. PwbCacheValid) &
+                error stop 'PWB half-hourly time-lag table could not be used; see the message above.'
+            call LogSay(' PWB half-hourly time-lag table found, retrieving content..')
+            call LogSay(' PWB mode: exact per-period reuse; missing periods will be detected.')
         else
             TimeLagOptSelected = .true.
             Meth%tlag = 'tlag_opt'
-            write(*, '(a)') ' PWB mode: aggregate/RH-class time-lag reuse; PWB detection is disabled.'
+            call LogSay(' PWB mode: aggregate/RH-class time-lag reuse; PWB detection is disabled.')
         end if
     elseif (PwbCacheGenerate) then
         call InitPwbTimelagCache()
-        write(*, '(a)') ' PWB mode: pre-generation followed by cache-backed production processing.'
+        call LogSay(' PWB mode: whole-run time-lag pre-pass, then production processing from its table.')
     elseif (trim(adjustl(Meth%tlag)) == 'pwb') then
         call InitPwbTimelagCache()
-        write(*, '(a)') ' PWB mode: live detection during production processing.'
+        call LogSay(' PWB mode: live detection during production processing.')
     end if
     if (Meth%tlag == 'pwb') then
         PwbTimelagOptSize = size(RawTimeSeries) - 1
@@ -497,7 +535,7 @@ program EddyFlowRP
             if (TOSetup%h2o_nclass > 1) &
                 TOSetup%h2o_class_size = floor(100d0 / TOSetup%h2o_nclass)
         else
-            write(*,'(a)') ' Performing time-lag optimization:'
+            call LogSay(' Performing time-lag optimization:')
 
             if (PwbCacheGenerate .and. EddyFlowProj%subperiod) then
                 !> PWB caches cover the actual requested output range, not the
@@ -532,6 +570,9 @@ program EddyFlowRP
             !> Count maximum number of periods for timelag optimization
             write(TmpString1, '(i7)') toEndTimestampIndx - toStartTimestampIndx
             write(*, '(a)') '  Maximum number of flux averaging periods &
+                &available for time-lag optimization: ' &
+                // trim(adjustl(TmpString1))
+            write(ulog, '(a)') '  Maximum number of flux averaging periods &
                 &available for time-lag optimization: ' &
                 // trim(adjustl(TmpString1))
 
@@ -584,7 +625,7 @@ program EddyFlowRP
                 !> Averaging period advancement
                  if (day /= 0) then
                     if (EddyFlowProj%caller == 'console') then
-                        write(*, '(a)', advance = 'no') '#'
+                        call LogSayNoAdv('#')
                     else
                         call DisplayProgress('avrg_interval', &
                             '   another small step to the time-lag: ', &
@@ -599,6 +640,7 @@ program EddyFlowRP
                     day   = tsStart%day
                     if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)')
+                        write(ulog, '(a)')
                         call DisplayProgress('daily','  Importing data for ', &
                             tsStart, 'no')
                     else
@@ -654,9 +696,11 @@ program EddyFlowRP
 
                 !> If H2O instrument path type is 'open', doesn't make sense
                 !> to use RH classes so set it to 1.
-                if (toInit .and. E2Col(h2o)%instr%path_type == 'open') then
-                    TOSetup%h2o_nclass = 1
-                    toInit = .false.
+                if (toInit) then
+                    if (E2Col(PrimaryWaterOutSlot())%instr%path_type == 'open') then
+                        TOSetup%h2o_nclass = 1
+                        toInit = .false.
+                    end if
                 end if
 
                 !> Clean up E2Set, eliminating values that are clearly unphysical
@@ -675,7 +719,10 @@ program EddyFlowRP
                     cycle to_periods_loop
                 end if
 
-                if (.not. any(E2Col(co2:gas4)%present)) then
+                !> Every configured gas, not the four historical slots: a
+                !> project whose gases all sit past the fourth record would
+                !> otherwise have every period discarded here as gas-less.
+                if (.not. any(E2Col(firstGas:lastGas)%present)) then
                     if(allocated(E2Set)) deallocate(E2Set)
                     if(allocated(E2Primes)) deallocate(E2Primes)
                     if(allocated(DiagSet)) deallocate(DiagSet)
@@ -786,7 +833,15 @@ program EddyFlowRP
                     size(E2Set, 1), size(E2Set, 2), 5, .false.)
                 Stats5 = Stats
 
-                if (PwbCacheGenerate .and. PWBSetup%detect_prewpl) then
+                !> PWB detection on rotated, pre-WPL data. This used to be
+                !> optional; both alternatives ran on rotated 20 Hz data, so
+                !> the choice was only ever whether the gas series had been
+                !> through the pointwise mixing-ratio conversion first. That
+                !> conversion runs before time-lag compensation, so after it
+                !> the cell temperature and water signals sit in the gas
+                !> series at the wrong relative lag - which is the one series
+                !> being cross-correlated here.
+                if (PwbCacheGenerate) then
                     call RetrieveSensorParams()
                     call SetTimelags()
                     pwb_detect_only_mode = .true.
@@ -829,7 +884,7 @@ program EddyFlowRP
 
                 !> Apply filter for absolute limits test, if the case
                 FilterWhat = .false.
-                FilterWhat(co2:gas4) = .true.
+                FilterWhat(firstGas:lastGas) = .true.
                 call FilterDatasetForPhysicalThresholds(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), FilterWhat)
 
@@ -887,7 +942,8 @@ program EddyFlowRP
 
             end do to_periods_loop
             write(*, '(a)')
-            write(*, '(a)') ' Done.'
+            write(ulog, '(a)')
+            call LogSay(' Done.')
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.    *************************
@@ -895,6 +951,10 @@ program EddyFlowRP
             !*******************************************************************
 
             if (PwbCacheGenerate) then
+                !> Every period has been read, so the gap-filling can look
+                !> forwards as well as back. This is what the streaming
+                !> classifier in timelag_handle cannot do.
+                call PostProcessPwbTimelagCache()
                 call WritePwbTimelagCache()
                 if (PwbTimelagN > 0) then
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
@@ -918,7 +978,7 @@ program EddyFlowRP
                 end if
                 call ReportPwbDiagnostics()
                 call ResetPwbDiagnostics()
-                write(*,'(a)') ' PWB time-lag cache generation session terminated.'
+                call LogSay(' PWB time-lag pre-pass finished.')
             else
             !> Adjust time-lag opt dataset to eliminate errors,
             !> so that it's easier to treat them later
@@ -940,9 +1000,10 @@ program EddyFlowRP
                     toH2On, TOSetup%h2o_nclass, TOSetup%h2o_class_size)
 
             if (allocated(toH2On)) deallocate(toH2On)
-            write(*,'(a)') ' Time-lag optimization session terminated.'
+            call LogSay(' Time-lag optimization session terminated.')
             end if
             write(*,'(a)')
+            write(ulog,'(a)')
         end if
     end if
 
@@ -969,7 +1030,7 @@ program EddyFlowRP
                 end do
             end do secloop2
         else
-            write(*,'(a)') ' Performing planar-fit assessment:'
+            call LogSay(' Performing planar-fit assessment:')
 
             !> If zero sectors were selected, set to 1 sector by
             !> default and inform
@@ -1008,6 +1069,9 @@ program EddyFlowRP
             write(TmpString1, '(i7)') &
                 pfEndTimestampIndx - pfStartTimestampIndx
             write(*, '(a)') '  Maximum number of &
+                &flux averaging periods available for planar-fit: ' &
+                // trim(adjustl(TmpString1))
+            write(ulog, '(a)') '  Maximum number of &
                 &flux averaging periods available for planar-fit: ' &
                 // trim(adjustl(TmpString1))
 
@@ -1055,7 +1119,7 @@ program EddyFlowRP
                 !> Averaging period advancement
                 if (day /= 0) then
                     if (EddyFlowProj%caller == 'console') then
-                        write(*, '(a)', advance = 'no') '#'
+                        call LogSayNoAdv('#')
                     else
                         call DisplayProgress('avrg_interval', &
                             '   another small step to the planar-fit: ', &
@@ -1070,6 +1134,7 @@ program EddyFlowRP
                     day   = tsStart%day
                     if (EddyFlowProj%caller == 'console') then
                         write(*, '(a)')
+                        write(ulog, '(a)')
                         call DisplayProgress('daily', &
                             '  Importing wind data for ', tsStart, 'no')
                     else
@@ -1218,7 +1283,8 @@ program EddyFlowRP
                 pfWind(pfn, w) = Stats4%Mean(w)
             end do pf_periods_loop
             write(*, '(a)')
-            write(*, '(a)') ' Done.'
+            write(ulog, '(a)')
+            call LogSay(' Done.')
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.  ***************************
@@ -1261,11 +1327,14 @@ program EddyFlowRP
             write(LogInteger, '(i6)') PFSetup%num_sec
             write(*, '(a)') ' Calculating planar fit rotation matrices for ' &
                                   // trim(adjustl(LogInteger)) // ' sector(s).'
+            write(ulog, '(a)') ' Calculating planar fit rotation matrices for ' &
+                                  // trim(adjustl(LogInteger)) // ' sector(s).'
 
             !> Loop over wind sectors
             GoPlanarFit = .true.
             secloop: do sec = 1, PFSetup%num_sec
                 write(*, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
+                write(ulog, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
                 if (PFSetup%wsect_exclude(sec)) then
                     GoPlanarFit(sec) = .false.
                     PFb(:, sec) = error
@@ -1344,7 +1413,7 @@ program EddyFlowRP
                 !> Update sector-wise rotation matrix
                 PFMat(:, :, sec) = PP
 
-                write(*, '(a)') ' Done.'
+                call LogSay(' Done.')
             end do secloop
 
             !> Fix sectors without calculations, using closest
@@ -1358,8 +1427,9 @@ program EddyFlowRP
 
             if (allocated (pfWindBySect)) deallocate(pfWindBySect)
             if (allocated (pfNumElem)) deallocate(pfNumElem)
-            write(*,'(a)') ' Planar Fit session terminated.'
+            call LogSay(' Planar Fit session terminated.')
             write(*,'(a)')
+            write(ulog,'(a)')
         end if
     elseif (.not. AssessmentOnly) then
         if (.not. allocated(GoPlanarFit)) allocate(GoPlanarFit(PFSetup%num_sec))
@@ -1368,8 +1438,8 @@ program EddyFlowRP
     if (AssessmentOnly) then
         if (allocated(bf)) deallocate(bf)
         if (allocated(Raw)) deallocate(Raw)
-        write(*,'(a)') ' Auxiliary assessment-only session completed.'
-        write(*,'(a)') ' Normal raw-data processing and flux calculation were not run.'
+        call LogSay(' Auxiliary assessment-only session completed.')
+        call LogSay(' Normal raw-data processing and flux calculation were not run.')
         stop ''
     end if
 
@@ -1414,7 +1484,7 @@ program EddyFlowRP
     !***************************************************************************
     !***************************************************************************
     if (DriftCorr%method /= 'none' .and. nCalibEvents > 0) then
-        write(*,'(a)') ' Elaborating IRGA calibration-check history..'
+        call LogSay(' Elaborating IRGA calibration-check history..')
 
         !> Loop on periods to be processed
         pcount = rpStartTimestampIndx - 1
@@ -1482,6 +1552,8 @@ program EddyFlowRP
                 if (date /= loggedDate) then
                     write(*, '(a)') &
                         '  Calibration-check data found on: ' // date(1:10)
+                    write(ulog, '(a)') &
+                        '  Calibration-check data found on: ' // date(1:10)
                     loggedDate = date
                 end if
             end if
@@ -1510,25 +1582,37 @@ program EddyFlowRP
             !> Calculate reference counts
             call ReferenceCounts(dble(Raw), size(Raw, 1), size(Raw, 2))
 
+            !> The whole gas block, not the first two slots.
+            !>
+            !> Every other step of the drift chain spans firstGas:lastGas -
+            !> DriftRetrieveCalibrationEvents fills %offset and %ref over it,
+            !> DriftCorrection consumes it - and only these three assignments
+            !> were (co2:h2o). Calib is initialised to error, so a third gas's
+            !> %ri and %rf stayed error, the correction masked it out, and a
+            !> gas given its own reference and offset columns was silently
+            !> never drift-corrected at all.
+            !>
             !> Special case of first file in the dataset: used to initialize
             !> drift history assuming cleaned instrument at the beginning
             if (pcount == rpStartTimestampIndx) then
                 Calib(0)%ts = MasterTimeSeries(rpStartTimestampIndx)
                 call DateTypeToDateTime(Calib(0)%ts, Calib(0)%date, Calib(0)%time)
-                Calib(0)%ri(co2:h2o) = refCounts(co2:h2o)
+                Calib(0)%ri(firstGas:lastGas) = refCounts(firstGas:lastGas)
                 cycle drift_loop
             end if
 
             !> Case of cleaning event
             !> Assign relevant ri to current Calib dataset
             if (clean > 0) then
-                Calib(latestCleaning + clean)%ri(co2:h2o) = refCounts(co2:h2o)
+                Calib(latestCleaning + clean)%ri(firstGas:lastGas) = &
+                    refCounts(firstGas:lastGas)
                 latestCleaning = latestCleaning + clean
             end if
             !> Case of most dirty file (right before next cleaning event)
             !> Calculate and assign relevant quantities to current Calib dataset
             if (dirty > 0) then
-                Calib(latestCleaning)%rf(co2:h2o) = refCounts(co2:h2o)
+                Calib(latestCleaning)%rf(firstGas:lastGas) = &
+                    refCounts(firstGas:lastGas)
             end if
         end do drift_loop
 
@@ -1576,13 +1660,16 @@ program EddyFlowRP
     InitializeStorage = .true.
     InitOutVarPresence = .true.
     DynamicMetadata = ErrDynamicMetadata
-    InitGas4CalRefCol = Gas4CalRefCol
+    InitGasCalRefCol = GasCalRefCol
 
     periods_loop: do
-        Gas4CalRefCol = InitGas4CalRefCol
+        GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
-        call ResetCecDescriptor(CECDescriptor)
-        call ResetCecFlux(CECFlux)
+        nCecPairs = 0
+        do cec_p = 1, MaxNumCecPairs
+            call ResetCecDescriptor(CECDescriptor(cec_p))
+            call ResetCecFlux(CECFlux(cec_p))
+        end do
 
         !***********************************************************************
         !**** RAW FILE IMPORT **************************************************
@@ -1595,18 +1682,23 @@ program EddyFlowRP
             else
                 call hms_delta_print(' Start metadata retrieving: ', '')
             end if
-            write(*, '(a)') ' Processing time period:'
+            call LogSay(' Processing time period:')
             call DateTypeToDateTime(MasterTimeSeries(rpStartTimestampIndx), &
                 tmpDate, tmpTime)
             write(*, '(a)') '  Start: ' // tmpDate // ' ' // tmpTime
+            write(ulog, '(a)') '  Start: ' // tmpDate // ' ' // tmpTime
             call DateTypeToDateTime(MasterTimeSeries(rpEndTimestampIndx - 1) &
                 + DateStep , tmpDate, tmpTime)
             write(*, '(a)') '    End: ' // tmpDate // ' ' // tmpTime
+            write(ulog, '(a)') '    End: ' // tmpDate // ' ' // tmpTime
             write(TmpString1, '(i7)') &
                 rpEndTimestampIndx - rpStartTimestampIndx
             write(*, '(a)') '  Total number of flux averaging periods: ' &
                 // trim(adjustl(TmpString1))
+            write(ulog, '(a)') '  Total number of flux averaging periods: ' &
+                // trim(adjustl(TmpString1))
             write(*, '(a)')
+            write(ulog, '(a)')
         end if
         pcount = pcount + 1
 
@@ -1638,11 +1730,16 @@ program EddyFlowRP
         !> Some logging
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
             write(*, '(a)')
+            write(ulog, '(a)')
             call hms_current_print(' ',': processing new &
                 &flux averaging period', .true.)
             write(*, '(a)') ' From: ' &
                 // trim(date)   // ' ' // trim(time)
+            write(ulog, '(a)') ' From: ' &
+                // trim(date)   // ' ' // trim(time)
             write(*, '(a)') '   To: ' &
+                // trim(Stats%date) // ' ' // trim(Stats%time)
+            write(ulog, '(a)') '   To: ' &
                 // trim(Stats%date) // ' ' // trim(Stats%time)
         end if
 
@@ -1759,6 +1856,7 @@ program EddyFlowRP
 
             !> Some logging
             write(*, '(a, i6)') '  Number of valid records available for this period: ', Essentials%n_in
+            write(ulog, '(a, i6)') '  Number of valid records available for this period: ', Essentials%n_in
 
             !> Period skip control
             MissingRecords = dfloat(MaxPeriodNumRecords - Essentials%n_in) &
@@ -1877,7 +1975,7 @@ program EddyFlowRP
                 if(allocated(UserSet)) deallocate(UserSet)
                 if(allocated(UserPrimes)) deallocate(UserPrimes)
                 call ExceptionHandler(58)
-                write(*,*)''
+                call LogSayList('')
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
             end if
@@ -1951,7 +2049,7 @@ program EddyFlowRP
                 if(allocated(UserSet)) deallocate(UserSet)
                 if(allocated(UserPrimes)) deallocate(UserPrimes)
                 call ExceptionHandler(59)
-                write(*,*)''
+                call LogSayList('')
                 call hms_delta_print(PeriodSkipMessage,'')
                 cycle periods_loop
             end if
@@ -1970,7 +2068,7 @@ program EddyFlowRP
             Essentials%n_wcov(u) = &
                 CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), w, u)
             !> Gas data
-            do j = ts, gas4
+            do j = ts, lastGas
                 if (E2Col(j)%present) then
                     Essentials%n(j) = &
                         CountRecordsAndValues(E2Set, size(E2Set, 1), size(E2Set, 2), j)
@@ -1983,7 +2081,7 @@ program EddyFlowRP
             !> column from UserCol) does so. Note that so far the calibration
             !> procedure is fully customized on the needs of a
             !> specific O3 analyzer
-            call CalibrateGas4(E2Set, size(E2Set, 1), size(E2Set, 2))
+            call CalibrateGases(E2Set, size(E2Set, 1), size(E2Set, 2))
 
             !> Output raw dataset second level
             if (RPsetup%out_raw(2)) call OutRawData(Stats%date, Stats%time, &
@@ -2010,6 +2108,8 @@ program EddyFlowRP
                     size(E2Set, 1), size(E2Set, 2), .true.)
             else
                 write(*,'(a)') '  Cross-wind correction not requested &
+                    &or not applicable'
+                write(ulog,'(a)') '  Cross-wind correction not requested &
                     &or not applicable'
             end if
 
@@ -2063,7 +2163,7 @@ program EddyFlowRP
             !> ===== 5. TILT CORRECTION ========================================
             !> Apply rotations for tilt correction, if requested.
             !> NOTE: rotation is applied BEFORE the WPL mixing-ratio conversion so
-            !> that (optional) pre-WPL PWB time-lag detection sees despiked + rotated
+            !> that pre-WPL PWB time-lag detection sees despiked + rotated
             !> concentrations, matching the Python/RFlux reference. TiltCorrection
             !> only touches wind (u,v,w) and PointByPointToMixingRatio only touches
             !> gas columns, so the two operations commute and the final E2Set is
@@ -2072,9 +2172,14 @@ program EddyFlowRP
                 size(E2Set, 1), size(E2Set, 2), PFSetup%num_sec, &
                 Essentials%yaw, Essentials%pitch, Essentials%roll, .true.)
 
-            !> Optional PWB time-lag detection on despiked + rotated, pre-WPL data.
-            !> Lags are stored now and applied later at the normal timelag stage.
-            if (Meth%tlag == 'pwb' .and. PWBSetup%detect_prewpl) then
+            !> PWB time-lag detection on despiked + rotated, pre-WPL data.
+            !> Lags are stored now and applied later at the normal timelag
+            !> stage. Detecting before PointByPointToMixingRatio matters
+            !> because that conversion runs before time-lag compensation: after
+            !> it, cell temperature and water sit in the gas series at the
+            !> wrong relative lag, and the gas series is what is being
+            !> cross-correlated here.
+            if (Meth%tlag == 'pwb') then
                 call RetrieveSensorParams()
                 call SetTimelags()
                 pwb_detect_only_mode = .true.
@@ -2111,7 +2216,17 @@ program EddyFlowRP
             !> flow rates provided by user with mean values from raw files
             if (EddyFlowProj%ftype /= 'licor_ghg' &
                 .or. EddyFlowProj%use_extmd_file) then
-                do i = co2, gas4
+                !> Over every configured gas, not the first four. The measured
+                !> flow rate drives tube velocity, Reynolds number and so the
+                !> tube-attenuation transfer function; bounded at the fourth
+                !> slot, a gas past it silently kept the flow rate declared in
+                !> the metadata while its neighbours used the measured one -
+                !> so the same analyser's gases were corrected with different
+                !> flow rates, and moving a gas between slots changed its
+                !> correction factor.
+                do i = firstGas, lastGas
+                    if (i - firstGas + 1 > &
+                        min(EddyFlowProj%gas_num, MaxNumGases)) exit
                     if (NumUserVar > 0) then
                         do j = 1, NumUserVar
                             if (UserCol(j)%var == 'flowrate' &
@@ -2157,7 +2272,7 @@ program EddyFlowRP
                 if (Test%al .and. RPsetup%filter_al) then
                     !> Apply filter for absolute limits test, if the case
                     FilterWhat = .false.
-                    FilterWhat(co2:gas4) = .true.
+                    FilterWhat(firstGas:lastGas) = .true.
                     call FilterDatasetForPhysicalThresholds(E2Set, &
                         size(E2Set, 1), size(E2Set, 2), FilterWhat)
                     !> Define as not present, variables for which &
@@ -2205,19 +2320,56 @@ program EddyFlowRP
             !> Calculate Longest Gap Duration
             call LongestGapDuration(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
 
+            !> ===== 6.3 CONDITIONAL EDDY COVARIANCE ==========================
+            !> Before the run's own detrending, because the partition screens
+            !> the raw series on the analyser diagnostics and then detrends what
+            !> survives - and E2Set is gone a few lines below. Screening after
+            !> the fact would leave the trend fitted through the samples being
+            !> rejected.
+            !>
+            !> Also, necessarily, before FixDatasetForSpectra: that interpolates
+            !> E2Primes for the spectra, and a partition built on fabricated
+            !> samples would pass a completeness gate it should not.
+            nCecPairs = 0
+            do cec_p = 1, MaxNumCecPairs
+                call ResetCecDescriptor(CECDescriptor(cec_p))
+                call ResetCecFlux(CECFlux(cec_p))
+            end do
+            if (EddyFlowProj%do_cec > 0) then
+                call LogSayNoAdv('  Calculating CEC partitioning..')
+                call CecPairs(CecPairList, nCecPairs)
+                if (nCecPairs > 0) then
+                    if (.not. allocated(CecPrimes)) &
+                        allocate(CecPrimes(PeriodRecords, MaxNumCecTargets + 1))
+                    do cec_p = 1, nCecPairs
+                        call BuildCecPrimes(CecPairList(cec_p), E2Set, &
+                            size(E2Set, 1), size(E2Set, 2), UserSet, NumUserVar, &
+                            RPsetup%Tconst, EddyFlowProj%cec, CecPrimes, cec_ok)
+                        if (.not. cec_ok) cycle
+                        call ExtractCecDescriptor(CecPairList(cec_p), CecPrimes, &
+                            size(CecPrimes, 1), &
+                            StDiff%w_gas(CecPairList(cec_p)%carbon_slot), &
+                            StDiff%w_gas(CecPairList(cec_p)%water_slot), &
+                            CECDescriptor(cec_p), EddyFlowProj%cec)
+                    end do
+                    if (allocated(CecPrimes)) deallocate(CecPrimes)
+                end if
+                call LogSay(' Done.')
+            end if
+
             !> ===== 7. DETRENDING =============================================
             !> Calculate fluctuations based on chosen detrending method
-            write(*, '(a)', advance = 'no') '  Detrending..'
+            call LogSayNoAdv('  Detrending..')
             call Fluctuations(E2Set, E2Primes, &
                 size(E2Set, 1), size(E2Set, 2), RPsetup%Tconst, Stats, E2Col)
             if (allocated(E2Set)) deallocate(E2Set)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
             if (NumUserVar > 0) then
-                write(*, '(a)', advance = 'no') '  Detrending user set..'
+                call LogSayNoAdv('  Detrending user set..')
                 call UserFluctuations(UserSet, UserPrimes, &
                     size(UserSet, 1), size(UserSet, 2), &
                     RPsetup%Tconst, UserStats, UserCol)
-                write(*,'(a)') ' Done.'
+                call LogSay(' Done.')
             end if
 
             !> Output raw dataset seventh level
@@ -2242,7 +2394,11 @@ program EddyFlowRP
 
             !> ===== 7.1 QC tests =============================================
             !> Fisher's test
-            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+            !> ncol must describe the section actually passed, not E2Primes's
+            !> full second dimension - that is E2NumVar, half as wide again as
+            !> the GHGNumVar columns handed over, so the explicit-shape dummy
+            !> inside read past the end of them. Matches the KID call above.
+            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), GHGNumVar)
 
             !> Cross-correlation R^2 test for repeated values 
             call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
@@ -2253,32 +2409,6 @@ program EddyFlowRP
             !> If requested, estimate random error
             call RandomUncertaintyHandle(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
 
-            !> Extract CEC before spectral processing interpolates E2Primes.
-            if (EddyFlowProj%do_cec > 0) then
-                write(*, '(a)', advance='no') '  Calculating CEC partitioning..'
-                cec_co2_signal_col = 0
-                cec_h2o_signal_col = 0
-                do j = 1, NumUserVar
-                    if ((UserCol(j)%var == 'AGC' .or. UserCol(j)%var == 'RSSI') &
-                        .and. (index(UserCol(j)%instr%model, 'li7200') /= 0 &
-                            .or. index(UserCol(j)%instr%model, 'li7500') /= 0)) then
-                        if (cec_co2_signal_col == 0) cec_co2_signal_col = j
-                        if (cec_h2o_signal_col == 0) cec_h2o_signal_col = j
-                    end if
-                end do
-                if (cec_co2_signal_col > 0 .and. cec_h2o_signal_col > 0) then
-                    call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
-                        StDiff%w_h2o, CECDescriptor, EddyFlowProj%cec, &
-                        UserSet(:, cec_co2_signal_col), &
-                        UserSet(:, cec_h2o_signal_col))
-                else
-                    call ExtractCecDescriptor(E2Primes, StDiff%w_co2, &
-                        StDiff%w_h2o, CECDescriptor, EddyFlowProj%cec)
-                end if
-                CECFlux%r_ET_cec = CECDescriptor%r_ET
-                CECFlux%r_Fc_cec = CECDescriptor%r_Fc
-                write(*, '(a)') ' Done.'
-            end if
             if (allocated(UserSet)) deallocate(UserSet)
 
             !*******************************************************************
@@ -2307,6 +2437,10 @@ program EddyFlowRP
                 end if
 
                 Nmin = - Nmin
+                !> Which row of E2Primes the spectral set starts at. A slower
+                !> column's samples are located relative to E2Primes, and this
+                !> is what carries that phase across the trim.
+                SpecRowOffset = Nmin
                 !> Recalculate basic statistics with PeriodRecords=SpecRow
                 !> as number of observations
                 allocate(SpecSet(SpecRow, E2NumVar))
@@ -2315,8 +2449,12 @@ program EddyFlowRP
                     size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
 
                 !> Calculate spectra and cospectra and output them all
+                !> Pass the whole gas block, not just the four legacy slots:
+                !> SpectralAnalysis loops u..GHGNumVar internally, so a
+                !> narrower slice reads past the end of the array as soon as a
+                !> project describes more than four gases.
                 call SpectralAnalysis(Stats%date, Stats%time, bf, &
-                    SpecSet(:, u:gas4), size(SpecSet, 1), gas4)
+                    SpecSet(:, u:lastGas), size(SpecSet, 1), lastGas)
                 if (allocated(SpecSet)) deallocate(SpecSet)
 
                 !> Reset stats to Stats7, after the parenthesis
@@ -2342,17 +2480,47 @@ program EddyFlowRP
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
 
-            if (E2Col(ch4)%Instr%model(1:len_trim(E2Col(ch4)%Instr%model) - 2) &
-                == 'li7700') then
-                !> Calculate multipliers for LI-7700 spectroscopic correction
-                call Multipliers7700(Stats%Pr, Ambient%Ta, Stats%chi(h2o), &
+            !> LI-7700 spectroscopic correction. It applies to whichever gas
+            !> the LI-7700 measures, which is a question about the analyser -
+            !> asked of slot seven, it both missed a 7700 sitting on any other
+            !> record and, on a project whose seventh slot holds something
+            !> else, would have scaled the wrong gas. The multipliers depend
+            !> only on P, T and water, so they are computed once.
+            do j = firstGas, lastGas
+                if (E2Col(j)%Instr%model(1:max(1, &
+                    len_trim(E2Col(j)%Instr%model) - 2)) /= 'li7700') cycle
+                !> Calculate multipliers for LI-7700 spectroscopic correction,
+                !> from the water this gas is corrected with.
+                !>
+                !> Eq. 6.13 is a spectroscopic property of the sample the
+                !> analyser sees, so it wants that analyser's humidity. This
+                !> read the site's, which on a two-analyser site corrects a
+                !> 7700 with a hygrometer it does not share air with - and
+                !> through the fallback variant, which names a trace gas when
+                !> a project has no water at all.
+                !> Whatever the gas names, including the biomet. A biomet RH
+                !> is not the analyser's own air either, but it is a
+                !> measurement of the air the analyser is sampling from,
+                !> which another instrument's cell is not - and it is what
+                !> the user asked for by naming it.
+                msl = E2Col(j)%moist_ref
+                if (msl == biometMoistRef) then
+                    chi_moist = Ambient%chi_biomet
+                elseif (msl >= firstGas .and. msl <= lastGas) then
+                    chi_moist = Stats%chi(msl)
+                else
+                    cycle
+                end if
+                if (chi_moist == error) cycle
+                call Multipliers7700(Stats%Pr, Ambient%Ta, &
+                    chi_moist, &
                     Mul7700%A, Mul7700%B, Mul7700%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual
                 !> Uses multiplies A, because this is equal to key.
-                Stats%chi(ch4) = Stats%chi(ch4) * Mul7700%A
-                Stats%r(ch4)   = Stats%r(ch4)   * Mul7700%A
-            end if
+                Stats%chi(j) = Stats%chi(j) * Mul7700%A
+                Stats%r(j)   = Stats%r(j)   * Mul7700%A
+            end do
 
             !> Calculate LI-7500 surface heating correction if requested
             call BurbaTerms()
@@ -2365,7 +2533,9 @@ program EddyFlowRP
             !> for using logger version from [Station], simply remove the
             !> following line.
 !            if (E2Col(co2)%instr%sw_ver /= errSwVer) then
-            Metadata%logger_swver = E2Col(co2)%instr%sw_ver
+            !> From the first configured gas's analyser. Was E2Col(co2) -
+            !> slot five - which is that analyser only when CO2 is record one.
+            Metadata%logger_swver = E2Col(FirstConfiguredGasSlot())%instr%sw_ver
 !            elseif (E2Col(h2o)%instr%sw_ver /= errSwVer) then
 !                Metadata%logger_swver = E2Col(h2o)%instr%sw_ver
 !            end if
@@ -2373,7 +2543,7 @@ program EddyFlowRP
             if (.not. EddyFlowProj%fcc_follows) then
                 !> Low-pass and high-pass spectral correction factors
                 call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                    Metadata%d, E2Col(u:gas4)%present, Ambient%WS, Ambient%Ta, &
+                    Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
                     Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                     Metadata%logger_swver, Meth%det, &
                     RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
@@ -2390,19 +2560,35 @@ program EddyFlowRP
                     Ambient%zL, Ambient%WS, Ambient%L, &
                     E2Col(u)%Instr%height, Metadata%d, Metadata%z0)
             else
-                if (OutVarPresent(gas4)) then
-                    !> Gas4 cannot use in-situ spectral corrections (FCC-only): compute
-                    !> with BPCF=1.0, then zero co2/h2o/ch4 so FCC corrects those later
+                !> Whether any gas needs the FCC-only path. That is a species
+                !> question - CO2, water and CH4 have in-situ spectral
+                !> corrections and nothing else does - so it is asked of the
+                !> records rather than of the fourth slot. A project with COS
+                !> on record five and nothing on record four used to take the
+                !> else arm and lose every flux for the period.
+                has_fcc_only_gas = .false.
+                do j = firstGas, lastGas
+                    if (.not. OutVarPresent(j)) cycle
+                    if (.not. HasInSituSpectralCorrection(j)) &
+                        has_fcc_only_gas = .true.
+                end do
+                if (has_fcc_only_gas) then
+                    !> Those gases cannot use in-situ spectral corrections
+                    !> (FCC-only): compute with BPCF=1.0, then zero the ones
+                    !> that can so FCC corrects those later.
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                        Metadata%d, E2Col(u:gas4)%present, Ambient%WS, Ambient%Ta, &
+                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
                     call Fluxes1_rp()
                     call Fluxes23_rp()
-                    Flux1%co2 = error;  Flux2%co2 = error;  Flux3%co2 = error
-                    Flux1%h2o = error;  Flux2%h2o = error;  Flux3%h2o = error
-                    Flux1%ch4 = error;  Flux2%ch4 = error;  Flux3%ch4 = error
+                    do j = firstGas, lastGas
+                        if (.not. HasInSituSpectralCorrection(j)) cycle
+                        Flux1%gas(j) = error
+                        Flux2%gas(j) = error
+                        Flux3%gas(j) = error
+                    end do
                 else
                     Flux1 = errFlux
                     Flux2 = errFlux
@@ -2413,11 +2599,26 @@ program EddyFlowRP
                 foot_model_used = 'none'
             end if
 
-            !> RP applies the CEC descriptor only when it owns the final
-            !> corrected totals. Otherwise FCC applies it to FCC Flux3.
-            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) &
-                call ApplyCecDescriptor(CECDescriptor, Flux3%h2o, Flux3%co2, &
-                    EddyFlowProj%do_cec, CECFlux)
+            !> RP applies the CEC descriptors only when it owns the final
+            !> corrected totals. Otherwise FCC applies them to FCC's Flux3.
+            if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) then
+                do cec_p = 1, nCecPairs
+                    call CecTargetSlots(CecPairList(cec_p), cec_slots, cec_ntarget)
+                    cec_totals = error
+                    cec_errors = error
+                    do cec_k = 1, cec_ntarget
+                        if (cec_slots(cec_k) < firstGas &
+                            .or. cec_slots(cec_k) > lastGas) cycle
+                        cec_totals(cec_k) = Flux3%gas(cec_slots(cec_k))
+                        !> From the same slot as the total beside it. Reading
+                        !> either from a different one would test a flux
+                        !> against another gas's error and say nothing.
+                        cec_errors(cec_k) = Essentials%rand_uncer(cec_slots(cec_k))
+                    end do
+                    call ApplyCecDescriptor(CECDescriptor(cec_p), cec_totals, &
+                        cec_errors, EddyFlowProj%cec, CECFlux(cec_p))
+                end do
+            end if
             if (allocated(E2Primes)) deallocate(E2Primes)
 
             !> Calculate storage terms
@@ -2464,6 +2665,7 @@ program EddyFlowRP
             call hms_delta_print('  Metadata retrieving time: ','')
         end if
         write(*, *)
+        write(ulog, *)
 
         if (allocated(UserCol))  deallocate(UserCol)
         if (allocated(E2Set))    deallocate(E2Set)
@@ -2531,12 +2733,16 @@ program EddyFlowRP
 
         !> Alerting and closing run
         write(*,'(a)')
+        write(ulog,'(a)')
         call ExceptionHandler(35)
     end if
 
     !> Creating datasets from output files
     write(*, '(a)')
+    write(ulog, '(a)')
     write(*, '(a)') ' Raw data processing terminated. &
+        &Creating continuous datasets if necessary..'
+    write(ulog, '(a)') ' Raw data processing terminated. &
         &Creating continuous datasets if necessary..'
 
     if (make_dataset_common) then
@@ -2551,7 +2757,7 @@ program EddyFlowRP
     else
         call RenameTmpFilesRP()
     end if
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 
     !> Edit .eddypro file updating path to ex_file
     call ForceSlash(FLUXNET_Path, .false.)
@@ -2560,6 +2766,8 @@ program EddyFlowRP
 
     if (EddyFlowProj%run_env /= 'embedded') &
         write(*, '(a)') ' FLUXNET file path: ' &
+            // trim(FLUXNET_Path(1:index(FLUXNET_Path, '.tmp')-1))
+        write(ulog, '(a)') ' FLUXNET file path: ' &
             // trim(FLUXNET_Path(1:index(FLUXNET_Path, '.tmp')-1))
 
     !> Copy ".eddypro" file into output folder
@@ -2575,11 +2783,11 @@ program EddyFlowRP
         // trim(adjustl(TmpDir)) // '"')
 
     if (.not. EddyFlowProj%fcc_follows) then
-        write(*, '(a)') ''
-        write(*, '(a)') ' ****************************************************'
-        write(*, '(a)') ' Program EddyFlow executed gracefully.'
-        write(*, '(a)') ' Check results in the selected output directory.     '
-        write(*, '(a)') ' ****************************************************'
+        call LogSay('')
+        call LogSay(' ****************************************************')
+        call LogSay(' Program EddyFlow executed gracefully.')
+        call LogSay(' Check results in the selected output directory.     ')
+        call LogSay(' ****************************************************')
     end if
     stop ''
 end program EddyFlowRP

@@ -47,7 +47,7 @@ subroutine AvailableMeanSpectraCospectra(nbins)
     MeanStabCospAvailable = .true.
 
     !> Spectra
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, MaxGasClasses
             if (all(MeanBinSpec(1:nbins, cls)%fnum(gas) == error) &
                 .or. all(MeanBinSpec(1:nbins, cls)%fnum(gas) == 0d0)) &
@@ -56,7 +56,7 @@ subroutine AvailableMeanSpectraCospectra(nbins)
     end do
 
     !> Cospectra
-    do gas = ts, gas4
+    do gas = ts, lastGas
         do cls = 1, 8
             if (all(MeanBinCosp(1:nbins, cls)%fnum(gas) == error) &
                 .or. all(MeanBinCosp(1:nbins, cls)%fnum(gas) == 0d0)) then
@@ -67,7 +67,7 @@ subroutine AvailableMeanSpectraCospectra(nbins)
     end do
 
     !> Stability cospectra
-    do gas = ts, gas4
+    do gas = ts, lastGas
         do cls = unstable, stable
                 if (all(MeanStabilityCosp(1:ndkf, cls)%cnt(gas) == error) &
                     .or. all(MeanStabilityCosp(1:ndkf, cls)%cnt(gas) == 0)) &

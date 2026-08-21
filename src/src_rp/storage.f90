@@ -1,38 +1,5 @@
 !***************************************************************************
-! storage.f90
-! -----------
-! Copyright © 2007-2011, Eco2s team, Gerardo Fratini
-! Copyright © 2011-2026, LI-COR Biosciences, Gerardo Fratini
-! Copyright © 2026-    , ETH Zurich, Jonathan Muller
-!
-! This file is part of EddyFlow®.
-!
-! EddyFlow (TM) is free software: you can redistribute it and/or modify
-! it under the terms of the GNU General Public License as published by
-! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version. You should have received a copy
-! of the GNU General Public License along with EddyFlow (R). If not,
-! see <http://www.gnu.org/licenses/>.
-!
-! EddyFlow® contains additional Open Source Components. The licenses
-! and/or notices these Components can be found in the file LIBRARIES.txt.
-!
-! EddyFlow® is distributed in the hope that it will be useful,
-! but WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-! GNU General Public License for more details.
-!
 !***************************************************************************
-!
-! \brief       Estimates storage fluxes based on single-point measurements or
-!              on profiles, as available
-! \author      Gerardo Fratini
-! \note
-! \sa
-! \bug
-! \deprecated
-! \test
-! \todo
 !***************************************************************************
 subroutine Storage(PrevStats, prevAmbient)
     use m_rp_global_var
@@ -41,31 +8,27 @@ subroutine Storage(PrevStats, prevAmbient)
     type(StatsType), intent(in) :: PrevStats
     type(AmbientStateType), intent(in) :: prevAmbient
     !> local variables
-!    integer, parameter :: stH = 1
-!    integer, parameter :: stCO2 = 2
-!    integer, parameter :: stH2O = 3
-!    integer, parameter :: stCH4 = 4
-!    integer, parameter :: stGAS4 = 5
     integer :: gas
-!    integer :: i
-!    integer :: j
-!    integer :: var
+    integer :: wsl
+    include '../src_common/interfaces_1.inc'
     real(kind = dbl)  :: seconds
-!    real(kind = dbl)  :: dcdt(5, MaxProfNodes)
-!    real(kind = dbl)  :: dStor(5, MaxProfNodes - 1)
-!    real(kind = dbl)  :: dz(5, MaxProfNodes - 1)
     character(10) tmp_date
     character(5) tmp_time
 
 
-    write(*, '(a)', advance = 'no') '  Calculating storage terms..'
+    !> Latent-heat and ET storage follow the primary water record; a
+    !> second hygrometer gets its own storage term but must not
+    !> overwrite them.
+    wsl = PrimaryWaterSlot()
+
+    call LogSayNoAdv('  Calculating storage terms..')
 
     !> Check that time periods are consecutive. If not, set storage to error and exit
     call AddDateStep(PrevStats%date, PrevStats%time, tmp_date, tmp_time, DateStep)
     if (tmp_date /= Stats%date .or. tmp_time /= Stats%time) then
         Stor%H  = error
         Stor%LE = error
-        Stor%of(co2:gas4)  = error
+        Stor%of(firstGas:lastGas)  = error
         return
     end if
 
@@ -75,82 +38,13 @@ subroutine Storage(PrevStats, prevAmbient)
     Stor%of(:) = 0d0
     seconds = RPsetup%avrg_len * 6d1
 
-!    !> define concentration differences in time, at each height
-!    where (PrevSlowVar%prof_t(:) /= error .and. BiometVar%prof_t(:) /= error)
-!        dcdt(stH, :) = (BiometVar%prof_t(:) - PrevSlowVar%prof_t(:)) / seconds
-!    elsewhere
-!        dcdt(stH, :) = error
-!    end where
-!    where (PrevSlowVar%prof_co2(:) /= error .and. BiometVar%prof_co2(:) /= error)
-!        dcdt(stCO2, :) = (BiometVar%prof_co2(:) - PrevSlowVar%prof_co2(:)) / seconds
-!    elsewhere
-!        dcdt(stCO2, :) = error
-!    end where
-!    where (PrevSlowVar%prof_h2o(:) /= error .and. BiometVar%prof_h2o(:) /= error)
-!        dcdt(stH2O, :) = (BiometVar%prof_h2o(:) - PrevSlowVar%prof_h2o(:)) / seconds
-!    elsewhere
-!        dcdt(stH2O, :) = error
-!    end where
-!    where (PrevSlowVar%prof_ch4(:) /= error .and. BiometVar%prof_ch4(:) /= error)
-!        dcdt(stCH4, :) = (BiometVar%prof_ch4(:) - PrevSlowVar%prof_ch4(:)) / seconds
-!    elsewhere
-!        dcdt(stCH4, :) = error
-!    end where
-!    where (PrevSlowVar%prof_gas4(:) /= error .and. BiometVar%prof_gas4(:) /= error)
-!        dcdt(stGAS4, :) = (BiometVar%prof_gas4(:) - PrevSlowVar%prof_gas4(:)) / seconds
-!    elsewhere
-!        dcdt(stGAS4, :) = error
-!    end where
+    !> The profile-storage block that used to sit here, commented out, worked
+    !> on five named species - stH, stCO2, stH2O, stCH4, stGAS4 - against a
+    !> dz(5, MaxProfNodes) read from the project. It was the only reader of
+    !> bSetup's profile heights, so those settings were parsed and consumed by
+    !> nothing; both are gone. Reviving profile storage wants a height per gas
+    !> record, not five fixed rows.
 
-    !dcdt(stCO2, 2) = error
-!
-!    !> Initialize dz at their natural values
-!    dz = bSetup%dz
-!
-!    !> Storage fluxes as integration of profile differences (using the trapezi formula)
-!    dStor = 0d0
-!    do var = stH, stGAS4
-!        ol: do i = 1, MaxProfNodes - 1
-!            if (dcdt(var, i) /= error) then
-!                il: do j = i + 1, MaxProfNodes
-!                    if (dcdt(var, j) /= error) then
-!                        dStor(var, i) = (dcdt(var, j) + dcdt(var, i)) * dz(var, i) * 0.5d0
-!                        exit il
-!                    else
-!                        dz(var, i) = dz(var, i) + bSetup%dz(var, j)
-!                    end if
-!                end do il
-!                Stor%H = Stor%H + dStor(stH, i)
-!                Stor%of(co2) = Stor%of(co2) + dStor(stCO2, i)
-!                Stor%of(h2o) = Stor%of(h2o) + dStor(stH2O, i)
-!                Stor%of(ch4) = Stor%of(ch4) + dStor(stCH4, i)
-!                Stor%of(gas4) = Stor%of(gas4) + dStor(stGAS4, i)
-!            end if
-!        end do ol
-!    end do
-!
-!    !> Units adjustments
-!    if (Stor%H /= 0d0) Stor%H = Ambient%RhoCp * Stor%H
-
-!    !> Gas from mixing ratio to molar density (should use Vd, not Va.
-!    !> But Vd not necessarily available at this stage)
-!    do gas = co2, gas4
-!        select case(gas)
-!            case (co2, ch4, gas4)
-!                if (Stor%of(gas) /= 0d0 .and. Ambient%Va > 0) &
-!                    Stor%of(gas) = Stor%of(gas) * 1d3 / Ambient%Va
-!            case(h2o)
-!                if (Stor%of(gas) /= 0d0 .and. Ambient%Va > 0) &
-!                    Stor%of(gas) = Stor%of(gas) / Ambient%Va
-!        end select
-!    end do
-!
-!    if (Stor%of(h2o) /= 0d0) then
-!        Stor%LE = Stor%of(h2o) * MW(h2o) * Ambient%lambda * 1d-3
-!    else
-!        Stor%LE = 0d0
-!    end if
-!
     !> If Stor = 0, it means no profile was available or selected,
     !> so calculate it with 1-point formula
     !> Storage for sensible heat
@@ -165,33 +59,45 @@ subroutine Storage(PrevStats, prevAmbient)
     end if
 
     !> for all gases
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (Stor%of(gas) == 0) then
-            select case(gas)
-                case (co2, ch4, gas4)
-                    if (Stats%chi(gas) /= error &
-                        .and. PrevStats%chi(gas) /= error) then
-                        Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
-                            / Ambient%Va * 1d-3 &
-                            * E2Col(gas)%Instr%height * 1d3 / seconds
-                    else
-                        Stor%of(gas) = error
+            !> Branched on the species, not the slot: which gas occupies a slot
+            !> past the first four is decided by the project at run time, so a
+            !> `select case (gas)` over fixed slot numbers would silently skip
+            !> every gas beyond them. The primary water slot keeps its branch
+            !> even when absent, so that an absent H2O still clears LE and ET
+            !> the way it always did.
+            if (GasSlotIsWater(gas)) then
+                if (Stats%chi(gas) /= error &
+                    .and. PrevStats%chi(gas) /= error) then
+                    Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
+                        / Ambient%Va * E2Col(gas)%Instr%height / seconds
+                    !> Latent heat and evapotranspiration storage follow the
+                    !> project's primary H2O only. A second H2O measurement
+                    !> gets its own storage term but must not overwrite these.
+                    if (gas == wsl) then
+                        Stor%LE = Stor%of(wsl) * MW_H2O * Ambient%lambda * 1d-3
+                        Stor%ET = Stor%of(wsl) * h2o_to_ET
                     end if
-                case(h2o)
-                    if (Stats%chi(gas) /= error &
-                        .and. PrevStats%chi(gas) /= error) then
-                        Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
-                            / Ambient%Va * E2Col(gas)%Instr%height / seconds
-                        Stor%LE = Stor%of(h2o) * MW(h2o) * Ambient%lambda * 1d-3
-                        Stor%ET = Stor%of(h2o) * h2o_to_ET
-                    else
-                        Stor%of(gas) = error
-                        Stor%LE      = error
-                        Stor%ET      = error
+                else
+                    Stor%of(gas) = error
+                    if (gas == wsl) then
+                        Stor%LE = error
+                        Stor%ET = error
                     end if
-            end select
+                end if
+            else
+                if (Stats%chi(gas) /= error &
+                    .and. PrevStats%chi(gas) /= error) then
+                    Stor%of(gas) = (Stats%chi(gas) - PrevStats%chi(gas)) &
+                        / Ambient%Va * 1d-3 &
+                        * E2Col(gas)%Instr%height * 1d3 / seconds
+                else
+                    Stor%of(gas) = error
+                end if
+            end if
         end if
     end do
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine Storage

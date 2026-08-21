@@ -60,7 +60,7 @@ subroutine TestNonSteadyWind(Set, N)
     real(kind = dbl) :: Vmi(N, 3), TmpV(N, 3)
 
 
-    write(*, '(a)', advance = 'no') '   Non-steady horizontal wind test..'
+    call LogSayNoAdv('   Non-steady horizontal wind test..')
 
     !> Initializations
     IntHF%ns = 0
@@ -127,5 +127,5 @@ subroutine TestNonSteadyWind(Set, N)
     if ((RNv(1) >= ns%hf_lim) .or. (RNv(2) >= ns%hf_lim) .or. (RNS >= ns%hf_lim)) then
         IntHF%ns = 1
     end if
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine TestNonSteadyWind

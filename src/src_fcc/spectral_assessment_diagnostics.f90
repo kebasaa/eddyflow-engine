@@ -41,7 +41,9 @@ subroutine RecordSpectralAssessmentFluxCandidate(gas, stability, flux, cls)
     real(kind = dbl), allocatable :: tmp_flux(:, :, :)
     integer, allocatable :: tmp_class(:, :, :)
 
-    if (gas < co2 .or. gas > gas4) return
+    !> Every configured gas. Bounded at the fourth, the readiness report
+    !> could only ever say flux=0 for a gas past it, whatever the data said.
+    if (gas < firstGas .or. gas > lastGas) return
     if (stability < SADiagUnstable .or. stability > SADiagStable) return
     if (cls < 1 .or. cls > MaxGasClasses) return
     if (flux == error .or. flux < 0d0) return
@@ -81,6 +83,9 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     integer :: h2o_classes
     integer :: h2o_fits
     integer :: gas_classes
+    !> The site's water record. These counters are water's, and they read the
+    !> sixth slot whatever species that record held.
+    integer :: wsl
     integer :: report_unit
     integer :: mkdir_status
     integer :: open_status
@@ -89,36 +94,54 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     character(128) :: Filename
     character(32) :: method
     logical :: gas_ok
+    integer :: n_insitu
+    integer :: n_analytic
     logical :: h2o_ok
     character(32), external :: IntToText
     character(16), external :: GasName
     character(12), external :: StatusLabel
+    character(12), external :: OutcomeLabel
+    logical, external :: GasHasSpectralFit
     include '../src_common/interfaces_1.inc'
 
     assessment_ready = .true.
+    wsl = PrimaryWaterOutSlot()
     method = trim(adjustl(EddyFlowProj%hf_meth))
     h2o_classes = 0
     h2o_fits = 0
     if (allocated(MeanBinSpec)) then
         do cls = RH10, RH90
-            if (MeanBinSpecAvailable(cls, h2o)) h2o_classes = h2o_classes + 1
-            if (RegPar(h2o, cls)%fc /= error) h2o_fits = h2o_fits + 1
+            if (MeanBinSpecAvailable(cls, wsl)) h2o_classes = h2o_classes + 1
+            if (RegPar(wsl, cls)%fc /= error) h2o_fits = h2o_fits + 1
         end do
     end if
 
+    !> Computed here rather than inside the assessment branch below, because
+    !> the per-gas lines read it whether or not an assessment is being made.
+    h2o_ok = h2o_classes >= 1 .and. &
+        RegPar(dum, dum)%e1 /= error .and. RegPar(dum, dum)%e2 /= error .and. &
+        RegPar(dum, dum)%e3 /= error
+
     if (FCCsetup%do_spectral_assessment) then
-        h2o_ok = h2o_classes >= 1 .and. &
-            RegPar(dum, dum)%e1 /= error .and. RegPar(dum, dum)%e2 /= error .and. &
-            RegPar(dum, dum)%e3 /= error
-        assessment_ready = h2o_ok
-        do gas = co2, gas4
-            if (gas == h2o .or. .not. fcc_var_present(gas)) cycle
-            gas_ok = .false.
-            do cls = 1, MaxGasClasses
-                if (RegPar(gas, cls)%fc /= error) gas_ok = .true.
-            end do
-            assessment_ready = assessment_ready .and. gas_ok
+        !> The file is worth writing when any gas got a fit, not when every
+        !> one did. It used to be h2o_ok .and. (every gas ok), so a site whose
+        !> hygrometers could not be fitted lost the blocks of the gases that
+        !> had been - and the report called them PASS on the way past.
+        n_insitu = 0
+        n_analytic = 0
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            gas_ok = GasHasSpectralFit(gas)
+            !> A hygrometer needs the RH regression on top of its own fit:
+            !> that is what turns humidity into a cut-off frequency.
+            if (GasSlotIsWater(gas)) gas_ok = gas_ok .and. h2o_ok
+            if (gas_ok) then
+                n_insitu = n_insitu + 1
+            else
+                n_analytic = n_analytic + 1
+            end if
         end do
+        assessment_ready = n_insitu > 0
     end if
 
     mkdir_status = CreateDir('"' // Dir%main_out(1:len_trim(Dir%main_out)) // '"')
@@ -176,23 +199,33 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         call EmitReportLine(report_unit, open_status, 'Automatic spectral configuration: DISABLED')
     end if
 
-    do gas = co2, gas4
+    !> Only gases the project configures. Running the full slot range would
+    !> emit sixty "unavailable" lines for slots that do not exist.
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         gas_classes = 0
         if (allocated(MeanBinSpec)) then
             do cls = 1, MaxGasClasses
                 if (MeanBinSpecAvailable(cls, gas)) gas_classes = gas_classes + 1
             end do
         end if
+        !> What this gas will actually get. A count of ensemble classes is not
+        !> the same question: the correction needs a fitted cut-off, and a
+        !> hygrometer needs the RH regression on top of it.
+        gas_ok = GasHasSpectralFit(gas)
+        if (GasSlotIsWater(gas)) gas_ok = gas_ok .and. h2o_ok
         if (.not. fcc_var_present(gas)) then
             call EmitReportLine(report_unit, open_status, trim(GasName(gas)) // ': unavailable... NOT APPLIED')
         else
             call EmitReportLine(report_unit, open_status, trim(GasName(gas)) // ': accepted periods=' // &
                 trim(IntToText(SADiagAccepted(gas))) // ', flux=' // trim(IntToText(SADiagRejectedFlux(gas))) // &
                 ', VM=' // trim(IntToText(SADiagRejectedVM(gas))) // ', Foken=' // &
-                trim(IntToText(SADiagRejectedFoken(gas))) // ', valid classes=' // &
+                trim(IntToText(SADiagRejectedFoken(gas))) // ', groups=' // &
+                trim(IntToText(FCCsetup%SA%nclass(gas))) // ', valid classes=' // &
                 trim(IntToText(gas_classes)) // '... ' // &
-                trim(StatusLabel(gas_classes > 0, 'FAIL')))
-            if (gas_classes == 0 .and. SADiagRejectedFlux(gas) > 0) &
+                trim(StatusLabel(gas_ok, 'FAIL')) // &
+                '  -> corrected ' // trim(OutcomeLabel(gas_ok)))
+            if (.not. gas_ok .and. SADiagRejectedFlux(gas) > 0) &
                 call ReportFluxLimitSuggestions(report_unit, open_status, gas)
         end if
     end do
@@ -209,18 +242,36 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         trim(StatusLabel(SADiagDegradedUnstable + SADiagDegradedStable > 0, 'WARNING')))
 
     if (FCCsetup%do_spectral_assessment) then
-        if (assessment_ready) then
-            call EmitReportLine(report_unit, open_status, 'Spectral assessment: SUCCESS - assessment file will be created.')
-        else
-            call EmitReportLine(report_unit, open_status, 'Spectral assessment: FAILED - assessment file will not be created.')
+        if (.not. assessment_ready) then
+            call EmitReportLine(report_unit, open_status, &
+                'Spectral assessment: FAILED - no gas was fitted, so no assessment file is created.')
             call EmitReportLine(report_unit, open_status, &
                 'Standard EddyFlow errors and Moncrieff fallback will follow during output/correction.')
             call EmitReportLine(report_unit, open_status, &
                 'Adjust the reported QA thresholds/filters or select more qualifying periods.')
+        else if (n_analytic == 0) then
+            call EmitReportLine(report_unit, open_status, &
+                'Spectral assessment: SUCCESS - assessment file will be created, all ' // &
+                trim(IntToText(n_insitu)) // ' gases corrected in situ.')
+        else
+            !> The case this report exists for. Naming both counts is the point:
+            !> a file covering four gases out of six looks exactly like a file
+            !> covering all six unless the difference is stated.
+            call EmitReportLine(report_unit, open_status, &
+                'Spectral assessment: PARTIAL - assessment file will be created. ' // &
+                trim(IntToText(n_insitu)) // ' gas(es) corrected in situ, ' // &
+                trim(IntToText(n_analytic)) // ' with the analytical method instead.')
+            call EmitReportLine(report_unit, open_status, &
+                'The per-gas lines above say which is which; a gas marked FAIL is corrected analytically.')
+            call EmitReportLine(report_unit, open_status, &
+                'That is not an error - it is the best available for those gases - but their')
+            call EmitReportLine(report_unit, open_status, &
+                'correction reads instrument geometry rather than their own measured spectra.')
         end if
     end if
     if (open_status == 0) close(report_unit)
     write(*, '(a)') ' Spectral-correction diagnostics written to: ' // trim(FilePath)
+    write(ulog, '(a)') ' Spectral-correction diagnostics written to: ' // trim(FilePath)
 end subroutine ReportSpectralAssessmentDiagnostics
 
 !*******************************************************************************
@@ -323,6 +374,31 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
         call EmitReportLine(report_unit, open_status, '  Projected accepted records=' // trim(IntToText(projected)) // &
             ', valid classes=' // trim(IntToText(valid_classes)) // ' at sa_min_smpl=' // &
             trim(IntToText(FCCsetup%SA%min_smpl)) // '.')
+
+        !> Two different failures wear the same report line, and the flux limit
+        !> only answers one of them. A gas rejected for small fluxes is fixed by
+        !> lowering the floor - that is the N2O and COS case, and the projection
+        !> above shows classes appearing. A gas whose classes are simply too
+        !> thinly populated is not: no floor produces a tenth sample in a class
+        !> that only ever held four, and the suggested floor is derived as a
+        !> percentile of what is already there, so applying it removes records.
+        !> Saying which one this is saves the reader from trying the lever that
+        !> cannot move.
+        if (valid_classes == 0) then
+            call EmitReportLine(report_unit, open_status, &
+                '  Not a flux-limit problem: no class reaches sa_min_smpl=' // &
+                trim(IntToText(FCCsetup%SA%min_smpl)) // ' at any flux limit. Best class holds ' // &
+                trim(IntToText(maxval(class_counts))) // ' record(s).')
+            call EmitReportLine(report_unit, open_status, &
+                '  Widen the assessment period so the classes fill, or lower sa_min_smpl.')
+        else if (suggested_min > current_min) then
+            call EmitReportLine(report_unit, open_status, &
+                '  Note: the suggested ' // trim(min_label) // ' is above the current one, so it')
+            call EmitReportLine(report_unit, open_status, &
+                '  discards records rather than admitting them. It raises the class count only')
+            call EmitReportLine(report_unit, open_status, &
+                '  because weak fluxes fit poorly; keep the current limit if records are scarce.')
+        end if
         deallocate(values)
     end do
 end subroutine ReportFluxLimitSuggestions
@@ -334,8 +410,6 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
     character(*), intent(in) :: output_project
     integer :: gas
     integer :: stability
-    integer :: report_unit
-    integer :: open_status
     real(kind = dbl) :: current_min
     real(kind = dbl) :: current_max
     character(32) :: min_label
@@ -346,8 +420,8 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
 
     changes_written = any(SAAutoApplyMin) .or. any(SAAutoApplyMax)
     if (changes_written) then
-        write(*, '(a)') ' Automatic spectral configuration: updating output project file.'
-        do gas = co2, gas4
+        call LogSay(' Automatic spectral configuration: updating output project file.')
+        do gas = firstGas, lastGas
             do stability = SADiagUnstable, SADiagStable
                 if (.not. SAAutoApplyMin(stability, gas)) cycle
                 call SpectralFluxLimitSettings(gas, stability, current_min, current_max, min_label, max_label)
@@ -368,11 +442,12 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
             'Automatic spectral configuration: current FCC results used the original settings; ' // &
             'rerun with this output project.')
         write(*, '(a)') ' Automatic spectral configuration saved to: ' // trim(output_project)
-        write(*, '(a)') ' Current FCC results used the original settings; rerun with this output project.'
+        write(ulog, '(a)') ' Automatic spectral configuration saved to: ' // trim(output_project)
+        call LogSay(' Current FCC results used the original settings; rerun with this output project.')
     else
         call AppendAutomaticSpectralConfigDiagnostic( &
             'Automatic spectral configuration: no qualifying recommendations; output project unchanged.')
-        write(*, '(a)') ' Automatic spectral configuration: no qualifying recommendations; output project unchanged.'
+        call LogSay(' Automatic spectral configuration: no qualifying recommendations; output project unchanged.')
     end if
 end subroutine ApplyAutomaticSpectralConfiguration
 
@@ -396,6 +471,7 @@ subroutine WriteAutomaticSpectralSetting(output_project, tag, original, replacem
         trim(replacement_text) // ' (' // trim(reason) // ').'
     call AppendAutomaticSpectralConfigDiagnostic(trim(line))
     write(*, '(a)') trim(line)
+    write(ulog, '(a)') trim(line)
 end subroutine WriteAutomaticSpectralSetting
 
 !*******************************************************************************
@@ -424,49 +500,61 @@ subroutine SpectralFluxLimitSettings(gas, stability, minimum, maximum, min_label
     real(kind = dbl), intent(out) :: maximum
     character(*), intent(out) :: min_label
     character(*), intent(out) :: max_label
+    logical, external :: GasSlotIsWater
 
-    select case (gas)
-        case (h2o)
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_LE
-                min_label = 'sa_min_un_le'
-            else
-                minimum = FCCsetup%SA%min_st_LE
-                min_label = 'sa_min_st_le'
-            end if
-            maximum = FCCsetup%SA%max_LE
-            max_label = 'sa_max_le'
-        case (co2)
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_co2
-                min_label = 'sa_min_un_co2'
-            else
-                minimum = FCCsetup%SA%min_st_co2
-                min_label = 'sa_min_st_co2'
-            end if
-            maximum = FCCsetup%SA%max_co2
-            max_label = 'sa_max_co2'
-        case (ch4)
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_ch4
-                min_label = 'sa_min_un_ch4'
-            else
-                minimum = FCCsetup%SA%min_st_ch4
-                min_label = 'sa_min_st_ch4'
-            end if
-            maximum = FCCsetup%SA%max_ch4
-            max_label = 'sa_max_ch4'
-        case default
-            if (stability == SADiagUnstable) then
-                minimum = FCCsetup%SA%min_un_gas4
-                min_label = 'sa_min_un_gas4'
-            else
-                minimum = FCCsetup%SA%min_st_gas4
-                min_label = 'sa_min_st_gas4'
-            end if
-            maximum = FCCsetup%SA%max_gas4
-            max_label = 'sa_max_gas4'
-    end select
+    !> Water is gated on the latent heat flux, which is a one-per-site
+    !> quantity, so it keeps an arm of its own - resolved by species rather
+    !> than read off the sixth slot.
+    if (GasSlotIsWater(gas)) then
+        if (stability == SADiagUnstable) then
+            minimum = FCCsetup%SA%min_un_LE
+            min_label = 'sa_min_un_le'
+        else
+            minimum = FCCsetup%SA%min_st_LE
+            min_label = 'sa_min_st_le'
+        end if
+        maximum = FCCsetup%SA%max_LE
+        max_label = 'sa_max_le'
+        return
+    end if
+
+    !> Every other gas reads its own threshold. The four arms this replaces
+    !> ended in a `case default` that read gas4's limits, so a fifth gas was
+    !> filtered on the fourth slot's thresholds - even though ReadIniFCC had
+    !> already loaded that gas's own value into min_un_gas(gas) from its
+    !> record. The setting was written, read, and then not used.
+    if (stability == SADiagUnstable) then
+        minimum = FCCsetup%SA%min_un_gas(gas)
+        min_label = SpectralLimitKey(gas, 'min_un')
+    else
+        minimum = FCCsetup%SA%min_st_gas(gas)
+        min_label = SpectralLimitKey(gas, 'min_st')
+    end if
+    maximum = FCCsetup%SA%max_gas(gas)
+    max_label = SpectralLimitKey(gas, 'max')
+
+contains
+
+!> The project-file key that carries this gas's limit.
+!>
+!> This must be the key ReadIniFCC actually reads, because the automatic
+!> configuration does not merely name it in a report - it writes it, through
+!> EditIniFile, into the project the next run reads.
+!>
+!> It used to compose `sa_min_un_co2` and friends for the first four slots and
+!> `sa_min_un_gas_5_record` beyond them. Neither exists: the flat sa_min_*_<gas>
+!> tags were retired with the record format, and the record spelling is
+!> `gas_<i>_sa_min_un`. So automatic_spectra_config wrote settings nothing
+!> reads, and reported changes that never took effect - for every gas,
+!> including the first four.
+character(32) function SpectralLimitKey(gas_slot, suffix)
+    integer, intent(in) :: gas_slot
+    character(*), intent(in) :: suffix
+
+    write(SpectralLimitKey, '(a,i0,a)') &
+        'gas_', gas_slot - firstGas + 1, '_sa_' // trim(suffix)
+end function SpectralLimitKey
+
 end subroutine SpectralFluxLimitSettings
 
 !*******************************************************************************
@@ -547,11 +635,14 @@ end subroutine SortSpectralFluxValues
 
 !*******************************************************************************
 subroutine EmitReportLine(report_unit, open_status, line)
+    use m_index_parameters
+    use m_log
     implicit none
     integer, intent(in) :: report_unit
     integer, intent(in) :: open_status
     character(*), intent(in) :: line
     write(*, '(a)') '  ' // trim(line)
+    write(ulog, '(a)') '  ' // trim(line)
     if (open_status == 0) write(report_unit, '(a)') trim(line)
 end subroutine EmitReportLine
 
@@ -569,16 +660,27 @@ function GasName(gas) result(name)
     implicit none
     integer, intent(in) :: gas
     character(16) :: name
-    select case (gas)
-        case (co2)
-            name = 'CO2'
-        case (h2o)
-            name = 'H2O'
-        case (ch4)
-            name = 'CH4'
-        case default
-            name = 'Gas 4'
-    end select
+    character(64) :: tags(GHGNumVar)
+    include '../src_common/interfaces_1.inc'
+
+    !> Every slot takes its record's species. Nothing here may assume a slot
+    !> holds a given gas: slots are assigned by record order, so a project
+    !> that declares its gases in a different order puts something other than
+    !> CO2 in the first one. Pinning the first three named the wrong species,
+    !> and calling everything past them "Gas 4" named five gases identically.
+    call clearstr(name)
+    if (gas >= firstGas .and. gas <= lastGas) then
+        call SpectralGasNames(tags)
+        if (len_trim(tags(gas)) > 0) then
+            name = tags(gas)(1:min(len_trim(tags(gas)), len(name)))
+            call uppercase(name)
+        end if
+    end if
+
+    !> Only when the record names nothing at all. Positional, because at that
+    !> point there is no species to report - but the number is the record's,
+    !> not a fixed slot's.
+    if (len_trim(name) == 0) write(name, '(a,i0)') 'Gas ', gas - firstGas + 1
 end function GasName
 
 !*******************************************************************************
@@ -593,3 +695,19 @@ function StatusLabel(passed, failed_label) result(label)
         label = failed_label
     end if
 end function StatusLabel
+
+!*******************************************************************************
+!> Which correction a gas ends up with, in the report's own words. Kept beside
+!> StatusLabel so the two read as a pair: PASS/FAIL says whether the assessment
+!> covered the gas, this says what that means for its flux.
+!*******************************************************************************
+character(12) function OutcomeLabel(in_situ)
+    implicit none
+    logical, intent(in) :: in_situ
+
+    if (in_situ) then
+        OutcomeLabel = 'in situ'
+    else
+        OutcomeLabel = 'analytically'
+    end if
+end function OutcomeLabel

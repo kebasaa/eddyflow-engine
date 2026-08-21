@@ -35,6 +35,7 @@
 !***************************************************************************
 subroutine InitEnv()
     use m_common_global_var
+    use m_eddypro_import
     implicit none
     include 'version_and_date.inc'
     !> local variables
@@ -118,7 +119,12 @@ subroutine InitEnv()
                 if (iachar(lowerPath(i:i)) >= 65 .and. iachar(lowerPath(i:i)) <= 90) &
                     lowerPath(i:i) = achar(iachar(lowerPath(i:i)) + 32)
             end do
-            if (index(lowerPath, '.eddyflow') == 0) projPath = ''
+            !> An EddyPro project is accepted here so that it reaches
+            !> ImportEddyProProject below. Without this it is discarded
+            !> silently and the run falls back to ini/processing.eddyflow -
+            !> which either does not exist, or is somebody else's project.
+            if (index(lowerPath, '.eddyflow') == 0 .and. &
+                index(lowerPath, '.eddypro') == 0) projPath = ''
         end if
     end do arg_loop
 
@@ -144,6 +150,16 @@ subroutine InitEnv()
     else
         PrjPath = projPath
     end if
+
+    !> An EddyPro project is imported into our own format, once, beside the
+    !> file it came from, and PrjPath is repointed at the result. Everything
+    !> downstream then reads an ordinary project and knows nothing of this.
+    !>
+    !> Called on whatever path was resolved rather than only on a .eddypro
+    !> one, so a project renamed to our extension is recognised too: it
+    !> decides by the file's own first line and returns untouched for
+    !> anything that is not an EddyPro project.
+    call ImportEddyProProject(PrjPath, sw_ver)
 
     !> Define TmpDir differently if it's in desktop or embedded mode
     if (EddyFlowProj%run_env == 'desktop') then
@@ -180,6 +196,8 @@ subroutine InformOfSoftwareVersion(sw_ver, build_date)
 
     write (*, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
         &', build ' // trim(adjustl(build_date)) // '.'
+    write(ulog, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
+        &', build ' // trim(adjustl(build_date)) // '.'
     stop
 end subroutine InformOfSoftwareVersion
 
@@ -211,22 +229,33 @@ subroutine CommandLineHelp(sw_ver, build_date)
     end if
 
     write(*, '(a)') ' Help for ' // trim(adjustl(app))
-    write(*, '(a)') ' --------------------'
+    write(ulog, '(a)') ' Help for ' // trim(adjustl(app))
+    call LogSay(' --------------------')
     write (*, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
         &', build ' // trim(adjustl(build_date)) // '.'
+    write(ulog, '(a)') ' ' // trim(adjustl(app)) // ', version ' // trim(adjustl(sw_ver)) // &
+        &', build ' // trim(adjustl(build_date)) // '.'
     write(*,*)
+    write(ulog,*)
     write(*, '(a)') ' USAGE: ' // trim(prog) // ' [OPTION [ARG]] [PROJ_FILE]'
+    write(ulog, '(a)') ' USAGE: ' // trim(prog) // ' [OPTION [ARG]] [PROJ_FILE]'
     write(*,*)
-    write(*, '(a)') ' OPTIONS:'
-    write(*, '(a)') '   [-s | --system [win | linux | mac]]  Operating system; if not provided assumes "win"'
-    write(*, '(a)') '   [-m | --mode [embedded | desktop]]   Running mode; if not provided assumes "desktop"'
-    write(*, '(a)') '   [-c | --caller [gui | console]]      Caller; if not provided assumes "console"'
+    write(ulog,*)
+    call LogSay(' OPTIONS:')
+    call LogSay('   [-s | --system [win | linux | mac]]  Operating system; if not provided assumes "win"')
+    call LogSay('   [-m | --mode [embedded | desktop]]   Running mode; if not provided assumes "desktop"')
+    call LogSay('   [-c | --caller [gui | console]]      Caller; if not provided assumes "console"')
     write(*, '(a)') '   [-e | --environment [DIRECTORY]]     Working directory, to be provided in embedded mode;&
                                                              & if not provided assumes \.'
-    write(*, '(a)') '   [-h | --help]                        Display this help and exit'
-    write(*, '(a)') '   [-v | --version]                     Output version information and exit'
+    write(ulog, '(a)') '   [-e | --environment [DIRECTORY]]     Working directory, to be provided in embedded mode;&
+                                                             & if not provided assumes \.'
+    call LogSay('   [-h | --help]                        Display this help and exit')
+    call LogSay('   [-v | --version]                     Output version information and exit')
     write(*, '(a)')
+    write(ulog, '(a)')
     write(*, '(a)') ' PROJ_FILE                              Path of project (*.eddyflow) file;&
+                                                             & if not provided, assumes ..\ini\processing.eddyflow'
+    write(ulog, '(a)') ' PROJ_FILE                              Path of project (*.eddyflow) file;&
                                                              & if not provided, assumes ..\ini\processing.eddyflow'
     stop
 end subroutine CommandLineHelp

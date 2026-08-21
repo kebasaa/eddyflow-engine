@@ -44,6 +44,8 @@ subroutine InterpretLicorDiagnostics(DiagSet, nrow, ncol)
     integer :: n72
     integer :: n75
     integer :: n77
+    logical :: old72
+    logical :: old75
     include '../src_common/interfaces.inc'
 
 
@@ -114,25 +116,38 @@ subroutine InterpretLicorDiagnostics(DiagSet, nrow, ncol)
     end do
 
     !> AGC or RSSI (depending on sw version) stored anyway in variable "AGC".
-    if (.not. CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('5.3.0'))) then
-        do i = 1, nrow
-            !> LI-7200
-            if (DiagSet(i, diag72) /= error) Diag7200%AGC = Diag7200%AGC + &
+    !>
+    !> The encoding changed at analyser firmware 5.3.0, so the version that
+    !> decides it is the one reported by the analyser that produced the
+    !> diagnostic. This asked E2Col(co2) - slot five - which is that analyser
+    !> only when CO2 happens to be the first record and only when the site has
+    !> one analyser. With an LI-7200 and an LI-7500 the two share whichever
+    !> version slot five reported, and a project whose first record sits on a
+    !> third instrument had both decided by something unrelated.
+    old72 = .not. CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('5.3.0'))
+    old75 = .not. CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('5.3.0'))
+    do i = 1, nrow
+        !> LI-7200
+        if (DiagSet(i, diag72) /= error) then
+            if (old72) then
+                Diag7200%AGC = Diag7200%AGC + &
                     (ibits(nint(DiagSet(i, diag72)), 0, 4) * 6.25d0) + 6.25d0
-            !> LI-7500
-            if (DiagSet(i, diag75) /= error) Diag7500%AGC = Diag7500%AGC + &
-                (ibits(nint(DiagSet(i, diag75)), 0, 4) * 6.25d0) + 6.25d0
-        end do
-    else
-        do i = 1, nrow
-            !> LI-7200
-            if (DiagSet(i, diag72) /= error) Diag7200%AGC = Diag7200%AGC + &
-                ibits(nint(DiagSet(i, diag72)), 0, 4) * 6.6667d0
-            !> LI-7500
-            if (DiagSet(i, diag75) /= error) Diag7500%AGC = Diag7500%AGC + &
-                ibits(nint(DiagSet(i, diag75)), 0, 4) * 6.6667d0
-        end do
-    end if
+            else
+                Diag7200%AGC = Diag7200%AGC + &
+                    ibits(nint(DiagSet(i, diag72)), 0, 4) * 6.6667d0
+            end if
+        end if
+        !> LI-7500
+        if (DiagSet(i, diag75) /= error) then
+            if (old75) then
+                Diag7500%AGC = Diag7500%AGC + &
+                    (ibits(nint(DiagSet(i, diag75)), 0, 4) * 6.25d0) + 6.25d0
+            else
+                Diag7500%AGC = Diag7500%AGC + &
+                    ibits(nint(DiagSet(i, diag75)), 0, 4) * 6.6667d0
+            end if
+        end if
+    end do
 
     !> Adjusts values that report "1" for "good" and averages AGC
     if (n72 > 0) then

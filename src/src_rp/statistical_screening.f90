@@ -43,6 +43,7 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
     real(kind = dbl), intent(inout) :: Set(nrow, ncol)
 
     if (printout) write(*, '(a)') '  Raw level statistical screening..'
+    if (printout) write(ulog, '(a)') '  Raw level statistical screening..'
 
     !> Absolute limits (al)
     if (Tests%al) call TestAbsoluteLimits(Set, nrow, printout)
@@ -77,6 +78,7 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
     !> Set flags to 9 for tests not performed
     call TestsNotPerformed()
 
-    call Int2Flags(9)
+    call Int2Flags(FlagStrLen)
     if (printout) write(*,'(a)') '  Done.'
+    if (printout) write(ulog,'(a)') '  Done.'
 end subroutine StatisticalScreening

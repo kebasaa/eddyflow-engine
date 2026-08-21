@@ -40,7 +40,7 @@ subroutine RenameTmpFilesCommon()
     integer :: move_status = 1
     character(PathLen) :: OutPath
 
-    write(*,'(a)', advance = 'no') ' Closing COMMON output files..'
+    call LogSayNoAdv(' Closing COMMON output files..')
 
     !> Full out file
     if (EddyFlowProj%out_full) then
@@ -72,5 +72,5 @@ subroutine RenameTmpFilesCommon()
             // comm_out_redirect // comm_err_redirect)
     end if
 
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine RenameTmpFilesCommon

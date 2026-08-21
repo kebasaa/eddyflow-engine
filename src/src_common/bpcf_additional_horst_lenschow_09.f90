@@ -51,11 +51,10 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
     real(kind = dbl) :: r
     real(kind = dbl), parameter :: crosswind_exp = 1.2d0
  
-    integer :: igas
     integer :: gas
 
     !> Initialization
-    ADDCF%of(co2:gas4) = 1d0
+    ADDCF%of(firstGas:lastGas) = 1d0
 
     if (lEx%Flux0%zL /= error) then
         !> normalized wavenumber corresponding to cospectrum peak
@@ -76,10 +75,14 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
 
         !> normalized wavenumber corresponding to cospectrum peak
         !> in vertical direction as a function of stability (Eqs. 29 and 30)
-        do igas = ico2, igas4
-            gas = igas + 3
+        !> Over gas slots, reading each gas's own analyser. lEx%instr is the
+        !> fixed by-role array - CO2, H2O, CH4, the fourth gas, the sonic -
+        !> so the old `gas - 3` index ran off its end at the fifth gas and
+        !> addressed an unrelated instrument before that. lEx%gas_instr is
+        !> indexed by slot and is what carries the per-instrument geometry.
+        do gas = firstGas, lastGas
             if (lEx%var_present(gas)) then
-                if (lEx%instr(igas)%vsep >= 0) then
+                if (lEx%gas_instr(gas)%vsep >= 0) then
                     zL = lEx%Flux0%zL
                     if (zL <= 0.03d0) then
                         n_mz(gas) = 0.1d0
@@ -88,7 +91,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
                     end if
                 else
                     if (lEx%Flux0%L /= 0 .and. lEx%Flux0%L /= error) then
-                        zL = (lEx%instr(sonic)%height + lEx%instr(igas)%vsep - lEx%disp_height) / lEx%Flux0%L
+                        zL = (lEx%instr(sonic)%height + lEx%gas_instr(gas)%vsep - lEx%disp_height) / lEx%Flux0%L
                         if (zL <= -0.03d0) then
                             n_mz(gas) = 0.013d0
                         else
@@ -107,27 +110,28 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
         !> Note the factor Ua/U = 1.1 for the streamwise wavenumber
         k_mx = 2d0 * p * n_mx / 1.1d0 / (lEx%instr(sonic)%height - lEx%disp_height)
         k_my = 2d0 * p * n_my / (lEx%instr(sonic)%height - lEx%disp_height)
-        do igas = ico2, igas4
-            gas = igas + 3
+        do gas = firstGas, lastGas
             if (n_mz(gas) /= error) then
-                if (lEx%instr(igas)%vsep >= 0) then
+                if (lEx%gas_instr(gas)%vsep >= 0) then
                     k_mz(gas) = 2d0 * p * n_mz(gas) / (lEx%instr(sonic)%height - lEx%disp_height)
                 else
-                    k_mz(gas) = 2d0 * p * n_mz(gas) / (lEx%instr(sonic)%height + lEx%instr(igas)%vsep - lEx%disp_height)
+                    k_mz(gas) = 2d0 * p * n_mz(gas) &
+                        / (lEx%instr(sonic)%height + lEx%gas_instr(gas)%vsep - lEx%disp_height)
                 end if
             end if
         end do
 
         !> Distances in stream, cross and vertical directions
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (lEx%var_present(gas)) then
-                igas = gas - 3
-                call direction(lEx%instr(igas)%nsep, - lEx%instr(igas)%esep, direc)
-                r = dsqrt(lEx%instr(igas)%nsep**2 + lEx%instr(igas)%esep**2)
+                call direction(lEx%gas_instr(gas)%nsep, &
+                    - lEx%gas_instr(gas)%esep, direc)
+                r = dsqrt(lEx%gas_instr(gas)%nsep**2 &
+                    + lEx%gas_instr(gas)%esep**2)
                 alpha = (lEx%WD - direc - 180d0) * p / 180d0
                 r_x(gas) = dabs(r * dcos(alpha))
                 r_y(gas) = dabs(r * dsin(alpha))
-                r_z(gas) = dabs(lEx%instr(igas)%vsep)
+                r_z(gas) = dabs(lEx%gas_instr(gas)%vsep)
             else
                 r_x(gas) = error
                 r_y(gas) = error
@@ -137,7 +141,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
 
         !> correction factors
         if(LocSetup%SA%horst_lens09 == 'full') then
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if (k_mx /= error .and. r_x(gas) /= error) then
                     Ax = dexp(-k_mx * r_x(gas))
                 else
@@ -163,7 +167,7 @@ subroutine CF_HorstLenschow09(lEx, LocSetup)
                     ADDCF%of(gas) = ADDCF%of(gas) * dexp(k_mz(gas) * r_z(gas))
             end do
         elseif(LocSetup%SA%horst_lens09 == 'cross_and_vertical') then
-            do gas = co2, gas4
+            do gas = firstGas, lastGas
                 if (k_my /= error .and. r_y(gas) /= error .and. &
                     k_mz(gas) /= error .and. r_z(gas) /= error) then
                     ADDCF%of(gas) = dexp((k_my * r_y(gas))**crosswind_exp) * dexp(k_mz(gas) * r_z(gas))

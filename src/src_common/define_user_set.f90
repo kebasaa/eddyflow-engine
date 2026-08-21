@@ -48,6 +48,7 @@ subroutine DefineUserSet(LocCol, Raw, nrow, ncol, UserSet, unrow, uncol)
     !> local variables
     integer :: j
     integer :: jj
+    integer :: slot
     character(len(LocCol%label)), external :: replace
 
 
@@ -67,8 +68,14 @@ subroutine DefineUserSet(LocCol, Raw, nrow, ncol, UserSet, unrow, uncol)
         !> Replace spaces with underscores
         UserCol(jj)%label = replace(UserCol(jj)%label, &
             ' ', '_', len(UserCol(jj)%label))
-        !> Special case of 4th gas calibration reference
-        if (j == Gas4CalRefCol) UserCol(jj)%var = 'cal-ref'
+        !> Calibration reference columns, and the gas each one calibrates.
+        UserCalRefSlot(jj) = 0
+        do slot = firstGas, lastGas
+            if (GasCalRefCol(slot) /= j) cycle
+            UserCol(jj)%var = 'cal-ref'
+            UserCalRefSlot(jj) = slot
+            exit
+        end do
     end do
     NumUserVar = jj
 
@@ -84,9 +91,16 @@ logical function IsCustomOutputColumn(col)
     var = col%var
     call lowercase(var)
     if (len_trim(var) == 0) return
+    !> `agc` and `rssi` are deliberately NOT excluded here. They were, and
+    !> that made two loops that hunt for them dead code: CecSignalColumnFor
+    !> (gas_slot_resolution.f90) and SetLicorDiagnostics both look for
+    !> UserCol(j)%var == 'AGC'/'RSSI', and a column excluded here never
+    !> reaches UserCol at all. The conditional eddy covariance screen ran on
+    !> nothing and RSSI77 was always the error value, with no message either
+    !> way. A signal-strength column is ordinary custom data; the records say
+    !> which analyser it belongs to.
     select case (trim(var))
-        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
-              'agc', 'rssi')
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2')
             return
         case default
             IsCustomOutputColumn = .true.

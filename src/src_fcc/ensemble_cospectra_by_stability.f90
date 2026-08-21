@@ -48,10 +48,10 @@ subroutine EnsembleCospectraByStability(nfit, dim1, dim2, FitStable, FitUnstable
     integer :: j
     integer :: m
 
-    write(*, '(a)', advance = 'no') ' Sorting cospectra in stability classes.. '
+    call LogSayNoAdv(' Sorting cospectra in stability classes.. ')
     MeanStabilityCosp = NullMeanSpec
     !> Unstable case
-    do var = ts, gas4
+    do var = ts, lastGas
         m = nfit(var, unstable)
         do j = 1, ndkf
             do i = 1, m
@@ -72,7 +72,7 @@ subroutine EnsembleCospectraByStability(nfit, dim1, dim2, FitStable, FitUnstable
     end do
 
     !> Stable case
-    do var = ts, gas4
+    do var = ts, lastGas
         m = nfit(var, stable)
         do j = 1, ndkf
             do i = 1, m
@@ -90,6 +90,6 @@ subroutine EnsembleCospectraByStability(nfit, dim1, dim2, FitStable, FitUnstable
             end if
         end do
     end do
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine EnsembleCospectraByStability
 

@@ -61,6 +61,8 @@ subroutine FitTFModels(nbins, printout)
 
     write(*, '(a)', advance = 'no') &
         '  Eliminating high-frequency noise from ensemble spectra if requested..'
+    write(ulog, '(a)', advance = 'no') &
+        '  Eliminating high-frequency noise from ensemble spectra if requested..'
 
     !> Calculate length of un-binned spectra (lSpec),
     !> by looking at fnum for each bin
@@ -77,20 +79,39 @@ subroutine FitTFModels(nbins, printout)
     call SubtractHighFreqNoise(lSpec, size(lSpec, 1), size(lSpec, 2), &
         nlong, size(nlong, 1), size(nlong, 2), nbins)
 
-    write(*, '(a)') '  Done.'
+    call LogSay('  Done.')
 
     !> Assessment of spectral attenuation
     if (printout) write(*, '(a)', advance = 'no') &
         ' Assessing spectral attenuations..'
+    if (printout) write(ulog, '(a)', advance = 'no') &
+        ' Assessing spectral attenuations..'
 
-    !> Allocate vectors for fit
+    !> Allocate vectors for fit, re-sizing an existing one that is too small
+    !> rather than trusting it. These are global and shared with FitRHtoCutoff,
+    !> which sizes them to a fixed 10 under the same "only if not allocated"
+    !> test - so an array left behind by that routine silently caps this one,
+    !> and the overrun is a crash rather than a wrong number. Whoever needs
+    !> more asks for more.
+    if (allocated(xFit)) then
+        if (size(xFit) < maxval(nlong)) deallocate(xFit)
+    end if
+    if (allocated(yFit)) then
+        if (size(yFit) < maxval(nlong)) deallocate(yFit)
+    end if
+    if (allocated(zFit)) then
+        if (size(zFit) < maxval(nlong)) deallocate(zFit)
+    end if
+    if (allocated(ddum)) then
+        if (size(ddum) < maxval(nlong)) deallocate(ddum)
+    end if
     if (.not. allocated(xFit)) allocate(xFit(maxval(nlong)))
     if (.not. allocated(yFit)) allocate(yFit(maxval(nlong)))
     if (.not. allocated(zFit)) allocate(zFit(maxval(nlong)))
     if (.not. allocated(ddum)) allocate(ddum(maxval(nlong)))
 
     !> regression for transfer functions, class-sorted
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, MaxGasClasses
             if (MeanBinSpecAvailable(cls, gas)) then
                 !> Initialization of IIR and SIGMA filter parameters
@@ -151,7 +172,7 @@ subroutine FitTFModels(nbins, printout)
     if (allocated(zFit)) deallocate(zFit)
     if (allocated(ddum)) deallocate(ddum)
 
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine FitTFModels
 
 !***************************************************************************
@@ -180,7 +201,7 @@ subroutine LongSpectraLength(nbins, maxnlong)
 
 
     nlong = 0
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, MaxGasClasses
             if (MeanBinSpecAvailable(cls, gas)) then
                 !> If spectra are available, creates the long spectra
@@ -224,7 +245,7 @@ subroutine UnbinSpectra(lSpec, nrow, ncol, nlong, nnrow, nncol, nbins)
     integer :: err_cnt
 
     nlong = 0
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         do cls = 1, nncol
             if (MeanBinSpecAvailable(cls, gas)) then
                 !> Check if current-class spectra are available by

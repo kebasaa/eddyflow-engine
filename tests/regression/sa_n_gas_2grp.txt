@@ -1,0 +1,113 @@
+Transfer_function_parameters_(TFP)_for_IIR-shaped_filter_(see_Ibrom_et_al._2007_AFM).
+fc:_IIR_cut-off_frequency
+Fn:_normalization_parameter
+Water_vapour_TFP_are_calculated_for_9_RH_classes.
+Other_gases_TFP_are_calculated_on_a_monthly_base.
+------------------------------------------------------------------------------------
+Water vapour TFP              Fn          fc    numerosity   var=h2o instr=miro_mga4_6_2
+RH class   5 - 15% =     0.20000     0.80000          500
+RH class  15 - 25% =     0.20000     0.80000          500
+RH class  25 - 35% =     0.20000     0.80000          500
+RH class  35 - 45% =     0.20000     0.80000          500
+RH class  45 - 55% =     0.20000     0.80000          500
+RH class  55 - 65% =     0.20000     0.80000          500
+RH class  65 - 75% =     0.20000     0.80000          500
+RH class  75 - 85% =     0.20000     0.80000          500
+RH class  85 - 95% =     0.20000     0.80000          500
+
+CO2_1            TFP            Fn          fc   groups=1-2,3-12   var=co2 instr=miro_mga4_6_2
+January            =     0.20000     1.00000 
+February           =     0.20000     1.00000 
+March              =     0.20000     0.05000 
+April              =     0.20000     0.05000 
+May                =     0.20000     0.05000 
+June               =     0.20000     0.05000 
+July               =     0.20000     0.05000 
+August             =     0.20000     0.05000 
+September          =     0.20000     0.05000 
+October            =     0.20000     0.05000 
+November           =     0.20000     0.05000 
+December           =     0.20000     0.05000 
+ 
+CH4            TFP            Fn          fc   groups=1-2,3-12   var=ch4 instr=none
+January            =     0.20000     1.00000 
+February           =     0.20000     1.00000 
+March              =     0.20000     0.05000 
+April              =     0.20000     0.05000 
+May                =     0.20000     0.05000 
+June               =     0.20000     0.05000 
+July               =     0.20000     0.05000 
+August             =     0.20000     0.05000 
+September          =     0.20000     0.05000 
+October            =     0.20000     0.05000 
+November           =     0.20000     0.05000 
+December           =     0.20000     0.05000 
+ 
+COS            TFP            Fn          fc   groups=1-2,3-12   var=cos instr=miro_mga4_6_2
+January            =     0.20000     1.00000 
+February           =     0.20000     1.00000 
+March              =     0.20000     0.05000 
+April              =     0.20000     0.05000 
+May                =     0.20000     0.05000 
+June               =     0.20000     0.05000 
+July               =     0.20000     0.05000 
+August             =     0.20000     0.05000 
+September          =     0.20000     0.05000 
+October            =     0.20000     0.05000 
+November           =     0.20000     0.05000 
+December           =     0.20000     0.05000 
+ 
+N2O_1            TFP            Fn          fc   groups=1-2,3-12   var=n2o instr=miro_mga4_6_2
+January            =     0.20000     1.00000 
+February           =     0.20000     1.00000 
+March              =     0.20000     0.05000 
+April              =     0.20000     0.05000 
+May                =     0.20000     0.05000 
+June               =     0.20000     0.05000 
+July               =     0.20000     0.05000 
+August             =     0.20000     0.05000 
+September          =     0.20000     0.05000 
+October            =     0.20000     0.05000 
+November           =     0.20000     0.05000 
+December           =     0.20000     0.05000 
+ 
+CO2_2            TFP            Fn          fc   groups=1-2,3-12   var=co2 instr=li7200_1
+January            =     0.20000     1.00000 
+February           =     0.20000     1.00000 
+March              =     0.20000     0.05000 
+April              =     0.20000     0.05000 
+May                =     0.20000     0.05000 
+June               =     0.20000     0.05000 
+July               =     0.20000     0.05000 
+August             =     0.20000     0.05000 
+September          =     0.20000     0.05000 
+October            =     0.20000     0.05000 
+November           =     0.20000     0.05000 
+December           =     0.20000     0.05000 
+ 
+N2O_2            TFP            Fn          fc   groups=1-2,3-12   var=n2o instr=miro_mga4_6_2
+January            =     0.20000     1.00000 
+February           =     0.20000     1.00000 
+March              =     0.20000     0.05000 
+April              =     0.20000     0.05000 
+May                =     0.20000     0.05000 
+June               =     0.20000     0.05000 
+July               =     0.20000     0.05000 
+August             =     0.20000     0.05000 
+September          =     0.20000     0.05000 
+October            =     0.20000     0.05000 
+November           =     0.20000     0.05000 
+December           =     0.20000     0.05000 
+ 
+RH/fc_exponential_fit_parameters_for_water_vapour_spectral_corrections
+-----------------------------------
+         exp1         exp2         exp3
+     0.500000     0.500000     0.500000
+
+
+High-pass_correction_factor_model_parameters
+Model: CF = [c1 * u / (c2 + f_co) + 1] after_Ibrom_et_al_(2007_AFM)
+----------------------------------------------------------------------------
+                   c1          c2
+unstable =   0.5000000   0.5000000 
+stable   =   0.5000000   0.5000000 

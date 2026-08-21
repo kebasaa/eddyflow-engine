@@ -39,186 +39,314 @@ subroutine InformOfMetadataProblem(passed, faulty_col)
     !> in/out variables
     logical, intent(in) :: passed(32)
     integer, intent(in) :: faulty_col
+    !> local variables
+    integer :: i
+    character(8) :: LogRecord
+    character(8) :: LogColumn
+    character(32) :: clash_var
 
 
     write(LogInteger, '(i3)') faulty_col
 
     if (.not. passed(2)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Field separator not supported.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Field separator not supported.')
     end if
 
     if (.not. passed(3)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Anemometer firm not recognized for at least one anemometric variable.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Anemometer firm not recognized for at least one anemometric variable.')
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(4)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Anemometer model not recognized for at least one anemometric variable.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Anemometer model not recognized for at least one anemometric variable.')
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(5)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Gas analyser firm not recognized for at least one &
                                      &gas concentration or density measurement.'
+        write(ulog,*) '  Warning(1001)> Gas analyser firm not recognized for at least one &
+                                     &gas concentration or density measurement.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(6)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Gas analyser model not recognized for at least one &
                                      &gas concentration or density measurement.'
+        write(ulog,*) '  Warning(1001)> Gas analyser model not recognized for at least one &
+                                     &gas concentration or density measurement.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(7)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Gas analyser firm not recognized for at least one &
                                      &cell temperature or pressure measurement.'
+        write(ulog,*) '  Warning(1001)> Gas analyser firm not recognized for at least one &
+                                     &cell temperature or pressure measurement.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(8)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Gas analyser for at least one cell temperature or &
                                      &pressure is not a closed/enclosed path analyser.'
+        write(ulog,*) '  Warning(1001)> Gas analyser for at least one cell temperature or &
+                                     &pressure is not a closed/enclosed path analyser.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(9)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Attributes of the sampling tube (length, diameter &
                                      &and flow rate) must be positive numbers.'
+        write(ulog,*) '  Warning(1001)> Attributes of the sampling tube (length, diameter &
+                                     &and flow rate) must be positive numbers.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(10)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Unrecognised type of gas measurement. Gas measurement&
                                      & must be either "molar/mass density", "mole fraction" or "mixing ratio".'
+        write(ulog,*) '  Warning(1001)> Unrecognised type of gas measurement. Gas measurement&
+                                     & must be either "molar/mass density", "mole fraction" or "mixing ratio".'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(11)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Invalid units for at least one gas measurement.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Invalid units for at least one gas measurement.')
         write(*,*) '  Warning(1001)> Valid units for gas measurements are "ppt", "ppm", "ppb", "mmol/m^3", &
                                      &"umol/m^3", "g/m3", "mg/m3", "' // char(194) // char(181) // 'g/m^3".'
+        write(ulog,*) '  Warning(1001)> Valid units for gas measurements are "ppt", "ppm", "ppb", "mmol/m^3", &
+                                     &"umol/m^3", "g/m3", "mg/m3", "' // char(194) // char(181) // 'g/m^3".'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(12)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Invalid units for at least one anemometric variable.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Invalid units for at least one anemometric variable.')
         write(*,*) '  Warning(1001)> Valid units for wind components and speed-of-sound are "m/sec", "mm/sec", &
                                      &"cm/sec".'
+        write(ulog,*) '  Warning(1001)> Valid units for wind components and speed-of-sound are "m/sec", "mm/sec", &
+                                     &"cm/sec".'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(13)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Invalid units for at least one temperature reading.'
-        write(*,*) '  Warning(1001)> Valid units for temperatures are "K", "cK", "C", "cC".'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Invalid units for at least one temperature reading.')
+        call LogSayList('  Warning(1001)> Valid units for temperatures are "K", "cK", "C", "cC".')
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(14)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Invalid units for at least one pressure reading.'
-        write(*,*) '  Warning(1001)> Valid units for pressure are "Pa", "hPa", "kPa".'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Invalid units for at least one pressure reading.')
+        call LogSayList('  Warning(1001)> Valid units for pressure are "Pa", "hPa", "kPa".')
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(15)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> If the Zero/Full-Scale conversion is select, &
                                      &Mimimum and Maximum (input) values cannot both be zero.'
+        write(ulog,*) '  Warning(1001)> If the Zero/Full-Scale conversion is select, &
+                                     &Mimimum and Maximum (input) values cannot both be zero.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(16)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> If the Zero/Full-Scale conversion is select, &
                                      &A and B (output) values cannot both be zero.'
+        write(ulog,*) '  Warning(1001)> If the Zero/Full-Scale conversion is select, &
+                                     &A and B (output) values cannot both be zero.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(17)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> If the Gain/Offset conversion is selected, &
                                      &A value (gain) cannot be zero.'
+        write(ulog,*) '  Warning(1001)> If the Gain/Offset conversion is selected, &
+                                     &A value (gain) cannot be zero.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(18)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Exactly one selected u, v, w and one selected ts or sos are required.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Exactly one selected u, v, w and one selected ts or sos are required.')
     end if
 
     if (.not. passed(19)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Attributes of a "Generic anemometer" (path lengths &
                                      &and time constant) must be positive numbers.'
+        write(ulog,*) '  Warning(1001)> Attributes of a "Generic anemometer" (path lengths &
+                                     &and time constant) must be positive numbers.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(20)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Attributes of a "generic analyser" (path lengths &
                                      &and time constant) must be positive numbers.'
+        write(ulog,*) '  Warning(1001)> Attributes of a "generic analyser" (path lengths &
+                                     &and time constant) must be positive numbers.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(21)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Krypton or lyman-alpha analysers only supported for H2O measurements.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Krypton or lyman-alpha analysers only supported for H2O measurements.')
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(22)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> Attributes of a krypton or a lyman-alpha analyser (path lengths, &
                                      &time constant and extinction coefficients) must be different from zero.'
+        write(ulog,*) '  Warning(1001)> Attributes of a krypton or a lyman-alpha analyser (path lengths, &
+                                     &time constant and extinction coefficients) must be different from zero.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(23)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> At least one variable is associated with an inexistent instrument.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> At least one variable is associated with an inexistent instrument.')
         write(*,*) '  Warning(1001)> If you compiled the metadata file with a text editor, check spelling &
                                      &of instrument models for all variables.'
+        write(ulog,*) '  Warning(1001)> If you compiled the metadata file with a text editor, check spelling &
+                                     &of instrument models for all variables.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(24)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> It seems that a data column was selected for flux computation, &
                                      &which was declared either as "ignore" or "not numeric".'
-        write(*,*) '  Warning(1001)> Check the metadata file and the selected data columns.'
+        write(ulog,*) '  Warning(1001)> It seems that a data column was selected for flux computation, &
+                                     &which was declared either as "ignore" or "not numeric".'
+        call LogSayList('  Warning(1001)> Check the metadata file and the selected data columns.')
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+    end if
+
+    !> Two records of one kind competing for a slot that holds one.
+    !>
+    !> Worth naming both, because the file looks right: the interface shows a
+    !> single row and the duplicate is only visible in the project file. Left
+    !> undetected the loser is discarded silently, and which record loses turns
+    !> on their order.
+    if (.not. passed(27)) then
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        write(*,*) '  Warning(1001)> Two measurement records describe the same quantity on the same &
+                                     &instrument, and the engine holds only one.'
+        write(ulog,*) '  Warning(1001)> Two measurement records describe the same quantity on the same &
+                                     &instrument, and the engine holds only one.'
+        call LogSayList('  Warning(1001)> Remove the duplicate record, or give it its own instrument.')
+        write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        !> Both sides of the collision, not only the column that tripped it:
+        !> the point of the message is which two records to look at, and the
+        !> one that loses is the one the user cannot see.
+        call clearstr(clash_var)
+        do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+            if (EddyFlowProj%diag(i)%col == faulty_col) &
+                clash_var = EddyFlowProj%diag(i)%var
+        end do
+        if (len_trim(clash_var) > 0) then
+            do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+                if (trim(adjustl(EddyFlowProj%diag(i)%var)) /= &
+                    trim(adjustl(clash_var))) cycle
+                write(LogRecord, '(i0)') i
+                write(LogColumn, '(i0)') EddyFlowProj%diag(i)%col
+                write(*,*) '  Warning(1001)> Diagnostic record ' // trim(LogRecord) // &
+                    ' names "' // trim(adjustl(clash_var)) // &
+                    '" on column ' // trim(LogColumn) // '.'
+                write(ulog,*) '  Warning(1001)> Diagnostic record ' // trim(LogRecord) // &
+                    ' names "' // trim(adjustl(clash_var)) // &
+                    '" on column ' // trim(LogColumn) // '.'
+            end do
+        end if
+
+        call clearstr(clash_var)
+        do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+            if (EddyFlowProj%cell(i)%col == faulty_col) &
+                clash_var = EddyFlowProj%cell(i)%var
+        end do
+        if (len_trim(clash_var) > 0) then
+            do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+                if (trim(adjustl(EddyFlowProj%cell(i)%var)) /= &
+                    trim(adjustl(clash_var))) cycle
+                write(LogRecord, '(i0)') i
+                write(LogColumn, '(i0)') EddyFlowProj%cell(i)%col
+                write(*,*) '  Warning(1001)> Cell record ' // trim(LogRecord) // &
+                    ' names "' // trim(adjustl(clash_var)) // &
+                    '" on column ' // trim(LogColumn) // '.'
+                write(ulog,*) '  Warning(1001)> Cell record ' // trim(LogRecord) // &
+                    ' names "' // trim(adjustl(clash_var)) // &
+                    '" on column ' // trim(LogColumn) // '.'
+            end do
+        end if
     end if
 
     if (.not. passed(25)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
         write(*,*) '  Warning(1001)> It seems that a fast ambient temperature measurement was associated &
+                                     &to an LI-COR analyser.'
+        write(ulog,*) '  Warning(1001)> It seems that a fast ambient temperature measurement was associated &
                                      &to an LI-COR analyser.'
         write(*,*) '  Warning(1001)> No LI-COR analyser provides an ambient temperature measurement suitable for &
                                      &sensible heat flux computation.'
+        write(ulog,*) '  Warning(1001)> No LI-COR analyser provides an ambient temperature measurement suitable for &
+                                     &sensible heat flux computation.'
         write(*,*) '  Warning(1001)> Use sonic temperature instead (i.e. select "None" in the "Fast temperature &
                                      &reading" item).'
+        write(ulog,*) '  Warning(1001)> Use sonic temperature instead (i.e. select "None" in the "Fast temperature &
+                                     &reading" item).'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 
     if (.not. passed(26)) then
-        write(*,*) '  Warning(1001)> Invalid metadata.'
-        write(*,*) '  Warning(1001)> Sonic temperature cannot be selected as a slow ambient temperature measurement.'
+        call LogSayList('  Warning(1001)> Invalid metadata.')
+        call LogSayList('  Warning(1001)> Sonic temperature cannot be selected as a slow ambient temperature measurement.')
         write(*,*) '  Warning(1001)> If you want to use it, just select "None" in the ambient temperature, and EddyFlow &
                                      &will automatically use the sonic temperature, corrected for humidity effects, &
                                      &as ambient temperature.'
+        write(ulog,*) '  Warning(1001)> If you want to use it, just select "None" in the ambient temperature, and EddyFlow &
+                                     &will automatically use the sonic temperature, corrected for humidity effects, &
+                                     &as ambient temperature.'
         write(*,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
+        write(ulog,*) '  Warning(1001)> Problem detected for column n. ' // trim(adjustl(LogInteger))
     end if
 end subroutine InformOfMetadataProblem
 

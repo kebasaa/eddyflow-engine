@@ -44,9 +44,8 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     type(DateType), intent(out) :: EndTimestamp
     !> local variables
     integer :: open_status
-    integer :: st
-    integer :: en
     integer :: j
+    integer :: k
     integer :: gas
     integer :: field_start
     integer :: field_end
@@ -64,7 +63,10 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
 
     write(*,'(a)') &
         ' Initializing retrieval of EddyFlow-RP results from file: '
+    write(ulog,'(a)') &
+        ' Initializing retrieval of EddyFlow-RP results from file: '
     write(*,'(a)') '  "' // trim(adjustl(AuxFile%ex)) // '"..'
+    write(ulog,'(a)') '  "' // trim(adjustl(AuxFile%ex)) // '"..'
 
     !> Open EX file
     open(udf, file = AuxFile%ex, status = 'old', iostat = open_status)
@@ -72,17 +74,21 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     !> Exit with error in case of problems opening the file
     if (open_status /= 0) call ExceptionHandler(60)
 
-    write(*, '(a)') '  File found, importing content..'
+    call LogSay('  File found, importing content..')
 
     !> Store header to string, for writing it on output
     read(udf, '(a)') fluxnet_header
 
-    st = index(fluxnet_header, ',FCH4,') + 6
-    en = st + index(fluxnet_header(st:), ',') - 2
-    g4lab = fluxnet_header(st+1:en)
-    call lowercase(g4lab)
-    g4l = len_trim(g4lab)
-    
+    !> The fourth gas's label used to be recovered here by finding ',FCH4,'
+    !> in the header and taking the column after it, then stripping one
+    !> character to drop the 'F' flux prefix. That assumed a gas named
+    !> methane exists, that the fourth gas is written immediately after it,
+    !> and that its flux tag is one character longer than its name - none of
+    !> which holds once records assign species to slots by declaration order.
+    !> On a project without methane `index` returned 0 and the label became a
+    !> slice of the first columns of the header. Every consumer now names its
+    !> gas from the project's own records, via SpectralGasNames.
+
 
     UserVarHeader = ''
     marker_custom = index(fluxnet_header, 'NUM_CUSTOM_VARS')
@@ -133,6 +139,7 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     fcc_var_present = .false.
     FCCMetadata%ru = .false.
     FCCMetadata%ac_freq = -1
+    FCCMetadata%GasAcFreq = error
     DateStep = DateType(0, 0, 0, 0, ierror)
 
     !> Cycle on all records
@@ -161,11 +168,29 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
         !> Initializations
         if (ValidRecord .and. .not. InitializationPerformed) then
 
-            !> Look for variable presence (u thru GS4)
+            !> Look for variable presence, over every gas slot the project
+            !> configures rather than the first four. This gate is what every
+            !> FCC output loop tests, so leaving it four-bounded made gases 5+
+            !> absent from the full output no matter how wide the loops were.
             if (lEx%WS /= error) fcc_var_present(u:w) = .true.
             if (lEx%Ts /= error) fcc_var_present(ts)  = .true.
-            do gas = co2, gas4
-                fcc_var_present(gas) = lEx%measure_type_int(gas) /= ierror .or. fcc_var_present(gas)  
+            !> A gas is present because the project names a column for it, not
+            !> because this particular record carried a value. Asking the
+            !> essentials record instead - its measure type is the error code
+            !> whenever the gas was filtered away - made a gas that lost its
+            !> data lose its columns as well, so COS and a second analyser's
+            !> CO2 and H2O were absent from the full output altogether rather
+            !> than present and empty. A filtered gas is written as the error
+            !> label; a missing column is not the way to say "no data".
+            !>
+            !> Only as far as the project configures, and only records that
+            !> name a column: an unconfigured slot would otherwise emit a
+            !> column family per empty slot, and a record with no column - a
+            !> species the site does not measure - has nothing to report here.
+            do k = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+                gas = firstGas + k - 1
+                if (gas > lastGas) exit
+                if (EddyFlowProj%gas(k)%col > 0) fcc_var_present(gas) = .true.
             end do
                 
             !> Determine whether LI-COR's flags are available
@@ -206,7 +231,20 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
 
             !> Acquisition frequency and gas analyser path type for H2O
             if (FCCMetadata%ac_freq <= 0) FCCMetadata%ac_freq = lEx%ac_freq
-            FCCMetadata%H2oPathType = lEx%instr(ih2o)%path_type
+            !> From the site's water record. Was lEx%instr(ih2o), the water
+            !> role of the retired five-wide instrument numbering.
+            FCCMetadata%H2oPathType = &
+                lEx%gas_instr(PrimaryWaterOutSlot())%path_type
+            !> And every slot's own, for the routines that must not assume the
+            !> primary's - FitRh2Fco fits one hygrometer per slot now.
+            do gas = firstGas, lastGas
+                FCCMetadata%GasPathType(gas) = &
+                    lEx%gas_instr(gas)%path_type
+                !> And each analyser's own rate, for the checks that must not
+                !> apply the station's Nyquist to a slower instrument.
+                FCCMetadata%GasAcFreq(gas) = &
+                    lEx%gas_instr(gas)%ac_freq
+            end do
         end if
 
         if (all(fcc_var_present) .and. Diag7200%present .and. Diag7500%present .and. Diag7700%present .and. &
@@ -219,5 +257,5 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
     !> Adjust start timestamp so that Start/End define the whole period
     !> From beginning of first period to end of last period
     StartTimestamp = StartTimestamp - DateStep
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine InitExVars

@@ -47,16 +47,36 @@ subroutine FixTimelagOptDataset(TimelagOpt, nrow, toSet, ton, actn, tlncol)
     !> Local variables
     integer :: i
     integer :: gas
+    logical, external :: GasSlotIsWater
 
-    toSet = TimelagDatasetType(0d0, 0d0)
+    !> Every configured gas, and water identified by its record.
+    !>
+    !> Bounded at the fourth slot, actn stayed zero for every gas past it, and
+    !> actn is what OptimizeTimelags reads as its sample count and what
+    !> WriteOutTimelagOptimization gates its rows on - so the whole time-lag
+    !> optimisation was inert for those gases while AddToTimelagOptDataset,
+    !> already widened, went on feeding them in.
+    !>
+    !> Water is the one classed by relative humidity, so it is skipped when RH
+    !> is missing and carries RH into the dataset when it is not. Asked as
+    !> `gas == h2o` that named record two; a project whose water sits elsewhere
+    !> both dropped the real hygrometer's RH and applied the RH treatment to
+    !> whatever gas held slot six.
+    do i = 1, ton
+        toSet(i)%tlag = 0d0
+        toSet(i)%RH   = 0d0
+    end do
     actn = 0
     do i = 1, ton
-        do gas = co2, gas4
-            if(gas == h2o .and. TimelagOpt(i)%RH == error) cycle
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if(GasSlotIsWater(gas) .and. TimelagOpt(i)%RH == error) cycle
             if(TimelagOpt(i)%tlag(gas) /= error) then
                 actn(gas) = actn(gas) + 1
                 toSet(actn(gas))%tlag(gas) = TimelagOpt(i)%tlag(gas)
-                if (gas == h2o) toSet(actn(gas))%RH = TimelagOpt(i)%RH
+                !> Stored at this gas's own compaction index, so the RH and
+                !> the lag in a row always come from the same period.
+                toSet(actn(gas))%RH(gas) = TimelagOpt(i)%RH
             end if
         end do
     end do

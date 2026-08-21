@@ -32,7 +32,10 @@ subroutine DefineVars(LocCol, ncol, uncol)
     integer, intent(in) :: ncol, uncol
     type(ColType), intent(in) :: LocCol(MaxNumCol)
     integer :: idx, usr_cnt
+    integer :: slot
+    integer :: i
     character(len(LocCol%label)), external :: replace
+    integer, external :: LocColByOrigCol
 
     E2Col = NullCol
 
@@ -48,14 +51,33 @@ subroutine DefineVars(LocCol, ncol, uncol)
         end select
     end do
 
-    ! Pass 2: gas species and auxiliary met (useit required)
+    !> Pass 2a: the gases, by record.
+    !>
+    !> Record i owns slot firstGas + i - 1, which is the same assignment
+    !> ApplyGasRecords makes later on the per-file pass - and it has to be,
+    !> because InitFluxnetFile_rp runs between the two and lays out its header
+    !> from what this leaves behind.
+    !>
+    !> This was a select case mapping the species name to a fixed slot, so a
+    !> project measuring CO2 on two analysers put both records in slot five
+    !> and lost one, and anything past the fourth species had no slot at all.
+    !> Matching on %orig_col rather than indexing directly is required: unused
+    !> columns are dropped before this point, so the metadata numbering and
+    !> the LocCol numbering have already diverged.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        slot = firstGas + i - 1
+        if (slot > lastGas) exit
+        idx = LocColByOrigCol(LocCol, ncol, EddyFlowProj%gas(i)%col)
+        if (idx <= 0) cycle
+        if (.not. LocCol(idx)%useit) cycle
+        E2Col(slot) = LocCol(idx)
+        E2Col(slot)%present = .true.
+    end do
+
+    ! Pass 2b: auxiliary met (useit required)
     do idx = 1, ncol
         if (.not. LocCol(idx)%useit) cycle
         select case (trim(LocCol(idx)%var))
-            case ('co2');     E2Col(co2)  = LocCol(idx);  E2Col(co2)%present  = .true.
-            case ('h2o');     E2Col(h2o)  = LocCol(idx);  E2Col(h2o)%present  = .true.
-            case ('ch4');     E2Col(ch4)  = LocCol(idx);  E2Col(ch4)%present  = .true.
-            case ('n2o');     E2Col(gas4) = LocCol(idx);  E2Col(gas4)%present = .true.
             case ('ts');      E2Col(ts)   = LocCol(idx);  E2Col(ts)%present   = .true.
             case ('cell_t');  E2Col(tc)   = LocCol(idx);  E2Col(tc)%present   = .true.
             case ('int_t_1'); E2Col(ti1)  = LocCol(idx);  E2Col(ti1)%present  = .true.
@@ -80,7 +102,13 @@ subroutine DefineVars(LocCol, ncol, uncol)
         UserCol(usr_cnt)%present = .true.
         UserCol(usr_cnt)%label = replace(UserCol(usr_cnt)%label, &
             ' ', '_', len(UserCol(usr_cnt)%label))
-        if (idx == Gas4CalRefCol) UserCol(usr_cnt)%var = 'cal-ref'
+        UserCalRefSlot(usr_cnt) = 0
+        do slot = firstGas, lastGas
+            if (GasCalRefCol(slot) /= idx) cycle
+            UserCol(usr_cnt)%var = 'cal-ref'
+            UserCalRefSlot(usr_cnt) = slot
+            exit
+        end do
     end do
     NumUserVar = usr_cnt
 
@@ -96,9 +124,16 @@ logical function IsCustomOutputColumn(col)
     var = col%var
     call lowercase(var)
     if (len_trim(var) == 0) return
+    !> `agc` and `rssi` are deliberately NOT excluded here. They were, and
+    !> that made two loops that hunt for them dead code: CecSignalColumnFor
+    !> (gas_slot_resolution.f90) and SetLicorDiagnostics both look for
+    !> UserCol(j)%var == 'AGC'/'RSSI', and a column excluded here never
+    !> reaches UserCol at all. The conditional eddy covariance screen ran on
+    !> nothing and RSSI77 was always the error value, with no message either
+    !> way. A signal-strength column is ordinary custom data; the records say
+    !> which analyser it belongs to.
     select case (trim(var))
-        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
-              'agc', 'rssi')
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2')
             return
         case default
             IsCustomOutputColumn = .true.

@@ -79,6 +79,8 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
         !> Add analytic high-pass transfer functions
         if (printout) write(*,'(a)') '   High-pass correction for anemometric &
             &fluxes. Method: Moncrieff et al. (2004)..'
+        if (printout) write(ulog,'(a)') '   High-pass correction for anemometric &
+            &fluxes. Method: Moncrieff et al. (2004)..'
         call AnalyticHighPassTransferFunction(nf, size(nf), u, ac_frequency, &
             avrg_length, detrending_method, detrending_time_constant, BPTF)
         call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, &
@@ -86,6 +88,7 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
         call AnalyticHighPassTransferFunction(nf, size(nf), ts, ac_frequency, &
             avrg_length, detrending_method, detrending_time_constant, BPTF)
         if (printout) write(*,'(a)') '   Done.'
+        if (printout) write(ulog,'(a)') '   Done.'
     end if
 
     !> analytical cospectra after Moncrieff et al. (1997, JH)
@@ -95,6 +98,8 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
         !> Analytical low-pass transfer function
         if (printout) write(*,'(a)') '   Low-pass correction for anemometric &
             &fluxes. Method: Moncrieff et al. (1997)..'
+        if (printout) write(ulog,'(a)') '   Low-pass correction for anemometric &
+            &fluxes. Method: Moncrieff et al. (1997)..'
         call AnalyticLowPassTransferFunction(nf, size(nf),  u, LocInstr, &
             loc_var_present, wind_speed, t_air, BPTF)
         call AnalyticLowPassTransferFunction(nf, size(nf),  w, LocInstr, &
@@ -102,6 +107,7 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
         call AnalyticLowPassTransferFunction(nf, size(nf), ts, LocInstr, &
             loc_var_present, wind_speed, t_air, BPTF)
         if (printout) write(*,'(a)') '   Done.'
+        if (printout) write(ulog,'(a)') '   Done.'
     end if
 
     !> combined tf (low-pass analytic + high-pass analytic)

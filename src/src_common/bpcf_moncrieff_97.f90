@@ -79,19 +79,24 @@ subroutine BPCF_Moncrieff97(measuring_height, displ_height, loc_var_present, &
         !> Add analytic high-pass transfer functions
         if (printout) write(*,'(a)') '   High-pass correction for gas fluxes. &
             &Method: Moncrieff et al. (2004)'
+        if (printout) write(ulog,'(a)') '   High-pass correction for gas fluxes. &
+            &Method: Moncrieff et al. (2004)'
         call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, &
             avrg_length, detrending_method, detrending_time_constant, BPTF)
 
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (loc_var_present(gas)) &
                 call AnalyticHighPassTransferFunction(nf, size(nf), gas, &
                 ac_frequency, avrg_length, detrending_method, &
                 detrending_time_constant, BPTF)
         end do
         if (printout) write(*,'(a)') '   Done.'
+        if (printout) write(ulog,'(a)') '   Done.'
     end if
 
     if (printout) write(*,'(a)') '   Low-pass correction for gas fluxes. &
+        &Method: Moncrieff et al. (1997)'
+    if (printout) write(ulog,'(a)') '   Low-pass correction for gas fluxes. &
         &Method: Moncrieff et al. (1997)'
 
     !> normalized frequency vector, kf
@@ -103,25 +108,22 @@ subroutine BPCF_Moncrieff97(measuring_height, displ_height, loc_var_present, &
     !> analytic low-pass transfer function
     call AnalyticLowPassTransferFunction(nf, size(nf), w, LocInstr, &
         loc_var_present, wind_speed, t_air, BPTF)
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if(loc_var_present(gas)) call AnalyticLowPassTransferFunction(nf, size(nf),  &
             gas, LocInstr, loc_var_present, wind_speed, t_air, BPTF)
     end do
 
     !> combined transfer functions (low-pass analytic + high-pass analytic)
-    if (loc_var_present(co2))  call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-    if (loc_var_present(h2o))  call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-    if (loc_var_present(ch4))  call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-    if (loc_var_present(gas4)) call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+    end do
 
     !> calculate correction factors
-    if(loc_var_present(co2)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_co2), co2, nf, nfreq, BPTF)
-    if(loc_var_present(h2o)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_h2o), h2o, nf, nfreq, BPTF)
-    if(loc_var_present(ch4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_ch4), ch4, nf, nfreq, BPTF)
-    if(loc_var_present(gas4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_gas4), gas4, nf, nfreq, BPTF)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call SpectralCorrectionFactors(Cospectrum%of(gas), gas, nf, nfreq, BPTF)
+    end do
     if (printout) write(*,'(a)') '   Done.'
+    if (printout) write(ulog,'(a)') '   Done.'
 end subroutine BPCF_Moncrieff97

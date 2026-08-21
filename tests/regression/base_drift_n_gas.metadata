@@ -1,0 +1,3 @@
+date,time,calibration_temperature,cleaning,co2_offset,co2_ref,h2o_offset,h2o_ref,n2o_offset,n2o_ref,co2_2_offset,co2_2_ref
+2025-05-31,12:00,308.15,1,-1.5,400.0,-0.20,15.0,-0.03,0.33,-1.1,400.0
+2025-06-02,12:00,308.15,0,2.5,400.0,0.30,15.0,0.05,0.33,1.9,400.0

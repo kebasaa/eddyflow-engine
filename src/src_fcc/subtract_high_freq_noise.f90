@@ -57,7 +57,7 @@ subroutine SubtractHighFreqNoise(Spec, nrow, ncol, nlong, N, nclass, nbins)
 
 
     !> Linear regression of high frequency spectral range
-    do gas = co2, gas4
+    do gas = firstGas, lastGas
         if (FCCsetup%SA%hfn_fmin(gas) > 0d0) then
             do cls = 1, nclass
                 if (MeanBinSpecAvailable(cls, gas)) then

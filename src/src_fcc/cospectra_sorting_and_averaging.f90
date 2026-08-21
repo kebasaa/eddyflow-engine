@@ -68,7 +68,12 @@ subroutine CospectraSortingAndAveraging(BinCosp, nrow, time, nbins)
     end select
 
     if (sort == 0) return
-    do gas = w_ts, w_gas4
+    !> Over every configured gas. Bounded at the fourth, the ensemble
+    !> cospectra a gas past it contributed were read from the binned file and
+    !> then discarded here, so its assessment could never accumulate a class.
+    do gas = w_ts, lastGas
+        if (gas > histGas4 .and. &
+            gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         do i = 1, nbins
             if (BinCosp(i)%fnum /= 0 .and. BinCosp(i)%of(gas) /= error) then
                 MeanBinCosp(i, sort)%cnt(gas)  = MeanBinCosp(i, sort)%cnt(gas)  + 1

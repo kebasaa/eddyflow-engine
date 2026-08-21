@@ -46,6 +46,7 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     !> selected and data was successfully read with at least one
     !> valid biomet record)
     if (printout) write(*,'(a)') '  Retrieving biomet data..'
+    if (printout) write(ulog,'(a)') '  Retrieving biomet data..'
 
     !> Initialize biomet data to error
     if (allocated(bAggr)) bAggr = error
@@ -55,6 +56,8 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     if (proceed) then
         if (printout) write(LogInteger, '(i3)') nbRecs
         if (printout) write(*, '(a)') '   ' // trim(adjustl(LogInteger)) &
+            // ' biomet records imported.'
+        if (printout) write(ulog, '(a)') '   ' // trim(adjustl(LogInteger)) &
             // ' biomet records imported.'
 
         !> Aggregate biomet variables over the averaging interval
@@ -84,6 +87,7 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     if (allocated(bSet)) deallocate(bSet)
     if (allocated(bTs)) deallocate(bTs)
     if (printout) write(*,'(a)') '  Done.'
+    if (printout) write(ulog,'(a)') '  Done.'
 
 end subroutine BiometRetrieveEmbeddedData
 

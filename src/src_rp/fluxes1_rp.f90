@@ -37,111 +37,116 @@ subroutine Fluxes1_rp()
     use m_rp_global_var
     implicit none
     real(kind = dbl)  :: Cox
+    integer :: msl
+    integer :: wsl
+    integer :: wsx
+    include '../src_common/interfaces_1.inc'
 
-    write(*,'(a)', advance = 'no') '  Calculating fluxes Level 1..'
+    call LogSayNoAdv('  Calculating fluxes Level 1..')
 
     Flux1 = errFlux
 
+    !> Water's own slot. The oxygen correction below is a krypton /
+    !> Lyman-alpha hygrometer correction - genuinely about water - and the
+    !> E/ET/LE terms are the primary water's. Both resolve the slot rather
+    !> than assuming record two holds water.
+    wsl = PrimaryWaterSlot()
+    !> An always-in-bounds stand-in for wsl inside guard expressions.
+    !>
+    !> Fortran does not mandate short-circuit `.and.`, so
+    !> `wsl >= firstGas .and. X(wsl)` still evaluates X(wsl) - and with no
+    !> hygrometer wsl is 0, which is out of bounds. The wsl >= firstGas test
+    !> still decides the outcome; wsx only keeps the subscript legal while it
+    !> is being decided.
+    wsx = max(wsl, firstGas)
+
     !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
-    !> according to van Dijk et al. (2003, JAOT, eq. 13b)
-    select case (E2Col(h2o)%Instr%model(1:len_trim(E2Col(h2o)%Instr%model) - 2))
-        case('open_path_krypton','closed_path_krypton', &
-                'open_path_lyman','closed_path_lyman')
-            if (E2Col(h2o)%Instr%ko /= error .and. E2Col(h2o)%Instr%kw /= 0d0 &
-                .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
-                .and. Ambient%lambda > 0) then
-                Cox = 1d0 + 0.23d0 * E2Col(h2o)%Instr%ko / E2Col(h2o)%Instr%kw &
-                    * Ambient%Bowen * Ambient%lambda / Ambient%Ta
-                Stats%Cov(w, h2o) = Cox * Stats%Cov(w, h2o)
-                Stats%Cov(h2o, h2o) = Cox**2 * Stats%Cov(h2o, h2o)
-                !> Alternative formulation by T.W. Horst
-                !> http://www.eol.ucar.edu/instrumentation/sounding&
-                !> &/isfs/isff-support-center/how-tos/&
-                !> $corrections-to-sensible-and-latent-heat-flux-measurements
-                !Stats%Cov(w, h2o) = Stats%Cov(w, h2o) / (1 - 8d0 * 0.23d0 &
-                !* E2Col(h2o)%Instr%ko / E2Col(h2o)%Instr%kw * Ambient%bowen)
-            endif
-    end select
+    !> according to van Dijk et al. (2003, JAOT, eq. 13b).
+    !>
+    !> Over every hygrometer, each with its own ko/kw. This is genuinely a
+    !> water-vapour correction - oxygen absorbs in the same band the
+    !> instrument uses to measure water - so the H2O assumption stays; only
+    !> the slot is resolved. Applied to the primary water alone, a second
+    !> krypton on the same site was never corrected at all.
+    do msl = firstGas, lastGas
+        if (.not. GasSlotIsWater(msl)) cycle
+        if (.not. E2Col(msl)%present) cycle
+        select case (E2Col(msl)%Instr%model(1:len_trim(E2Col(msl)%Instr%model) - 2))
+            case('open_path_krypton','closed_path_krypton', &
+                    'open_path_lyman','closed_path_lyman')
+                !> That hygrometer's own extinction coefficients. Absent, the
+                !> correction is not performed for it - never performed with
+                !> another instrument's numbers.
+                if (E2Col(msl)%Instr%ko /= error .and. E2Col(msl)%Instr%kw /= 0d0 &
+                    .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
+                    .and. Ambient%lambda > 0) then
+                    Cox = 1d0 + 0.23d0 * E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw &
+                        * Ambient%Bowen * Ambient%lambda / Ambient%Ta
+                    Stats%Cov(w, msl) = Cox * Stats%Cov(w, msl)
+                    Stats%Cov(msl, msl) = Cox**2 * Stats%Cov(msl, msl)
+                    !> Alternative formulation by T.W. Horst
+                    !> http://www.eol.ucar.edu/instrumentation/sounding&
+                    !> &/isfs/isff-support-center/how-tos/&
+                    !> $corrections-to-sensible-and-latent-heat-flux-measurements
+                    !Stats%Cov(w, msl) = Stats%Cov(w, msl) / (1 - 8d0 * 0.23d0 &
+                    !* E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw * Ambient%bowen)
+                end if
+        end select
+    end do
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = Flux0%H
 
     !> Internal sensible heat flux, Hint in [W m-2]
-    Flux1%Hi_co2 = Flux0%Hi_co2
-    Flux1%Hi_h2o = Flux0%Hi_h2o
-    Flux1%Hi_ch4 = Flux0%Hi_ch4
-    Flux1%Hi_gas4 = Flux0%Hi_gas4
+    !> Pass-through: the whole gas block, not the four slots those names pick
+    !> out. Which four they picked out depended on where water sat, so two
+    !> projects differing only in record order disagreed about H_CELL.
+    Flux1%Hi_gas(firstGas:lastGas) = Flux0%Hi_gas(firstGas:lastGas)
 
-    !> Level 1 all gases
-    !> For all closed-path gases, Level 1 is same as Level 0
-    !> For all open-path gases, applied BPCF to LO get L1
-    !> co2
-    if (E2Col(co2)%Instr%path_type == 'closed') then
-        Flux1%co2 = Flux0%co2
-    else
-        if (BPCF%of(w_co2) /= error) then
-            Flux1%co2 = Flux0%co2 * BPCF%of(w_co2)
+    !> Level 1 all gases.
+    !>
+    !> Closed path: Level 1 is Level 0 unchanged. Open path: apply the
+    !> bandpass correction factor. One loop over the configured gases,
+    !> replacing four near-identical blocks. BPCF%of is indexed by the w_*
+    !> covariance labels, which carry the same numbering as the gas slots.
+    do msl = firstGas, lastGas
+        if (E2Col(msl)%Instr%path_type /= 'closed' .and. BPCF%of(msl) /= error) then
+            Flux1%gas(msl) = Flux0%gas(msl) * BPCF%of(msl)
         else
-            Flux1%co2 = Flux0%co2
+            Flux1%gas(msl) = Flux0%gas(msl)
         end if
-    end if
-    if (Flux0%co2 == error) Flux1%co2 = error
+        if (Flux0%gas(msl) == error) Flux1%gas(msl) = error
+    end do
 
-    !> h2o
-    if (E2Col(h2o)%Instr%path_type == 'closed') then
-        Flux1%h2o = Flux0%h2o
+    !> The water flux carries evapotranspiration and latent heat with it.
+    !> Those are scalars - one per project, from the primary H2O slot - so
+    !> they are corrected here rather than inside the loop.
+    if (wsl >= firstGas .and. BPCF%of(wsx) /= error) then
+    if (E2Col(wsl)%Instr%path_type /= 'closed') then
+        Flux1%E   = Flux0%E   * BPCF%of(wsl)
+        Flux1%ET  = Flux0%ET  * BPCF%of(wsl)
+        Flux1%LE  = Flux0%LE  * BPCF%of(wsl)
+    else
         Flux1%E   = Flux0%E
         Flux1%ET  = Flux0%ET
         Flux1%LE  = Flux0%LE
-    else
-        if (BPCF%of(w_h2o) /= error) then
-            Flux1%h2o = Flux0%h2o * BPCF%of(w_h2o)
-            Flux1%E   = Flux0%E   * BPCF%of(w_h2o)
-            Flux1%ET  = Flux0%ET  * BPCF%of(w_h2o)
-            Flux1%LE  = Flux0%LE  * BPCF%of(w_h2o)
-        else
-            Flux1%h2o = Flux0%h2o
-            Flux1%E   = Flux0%E
-            Flux1%ET  = Flux0%ET
-            Flux1%LE  = Flux0%LE
-        end if
     end if
-    if (Flux0%h2o == error) then
-        Flux1%h2o = error
+    else
+        Flux1%E   = Flux0%E
+        Flux1%ET  = Flux0%ET
+        Flux1%LE  = Flux0%LE
+    end if
+    if (wsl >= firstGas) then
+    if (Flux0%gas(wsl) == error) then
         Flux1%E   = error
         Flux1%ET  = error
         Flux1%LE  = error
     end if
-
-    !> ch4
-    if (E2Col(ch4)%Instr%path_type == 'closed') then
-        Flux1%ch4 = Flux0%ch4
-    else
-        if (BPCF%of(w_ch4) /= error) then
-            Flux1%ch4 = Flux0%ch4 * BPCF%of(w_ch4)
-        else
-            Flux1%ch4 = Flux0%ch4
-        end if
     end if
-    if (Flux0%ch4 == error) Flux1%ch4 = error
-
-    !> gas4
-    if (E2Col(gas4)%Instr%path_type == 'closed') then
-        Flux1%gas4 = Flux0%gas4
-    else
-        if (BPCF%of(w_gas4) /= error) then
-            Flux1%gas4 = Flux0%gas4 * BPCF%of(w_gas4)
-        else
-            Flux1%gas4 = Flux0%gas4
-        end if
-    end if
-    if (Flux0%gas4 == error) Flux1%gas4 = error
 
     !> Level 1 evapotranspiration fluxes with H2O covariances
     !> at time-lags of other scalars. Do nothing, no spectral correction needed
-    Flux1%E_co2 = Flux0%E_co2
-    Flux1%E_ch4 = Flux0%E_ch4
-    Flux1%E_gas4 = Flux0%E_gas4
+    Flux1%E_gas(firstGas:lastGas) = Flux0%E_gas(firstGas:lastGas)
 
     !> Momentum flux [kg m-1 s-2] and friction velocity [m s-1]
     if (BPCF%of(w_u) /= error) then
@@ -154,5 +159,5 @@ subroutine Fluxes1_rp()
     if (Flux0%tau == error) Flux1%tau = error
     Flux1%ustar = Ambient%us
 
-    write(*,'(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine Fluxes1_rp

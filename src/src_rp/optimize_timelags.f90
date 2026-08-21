@@ -47,6 +47,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     integer, intent(out) :: h2o_n(MM)
     !> local variables
     integer :: gas
+    integer :: wsl
     integer :: cls
     integer :: i
     integer :: N
@@ -67,18 +68,32 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     real(kind = dbl) :: sdvec
     real(kind = dbl) :: tmpvec(nrow)
     real(kind = dbl) ,parameter :: min_range = 0.3d0
+    include '../src_common/interfaces_1.inc'
 
 !TO REFINE integer :: read_status
 !TO REFINE integer :: h2on
 
-    E2Col(h2o)%present = .true.
-    do gas = co2, gas4
+    !> The site's water is forced present here so its RH-class treatment below
+    !> runs; slot six is water only when record two holds it.
+    wsl = PrimaryWaterOutSlot()
+    E2Col(wsl)%present = .true.
+    do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             !> All gases, including H2O, are treated here
             toPasGas(gas)%def = error
             toPasGas(gas)%min = error
             toPasGas(gas)%max = error
             N = actn(gas)
+            !> A gas the optimiser accepted nothing for keeps the error window
+            !> set above, which SetTimelags reads as "no optimised window" and
+            !> falls back on the declared one.
+            !>
+            !> Without this the median of a zero-length array left medx
+            !> undefined and the window was built from it. It still passed the
+            !> `max > min` guard downstream, because MAD is floored at 0.1, so
+            !> a gas with no determinations at all reached the production pass
+            !> carrying whatever had been on the stack.
+            if (N <= 0) cycle
             allocate (tmpx(N), devx(N))
             tmpx(1:N) = toSet(1:N)%tlag(gas)
             call median(tmpx, N, medx)
@@ -91,7 +106,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
             deallocate (tmpx, devx)
 
             !> If H2O was split in classes, now make H2O calculations
-            if (gas == h2o .and. MM > 1) then
+            if (gas == wsl .and. MM > 1) then
                 !> Water vapour, the same as above, but for RH classes
                 toH2O%def=error
                 toH2O%min=error
@@ -100,10 +115,10 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                     h2o_n(cls) = 0
                     tmpvec = 0d0
                     do i = 1, actn(gas)
-                        if(toSet(i)%RH >= dfloat(cls - 1) * cls_size &
-                            .and. toSet(i)%RH <= dfloat(cls) * cls_size) then
+                        if(toSet(i)%RH(wsl) >= dfloat(cls - 1) * cls_size &
+                            .and. toSet(i)%RH(wsl) <= dfloat(cls) * cls_size) then
                             h2o_n(cls) = h2o_n(cls) + 1
-                            tmpvec(h2o_n(cls)) = toSet(i)%tlag(h2o)
+                            tmpvec(h2o_n(cls)) = toSet(i)%tlag(wsl)
                         end if
                     end do
                     N = h2o_n(cls)
@@ -198,10 +213,29 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
         end if
     end do
 
-    !> If time-lag optimization failed, switch to covariance maximization
+    !> If time-lag optimization failed, switch to covariance maximization.
+    !>
+    !> Not under PWB. There the aggregate table is a by-product - a summary of
+    !> per-gas windows and H2O relative-humidity classes written for the next
+    !> run to read - while the method's actual output is the half-hourly
+    !> table, one settled lag per period per gas, already complete by the time
+    !> this runs. Switching the method here threw all of that away and
+    !> processed with covariance maximization instead, reporting every
+    !> _TLAG_PWB_SOURCE column as missing.
+    !>
+    !> What made it fire is water. The classes below need reliable water
+    !> detections, and a hygrometer that has few or none leaves them empty -
+    !> which says nothing at all about the other gases' lags, and used to be
+    !> masked by the summary borrowing a donor from another analyser.
     if (toH2O(1)%def == error .and. toH2O(MM)%def == error) then
-        call ExceptionHandler(43)
-        Meth%tlag = 'maxcov'
-        TimeLagOptSelected = .false.
+        if (Meth%tlag == 'pwb') then
+            call LogSay(' Alert> No H2O relative-humidity classes could be filled for the')
+            call LogSay('        aggregate time-lag summary. The half-hourly PWB table is')
+            call LogSay('        unaffected and is what this run uses.')
+        else
+            call ExceptionHandler(43)
+            Meth%tlag = 'maxcov'
+            TimeLagOptSelected = .false.
+        end if
     end if
 end subroutine OptimizeTimelags

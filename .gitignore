@@ -29,13 +29,52 @@ src/src_rp/deprecated
 /example-data
 /_docs
 /tests
+# The FLUXNET regression harness and its fixtures, but not the run output.
+# base_rec staying byte-identical is the proof that a per-gas conversion was
+# faithful, so the fixtures are part of the format's definition; leaving them
+# out is why the harness had to be rebuilt from scratch more than once.
+!/tests/
+/tests/*
+!/tests/regression/
+/tests/regression/*
+!/tests/regression/README.md
+!/tests/regression/run.sh
+!/tests/regression/sweep.sh
+!/tests/regression/base*.eddyflow
+# Track the harness by pattern, not by name, for the reason spelled out below
+# for static_checks - and for the same reason twice over: this list had already
+# fallen behind by two files. check_columns.py, which is what catches a value
+# sitting under the wrong column name, and migrate_records.py both existed only
+# on disk. A check nobody can clone is not a check.
+!/tests/regression/gen_*.py
+!/tests/regression/check_*.py
+!/tests/regression/migrate_*.py
+# The hand-written spectral assessment files the sa_mode=0 fixtures read. The
+# three that exist were force-added one at a time; a fixture committed without
+# the file it reads is a fixture nobody else can run.
+!/tests/regression/sa_*.txt
+!/tests/regression/sa_*.txt
+!/tests/regression/*.metadata
+# The EddyPro fixture, tracked by the same pattern rule as its native twin.
+!/tests/regression/base*.eddypro
+# ...but not what a run leaves behind. run.sh writes run_<which>.eddy* and, for
+# an EddyPro fixture, the pair the engine imports beside it - and one of those
+# is a .metadata, which the line above would otherwise pull straight back in.
+/tests/regression/run_*
 /_temp
 /static_checks
 !/static_checks/
 /static_checks/*
-!/static_checks/test_irga_path_classification_static.py
-!/static_checks/test_fcc_full_header_static.py
-!/static_checks/test_pwb_timelag_static.py
-!/static_checks/test_spectral_assessment_diagnostics_static.py
+# Track every check, by pattern rather than by name. This used to be a list of
+# individual files, and the list kept falling behind: four checks were left
+# untracked, and two of those had gone stale against a landed conversion without
+# anything reporting it. `test_*_static.py` is also what `unittest discover`
+# runs, so a file that is collected is now necessarily a file that is tracked.
+!/static_checks/test_*_static.py
+/static_checks/__pycache__
 /data/__pycache__
 /data_test
+
+# gfortran's fallback output; see the note in the GUI repo's .gitignore.
+fort.*
+/fluxnet_example

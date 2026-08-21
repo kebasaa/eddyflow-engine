@@ -53,6 +53,9 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
     integer :: jj
     integer :: tN
     integer :: io_status
+    integer :: parse_status
+    integer :: intsep
+    character(LongInstringLen) :: dataline
     real(kind = sgl) :: TmpfRaw(nrow, NumCol)
     type(ColType) :: TmpCol(MaxNumCol)
     character(62) :: lab
@@ -86,7 +89,7 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
         record_loop: do
             tN = tN + 1
             N = N + 1
-            read(unat, *, iostat = io_status) TmpfRaw(N, 1:NumCol)
+            read(unat, '(a)', iostat = io_status) dataline
             if (io_status < 0 .or. io_status == 5001 .or. io_status == 5008) then
                 N = N - 1
                 FileEndReached = .true.
@@ -96,6 +99,15 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
                 N = N - 1
                 cycle record_loop
             end if
+            !> The whole record in one read, which is what this always did and
+            !> what keeps millions of rows cheap. Only a record that will not
+            !> parse that way is walked field by field - and such a record used
+            !> to be discarded outright, taking the wind data with it because
+            !> one gas column said NA.
+            read(dataline, *, iostat = parse_status) TmpfRaw(N, 1:NumCol)
+            if (parse_status /= 0) &
+                call ParseDataRecord(dataline, LocCol, &
+                    TmpfRaw(N, 1:NumCol), NumCol)
 
             !> Normal exit instruction, if current record is beyond LastRecord
             if (tN > LastRecord - FirstRecord) exit record_loop
@@ -105,7 +117,7 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
         record_loop2: do
             tN = tN + 1
             N = N + 1
-            read(unat, *, iostat = io_status) lab, TmpfRaw(N, 1:NumCol)
+            read(unat, '(a)', iostat = io_status) dataline
 
             if (io_status < 0 .or. io_status == 5001 .or. io_status == 5008) then
                 N = N - 1
@@ -116,10 +128,20 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
                 N = N - 1
                 cycle record_loop2
             end if
+            !> The label is the first field; everything after it is the record.
+            intsep = index(dataline, FileInterpreter%separator)
+            if (intsep == 0) intsep = len_trim(dataline) + 1
+            lab = dataline(1:min(intsep - 1, len(lab)))
             if (trim(adjustl(lab)) /= trim(adjustl(FileInterpreter%data_label))) then
                 N = N - 1
                 cycle record_loop2
             end if
+            dataline = dataline(min(intsep + 1, len_trim(dataline) + 1): &
+                len_trim(dataline))
+            read(dataline, *, iostat = parse_status) TmpfRaw(N, 1:NumCol)
+            if (parse_status /= 0) &
+                call ParseDataRecord(dataline, LocCol, &
+                    TmpfRaw(N, 1:NumCol), NumCol)
             !> Normal exit instruction, if current record is beyond LastRecord
             if (tN > LastRecord - FirstRecord) exit record_loop2
         end do record_loop2
@@ -132,7 +154,7 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
             jj = jj + 1
             TmpCol(jj) = LocCol(j)
             fRaw(1:N, jj) = TmpfRaw(1:N, j)
-            if (Gas4CalRefCol == j) Gas4CalRefCol = jj
+            where (GasCalRefCol == j) GasCalRefCol = jj
         end if
     end do
     LocCol = TmpCol

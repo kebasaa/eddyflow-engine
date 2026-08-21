@@ -1,0 +1,374 @@
+"""Derive fixtures that displace water from its historical slot.
+
+Gas slots are assigned by record order - `slot = firstGas + i - 1` - so the
+constants co2=5, h2o=6, ch4=7 are aliases for "record 1..4" and nothing more.
+Every fixture so far happens to put water in record 2, which means every
+"slot 6 is water" assumption in the engine has been untestable: the assumption
+was always true, so no output could ever contradict it.
+
+`base_h2o_late` is a straight swap of records 2 and 5 of `base_n_gas` -
+nothing else changes, not even the molecular weights. Slot 6 then holds N2O
+and slot 9 holds H2O. Both are on the MIRO, so every MIRO gas resolves its
+moisture to slot 9 and every LI-7200 gas to slot 11, and the same physical
+columns feed the same physical quantities. That makes the gate exact rather
+than approximate:
+
+    every LE / ET / RH / VPD / air-density / specific-humidity / H2O-flux cell
+    must equal base_n_gas's, compared BY HEADER NAME - the record order
+    changed, so the per-gas column groups move and a positional diff is
+    meaningless.
+
+Run `gen_fixtures.py --check` to confirm the emitted files still match what
+this script would write, the same way the tag-table generators are checked.
+"""
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+#> The record fields, in the order the interface writes them.
+FIELDS = ('var', 'instr', 'col', 'moist', 'cell', 'mw', 'diff')
+
+
+def read_records(lines, count):
+    """Pull gas_<i>_<field> into a list of dicts, indexed from 0."""
+    recs = [dict() for _ in range(count)]
+    for ln in lines:
+        if not ln.startswith('gas_'):
+            continue
+        key, _, value = ln.partition('=')
+        parts = key.split('_')
+        if len(parts) < 3 or not parts[1].isdigit():
+            continue
+        idx = int(parts[1]) - 1
+        field = '_'.join(parts[2:])
+        if 0 <= idx < count and field in FIELDS:
+            recs[idx][field] = value
+    return recs
+
+
+def write_records(lines, recs):
+    """Substitute the record block back, leaving every other line untouched."""
+    out = []
+    for ln in lines:
+        if not ln.startswith('gas_'):
+            out.append(ln)
+            continue
+        key, _, _ = ln.partition('=')
+        parts = key.split('_')
+        if len(parts) < 3 or not parts[1].isdigit():
+            out.append(ln)
+            continue
+        idx = int(parts[1]) - 1
+        field = '_'.join(parts[2:])
+        if 0 <= idx < len(recs) and field in FIELDS:
+            out.append('%s=%s' % (key, recs[idx][field]))
+        else:
+            out.append(ln)
+    return out
+
+
+def build_h2o_late(src_lines):
+    count = 0
+    for ln in src_lines:
+        if ln.startswith('gas_num='):
+            count = int(ln.split('=', 1)[1])
+    recs = read_records(src_lines, count)
+    #> Records 2 and 5 (1-based) -> slot 6 gets N2O, slot 9 gets H2O.
+    recs[1], recs[4] = recs[4], recs[1]
+    return write_records(src_lines, recs)
+
+
+def build_mw(src_lines, mw1='', mw6=''):
+    """base_n_gas pointed at the local metadata, with two CO2 records given
+    distinct molecular weights.
+
+    Molecular weight is only consulted on the g_m3 / mg_m3 / ug_m3 arms of the
+    unit conversion, so the metadata copy sets both CO2 columns to ug_m3 -
+    physically meaningless for a mole fraction, but it is the only way to make
+    MW observable at all, and the test is a ratio.
+
+    Two records, not one, because the defect has two halves: the *fallback*
+    was gated on `slot > gas4`, and the *lookup* mapped a column's species
+    name to a fixed slot. Giving the second CO2 its own weight catches the
+    second half - both CO2 columns used to convert with record one's.
+    """
+    count = 0
+    for ln in src_lines:
+        if ln.startswith('gas_num='):
+            count = int(ln.split('=', 1)[1])
+    recs = read_records(src_lines, count)
+    recs[0]['mw'] = mw1
+    recs[5]['mw'] = mw6
+    out = write_records(src_lines, recs)
+    local = os.path.join(HERE, 'base_mw.metadata').replace(os.sep, '/')
+    return [('proj_file=' + local) if ln.startswith('proj_file=') else ln
+            for ln in out]
+
+
+def build_own_binned(src_lines):
+    """base_n_gas reading the binned (co)spectra it wrote itself.
+
+    Every other fixture points sa_bin_spectra at a shared directory that
+    predates the N-gas binned format and carries four gases - which is what
+    makes those runs the backward-compatibility case, and why they are right
+    to leave gases 5+ unassessed. SELF is the forward case: run.sh rewrites
+    the token to this run's own output between RP and FCC.
+    """
+    return [('sa_bin_spectra=SELF') if ln.startswith('sa_bin_spectra=') else ln
+            for ln in src_lines]
+
+
+def build_tlag_opt(src_lines):
+    """base_n_gas running the time-lag optimiser on the fly.
+
+    Every other fixture sets tlag_meth=5 (block-bootstrap) and to_mode=0, which
+    together mean AdjustTimelagOptSettings is never called - so the whole
+    "derive a search window from the instrument geometry" path had no coverage
+    at all, in a project format where a gas states its own window per record.
+
+    tlag_meth=4 selects the optimiser and to_mode=1 runs it on the fly. The gas
+    records are left alone deliberately: base_n_gas states a window for records
+    one to four and none for five to eight, so one run exercises both arms -
+    the declared window is taken verbatim, and the undeclared one is derived
+    rather than read as a request for [0, 0].
+
+    The optimisation period is the processing window, not the fortnight
+    inherited from base_n_gas. That fortnight had the prepass walk 672
+    half-hours to inform a run covering six of them, which took minutes against
+    the seconds every other fixture takes - enough to keep a fixture out of the
+    loop anyone actually runs. This is 38 seconds; a day is 113 and buys
+    nothing.
+
+    What that costs, stated plainly: six periods leave the optimiser too few
+    determinations to fit a window, so toPasGas stays at the error value and
+    SetTimelags falls back on the declared one. The fixture therefore covers
+    the derivation path and the empty-optimiser guard - every gas takes it -
+    but not the optimiser's own statistics, which need the fortnight. It still
+    separates the defect from the fix: before, a gas declaring no window got
+    the garbage +-0.222387 range built from a median of nothing; now it gets
+    its declared window back.
+    """
+    period = {
+        'to_start_date': _value(src_lines, 'pr_start_date'),
+        'to_start_time': _value(src_lines, 'pr_start_time'),
+        'to_end_date': _value(src_lines, 'pr_end_date'),
+        'to_end_time': _value(src_lines, 'pr_end_time'),
+    }
+    out = []
+    for ln in src_lines:
+        key = ln.split('=', 1)[0]
+        if key == 'tlag_meth':
+            out.append('tlag_meth=4')
+        elif key == 'to_mode':
+            out.append('to_mode=1')
+        elif key in period:
+            out.append('%s=%s' % (key, period[key]))
+        else:
+            out.append(ln)
+    return out
+
+
+def _value(lines, key):
+    for ln in lines:
+        if ln.startswith(key + '='):
+            return ln.split('=', 1)[1]
+    raise SystemExit('no %s in the source fixture' % key)
+
+
+def build_cell_ref(src_lines):
+    """base_n_gas_cell with one gas pointed at the other analyser's cell.
+
+    gas_<i>_cell names the cell record whose analyser holds a gas. It was
+    parsed and discarded for as long as the cell slots were a single global
+    set, and every fixture leaves it at 0 - so the field has only ever been
+    exercised on its "auto" arm, where the instrument name is matched instead.
+
+    base_n_gas_cell carries two analysers: cell records 1 and 2 are the MIRO's,
+    3 and 4 the LI-7200's. Record one's gas is on the MIRO, so pointing it at
+    cell record 3 makes the explicit reference and the name match disagree,
+    which is the only way to tell whether the field is read at all. Its cell
+    temperature and pressure - and every quantity computed from them - then
+    come from the LI-7200's block.
+    """
+    return [('gas_1_cell=3' if ln.startswith('gas_1_cell=') else ln)
+            for ln in src_lines]
+
+
+def _set(lines, key, value):
+    return [('%s=%s' % (key, value)) if ln.startswith(key + '=') else ln
+            for ln in lines]
+
+
+def build_no_gas(src_lines):
+    """A site with an anemometer and no analyser.
+
+    It still measures wind and sonic temperature, so it still has a heat
+    flux, and it is a perfectly ordinary configuration. The engine refused it
+    outright: the record-less test read `gas_num <= 0`, which conflated a
+    project stating zero gases with a pre-5.0.0 file stating no gas count at
+    all. `gas_num=0` is left in the file, so the format is current; only the
+    count is zero.
+    """
+    return _set(src_lines, 'gas_num', '0')
+
+
+def _water_last(src_lines, biomet_rh):
+    """base_rec with its H2O record moved past the declared count.
+
+    Records 1..3 become co2, ch4, cos and gas_num drops to 3, so no record
+    names H2O while the file stays otherwise identical. Moving the record
+    rather than deleting it keeps the key block the shape write_records
+    expects; everything past gas_num is ignored.
+    """
+    count = 0
+    for ln in src_lines:
+        if ln.startswith('gas_num='):
+            count = int(ln.split('=', 1)[1])
+    recs = read_records(src_lines, count)
+    water = [i for i, r in enumerate(recs)
+             if r.get('var', '').strip().lower() == 'h2o']
+    if len(water) != 1:
+        raise SystemExit('expected exactly one H2O record, found %d' % len(water))
+    w = water.pop()
+    recs = recs[:w] + recs[w + 1:] + [recs[w]]
+    out = write_records(src_lines, recs)
+    out = _set(out, 'gas_num', str(count - 1))
+    return _set(out, 'biom_rh', biomet_rh)
+
+
+def build_no_water(src_lines):
+    """Gases, but humidity from nowhere at all.
+
+    No H2O record and no biomet RH column, so air density and heat capacity
+    are computed dry and the humidity correction to sensible heat flux cannot
+    be applied - the reported H is the uncorrected buoyancy flux. The engine
+    says so once, as warning 104. Before this it did not run at all: with no
+    water PrimaryWaterSlot returns 0 and the flux code indexed with it.
+    """
+    return _water_last(src_lines, '0')
+
+
+#: The site's biomet record, covering the processing window at one-minute
+#: resolution. Its RH column is variable 3, which is what biom_rh names.
+#:
+#: Every other fixture points biom_file at a drive that is not present, so
+#: their biomet is inert and their humidity comes from the hygrometer. That is
+#: deliberate - pointing them here would move them onto the biomet branch and
+#: change every one of their outputs. Only the two fixtures below use it.
+BIOMET = 'C:/Users/jonmuell/Documents/_data/CH-LAE COS/lae_biomet.csv'
+
+
+def build_biomet_water(src_lines):
+    """Gases and no hygrometer, but a biomet RH sensor.
+
+    That sensor is enough for the moist-air correction, and this is what
+    proves it is used. The no-hygrometer guard was tested at the head of the
+    humidity chain and ran *instead of* the biomet branch, so a site in
+    exactly this shape got RH, vapour pressure and water density all `error`
+    and no correction at all, with the measurement sitting right there.
+
+    It must also NOT carry warning 104: humidity is available, just not from
+    an analyser.
+    """
+    return _set(_water_last(src_lines, '3'), 'biom_file', BIOMET)
+
+
+def build_biomet_rh(src_lines):
+    """Two hygrometers AND biomet RH - the branch that left RHO%w_at stale.
+
+    The per-hygrometer water density was filled only in the raw-data arm, and
+    RHO is a module global with no per-period reset, so a site whose humidity
+    came from biomet corrected every gas with the *previous* averaging
+    period's humidity and wrote that into the ex record for FCC to reuse.
+
+    Derived from base_n_gas because it carries two hygrometers: with one, the
+    per-slot array collapses to the site scalar and the staleness is invisible.
+    """
+    return _set(src_lines, 'biom_file', BIOMET)
+
+
+def build_auto_sa(src_lines):
+    """base_n_gas with the automatic spectral configuration switched on.
+
+    That feature reads the flux distribution, decides better per-gas
+    thresholds, and writes them into a copy of the project for the next run.
+    It composed `sa_min_un_co2` and `sa_min_un_gas_5_record` - keys that do
+    not exist, since the flat sa_min_*_<gas> tags were retired with the record
+    format and the record spelling is gas_<i>_sa_min_un. So it wrote settings
+    nothing reads and reported changes that never took effect.
+
+    What this fixture is for: run it, then read the project it writes. The
+    keys it contains are the whole test.
+    """
+    return _set(src_lines, 'automatic_spectra_config', '1')
+
+
+def build_sa_write(src_lines):
+    """base_n_gas attempting a spectral assessment on the fly.
+
+    hf_meth=3 is ibrom_07, which is in-situ, and sa_mode=1 leaves no assessment
+    file to read - together those are what set do_spectral_assessment, so FCC
+    fits rather than reads. Derived from base_n_gas_bin because that one points
+    sa_bin_spectra at its own run's output; the shared directory the others use
+    is not on every machine, and without binned spectra there is nothing to fit.
+
+    What it actually covers, stated plainly: three half-hours are far too few
+    to fit anything, so the readiness gate declines and the run falls back to
+    the analytic method WITHOUT writing an assessment file. That is the path
+    this fixture holds - the only coverage of do_spectral_assessment being set
+    and refused, which is the arm Stage F changed for hygrometers.
+
+    It is therefore NOT proof that the file can carry a second hygrometer. No
+    file is produced to inspect. The writer's second-water block is covered
+    from the reading end instead: gen_sa.py authors one, and the static checks
+    in test_spectral_assessment_blocks_static.py pin writer, reader and gate
+    to the same rule.
+    """
+    out = _set(src_lines, 'hf_meth', '3')
+    return _set(out, 'sa_mode', '1')
+
+
+TARGETS = {
+    'base_sa_write.eddyflow': ('base_n_gas_bin.eddyflow', build_sa_write),
+    'base_auto_sa.eddyflow': ('base_n_gas.eddyflow', build_auto_sa),
+    'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),
+    'base_no_water.eddyflow': ('base_rec.eddyflow', build_no_water),
+    'base_biomet_water.eddyflow': ('base_rec.eddyflow', build_biomet_water),
+    'base_biomet_rh.eddyflow': ('base_n_gas.eddyflow', build_biomet_rh),
+    'base_cell_ref.eddyflow': ('base_n_gas_cell.eddyflow', build_cell_ref),
+    'base_tlag_opt.eddyflow': ('base_n_gas.eddyflow', build_tlag_opt),
+    'base_h2o_late.eddyflow': ('base_n_gas.eddyflow', build_h2o_late),
+    'base_n_gas_bin.eddyflow': ('base_n_gas.eddyflow', build_own_binned),
+    'base_mw_ref.eddyflow': ('base_n_gas.eddyflow',
+                             lambda ls: build_mw(ls, '', '')),
+    'base_mw.eddyflow': ('base_n_gas.eddyflow',
+                         lambda ls: build_mw(ls, '90.0000', '30.0000')),
+}
+
+
+def main():
+    check = '--check' in sys.argv
+    failed = False
+    for name, (source, build) in TARGETS.items():
+        with open(os.path.join(HERE, source)) as fh:
+            src_lines = fh.read().splitlines()
+        text = '\n'.join(build(src_lines)) + '\n'
+        path = os.path.join(HERE, name)
+        if check:
+            existing = open(path).read() if os.path.isfile(path) else None
+            if existing != text:
+                print('%s is out of date' % name)
+                failed = True
+            else:
+                print('%s up to date' % name)
+        else:
+            with open(path, 'w') as fh:
+                fh.write(text)
+            print('wrote %s from %s' % (name, source))
+    if failed:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

@@ -47,9 +47,11 @@ subroutine SortWindBySector(Wind, nrow, NumElem, WindBySect)
     real(kind = dbl) :: WindDir
 
 
-    write(*, '(a)') ' Sorting wind data by sector..'
+    call LogSay(' Sorting wind data by sector..')
     write(LogInteger, '(i2)') PFSetup%num_sec
     write(*, '(a, i1, a)') '  '// trim(adjustl(LogInteger)) &
+        // ' wind sector(s) selected.'
+    write(ulog, '(a, i1, a)') '  '// trim(adjustl(LogInteger)) &
         // ' wind sector(s) selected.'
 
     NumElem = 0
@@ -70,5 +72,5 @@ subroutine SortWindBySector(Wind, nrow, NumElem, WindBySect)
         end if
     end do
 
-    write(*, '(a)')   ' Done.'
+    call LogSay(' Done.')
 end subroutine SortWindBySector

@@ -44,8 +44,11 @@ subroutine TestTimeLag(Set, N)
     integer :: i = 0
     integer :: j = 0
     integer :: rlag(GHGNumVar)
-    integer :: hflags(4)
-    integer :: sflags(4)
+    !> One entry per variable, indexed by slot, as every other test's flag
+    !> arrays are. They were four wide because the packing below was a
+    !> four-digit integer, and that width is what bounded the test itself.
+    integer :: hflags(GHGNumVar)
+    integer :: sflags(GHGNumVar)
     integer :: min_rl(GHGNumVar)
     integer :: max_rl(GHGNumVar)
     integer :: def_rl(GHGNumVar)
@@ -55,45 +58,59 @@ subroutine TestTimeLag(Set, N)
     real(kind = dbl) :: DefCov(GHGNumVar)
     real(kind = dbl) :: MaxCov(GHGNumVar)
 
-    write(*, '(a)', advance = 'no') '   Time lag test..'
+    call LogSayNoAdv('   Time lag test..')
 
     !> Initializations
     hflags = 0
     sflags = 0
 
     !> Define min e max "row-lags" for scalars, using timelags retrieved from metadata file
-    do j = co2, GHGNumVar
+    do j = firstGas, GHGNumVar
         min_rl(j) = nint(E2Col(j)%min_tl * Metadata%ac_freq)
         max_rl(j) = nint(E2Col(j)%max_tl * Metadata%ac_freq)
     end do
-    !> Default values are taken from EddyFlow settings
-    def_rl(co2)  = nint(tl%def_co2 * Metadata%ac_freq)
-    def_rl(h2o)  = nint(tl%def_h2o * Metadata%ac_freq)
-    def_rl(ch4)  = nint(tl%def_ch4 * Metadata%ac_freq)
-    def_rl(gas4) = nint(tl%def_n2o * Metadata%ac_freq)
+    !> Default values are taken from EddyFlow settings. tl%def_gas has always
+    !> been GHGNumVar wide; only these four assignments were not.
+    do j = firstGas, lastGas
+        def_rl(j) = nint(tl%def_gas(j) * Metadata%ac_freq)
+    end do
 
     !> Actual time-lags (tlag), maximum of the cov. (Rmax) \n
     !>  and cov. for default timelag (R0)
     !> Flags if the difference is too high
-    do i = co2, GHGNumVar
+    !>
+    !> Every configured gas. This ran co2..gas4 because hflags/sflags were four
+    !> wide, which was in turn because the packing below was a four-digit
+    !> integer - so the whole test, not just its reporting, stopped at the
+    !> fourth gas. A fifth gas's lag was never compared against its default and
+    !> its flag column read as "not performed" while the test was enabled.
+    do i = firstGas, lastGas
+        if (i - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (E2Col(i)%present) then
             FirstCol(:)  = Set(:, w)
             SecondCol(:) = Set(:, i)
             call CovMaxRS(def_rl(i), min_rl(i), max_rl(i), FirstCol, SecondCol &
                 , MaxCov(i), DefCov(i), tlag(i), rlag(i), N)
-            if((MaxCov(i) - DefCov(i)) * 1d2 / DefCov(i) >= tl%hf_lim) hflags(i-ts) = 1
-            if((MaxCov(i) - DefCov(i)) * 1d2 / DefCov(i) >= tl%sf_lim) sflags(i-ts) = 1
+            if((MaxCov(i) - DefCov(i)) * 1d2 / DefCov(i) >= tl%hf_lim) hflags(i) = 1
+            if((MaxCov(i) - DefCov(i)) * 1d2 / DefCov(i) >= tl%sf_lim) sflags(i) = 1
         end if
     end do
 
-    !> Creates 4-digits numbers containing the flags; 4 is the number of EddyFlow gases
-    IntHF%tl = 90000
-    IntSF%tl = 90000
-    do j = 1, 4
-        IntHF%tl = IntHF%tl + hflags(j)*10**(4 - j)
-        IntSF%tl = IntSF%tl + sflags(j)*10**(4 - j)
-    end do
-    write(*,'(a)') ' Done.'
+    !> One digit per variable, as the other eight tests pack theirs.
+    !>
+    !> This was 90000 + sum(hflags(j) * 10**(4 - j)) rendered through int2char,
+    !> the last base-10 packing in the engine. It caps the variable count at
+    !> about nine before a 32-bit integer overflows, which is why the flag
+    !> arrays - and therefore the test - could not grow.
+    !>
+    !> The emitted cell is unchanged at four gas records. int2char right-aligns
+    !> the five-digit number in a zero-padded FlagStrLen field, so slots five
+    !> to eight landed at positions 66 to 69; PackFlagString writes slot j at
+    !> position j + 1, so they land at 6 to 9. Same four digits, same order -
+    !> the writers slice from firstGas + 1 rather than from the end.
+    call PackFlagString(hflags, GHGNumVar, CharHF%tl)
+    call PackFlagString(sflags, GHGNumVar, CharSF%tl)
+    call LogSay(' Done.')
 end subroutine TestTimeLag
 
 !***************************************************************************

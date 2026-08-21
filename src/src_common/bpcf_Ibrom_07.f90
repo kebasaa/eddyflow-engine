@@ -85,7 +85,7 @@ subroutine BPCF_Ibrom07(measuring_height, displ_height, loc_var_present, wind_sp
         call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, &
             avrg_length, detrending_method, detrending_time_constant, BPTF)
 
-        do gas = co2, gas4
+        do gas = firstGas, lastGas
             if (loc_var_present(gas)) &
                 call AnalyticHighPassTransferFunction(nf, size(nf), gas, &
                     ac_frequency, avrg_length, detrending_method, &
@@ -99,37 +99,31 @@ subroutine BPCF_Ibrom07(measuring_height, displ_height, loc_var_present, wind_sp
         call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
 
         !> combined tf (only high-pass analytic)
-        if (loc_var_present(co2))  &
-            call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-        if (loc_var_present(h2o))  &
-            call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-        if (loc_var_present(ch4))  &
-            call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-        if (loc_var_present(gas4)) &
-            call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) &
+                call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+        end do
 
         !> calculate correction factors
-        if(loc_var_present(co2)) &
-            call SpectralCorrectionFactors(Cospectrum%of(w_co2),  co2,  nf, nfreq, BPTF)
-        if(loc_var_present(h2o)) &
-            call SpectralCorrectionFactors(Cospectrum%of(w_h2o),  h2o,  nf, nfreq, BPTF)
-        if(loc_var_present(ch4)) &
-            call SpectralCorrectionFactors(Cospectrum%of(w_ch4),  ch4,  nf, nfreq, BPTF)
-        if(loc_var_present(gas4)) &
-            call SpectralCorrectionFactors(Cospectrum%of(w_gas4), gas4, nf, nfreq, BPTF)
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) &
+                call SpectralCorrectionFactors(Cospectrum%of(gas), gas, nf, nfreq, BPTF)
+        end do
     end if
 
     !> file-specific cut-off frequencies
     call RetrieveLPTFpars(lEx, 'iir', LocSetup)
 
     !> calculate correction factors
-    BPCF_Ibrom%of(w_co2:w_gas4) = 1d0
-    call CorrectionFactorsIbrom07(.true., .true., .true., .true., BPCF_Ibrom, lEx)
+    BPCF_Ibrom%of(firstGas:lastGas) = 1d0
+    do gas = firstGas, lastGas
+        call CorrectionFactorsIbrom07(gas, BPCF_Ibrom, lEx)
+    end do
 
     !> Combine low freq (analytic) + high freq (in situ) correction factors
-    where (BPCF%of(w_co2:w_gas4) /= error .and. BPCF_Ibrom%of(w_co2:w_gas4) /= error)
-        BPCF%of(w_co2:w_gas4) = BPCF%of(w_co2:w_gas4) * BPCF_Ibrom%of(w_co2:w_gas4)
-    elsewhere (BPCF_Ibrom%of(w_co2:w_gas4) /= error)
-        BPCF%of(w_co2:w_gas4) = BPCF_Ibrom%of(w_co2:w_gas4)
+    where (BPCF%of(firstGas:lastGas) /= error .and. BPCF_Ibrom%of(firstGas:lastGas) /= error)
+        BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * BPCF_Ibrom%of(firstGas:lastGas)
+    elsewhere (BPCF_Ibrom%of(firstGas:lastGas) /= error)
+        BPCF%of(firstGas:lastGas) = BPCF_Ibrom%of(firstGas:lastGas)
     end where
 end subroutine BPCF_Ibrom07

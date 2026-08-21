@@ -25,6 +25,31 @@
 ! \brief       Shared Conditional Eddy Covariance implementation following:
 !              Zahn et al. (2022), Agricultural and Forest Meteorology 315, 108790.
 !              https://doi.org/10.1016/j.agrformet.2021.108790
+!
+!              Ejections are sorted into two octants by the signs of the water
+!              and carbon fluctuations they carry:
+!
+!                O1  w' > 0, q' > 0, c' > 0   non-stomatal - it came off the
+!                                             ground, enriched in both
+!                O2  w' > 0, q' > 0, c' < 0   stomatal - it passed through
+!                                             stomata, which take carbon up
+!
+!              The conditional covariance of any scalar over those two octants
+!              gives the ratio of its two components, and that ratio applied to
+!              the authoritative total gives the components themselves.
+!
+!              The indicator functions are built from (w', q', c') and nothing
+!              else, and Zahn et al. say they "remain the same" for the second
+!              scalar. So the octants are a property of the CO2/water PAIR, and
+!              any number of further species - carbonyl sulfide, methane - can
+!              be partitioned by the same pass, at the cost of two more sums
+!              each. Nothing here may make an octant depend on the scalar being
+!              accumulated.
+!
+!              Split in three because the three parts belong in three places:
+!              BuildCecPrimes and ExtractCecDescriptor run in RP, on the raw
+!              high-frequency series; ApplyCecDescriptor runs wherever the final
+!              corrected totals live, which is FCC when FCC follows.
 ! \author      Jonathan Muller
 ! \note
 ! \sa
@@ -41,6 +66,7 @@ module m_cec
 
     public :: ResetCecDescriptor
     public :: ResetCecFlux
+    public :: BuildCecPrimes
     public :: ExtractCecDescriptor
     public :: ApplyCecDescriptor
 
@@ -49,256 +75,939 @@ contains
 subroutine ResetCecDescriptor(descriptor)
     type(CECDescriptorType), intent(out) :: descriptor
 
-    descriptor%r_ET = error
-    descriptor%r_Fc = error
-    descriptor%frac_O1 = error
-    descriptor%frac_O2 = error
+    integer :: k
+
+    descriptor%meth = 0
+    descriptor%carbon_slot = 0
+    descriptor%water_slot = 0
+    descriptor%n_target = 0
     descriptor%n_valid = 0
     descriptor%n_O1 = 0
     descriptor%n_O2 = 0
-    descriptor%h2o_status = cec_rejected
-    descriptor%co2_status = cec_rejected
-    descriptor%h2o_valid = .false.
-    descriptor%co2_valid = .false.
+    descriptor%frac_O1 = error
+    descriptor%frac_O2 = error
+    do k = 1, MaxNumCecTargets
+        descriptor%target(k)%slot = 0
+        descriptor%target(k)%f_O1 = error
+        descriptor%target(k)%f_O2 = error
+        descriptor%target(k)%r = error
+        descriptor%target(k)%ns_r = error
+        descriptor%target(k)%status = cec_rejected
+        descriptor%target(k)%valid = .false.
+    end do
 end subroutine ResetCecDescriptor
 
 subroutine ResetCecFlux(flux)
     type(CECFluxType), intent(out) :: flux
 
-    flux%E_cec = error
-    flux%Tr_cec = error
+    integer :: k
+
+    do k = 1, MaxNumCecTargets
+        flux%comp(k)%nonstomatal = error
+        flux%comp(k)%stomatal = error
+        flux%comp(k)%total = error
+        flux%comp(k)%status = cec_rejected
+    end do
     flux%E_cec_ET = error
     flux%Tr_cec_ET = error
-    flux%Reco_cec = error
-    flux%P_cec = error
-    flux%GPP_cec = error
-    flux%NEE_cec = error
-    flux%r_ET_cec = error
-    flux%r_Fc_cec = error
-    flux%ok = .false.
 end subroutine ResetCecFlux
 
-subroutine ExtractCecDescriptor(primes, stationarity_co2, stationarity_h2o, descriptor, &
-    setup, signal_strength_co2, signal_strength_h2o)
-    real(kind = dbl), intent(in) :: primes(:, :)
-    integer, intent(in) :: stationarity_co2
-    integer, intent(in) :: stationarity_h2o
-    type(CECDescriptorType), intent(out) :: descriptor
-    type(CECSetupType), intent(in), optional :: setup
-    real(kind = dbl), intent(in), optional :: signal_strength_co2(:)
-    real(kind = dbl), intent(in), optional :: signal_strength_h2o(:)
+!***************************************************************************
+!
+! \brief       Screened, gap-filled, detrended fluctuations for one pairing.
+! \author      Jonathan Muller
+! \note        Runs on the RAW series, before the run's own detrending, and in
+!              the order Zahn et al. Sec. 3.2 states: delete what the analyser
+!              diagnostics condemn, fill the short gaps that leaves, then
+!              detrend.
+!
+!              The screen comes first because the gaps the filler exists to
+!              repair are the ones the screen makes. A condemned run of four
+!              samples or fewer is interpolated over and a longer one is not,
+!              which is what lets a period with brief, scattered dropouts stay
+!              above the completeness gate rather than being thrown away whole.
+!              cec_max_gap_fill = 0 turns the filler off and makes every
+!              condemned sample permanent, for anyone who would rather lose the
+!              period than interpolate across an analyser that was not seeing.
+!
+!              This used to work on the finished E2Primes instead, so detrending
+!              had already happened and the trend that produced the fluctuations
+!              had been fitted through the very samples being rejected.
+!
+!              The working set is compact - w and the pairing's targets, six or
+!              seven columns - so redoing the detrending costs almost nothing
+!              and, crucially, touches neither E2Set nor E2Primes. The fluxes
+!              themselves are computed from those and must not move because a
+!              partition asked for a stricter screen.
+!***************************************************************************
+subroutine BuildCecPrimes(pair, rawset, nrow, ncol, userset, nuser, tconst, &
+    setup, primes, ok)
+    type(CECResolvedPairType), intent(in) :: pair
+    integer, intent(in) :: nrow
+    integer, intent(in) :: ncol
+    real(kind = dbl), intent(in) :: rawset(nrow, ncol)
+    integer, intent(in) :: nuser
+    !> Assumed shape, not (nrow, max(nuser,1)): a site with no custom columns
+    !> passes a zero-column array, and an explicit-shape dummy claiming one
+    !> column would be describing storage that is not there.
+    real(kind = dbl), intent(in) :: userset(:, :)
+    integer, intent(in) :: tconst
+    type(CECSetupType), intent(in) :: setup
+    real(kind = dbl), intent(out) :: primes(nrow, MaxNumCecTargets + 1)
+    logical, intent(out) :: ok
 
-    integer :: i
-    integer :: nrow
-    real(kind = dbl), allocatable :: w_prime(:)
-    real(kind = dbl), allocatable :: c_prime(:)
-    real(kind = dbl), allocatable :: q_prime(:)
-    real(kind = dbl) :: sum_fE
-    real(kind = dbl) :: sum_fT
-    real(kind = dbl) :: sum_fR
-    real(kind = dbl) :: sum_fP
-    real(kind = dbl) :: f_E
-    real(kind = dbl) :: f_T
-    real(kind = dbl) :: f_R
-    real(kind = dbl) :: f_P
-    type(CECSetupType) :: active_setup
+    integer :: k
+    integer :: n
+    integer :: ntarget
+    integer :: slot
+    integer :: sig_col
+    integer :: ncompact
+    integer :: slots(MaxNumCecTargets)
+    logical :: sig_is_rssi
+    real(kind = dbl), allocatable :: work(:, :)
+    type(ColType), allocatable :: lcol(:)
+    type(StatsType), allocatable :: lstats
+    integer, external :: CecSignalColumnFor
+    logical, external :: CecSignalIsRssi
+    external :: CecTargetSlots
 
-    call ResetCecDescriptor(descriptor)
-    call DefaultCecSetup(active_setup)
-    if (present(setup)) active_setup = setup
-
-    if (size(primes, 2) < h2o) return
-    nrow = size(primes, 1)
+    primes = error
+    ok = .false.
     if (nrow < 2) return
 
-    allocate(w_prime(nrow), c_prime(nrow), q_prime(nrow))
-    w_prime = primes(:, w)
-    c_prime = primes(:, co2)
-    q_prime = primes(:, h2o)
+    call CecTargetSlots(pair, slots, ntarget)
+    do k = 1, ntarget
+        slot = slots(k)
+        if (slot < firstGas .or. slot > lastGas) return
+        if (slot > ncol) return
+        !> A column the project declares is not necessarily a column this
+        !> period has: EliminateCorruptedVariables clears the flag for a period
+        !> whose values went out of range, and the detrending routines then
+        !> leave that column of Primes untouched. Reading it would be reading
+        !> whatever the freshly allocated array happened to contain, which
+        !> ieee_is_finite will often accept.
+        if (.not. E2Col(slot)%present) return
+    end do
 
-    if (active_setup%signal_strength > 0d0) then
-        if (present(signal_strength_co2)) &
-            call FilterCecSignalStrength(c_prime, signal_strength_co2, &
-                active_setup%signal_strength)
-        if (present(signal_strength_h2o)) &
-            call FilterCecSignalStrength(q_prime, signal_strength_h2o, &
-                active_setup%signal_strength)
+    ncompact = ntarget + 1
+    allocate(work(nrow, ncompact))
+    allocate(lcol(ncompact))
+    allocate(lstats)
+
+    work(:, 1) = rawset(:, w)
+    do k = 1, ntarget
+        work(:, k + 1) = rawset(:, slots(k))
+    end do
+
+    if (setup%signal_strength > 0d0 .and. nuser > 0) then
+        do k = 1, ntarget
+            sig_col = CecSignalColumnFor(slots(k))
+            if (sig_col <= 0 .or. sig_col > nuser) cycle
+            if (sig_col > size(userset, 2)) cycle
+            sig_is_rssi = CecSignalIsRssi(slots(k), sig_col)
+            call FilterCecSignalStrength(work(:, k + 1), userset(:, sig_col), &
+                setup%signal_strength, sig_is_rssi)
+        end do
     end if
 
-    call InterpolateShortCecGaps(w_prime, active_setup%max_gap_fill)
-    call InterpolateShortCecGaps(c_prime, active_setup%max_gap_fill)
-    call InterpolateShortCecGaps(q_prime, active_setup%max_gap_fill)
+    !> After the screen, not before it: the short gaps worth repairing are the
+    !> ones the screen has just made.
+    do k = 1, ncompact
+        call InterpolateShortCecGaps(work(:, k), setup%max_gap_fill)
+    end do
 
-    sum_fE = 0d0
-    sum_fT = 0d0
-    sum_fR = 0d0
-    sum_fP = 0d0
+    !> Forced present so Fluctuations writes the column whatever the period
+    !> held. A detrending routine leaves an absent column of Primes untouched,
+    !> and untouched here means whatever the freshly allocated array contained;
+    !> a column of error values is a period with nothing in it, which the
+    !> caller can see, and uninitialised memory is not.
+    lcol(1) = E2Col(w)
+    lcol(1)%present = .true.
+    do k = 1, ntarget
+        lcol(k + 1) = E2Col(slots(k))
+    end do
 
+    !> Only the block-average branch reads these, and it must read the mean of
+    !> the screened series - not the one BasicStats took before the screening.
+    lstats%Mean = error
+    do k = 1, ncompact
+        lstats%Mean(k) = CecMean(work(:, k))
+    end do
+
+    call Fluctuations(work, primes(:, 1:ncompact), nrow, ncompact, tconst, &
+        lstats, lcol)
+
+    n = 0
+    do k = 1, nrow
+        if (CecValueIsValid(primes(k, 1))) n = n + 1
+    end do
+    ok = n >= 2
+
+    deallocate(work, lcol, lstats)
+end subroutine BuildCecPrimes
+
+!***************************************************************************
+!
+! \brief       Octant statistics and component ratios for one pairing.
+! \author      Jonathan Muller
+! \note        `primes` is what BuildCecPrimes produced: column one is w', and
+!              column 1+k is target k, water first and carbon second.
+!***************************************************************************
+subroutine ExtractCecDescriptor(pair, primes, nrow, stationarity_carbon, &
+    stationarity_water, descriptor, setup)
+    type(CECResolvedPairType), intent(in) :: pair
+    integer, intent(in) :: nrow
+    real(kind = dbl), intent(in) :: primes(nrow, MaxNumCecTargets + 1)
+    integer, intent(in) :: stationarity_carbon
+    integer, intent(in) :: stationarity_water
+    type(CECDescriptorType), intent(out) :: descriptor
+    type(CECSetupType), intent(in) :: setup
+
+    integer :: i
+    integer :: k
+    integer :: ntarget
+    integer :: slots(MaxNumCecTargets)
+    integer :: iw
+    integer :: ic
+    real(kind = dbl) :: sum_O1(MaxNumCecTargets)
+    real(kind = dbl) :: sum_O2(MaxNumCecTargets)
+    real(kind = dbl) :: sigma_w
+    real(kind = dbl) :: sigma_q
+    real(kind = dbl) :: sigma_c
+    integer :: n_target_valid(MaxNumCecTargets)
+    logical :: target_ok(MaxNumCecTargets)
+    !> Six, because that is what StationarityTest divides a period into. The
+    !> two statistics are only comparable if they are built the same way.
+    integer, parameter :: ncecdiv = 6
+    !> Which octant each sample landed in: -1 not usable at all, 0 usable but
+    !> in neither, 1 and 2 the octants. Recorded here so the stability pass
+    !> below reuses this classification rather than rebuilding it, which would
+    !> be a second copy of the hyperbolic hole to keep in step.
+    integer, allocatable :: octant(:)
+    real(kind = dbl) :: f_whole_O1(MaxNumCecTargets)
+    real(kind = dbl) :: f_whole_O2(MaxNumCecTargets)
+    real(kind = dbl) :: ns(MaxNumCecTargets)
+    external :: CecTargetSlots
+
+    call ResetCecDescriptor(descriptor)
+    if (nrow < 2) return
+
+    call CecTargetSlots(pair, slots, ntarget)
+    descriptor%meth = pair%meth
+    descriptor%carbon_slot = pair%carbon_slot
+    descriptor%water_slot = pair%water_slot
+    descriptor%n_target = ntarget
+    do k = 1, ntarget
+        descriptor%target(k)%slot = slots(k)
+    end do
+
+    !> Columns of `primes`, not gas slots: water and carbon are the first two
+    !> targets by construction, so they sit right behind w'.
+    iw = 1 + cecTargetWater
+    ic = 1 + cecTargetCarbon
+
+    call CecStandardDeviations(primes(:, 1), primes(:, ic), primes(:, iw), &
+        sigma_w, sigma_c, sigma_q)
+
+    sum_O1 = 0d0
+    sum_O2 = 0d0
+    n_target_valid = 0
+    allocate(octant(nrow))
+    octant = -1
     do i = 1, nrow
-        if (.not. CecValueIsValid(w_prime(i))) cycle
-        if (.not. CecValueIsValid(c_prime(i))) cycle
-        if (.not. CecValueIsValid(q_prime(i))) cycle
+        !> The octants are defined on w', q' and c' alone, so those three decide
+        !> which samples the period has - exactly as they already decide the
+        !> sigmas above. An extra species contributes its own sums wherever it
+        !> has a value and is absent where it does not; it cannot take a point
+        !> out of an octant, so adding one to a pairing cannot move the water
+        !> and carbon it was added alongside.
+        if (.not. CecValueIsValid(primes(i, 1))) cycle
+        if (.not. CecValueIsValid(primes(i, iw))) cycle
+        if (.not. CecValueIsValid(primes(i, ic))) cycle
 
+        !> A point the hole rejects still counts here. The paper normalises the
+        !> sample fluxes by every sample, not by the ones that survived, and
+        !> the ratio is invariant to the choice anyway - it is the octant
+        !> fractions the hole is allowed to thin.
         descriptor%n_valid = descriptor%n_valid + 1
-        if (w_prime(i) > 0d0 .and. q_prime(i) > 0d0 .and. c_prime(i) > 0d0) then
-            if (.not. CecPassesHyperbolicThreshold(w_prime(i), q_prime(i), &
-                c_prime(i), active_setup%h)) cycle
+        do k = 1, ntarget
+            target_ok(k) = CecValueIsValid(primes(i, k + 1))
+            if (target_ok(k)) n_target_valid(k) = n_target_valid(k) + 1
+        end do
+
+        octant(i) = 0
+        if (primes(i, 1) > 0d0 .and. primes(i, iw) > 0d0 &
+            .and. primes(i, ic) > 0d0) then
+            if (.not. CecPassesHyperbolicThreshold(primes(i, 1), primes(i, iw), &
+                primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c)) cycle
             descriptor%n_O1 = descriptor%n_O1 + 1
-            sum_fE = sum_fE + w_prime(i) * q_prime(i)
-            sum_fR = sum_fR + w_prime(i) * c_prime(i)
-        else if (w_prime(i) > 0d0 .and. q_prime(i) > 0d0 .and. c_prime(i) < 0d0) then
-            if (.not. CecPassesHyperbolicThreshold(w_prime(i), q_prime(i), &
-                c_prime(i), active_setup%h)) cycle
+            octant(i) = 1
+            do k = 1, ntarget
+                if (.not. target_ok(k)) cycle
+                sum_O1(k) = sum_O1(k) + primes(i, 1) * primes(i, k + 1)
+            end do
+        else if (primes(i, 1) > 0d0 .and. primes(i, iw) > 0d0 &
+            .and. primes(i, ic) < 0d0) then
+            if (.not. CecPassesHyperbolicThreshold(primes(i, 1), primes(i, iw), &
+                primes(i, ic), setup%h, sigma_w, sigma_q, sigma_c)) cycle
             descriptor%n_O2 = descriptor%n_O2 + 1
-            sum_fT = sum_fT + w_prime(i) * q_prime(i)
-            sum_fP = sum_fP + w_prime(i) * c_prime(i)
+            octant(i) = 2
+            do k = 1, ntarget
+                if (.not. target_ok(k)) cycle
+                sum_O2(k) = sum_O2(k) + primes(i, 1) * primes(i, k + 1)
+            end do
         end if
     end do
 
+    !> Before the gates, with the fractions, and for the same reason: the gate
+    !> below may read it, and a rejected period should still report what it
+    !> was judged on.
+    f_whole_O1 = error
+    f_whole_O2 = error
+    do k = 1, ntarget
+        if (n_target_valid(k) <= 0) cycle
+        f_whole_O1(k) = sum_O1(k) / dble(n_target_valid(k))
+        f_whole_O2(k) = sum_O2(k) / dble(n_target_valid(k))
+    end do
+    call CecPartitionStability(primes, nrow, octant, ntarget, ncecdiv, &
+        f_whole_O1, f_whole_O2, ns)
+    do k = 1, ntarget
+        descriptor%target(k)%ns_r = ns(k)
+    end do
+    deallocate(octant)
+
+    !> Before the gates, not after them. The counts above are accumulated
+    !> whatever happens next, so computing the fractions below a `return` left
+    !> a rejected period publishing half its diagnostics: counts present,
+    !> fractions at error, and no way to divide one by the other because
+    !> n_valid is not written out. They describe the period either way, and a
+    !> period that did not partition is exactly when someone wants to see them.
+    !>
+    !> This changes no flux. Every arm below leaves the targets invalid, and
+    !> ApplyCecDescriptor gates on that, not on these.
+    if (descriptor%n_valid > 0) then
+        descriptor%frac_O1 = dble(descriptor%n_O1) / dble(descriptor%n_valid)
+        descriptor%frac_O2 = dble(descriptor%n_O2) / dble(descriptor%n_valid)
+    end if
+
     !> Zahn et al. retained periods with at least 90% instantaneous data.
-    if (dble(descriptor%n_valid) < active_setup%min_valid * dble(nrow)) return
-    if (active_setup%max_stationarity > 0d0) then
-        if (stationarity_co2 == ierror .or. stationarity_h2o == ierror) return
-        if (dble(stationarity_co2) > active_setup%max_stationarity &
-            .or. dble(stationarity_h2o) > active_setup%max_stationarity) return
+    if (dble(descriptor%n_valid) < setup%min_valid * dble(nrow)) return
+    if (setup%max_stationarity > 0d0) then
+        if (setup%stationarity_mode == cec_stat_ratio) then
+            !> The partition's own stability. An undefined statistic passes:
+            !> too few sub-intervals held both octants to form a mean, and
+            !> refusing a period on a number that could not be computed is the
+            !> fault this mode exists to correct. Sparse periods are the
+            !> occupancy gate's business, just below.
+            if (descriptor%target(cecTargetWater)%ns_r /= error) then
+                if (descriptor%target(cecTargetWater)%ns_r &
+                    > setup%max_stationarity) return
+            end if
+            if (descriptor%target(cecTargetCarbon)%ns_r /= error) then
+                if (descriptor%target(cecTargetCarbon)%ns_r &
+                    > setup%max_stationarity) return
+            end if
+        else
+            if (stationarity_carbon == ierror .or. stationarity_water == ierror) return
+            if (dble(stationarity_carbon) > setup%max_stationarity &
+                .or. dble(stationarity_water) > setup%max_stationarity) return
+        end if
     end if
 
-    descriptor%frac_O1 = dble(descriptor%n_O1) / dble(descriptor%n_valid)
-    descriptor%frac_O2 = dble(descriptor%n_O2) / dble(descriptor%n_valid)
-    if (descriptor%frac_O1 + descriptor%frac_O2 < active_setup%min_o1_o2) return
+    if (descriptor%frac_O1 + descriptor%frac_O2 < setup%min_o1_o2) return
 
-    f_E = sum_fE / dble(descriptor%n_valid)
-    f_T = sum_fT / dble(descriptor%n_valid)
-    f_R = sum_fR / dble(descriptor%n_valid)
-    f_P = sum_fP / dble(descriptor%n_valid)
-
-    if (f_T /= 0d0) descriptor%r_ET = f_E / f_T
-    if (f_P /= 0d0) descriptor%r_Fc = f_R / f_P
-
-    if (descriptor%frac_O1 < active_setup%min_octant .or. descriptor%r_ET == 0d0) then
-        descriptor%h2o_status = cec_all_stomatal
-        descriptor%h2o_valid = .true.
-    else if (descriptor%frac_O2 < active_setup%min_octant) then
-        descriptor%h2o_status = cec_all_nonstomatal
-        descriptor%h2o_valid = .true.
-    else if (descriptor%r_ET /= error) then
-        descriptor%h2o_status = cec_normal
-        descriptor%h2o_valid = .true.
-    end if
-
-    if (descriptor%r_Fc /= error .and. abs(descriptor%r_Fc + 1d0) < 0.05d0) then
-        descriptor%co2_status = cec_singular
-    else if (descriptor%frac_O1 < active_setup%min_octant .or. descriptor%r_Fc == 0d0) then
-        descriptor%co2_status = cec_all_stomatal
-        descriptor%co2_valid = .true.
-    else if (descriptor%frac_O2 < active_setup%min_octant) then
-        descriptor%co2_status = cec_all_nonstomatal
-        descriptor%co2_valid = .true.
-    else if (descriptor%r_Fc /= error) then
-        descriptor%co2_status = cec_normal
-        descriptor%co2_valid = .true.
-    end if
+    do k = 1, ntarget
+        !> Each target over its own samples. Water and carbon are the octants'
+        !> own two channels, so for them this is the pairing's count and nothing
+        !> changes; an extra species normalises by the samples it actually has.
+        !> The ratio - the only thing carried forward - is invariant to which of
+        !> the two counts is used, so this moves no flux.
+        !>
+        !> The completeness gate applies to an extra species as it does to the
+        !> pairing. A target present in a handful of samples has a ratio, and
+        !> that ratio means nothing; it now rejects itself instead of taking the
+        !> whole pairing down with it, which is what it used to do.
+        if (n_target_valid(k) <= 0) cycle
+        if (dble(n_target_valid(k)) < setup%min_valid * dble(nrow)) cycle
+        descriptor%target(k)%f_O1 = sum_O1(k) / dble(n_target_valid(k))
+        descriptor%target(k)%f_O2 = sum_O2(k) / dble(n_target_valid(k))
+        call ClassifyCecTarget(descriptor%target(k), descriptor%frac_O1, &
+            descriptor%frac_O2, setup)
+    end do
 end subroutine ExtractCecDescriptor
 
-subroutine DefaultCecSetup(setup)
-    type(CECSetupType), intent(out) :: setup
+!***************************************************************************
+!
+! \brief       Which of the five verdicts one target's sample fluxes support.
+! \author      Jonathan Muller
+! \note        The occupancy fallbacks are the pairing's, not the target's:
+!              they ask how many points the octants hold, which is the same
+!              question whichever scalar is being summed over them.
+!***************************************************************************
+subroutine ClassifyCecTarget(target, frac_O1, frac_O2, setup)
+    type(CECTargetType), intent(inout) :: target
+    real(kind = dbl), intent(in) :: frac_O1
+    real(kind = dbl), intent(in) :: frac_O2
+    type(CECSetupType), intent(in) :: setup
 
-    setup%h = 0d0
-    setup%min_o1_o2 = 0.20d0
-    setup%min_octant = 0.05d0
-    setup%min_valid = 0.90d0
-    setup%signal_strength = 70d0
-    setup%max_stationarity = 25d0
-    setup%max_gap_fill = 4
-end subroutine DefaultCecSetup
+    target%r = error
+    target%status = cec_rejected
+    target%valid = .false.
 
-subroutine FilterCecSignalStrength(values, signal_strength, threshold)
+    !> Too few points in one octant and its component is taken as negligible,
+    !> the whole flux going to the other. Zahn et al. Sec. 2.4.
+    if (frac_O1 < setup%min_octant) then
+        target%status = cec_all_stomatal
+        target%valid = .true.
+    else if (frac_O2 < setup%min_octant) then
+        target%status = cec_all_nonstomatal
+        target%valid = .true.
+    else if (target%f_O2 == 0d0) then
+        !> Nothing in the stomatal octant to divide by: the whole flux is the
+        !> other component, which is what a ratio of infinity would have said.
+        target%status = cec_all_nonstomatal
+        target%valid = .true.
+    else if (target%f_O1 == 0d0) then
+        !> And the mirror of it. Reached through the ratio this would be
+        !> total/(1 + 1/0), which is the right answer arrived at through a
+        !> division by zero.
+        target%status = cec_all_stomatal
+        target%valid = .true.
+    else
+        target%r = target%f_O1 / target%f_O2
+        !> Exactly -1 is a division by zero however wide the band is, so it is
+        !> rejected even when the guard below is switched off. Unreachable in
+        !> practice - the two sums would have to cancel to the last bit - but
+        !> an infinity in an output column is not a thing to leave to luck.
+        if (target%r == -1d0) then
+            target%status = cec_singular
+            return
+        end if
+        !> Only opposite-signed components can cancel, and only their ratio can
+        !> approach -1. Two sinks, or two sources, put r on the positive side
+        !> where there is no singularity to fall into - which is why the water
+        !> partition never suffers this, and why a soil that takes up carbonyl
+        !> sulfide alongside the canopy does not either.
+        if (target%r < 0d0 .and. CecIsSingular(target%r, setup%singular_band)) then
+            target%status = cec_singular
+        else
+            target%status = cec_normal
+            target%valid = .true.
+        end if
+    end if
+end subroutine ClassifyCecTarget
+
+!***************************************************************************
+!
+! \brief       Turn the ratios into fluxes, against the authoritative totals.
+! \author      Jonathan Muller
+! \note        `totals` is indexed like the descriptor's targets. It comes from
+!              Flux3, so it carries every correction the ratios do not - the
+!              density and frequency-response terms the paper says must be in
+!              the total and cannot be in an instantaneous fluctuation.
+!***************************************************************************
+subroutine ApplyCecDescriptor(descriptor, totals, errors, setup, flux)
+    type(CECDescriptorType), intent(in) :: descriptor
+    real(kind = dbl), intent(in) :: totals(MaxNumCecTargets)
+    !> Random error of each total, from Finkelstein & Sims. error where the
+    !> run did not estimate one, which is how the test says "no opinion".
+    real(kind = dbl), intent(in) :: errors(MaxNumCecTargets)
+    type(CECSetupType), intent(in) :: setup
+    type(CECFluxType), intent(out) :: flux
+
+    integer :: k
+    real(kind = dbl) :: total
+
+    call ResetCecFlux(flux)
+    if (descriptor%meth == 0) return
+
+    !> Is there a flux here at all?
+    !>
+    !> Pairing-level, and judged on the water and the carbon together, because
+    !> that is what the octants are built from: the pool is the moist
+    !> ejections and the split is the sign of c'. If the water flux is not
+    !> resolved then "moist ejection" is not selecting surface-influenced air;
+    !> if the carbon flux is not resolved then the split is a coin toss. On the
+    !> record this was written for, night |r(w,CO2)| ran at 0.079 against 0.336
+    !> by day - below one sigma, and the moist ejections duly split near evenly.
+    !> The partition would still return two numbers that sum to the total. They
+    !> would mean nothing.
+    if (CecPairingIsUnresolved(totals, errors, setup)) then
+        do k = 1, descriptor%n_target
+            if (.not. CecTargetIsWanted(k, descriptor%meth)) cycle
+            flux%comp(k)%total = totals(k)
+            !> The paper's own verdict stands wherever it reached one. A period
+            !> the occupancy gate or the singularity band already refused was
+            !> not lost to this test, and saying so keeps the count of what
+            !> this test costs honest. What is relabelled is exactly the
+            !> population it is about: the periods the published method would
+            !> have gone on to partition.
+            flux%comp(k)%status = descriptor%target(k)%status
+            if (descriptor%target(k)%valid) &
+                flux%comp(k)%status = cec_insignificant
+        end do
+        return
+    end if
+
+    do k = 1, descriptor%n_target
+        if (.not. CecTargetIsWanted(k, descriptor%meth)) cycle
+
+        total = totals(k)
+        flux%comp(k)%total = total
+        flux%comp(k)%status = descriptor%target(k)%status
+        if (.not. descriptor%target(k)%valid) cycle
+        if (total == error) cycle
+
+        !> And each extra species on its own account. A carbonyl sulfide flux
+        !> lost in its own noise should reject itself, not the pairing that
+        !> carried it - the same rule the completeness gate follows.
+        if (k /= cecTargetWater .and. k /= cecTargetCarbon) then
+            if (CecFluxIsUnresolved(total, errors(k), setup)) then
+                flux%comp(k)%status = cec_insignificant
+                cycle
+            end if
+        end if
+
+        select case (descriptor%target(k)%status)
+            case (cec_normal)
+                !> Guarded here and not above: only this branch divides, and
+                !> only the division can turn a component the wrong way round.
+                if (CecTotalContradictsOctants(descriptor%target(k), total)) then
+                    flux%comp(k)%status = cec_wrong_sign
+                    cycle
+                end if
+                flux%comp(k)%nonstomatal = total / (1d0 + 1d0 / descriptor%target(k)%r)
+                flux%comp(k)%stomatal = total / (1d0 + descriptor%target(k)%r)
+            case (cec_all_stomatal)
+                flux%comp(k)%nonstomatal = 0d0
+                flux%comp(k)%stomatal = total
+            case (cec_all_nonstomatal)
+                flux%comp(k)%nonstomatal = total
+                flux%comp(k)%stomatal = 0d0
+        end select
+    end do
+
+    if (flux%comp(cecTargetWater)%nonstomatal /= error &
+        .and. flux%comp(cecTargetWater)%stomatal /= error) then
+        flux%E_cec_ET = flux%comp(cecTargetWater)%nonstomatal * h2o_to_ET
+        flux%Tr_cec_ET = flux%comp(cecTargetWater)%stomatal * h2o_to_ET
+    end if
+end subroutine ApplyCecDescriptor
+
+!***************************************************************************
+!
+! \brief       Is this flux distinguishable from zero?
+! \author      Jonathan Muller
+! \note        Finkelstein & Sims (2001) give the random error of a covariance
+!              from the period's own integral timescale, and
+!              |F| / RE ~ |r| * sqrt(N_indep / 2) - so this is the significance
+!              of the w-scalar correlation, with the number of independent
+!              samples measured rather than guessed at.
+!
+!              An absent error is no opinion, not a failure. The run may simply
+!              not estimate one: ru_meth = 0 leaves rand_uncer at error for
+!              every gas, and refusing every period on that basis would turn a
+!              switched-off diagnostic into a switched-off partition. The
+!              engine warns about that combination instead.
+!
+!***************************************************************************
+logical function CecFluxIsUnresolved(total, err, setup)
+    real(kind = dbl), intent(in) :: total
+    real(kind = dbl), intent(in) :: err
+    type(CECSetupType), intent(in) :: setup
+
+    CecFluxIsUnresolved = .false.
+    if (setup%min_flux_sigma <= 0d0) return
+    if (.not. CecValueIsValid(err)) return
+    if (err <= 0d0) return
+    if (.not. CecValueIsValid(total)) return
+
+    CecFluxIsUnresolved = dabs(total) < setup%min_flux_sigma * err
+end function CecFluxIsUnresolved
+
+!> The pairing's own two channels, both of which the octants depend on.
+logical function CecPairingIsUnresolved(totals, errors, setup)
+    real(kind = dbl), intent(in) :: totals(MaxNumCecTargets)
+    real(kind = dbl), intent(in) :: errors(MaxNumCecTargets)
+    type(CECSetupType), intent(in) :: setup
+
+    CecPairingIsUnresolved = &
+        CecFluxIsUnresolved(totals(cecTargetWater), errors(cecTargetWater), setup) &
+        .or. CecFluxIsUnresolved(totals(cecTargetCarbon), errors(cecTargetCarbon), setup)
+end function CecPairingIsUnresolved
+
+!> Water on 1 and 2, carbon on 1 and 3, extras whenever the pairing runs at
+!> all: an extra species needs the octants, not the choice of which of the two
+!> gases that define them is itself reported.
+logical function CecTargetIsWanted(k, meth)
+    integer, intent(in) :: k
+    integer, intent(in) :: meth
+
+    select case (k)
+        case (cecTargetWater)
+            CecTargetIsWanted = meth == 1 .or. meth == 2
+        case (cecTargetCarbon)
+            CecTargetIsWanted = meth == 1 .or. meth == 3
+        case default
+            CecTargetIsWanted = .true.
+    end select
+end function CecTargetIsWanted
+
+!***************************************************************************
+!
+! \brief       Does the authoritative total disagree with the octant sums?
+! \author      Jonathan Muller
+! \note        Substituting Eq. 10 into Eq. 12 and cancelling gives the two
+!              components as
+!
+!                nonstomatal = total * f_O1 / (f_O1 + f_O2)
+!                stomatal    = total * f_O2 / (f_O1 + f_O2)
+!
+!              so each carries the sign of its own sample flux only when the
+!              total points the same way as the two of them together. When it
+!              does not, the arithmetic still returns numbers that sum to the
+!              total - and they are a negative respiration beside a positive
+!              photosynthesis, or a negative transpiration.
+!
+!              One condition covers every species and both regimes. Water is
+!              the case where both sample fluxes are positive by construction,
+!              w' and q' being positive in both octants, so a downward total -
+!              dewfall, condensation on the canopy - is caught. Carbon is the
+!              case where they have opposite signs and can cancel, so it is
+!              caught only when they cancel the wrong way, which is a real
+!              observation about a period rather than a property of the gas.
+!              Carbonyl sulfide is whichever of the two its soil makes it: a
+!              soil source against canopy uptake behaves like carbon, a soil
+!              that takes it up alongside the canopy behaves like water.
+!
+!              The ratio is still reported. What it is telling you when this
+!              fires is that the octants and the corrected total describe
+!              different half-hours, and that is worth reading.
+!
+!              Applied to the ratio branch alone. Where one octant holds too few
+!              points the paper hands the whole flux to the other component, and
+!              that branch divides by nothing and leaves the total's sign on the
+!              one component it fills - there is no inversion for this to catch,
+!              so vetoing it there would only discard periods, the nighttime
+!              ones above all.
+!***************************************************************************
+logical function CecTotalContradictsOctants(target, total)
+    type(CECTargetType), intent(in) :: target
+    real(kind = dbl), intent(in) :: total
+
+    real(kind = dbl) :: sampled
+
+    CecTotalContradictsOctants = .false.
+    if (total == 0d0) return
+    if (.not. CecValueIsValid(target%f_O1)) return
+    if (.not. CecValueIsValid(target%f_O2)) return
+
+    sampled = target%f_O1 + target%f_O2
+    if (sampled == 0d0) return
+
+    CecTotalContradictsOctants = sampled * total < 0d0
+end function CecTotalContradictsOctants
+
+!***************************************************************************
+!
+! \brief       Delete the samples an analyser's own diagnostic condemns.
+! \author      Jonathan Muller
+! \note        The threshold is one number read in two directions. RSSI is a
+!              received-signal strength, so low is dirty; the AGC of a
+!              pre-5.3.0 LI-7500 is the gain the instrument had to apply to see
+!              through its windows, so HIGH is dirty. Both are conventionally
+!              compared against 70, and this used to test "below threshold"
+!              whichever it was - so on an old open-path analyser it kept the
+!              dirtiest samples and threw away the cleanest.
+!***************************************************************************
+subroutine FilterCecSignalStrength(values, signal_strength, threshold, is_rssi)
     real(kind = dbl), intent(inout) :: values(:)
     real(kind = dbl), intent(in) :: signal_strength(:)
     real(kind = dbl), intent(in) :: threshold
+    logical, intent(in) :: is_rssi
 
     integer :: i
     integer :: n
 
     n = min(size(values), size(signal_strength))
     do i = 1, n
-        if (CecValueIsValid(signal_strength(i))) then
+        if (.not. CecValueIsValid(signal_strength(i))) cycle
+        if (is_rssi) then
             if (signal_strength(i) < threshold) values(i) = error
+        else
+            if (signal_strength(i) > threshold) values(i) = error
         end if
     end do
 end subroutine FilterCecSignalStrength
 
-logical function CecPassesHyperbolicThreshold(w_prime, q_prime, c_prime, h)
+!> Standard deviations of the three conditioning series over the samples all
+!> three of them have. They normalise the hyperbolic hole below, so they must
+!> come from the same screened, gap-filled arrays the octants are built from -
+!> not from Stats%StDev, which is computed on the unscreened E2Primes.
+subroutine CecStandardDeviations(w_prime, c_prime, q_prime, sigma_w, sigma_c, sigma_q)
+    real(kind = dbl), intent(in) :: w_prime(:)
+    real(kind = dbl), intent(in) :: c_prime(:)
+    real(kind = dbl), intent(in) :: q_prime(:)
+    real(kind = dbl), intent(out) :: sigma_w
+    real(kind = dbl), intent(out) :: sigma_c
+    real(kind = dbl), intent(out) :: sigma_q
+
+    integer :: i
+    integer :: n
+    real(kind = dbl) :: sw, sc, sq
+    real(kind = dbl) :: sw2, sc2, sq2
+
+    sigma_w = 0d0
+    sigma_c = 0d0
+    sigma_q = 0d0
+    n = 0
+    sw = 0d0
+    sc = 0d0
+    sq = 0d0
+    sw2 = 0d0
+    sc2 = 0d0
+    sq2 = 0d0
+
+    do i = 1, min(size(w_prime), min(size(c_prime), size(q_prime)))
+        if (.not. CecValueIsValid(w_prime(i))) cycle
+        if (.not. CecValueIsValid(c_prime(i))) cycle
+        if (.not. CecValueIsValid(q_prime(i))) cycle
+        n = n + 1
+        sw = sw + w_prime(i)
+        sw2 = sw2 + w_prime(i)**2
+        sc = sc + c_prime(i)
+        sc2 = sc2 + c_prime(i)**2
+        sq = sq + q_prime(i)
+        sq2 = sq2 + q_prime(i)**2
+    end do
+    if (n < 2) return
+
+    sigma_w = dsqrt(max(0d0, sw2 / dble(n) - (sw / dble(n))**2))
+    sigma_c = dsqrt(max(0d0, sc2 / dble(n) - (sc / dble(n))**2))
+    sigma_q = dsqrt(max(0d0, sq2 / dble(n) - (sq / dble(n))**2))
+end subroutine CecStandardDeviations
+
+real(kind = dbl) function CecMean(values)
+    real(kind = dbl), intent(in) :: values(:)
+
+    integer :: i
+    integer :: n
+    real(kind = dbl) :: total
+
+    CecMean = error
+    n = 0
+    total = 0d0
+    do i = 1, size(values)
+        if (.not. CecValueIsValid(values(i))) cycle
+        n = n + 1
+        total = total + values(i)
+    end do
+    if (n > 0) CecMean = total / dble(n)
+end function CecMean
+
+!***************************************************************************
+!
+! \brief       The hyperbolic hole of Thomas et al. (2008), Eqs. 7a/7b.
+! \author      Jonathan Muller
+! \note        Leave out the events nearest the origin, whose sign is noise
+!              rather than a surface signature: without it, instrument noise
+!              around c' = 0 populates both octants about equally, and the
+!              carbon ratio walks straight into the r ~ -1 singularity.
+!
+!              Offered as a usable control, not as a fix for weak turbulence.
+!              Zahn et al. tested a threshold for CEC and reported the results
+!              "not sensitive to the choice of H" at their four sites, and ran
+!              with H = 0, which is still the default here. Note also that the
+!              threshold scales with the sigmas, so in weak turbulence it
+!              scales down with them rather than holding an absolute floor.
+!
+!              H is dimensionless and scales the instantaneous flux against
+!              sigma_w*sigma_s, which is what lets one value mean the same thing
+!              at every site. It used to be compared against the raw product, so
+!              what it meant depended on whether the gas was carried in umol/mol
+!              or mmol/m3, and no single number was usable anywhere.
+!
+!              The hole belongs to the PAIR, not to the scalar being
+!              accumulated. Testing each scalar against its own sigma would make
+!              the octants depend on which scalar was being summed, and the
+!              property that lets an arbitrary species be partitioned by these
+!              octants would be gone.
+!***************************************************************************
+logical function CecPassesHyperbolicThreshold(w_prime, q_prime, c_prime, h, &
+    sigma_w, sigma_q, sigma_c)
     real(kind = dbl), intent(in) :: w_prime
     real(kind = dbl), intent(in) :: q_prime
     real(kind = dbl), intent(in) :: c_prime
     real(kind = dbl), intent(in) :: h
+    real(kind = dbl), intent(in) :: sigma_w
+    real(kind = dbl), intent(in) :: sigma_q
+    real(kind = dbl), intent(in) :: sigma_c
 
     if (h <= 0d0) then
         CecPassesHyperbolicThreshold = .true.
     else
         CecPassesHyperbolicThreshold = &
-            abs(w_prime * q_prime) >= h .and. abs(w_prime * c_prime) >= h
+            abs(w_prime * q_prime) >= h * sigma_w * sigma_q .and. &
+            abs(w_prime * c_prime) >= h * sigma_w * sigma_c
     end if
 end function CecPassesHyperbolicThreshold
 
-subroutine ApplyCecDescriptor(descriptor, H2O_total, Fc_total, do_cec, flux)
-    type(CECDescriptorType), intent(in) :: descriptor
-    real(kind = dbl), intent(in) :: H2O_total
-    real(kind = dbl), intent(in) :: Fc_total
-    integer, intent(in) :: do_cec
-    type(CECFluxType), intent(out) :: flux
+!***************************************************************************
+!
+! \brief       How much the partition itself moves through the period.
+! \author      Jonathan Muller
+! \note        Foken's test asks whether the total covariance is steady. This
+!              asks whether the SPLIT between the two octants is - which is
+!              what the partition multiplies into the total, and the only
+!              thing about a period the ratio depends on.
+!
+!              Two departures from Foken, both deliberate and both necessary.
+!
+!              First, each sixth is re-centred on its own mean, exactly as
+!              StationarityTest re-centres each of its six. That is not a
+!              detail: `primes` already carries whole-period fluctuations, so
+!              slicing them without re-centring gives sub-interval means that
+!              average back to the whole-period value identically, and the
+!              statistic measures nothing at all. A first version of this did
+!              precisely that and read 70000% on periods Foken called
+!              stationary, because all that survived was the nonlinearity of a
+!              ratio of noisy sixths.
+!
+!              Second, the denominator. Foken divides by the covariance whose
+!              stationarity he is testing, so his statistic runs away as that
+!              covariance approaches zero - which at night, for carbon, it
+!              does, and that is what rejects half a day of perfectly well
+!              sampled partitions. Here both the whole-period and the
+!              sub-interval split are normalised by |f_O1| + |f_O2|, the size
+!              of the partition itself, which cannot vanish while the octants
+!              hold anything. A trend that scales both octants together moves
+!              neither split and cancels, which is the robustness the ratio
+!              was supposed to buy.
+!
+!              The result is bounded by 200 and reads as the percentage of its
+!              own range by which the split moved. Undefined when fewer than
+!              three sixths held enough to centre on.
+!
+!***************************************************************************
+subroutine CecPartitionStability(primes, nrow, octant, ntarget, ndiv, &
+    f_O1, f_O2, ns)
+    integer, intent(in) :: nrow
+    real(kind = dbl), intent(in) :: primes(nrow, MaxNumCecTargets + 1)
+    integer, intent(in) :: octant(nrow)
+    integer, intent(in) :: ntarget
+    integer, intent(in) :: ndiv
+    real(kind = dbl), intent(in) :: f_O1(MaxNumCecTargets)
+    real(kind = dbl), intent(in) :: f_O2(MaxNumCecTargets)
+    real(kind = dbl), intent(out) :: ns(MaxNumCecTargets)
 
-    call ResetCecFlux(flux)
-    flux%r_ET_cec = descriptor%r_ET
-    flux%r_Fc_cec = descriptor%r_Fc
+    integer :: i
+    integer :: j
+    integer :: k
+    integer :: sub
+    integer :: nsub
+    integer :: n_all(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: sw(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: ss(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: c1(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: c2(ndiv, MaxNumCecTargets)
+    real(kind = dbl) :: wbar
+    real(kind = dbl) :: sbar
+    real(kind = dbl) :: a1
+    real(kind = dbl) :: a2
+    real(kind = dbl) :: denom
+    real(kind = dbl) :: split_whole
+    real(kind = dbl) :: split_sub
 
-    if ((do_cec == 1 .or. do_cec == 2) .and. descriptor%h2o_valid &
-        .and. H2O_total /= error) then
-        select case (descriptor%h2o_status)
-            case (cec_normal)
-                flux%E_cec = H2O_total / (1d0 + 1d0 / descriptor%r_ET)
-                flux%Tr_cec = H2O_total / (1d0 + descriptor%r_ET)
-            case (cec_all_stomatal)
-                flux%E_cec = 0d0
-                flux%Tr_cec = H2O_total
-            case (cec_all_nonstomatal)
-                flux%E_cec = H2O_total
-                flux%Tr_cec = 0d0
-        end select
-        if (flux%E_cec /= error .and. flux%Tr_cec /= error) then
-            flux%E_cec_ET = flux%E_cec * h2o_to_ET
-            flux%Tr_cec_ET = flux%Tr_cec * h2o_to_ET
-        end if
+    ns = error
+    if (nrow < 2 .or. ndiv < 1) return
+
+    !> Pass one: each sixth's own mean, over every sample it can use - not
+    !> only the octant members, whose asymmetry is the signal and must not be
+    !> centred away.
+    n_all = 0
+    sw = 0d0
+    ss = 0d0
+    do i = 1, nrow
+        if (octant(i) < 0) cycle
+        sub = 1 + ((i - 1) * ndiv) / nrow
+        if (sub < 1) sub = 1
+        if (sub > ndiv) sub = ndiv
+        do j = 1, ntarget
+            if (.not. CecValueIsValid(primes(i, j + 1))) cycle
+            n_all(sub, j) = n_all(sub, j) + 1
+            sw(sub, j) = sw(sub, j) + primes(i, 1)
+            ss(sub, j) = ss(sub, j) + primes(i, j + 1)
+        end do
+    end do
+
+    !> Pass two: the conditional covariances of each sixth about that mean.
+    c1 = 0d0
+    c2 = 0d0
+    do i = 1, nrow
+        if (octant(i) <= 0) cycle
+        sub = 1 + ((i - 1) * ndiv) / nrow
+        if (sub < 1) sub = 1
+        if (sub > ndiv) sub = ndiv
+        do j = 1, ntarget
+            if (.not. CecValueIsValid(primes(i, j + 1))) cycle
+            if (n_all(sub, j) < 2) cycle
+            wbar = sw(sub, j) / dble(n_all(sub, j))
+            sbar = ss(sub, j) / dble(n_all(sub, j))
+            if (octant(i) == 1) then
+                c1(sub, j) = c1(sub, j) &
+                    + (primes(i, 1) - wbar) * (primes(i, j + 1) - sbar)
+            else
+                c2(sub, j) = c2(sub, j) &
+                    + (primes(i, 1) - wbar) * (primes(i, j + 1) - sbar)
+            end if
+        end do
+    end do
+
+    do j = 1, ntarget
+        if (.not. CecValueIsValid(f_O1(j))) cycle
+        if (.not. CecValueIsValid(f_O2(j))) cycle
+        denom = dabs(f_O1(j)) + dabs(f_O2(j))
+        if (denom <= 0d0) cycle
+        split_whole = f_O1(j) / denom
+
+        a1 = 0d0
+        a2 = 0d0
+        nsub = 0
+        do k = 1, ndiv
+            if (n_all(k, j) < 2) cycle
+            nsub = nsub + 1
+            a1 = a1 + c1(k, j) / dble(n_all(k, j))
+            a2 = a2 + c2(k, j) / dble(n_all(k, j))
+        end do
+        !> A mean of two sixths is not a measure of anything, and refusing a
+        !> period on a number that could not be computed is the fault this
+        !> whole mode exists to correct. The caller reads error as no opinion.
+        if (nsub < 3) cycle
+        a1 = a1 / dble(nsub)
+        a2 = a2 / dble(nsub)
+
+        denom = dabs(a1) + dabs(a2)
+        if (denom <= 0d0) cycle
+        split_sub = a1 / denom
+
+        ns(j) = dabs(split_whole - split_sub) * 1d2
+    end do
+end subroutine CecPartitionStability
+
+
+!> Two components nearly cancelling puts 1 + r on top of zero, so the partition
+!> blows up on a total that is itself near zero. Zahn et al. reject the band
+!> -1.2 < r < -0.8 and say the width is dataset-dependent, hence the setting.
+logical function CecIsSingular(r, band)
+    real(kind = dbl), intent(in) :: r
+    real(kind = dbl), intent(in) :: band
+
+    if (band <= 0d0) then
+        CecIsSingular = .false.
+    else
+        CecIsSingular = abs(r + 1d0) < band
     end if
-
-    if ((do_cec == 1 .or. do_cec == 3) .and. Fc_total /= error) &
-        flux%NEE_cec = Fc_total
-
-    if ((do_cec == 1 .or. do_cec == 3) .and. descriptor%co2_valid &
-        .and. Fc_total /= error) then
-        select case (descriptor%co2_status)
-            case (cec_normal)
-                flux%Reco_cec = Fc_total / (1d0 + 1d0 / descriptor%r_Fc)
-                flux%P_cec = Fc_total / (1d0 + descriptor%r_Fc)
-            case (cec_all_stomatal)
-                flux%Reco_cec = 0d0
-                flux%P_cec = Fc_total
-            case (cec_all_nonstomatal)
-                flux%Reco_cec = Fc_total
-                flux%P_cec = 0d0
-        end select
-        flux%GPP_cec = flux%P_cec
-    end if
-
-    if (do_cec == 1) then
-        flux%ok = descriptor%h2o_valid .and. descriptor%co2_valid
-    else if (do_cec == 2) then
-        flux%ok = descriptor%h2o_valid
-    else if (do_cec == 3) then
-        flux%ok = descriptor%co2_valid
-    end if
-end subroutine ApplyCecDescriptor
+end function CecIsSingular
 
 subroutine InterpolateShortCecGaps(values, max_gap)
     real(kind = dbl), intent(inout) :: values(:)

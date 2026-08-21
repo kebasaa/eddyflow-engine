@@ -42,8 +42,10 @@ subroutine DefineUsedVariables(LocCol)
     type(ColType), intent(inout) :: LocCol(MaxNumCol)
     !> local variables
     integer :: i
+    integer :: slot
     integer :: selected_ts_col
     logical :: ts_found
+    integer, external :: GasSlotFromDynMDTag
 
 
     NumUserVar = 0
@@ -65,20 +67,97 @@ subroutine DefineUsedVariables(LocCol)
     end do
 
     LocCol%useit = .false.
+
+    !> Re-resolve the diagnostic slots now that the metadata is known.
+    !>
+    !> ApplyDiagnosticRecordColumns runs from ReadIniFile, before any metadata
+    !> is read, so it cannot tell that a record names a column the metadata
+    !> ignores - and it is last-writer-wins, so such a record can take the slot
+    !> from a usable one. Redoing the mapping here, with the ignored records
+    !> left out, is what makes the record that survives the one that can
+    !> actually be read.
+    !>
+    !> Clearing first matters: a slot whose only record names an ignored column
+    !> has to come back empty, not keep what the pre-metadata pass left in it,
+    !> or the presence test below reports a diagnostic the file does not carry.
+    !>
+    !> Records only. Express mode fills these slots directly, with none behind
+    !> them, and must not be undone here.
+    if (EddyFlowProj%diag_num > 0) then
+        do i = E2NumVar + diag72, E2NumVar + diagAnem
+            if (.not. ColumnIsSelectable(EddyFlowProj%Col(i))) &
+                EddyFlowProj%Col(i) = nint(error)
+        end do
+        do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+            if (.not. ColumnIsSelectable(EddyFlowProj%diag(i)%col)) cycle
+            !> And the column has to still be the diagnostic the record says it
+            !> is. Re-declare a diagnostic column as something else and the
+            !> record naming it survives the edit; honoured, it took the slot
+            !> from the column that is one, and the engine decoded whatever the
+            !> column now holds as a diagnostic bitfield.
+            if (.not. RecordStillNamesIt(EddyFlowProj%diag(i))) cycle
+            select case (trim(adjustl(EddyFlowProj%diag(i)%var)))
+                case ('diag_72')
+                    EddyFlowProj%Col(E2NumVar + diag72)   = EddyFlowProj%diag(i)%col
+                case ('diag_75')
+                    EddyFlowProj%Col(E2NumVar + diag75)   = EddyFlowProj%diag(i)%col
+                case ('diag_77')
+                    EddyFlowProj%Col(E2NumVar + diag77)   = EddyFlowProj%diag(i)%col
+                case ('diag_anem')
+                    EddyFlowProj%Col(E2NumVar + diagAnem) = EddyFlowProj%diag(i)%col
+            end select
+        end do
+    end if
+
     !> Information in EddyFlow project file (user explicitly selects which
     !> variables are to be used)
-    where (EddyFlowProj%Col(co2:E2NumVar) > 0)
-        LocCol(EddyFlowProj%Col(co2:E2NumVar))%useit = .true.
-    endwhere
+    !>
+    !> Through ColumnIsSelectable, like the record loops below: the slot array
+    !> is filled from those same records before any metadata exists, so a slot
+    !> can hold a column the metadata turns out to ignore. That happens when
+    !> the ignored record is the one that wins the last-writer-wins fight in
+    !> ApplyDiagnosticRecordColumns - guarding only the loops would leave this
+    !> path marking the column and the run still dying on it.
+    do i = firstGas, E2NumVar
+        if (ColumnIsSelectable(EddyFlowProj%Col(i))) &
+            LocCol(EddyFlowProj%Col(i))%useit = .true.
+    end do
 
-    where (EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem) > 0)
-        LocCol(EddyFlowProj%Col(E2NumVar + diag72 :E2NumVar + diagAnem))%useit = .true.
-    endwhere
+    do i = E2NumVar + diag72, E2NumVar + diagAnem
+        if (ColumnIsSelectable(EddyFlowProj%Col(i))) &
+            LocCol(EddyFlowProj%Col(i))%useit = .true.
+    end do
 
-    !> If gas4 column was selected, change its name to 'n2o', to be treated
-    !> as such. The column label still holds the actual variable name
-    !> as selected/entered in the Metadat File Editor
-    if (EddyFlowProj%Col(gas4) > 0) LocCol(EddyFlowProj%Col(gas4))%var = 'n2o'
+    !> Columns named by gas/cell/diagnostic records must be marked here too.
+    !> This runs while LocCol is still indexed by .metadata column number, and
+    !> unused columns are dropped straight afterwards - a record column left
+    !> unmarked never reaches DefineE2Set, so the record silently selects
+    !> nothing.
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (ColumnIsSelectable(EddyFlowProj%gas(i)%col)) &
+            LocCol(EddyFlowProj%gas(i)%col)%useit = .true.
+    end do
+    !> Nested rather than one .and. chain: gfortran warns that a function in a
+    !> compound condition might not be evaluated.
+    do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+        if (ColumnIsSelectable(EddyFlowProj%cell(i)%col)) then
+            if (RecordStillNamesIt(EddyFlowProj%cell(i))) &
+                LocCol(EddyFlowProj%cell(i)%col)%useit = .true.
+        end if
+    end do
+    do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+        if (ColumnIsSelectable(EddyFlowProj%diag(i)%col)) then
+            if (RecordStillNamesIt(EddyFlowProj%diag(i))) &
+                LocCol(EddyFlowProj%diag(i)%col)%useit = .true.
+        end if
+    end do
+
+    !> The fourth gas's column used to be renamed to 'n2o' here so the rest of
+    !> the engine would treat it as that species. It was gated on col_gas4,
+    !> which is retired, so the rename could never fire - and a record names
+    !> its own species, which is what ApplyGasRecords resolves. Renaming a
+    !> column to n2o regardless of what it measured is the assumption this
+    !> whole effort removes.
 
     !> Diagnostic flags
     NumDiag = 0
@@ -115,7 +194,7 @@ subroutine DefineUsedVariables(LocCol)
 
     !> Loop on the actual number of columns and determine
     !> whether to use them or not
-    Gas4CalRefCol = 0
+    GasCalRefCol = 0
     do i = 1, NumCol
         !> Variables from the master_sonic are to be used
         if (LocCol(i)%instr%master_sonic) then
@@ -128,8 +207,17 @@ subroutine DefineUsedVariables(LocCol)
         if (IsCustomOutputColumn(LocCol(i)) .and. NumUserVar < MaxUserVar - 1) &
             NumUserVar = NumUserVar + 1
 
-        !> Detect whether an 4th gas calibration data column is available
-        if (index(LocCol(i)%var, 'cal-ref') /= 0) Gas4CalRefCol = i
+        !> Detect whether a gas calibration data column is available.
+        !>
+        !> `<gas>_cal-ref` names the gas it calibrates, resolved the same way
+        !> the drift subsystem resolves `<gas>_ref`. A bare `cal-ref` with no
+        !> prefix keeps calibrating the fourth slot, which is what every
+        !> metadata file written before this says and means.
+        if (index(LocCol(i)%var, 'cal-ref') /= 0) then
+            slot = GasSlotFromDynMDTag(LocCol(i)%var, '_cal-ref')
+            if (slot <= 0) slot = histGas4
+            GasCalRefCol(slot) = i
+        end if
     end do
 
     !> If user selects a different temperature reading
@@ -165,6 +253,51 @@ subroutine DefineUsedVariables(LocCol)
 
 contains
 
+!> Whether the metadata permits a column to be selected at all.
+!>
+!> `ignore` and `not_numeric` are how the metadata says a column holds nothing
+!> usable, and the import drops such columns outright - so a project record
+!> naming one could never resolve to data whatever we do here. Honouring that
+!> is what lets a record left behind by an edit be simply inert, instead of
+!> marking a column that MetadataFileValidation then rejects and the run dies
+!> on. The metadata is the authority on what a column is; the project only
+!> says which columns it wants.
+!>
+!> Reads LocCol from the host rather than taking it again, so there is one
+!> array in play and no chance of asking about a different one.
+logical function ColumnIsSelectable(col_num)
+    integer, intent(in) :: col_num
+    character(32) :: var
+
+    ColumnIsSelectable = .false.
+    if (col_num < 1 .or. col_num > MaxNumCol) return
+
+    var = LocCol(col_num)%var
+    call lowercase(var)
+    select case (trim(adjustl(var)))
+        case ('ignore', 'not_numeric')
+            return
+        case default
+            ColumnIsSelectable = .true.
+    end select
+end function ColumnIsSelectable
+
+!> Whether \a rec still describes the column it names.
+!>
+!> Reads LocCol from the host, like ColumnIsSelectable above and for the same
+!> reason: there is one array in play and no chance of asking about a different
+!> one. The bounds check is ColumnIsSelectable's, repeated here so this can be
+!> called on its own.
+logical function RecordStillNamesIt(rec)
+    type(MeasRecordType), intent(in) :: rec
+    logical, external :: RecordNamesColumn
+
+    RecordStillNamesIt = .false.
+    if (rec%col < 1 .or. rec%col > MaxNumCol) return
+
+    RecordStillNamesIt = RecordNamesColumn(LocCol(rec%col)%var, rec%var)
+end function RecordStillNamesIt
+
 logical function IsCustomOutputColumn(col)
     type(ColType), intent(in) :: col
     character(32) :: var
@@ -175,9 +308,16 @@ logical function IsCustomOutputColumn(col)
     var = col%var
     call lowercase(var)
     if (len_trim(var) == 0) return
+    !> `agc` and `rssi` are deliberately NOT excluded here. They were, and
+    !> that made two loops that hunt for them dead code: CecSignalColumnFor
+    !> (gas_slot_resolution.f90) and SetLicorDiagnostics both look for
+    !> UserCol(j)%var == 'AGC'/'RSSI', and a column excluded here never
+    !> reaches UserCol at all. The conditional eddy covariance screen ran on
+    !> nothing and RSSI77 was always the error value, with no message either
+    !> way. A signal-strength column is ordinary custom data; the records say
+    !> which analyser it belongs to.
     select case (trim(var))
-        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2', &
-              'agc', 'rssi')
+        case ('ignore', 'not_numeric', 'none', 'flag_1', 'flag_2')
             return
         case default
             IsCustomOutputColumn = .true.

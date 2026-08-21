@@ -74,7 +74,7 @@ subroutine TestAmpResDropOut(Set, N)
     real(kind = dbl) :: MinIntX(GHGNumVar)
 
 
-    write(*, '(a)', advance = 'no') '   Amplitude resolution and/or dropouts test..'
+    call LogSayNoAdv('   Amplitude resolution and/or dropouts test..')
 
     !> Initializations
     win_len = RPsetup%avrg_len / 15
@@ -225,12 +225,8 @@ subroutine TestAmpResDropOut(Set, N)
         end if
     end do
 
-    !>  Create 8-digits numbers containing hflag/sflag values
-    IntHF%ar = 900000000
-    IntHF%do = 900000000
-    do j = 1, GHGNumVar
-        IntHF%ar = IntHF%ar + ar_hflags(j)*10**(GHGNumVar - j)
-        IntHF%do = IntHF%do + do_hflags(j)*10**(GHGNumVar - j)
-    end do
-    write(*,'(a)') ' Done.'
+    !>  Pack one digit per variable into the flag strings
+    call PackFlagString(ar_hflags, GHGNumVar, CharHF%ar)
+    call PackFlagString(do_hflags, GHGNumVar, CharHF%do)
+    call LogSay(' Done.')
 end subroutine TestAmpResDropOut

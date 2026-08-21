@@ -111,6 +111,10 @@ subroutine StoreIniTags(uini, key, Tags, nlines)
                     dataline(com:len_trim(dataline)) = ""
                     call stripstr(dataline)
                 end if
+                if (nlines >= MaxNLinesIni) then
+                    call ExceptionHandler(98)
+                    exit
+                end if
                 nlines = nlines + 1
                 separ = index(dataline, "=")
                 Tags(nlines)%Label = dataline(1:separ - 1)
@@ -149,6 +153,10 @@ subroutine StoreIniTags(uini, key, Tags, nlines)
                         dataline(com:len_trim(dataline)) = ""
                         call stripstr(dataline)
                     end if
+                    if (nlines >= MaxNLinesIni) then
+                        call ExceptionHandler(98)
+                        exit outloop
+                    end if
                     nlines = nlines + 1
                     separ = index(dataline, "=")
                     Tags(nlines)%Label = dataline(1:separ - 1)
@@ -182,8 +190,10 @@ subroutine SearchLocalTags(Tags, nlines, NumTags, CharTags, nnum, nchar,&
     integer, intent(in) :: nnum
     integer, intent(in) :: nchar
     type(Text), intent(in) :: Tags(MaxNLinesIni)
-    type(Numerical), intent(out) :: NumTags(nnum)
-    type(Text), intent(out) :: CharTags(nchar)
+    !> NOTE: inout, not out. The wanted tag names live in %label and are read
+    !> below, so these must not be treated as undefined on entry.
+    type(Numerical), intent(inout) :: NumTags(nnum)
+    type(Text), intent(inout) :: CharTags(nchar)
     logical, intent(out) :: NumTagFound(nnum)
     logical, intent(out) :: CharTagFound(nchar)
     !> local variables
@@ -191,13 +201,18 @@ subroutine SearchLocalTags(Tags, nlines, NumTags, CharTags, nnum, nchar,&
     integer :: i
     integer :: j
 
+    !> Tag names are matched by EXACT equality, not by substring. Substring
+    !> matching silently bound a wanted tag to any longer key that contained
+    !> it, first-in-file-order winning: 'err_label' was captured by
+    !> 'fluxnet_err_label', so the missing-value token written to every output
+    !> file came from the wrong key. It also makes indexed keys such as
+    !> 'gas_1_col' unsafe to introduce. See static_checks/test_ini_tag_collisions_static.py.
 
     !> search numeric variables
     NumTagFound = .false.
     do i = 1, nnum
         loop1: do j = 1, nlines
-            if(index(Tags(j)%Label(1:len_trim(Tags(j)%Label)), &
-                NumTags(i)%label(1:len_trim(NumTags(i)%label))) > 0 ) then
+            if (trim(adjustl(Tags(j)%Label)) == trim(adjustl(NumTags(i)%label))) then
                 NumTagFound(i) = .true.
                 read(Tags(j)%value, *, iostat=read_stat) NumTags(i)%value
                 if (read_stat /= 0) NumTags(i)%value = error
@@ -211,8 +226,7 @@ subroutine SearchLocalTags(Tags, nlines, NumTags, CharTags, nnum, nchar,&
     CharTags%value = ''
     do i = 1, nchar
         loop2: do j = 1, nlines
-            if(index(Tags(j)%Label(1:len_trim(Tags(j)%Label)), &
-                CharTags(i)%label(1:len_trim(CharTags(i)%label))) > 0 ) then
+            if (trim(adjustl(Tags(j)%Label)) == trim(adjustl(CharTags(i)%label))) then
                 CharTagFound(i) = .true.
                 CharTags(i)%value = Tags(j)%value
                 exit loop2

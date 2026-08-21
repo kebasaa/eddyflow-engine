@@ -83,7 +83,12 @@ subroutine AnalyticLowPassTransferFunction(nf, N, var, LocInstr, loc_var_present
                     BPTF(1:N)%LP(var)%wsonic = 1d0
                 end if
 
-            case (co2, h2o, ch4, gas4)
+            !> Every gas slot, not the historical four. A gas past the
+            !> fourth used to match no arm at all, so it got no low-pass
+            !> transfer function - and SpectralCorrectionFactors then
+            !> reported no correction factor for it, whichever method
+            !> was selected.
+            case (firstGas:lastGas)
                 irga_freq = 1d0 / LocInstr(var)%tau
                 fp_irga(1:N) = nf(1:N) * dabs(LocInstr(var)%vpath_length / wind_speed)
                 fs_ver(1:N)  = nf(1:N) * dabs(LocInstr(var)%vsep / wind_speed)
@@ -255,7 +260,24 @@ subroutine LI7550_AnalogSignalsTransferFunctions(nf, N, var, ac_frequency, &
                 !> ZOH
                 BPTF(1:N)%LP(var)%zoh_sonic = &
                     dsqrt(dabs(sinc(nf(1:N)/EddyFlowProj%sonic_output_rate/2d0, N)))
-            case(co2, h2o)
+            !> Any gas the caller selected.
+            !>
+            !> This was `case(histGas1, histGas2)` - slots five and six, on the
+            !> reasoning that an LI-7550 fronts an LI-7500 or LI-7200 and those
+            !> measure CO2 and H2O. But the slot is not the analyser: on a
+            !> two-analyser site slots five and six may be a QCL's channels,
+            !> and a second LI-7200's CO2 sits well past them, so read as slot
+            !> numbers the arm was wrong in both directions.
+            !>
+            !> Which gases sit behind an LI-7550 is a question about
+            !> instruments, and BPCF_LI7550AnalogFilters now answers it there,
+            !> from each gas's own record. This arm takes what it is given.
+            !>
+            !> Still dormant: hf_correct_ghg_ba and hf_correct_ghg_zoh are
+            !> hard-set .false. in write_processing_project_variables, so
+            !> nothing reaches here. The selection is correct for the day the
+            !> flags come back rather than waiting to be noticed then.
+            case(firstGas:lastGas)
                 BPTF(1:N)%LP(var)%ba_irga = dsqrt(dabs(sinc(nf(1:N)*Tba, N)))
         end select
     end if

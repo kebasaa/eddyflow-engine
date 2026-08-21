@@ -40,7 +40,7 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
 
 
-    write(*, '(a)') '  Estimating random uncertainty..'
+    call LogSay('  Estimating random uncertainty..')
 
     !> Calculate random uncertainty
     select case (RUsetup%meth)
@@ -51,7 +51,7 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
             call IntegralTurbulenceScale(Set, size(Set, 1), size(Set, 2))
             call RU_Mann_Lenschow_04(nrow)
         case('none')
-            Essentials%rand_uncer(u:gas4) = error
+            Essentials%rand_uncer(u:lastGas) = error
             Essentials%rand_uncer_LE = error
             Essentials%rand_uncer_ET = error
         case('mahrt_98')
@@ -59,12 +59,12 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
             continue
         case default
             call ExceptionHandler(42)
-            Essentials%rand_uncer(u:gas4) = error
+            Essentials%rand_uncer(u:lastGas) = error
             Essentials%rand_uncer_LE = error
             Essentials%rand_uncer_ET = error
             return
     end select
-    write(*, '(a)') '  Done.'
+    call LogSay('  Done.')
 end subroutine RandomUncertaintyHandle
 
 !***************************************************************************
@@ -96,9 +96,9 @@ subroutine RU_Finkelstein_Sims_01(Set, N, M)
     real(kind = dbl), external :: LaggedCovarianceNoError
 
     !> Define max lag based on ITS
-    LagMax(u:gas4) = nint(ITS(u:gas4) * Metadata%ac_freq)
+    LagMax(u:lastGas) = nint(ITS(u:lastGas) * Metadata%ac_freq)
     where (LagMax < 0) LagMax = nint(error)
-    do var = u, gas4
+    do var = u, lastGas
         if (var == v .or. var == w) cycle
         if (E2Col(var)%present .and. ITS(var) /= error .and. LagMax(var) /= nint(error)) then
             allocate (gam(0:LagMax(var), 2, 2))
@@ -172,7 +172,7 @@ subroutine RU_Mann_Lenschow_04(N)
     integer :: var
     real(kind = dbl) :: corr_coeff(E2NumVar)
 
-    do var = u, gas4
+    do var = u, lastGas
         if (var == w) cycle
         if (E2Col(var)%present .and. ITS(var) /= error) then
 
@@ -262,7 +262,7 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
     call AverageNoError(all_cov, n_sub*n_subsub, GHGNumVar, grand_mean, error)
 
     ! RE = mean of within-period sigmas / sqrt(n_subsub) (Mahrt 1998 Eq. 8)
-    do gas_var = u, gas4
+    do gas_var = u, lastGas
         if (E2Col(gas_var)%present) then
             Essentials%rand_uncer(gas_var) = &
                 sum(sigma_wi(:, gas_var)) / n_sub / dsqrt(dble(n_subsub))
@@ -280,7 +280,7 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
     sigma_btw = 0d0
     where (between_ss > 0d0) sigma_btw = dsqrt(between_ss / dble(n_sub-1))
 
-    do gas_var = u, gas4
+    do gas_var = u, lastGas
         if (E2Col(gas_var)%present .and. Essentials%rand_uncer(gas_var) /= error &
             .and. Essentials%rand_uncer(gas_var) > 0d0) then
             Essentials%mahrt98_NR(gas_var) = &

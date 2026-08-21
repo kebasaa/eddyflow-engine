@@ -31,64 +31,46 @@ subroutine FilterDatasetForPhysicalThresholds(Set, N, M, FilterWhat)
     integer, intent(in) :: N, M
     logical, intent(in) :: FilterWhat(M)
     real(kind = dbl), intent(inout) :: Set(N, M)
+    integer :: gas
+    real(kind = dbl) :: dens_scale
+    logical, external :: GasSlotIsWater
 
-    if (E2Col(co2)%present .and. FilterWhat(co2)) then
-        if (E2Col(co2)%measure_type == 'molar_density') then
-            where (Set(:,co2) /= error .and. &
-                   (Set(:,co2)*Ambient%Va*1d3 < al%co2_min .or. &
-                    Set(:,co2)*Ambient%Va*1d3 > al%co2_max))
-                Set(:,co2) = error
+    !> One pass per configured gas. This was four hand-copied blocks naming
+    !> co2/h2o/ch4/gas4, differing in exactly one thing - the molar-density
+    !> scale, which is 1d3 for every species but water. That is a property of
+    !> the species and not of the slot, the same correction Fluxes0 needed,
+    !> so it is asked of the record.
+    !>
+    !> The guard matters more than the bound. This filter and
+    !> test_absolute_limits consult the *same* al%gas_min/gas_max pair, and
+    !> only the four historical slots get them from fixed project keys; past
+    !> those they come from the per-gas records, and a project naming a gas
+    !> without them leaves the pair at whatever memory held. Testing against
+    !> that rejects every value and replaces the entire series with the error
+    !> code - the incident this repository already recorded once. The test
+    !> declines in exactly this case, so the filter must decline on the same
+    !> condition or the two disagree about the same gas.
+    do gas = firstGas, lastGas
+        if (.not. E2Col(gas)%present .or. .not. FilterWhat(gas)) cycle
+        if (al%gas_max(gas) <= al%gas_min(gas)) cycle
+
+        if (E2Col(gas)%measure_type == 'molar_density') then
+            !> Water is held on the mmol basis, every other species on umol.
+            if (GasSlotIsWater(gas)) then
+                dens_scale = Ambient%Va
+            else
+                dens_scale = Ambient%Va * 1d3
+            end if
+            where (Set(:,gas) /= error .and. &
+                   (Set(:,gas)*dens_scale < al%gas_min(gas) .or. &
+                    Set(:,gas)*dens_scale > al%gas_max(gas)))
+                Set(:,gas) = error
             end where
         else
-            where (Set(:,co2) /= error .and. &
-                   (Set(:,co2) < al%co2_min .or. Set(:,co2) > al%co2_max))
-                Set(:,co2) = error
+            where (Set(:,gas) /= error .and. &
+                   (Set(:,gas) < al%gas_min(gas) .or. Set(:,gas) > al%gas_max(gas)))
+                Set(:,gas) = error
             end where
         end if
-    end if
-
-    if (E2Col(h2o)%present .and. FilterWhat(h2o)) then
-        if (E2Col(h2o)%measure_type == 'molar_density') then
-            where (Set(:,h2o) /= error .and. &
-                   (Set(:,h2o)*Ambient%Va < al%h2o_min .or. &
-                    Set(:,h2o)*Ambient%Va > al%h2o_max))
-                Set(:,h2o) = error
-            end where
-        else
-            where (Set(:,h2o) /= error .and. &
-                   (Set(:,h2o) < al%h2o_min .or. Set(:,h2o) > al%h2o_max))
-                Set(:,h2o) = error
-            end where
-        end if
-    end if
-
-    if (E2Col(ch4)%present .and. FilterWhat(ch4)) then
-        if (E2Col(ch4)%measure_type == 'molar_density') then
-            where (Set(:,ch4) /= error .and. &
-                   (Set(:,ch4)*Ambient%Va*1d3 < al%ch4_min .or. &
-                    Set(:,ch4)*Ambient%Va*1d3 > al%ch4_max))
-                Set(:,ch4) = error
-            end where
-        else
-            where (Set(:,ch4) /= error .and. &
-                   (Set(:,ch4) < al%ch4_min .or. Set(:,ch4) > al%ch4_max))
-                Set(:,ch4) = error
-            end where
-        end if
-    end if
-
-    if (E2Col(gas4)%present .and. FilterWhat(gas4)) then
-        if (E2Col(gas4)%measure_type == 'molar_density') then
-            where (Set(:,gas4) /= error .and. &
-                   (Set(:,gas4)*Ambient%Va*1d3 < al%gas4_min .or. &
-                    Set(:,gas4)*Ambient%Va*1d3 > al%gas4_max))
-                Set(:,gas4) = error
-            end where
-        else
-            where (Set(:,gas4) /= error .and. &
-                   (Set(:,gas4) < al%gas4_min .or. Set(:,gas4) > al%gas4_max))
-                Set(:,gas4) = error
-            end where
-        end if
-    end if
+    end do
 end subroutine FilterDatasetForPhysicalThresholds

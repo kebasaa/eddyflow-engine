@@ -42,7 +42,12 @@ subroutine KID(Set, nrow, ncol)
         call KurtosisNoError(residuals(:, icol), nrow, 1, Essentials%KID(icol), error)
         Essentials%ZCD(icol) = CountZeroCrossings(residuals(:, icol), nrow)
     end do
-    do icol = co2, gas4
+    !> Every configured gas. The FLUXNET writer emits a KID and a ZCD per
+    !> configured gas, so a producer that stopped at the fourth left the rest
+    !> reporting whatever Essentials held - a kurtosis index of exactly zero,
+    !> which reads as a measurement. %present already carries the
+    !> was-configured guard, and its else arm is the sentinel.
+    do icol = firstGas, lastGas
         if (E2Col(icol)%present) then
             call VariableStochasticDetrending(Set(:, icol), residuals(:, icol), nrow)
             call KurtosisNoError(residuals(:, icol), nrow, 1, Essentials%KID(icol), error)

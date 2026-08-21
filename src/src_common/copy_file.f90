@@ -46,7 +46,10 @@ subroutine CopyFile(ifname, ofname)
 
     !> Open new file
     open(11, file = trim(ofname), status = 'new', iostat = io_error)
-    if (io_error /= 0) return
+    if (io_error /= 0) then
+        close(10)
+        return
+    end if
 
     !> Copy file line by line
     io_error = 0
@@ -55,4 +58,16 @@ subroutine CopyFile(ifname, ofname)
         if(io_error /= 0) exit
         write(11, '(a)') trim(dataline)
     end do
+
+    !> Both units closed before returning, on every path.
+    !>
+    !> They used to be left open, so the copy was flushed only when the program
+    !> stopped and the units stayed connected across everything the caller did
+    !> next. FCC does the one thing that cannot survive: it hands the copy it
+    !> has just made to ApplyAutomaticSpectralConfiguration, whose EditIniFile
+    !> opens the same path and closes it with status='DELETE'. The output
+    !> project comes out zero bytes on exactly the runs where that routine has
+    !> a recommendation to write, and intact on the ones where it has none.
+    close(10)
+    close(11)
 end subroutine CopyFile

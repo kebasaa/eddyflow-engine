@@ -47,19 +47,47 @@ subroutine InitOutFiles_rp()
     integer :: gas
     integer :: i
     integer :: j
+    integer :: k
     character(PathLen) :: Test_Path
     character(64) :: e2sg(E2NumVar)
+    character(64) :: gas_tag(GHGNumVar)
+    !> Full-output layout: the gas slots this file carries a block for. The
+    !> row writer walks the same list, so the two cannot disagree.
+    integer :: fo_slots(GHGNumVar)
+    integer :: n_fo_slots
+    !> Statistical-flag legends, shared with WriteOutFull so the units row
+    !> names exactly the digits the data row carries.
+    character(LongOutstringLen) :: flag_legend
+    character(LongOutstringLen) :: tl_legend
+    integer :: n_flag_vars
+    integer :: n_tl_vars
+    !> Statistics-file layout: the slots st1..st7 carry, and the name each
+    !> one goes by in their header.
+    integer :: st_slots(E2NumVar)
+    integer :: n_st_slots
+    integer :: st_gas(GHGNumVar)
+    integer :: n_st_gas
+    character(64) :: st_name(E2NumVar)
+    character(LongOutstringLen) :: stats_header
     character(64) :: usg(NumUserVar)
     character(64) :: user_header(NumUserVar)
     character(32) :: user_unit(NumUserVar)
-    character(32) :: gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label
-    real(kind = dbl) :: gas4_flux_sc, gas4_dens_sc
+    character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
+    character(32) :: gas_mixr_label(GHGNumVar), gas_dens_label(GHGNumVar)
+    real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(2) :: utf8_mu
     character(LongOutstringLen) :: header1
     character(LongOutstringLen) :: header2
     character(LongOutstringLen) :: header3
     character(LongOutstringLen) :: dataline
     logical :: proceed
+    integer :: cec_p
+    integer :: cec_k
+    integer :: n_cec_pairs
+    integer :: n_cec_cols
+    type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
+    character(64) :: cec_names(MaxNumCecTargets * 8 + 8)
+    character(32) :: cec_units(MaxNumCecTargets * 8 + 8)
     include '../src_common/interfaces.inc'
 
 
@@ -70,10 +98,14 @@ subroutine InitOutFiles_rp()
     e2sg(v)   = 'v_'
     e2sg(w)   = 'w_'
     e2sg(ts)  = 'ts_'
-    e2sg(co2) = 'co2_'
-    e2sg(h2o) = 'h2o_'
-    e2sg(ch4) = 'ch4_'
-    e2sg(gas4) = E2Col(gas4)%label(1:len_trim(E2Col(gas4)%label)) // '_'
+    !> Every configured gas gets a name, not just the historical four. The
+    !> stems reproduce 'co2_'/'h2o_'/'ch4_' exactly, because those slots'
+    !> records name those species and the label resolves to the metadata
+    !> column's variable, which is what the hard-coded strings spelled.
+    call FullOutputGasTags(gas_tag)
+    do gas = firstGas, lastGas
+        e2sg(gas) = gas_tag(gas)
+    end do
     e2sg(tc)  = 'cell_t_'
     e2sg(ti1) = 'inlet_t_'
     e2sg(ti2) = 'outlet_t_'
@@ -81,10 +113,20 @@ subroutine InitOutFiles_rp()
     e2sg(te)  = 'air_t_'
     e2sg(pe)  = 'air_p_'
 
-    call lowercase(e2sg(gas4))
+    !> Unit basis per gas, from the unit the project declares for it. Water
+    !> keeps its own mmol labels; every other species asks GasFullOutputUnits,
+    !> whose default arm is the umol basis the non-water slots used to have
+    !> hard-coded, so a four-gas project is unchanged.
+    call GasFullOutputUnitsAll(gas_flux_sc, gas_dens_sc, &
+        gas_flux_label, gas_conc_label, gas_mixr_label, gas_dens_label)
 
-    call Gas4FullOutputUnits(E2Col(gas4)%unit_in, gas4_flux_sc, gas4_dens_sc, &
-        gas4_flux_label, gas4_conc_label, gas4_mixr_label, gas4_dens_label)
+    !> The gas slots the full output carries a block for. WriteOutFull walks
+    !> the same list; when the two were spelled out separately the row ran
+    !> sixty gas blocks past its own header.
+    call StatisticalFlagVars(n_flag_vars, flag_legend)
+    call TimelagFlagLegend(n_tl_vars, tl_legend)
+
+    call FullOutputGasSlots(fo_slots, n_fo_slots)
 
     do j = 1, NumUserVar
         user_header(j) = FullOutputCustomLabel(j)
@@ -198,463 +240,295 @@ subroutine InitOutFiles_rp()
         call Clearstr(header2)
         call Clearstr(header3)
 
-        if (.not. EddyFlowProj%fix_out_format) then
-            !> Initial file and timestamp info
-            call AddDatum(header1,'file_info,,,,,,', separator)
-            call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
-            call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#]', separator)
+        !> Initial file and timestamp info
+        call AddDatum(header1,'file_info,,,,,,', separator)
+        call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
+        call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#]', separator)
 
-            !> Corrected fluxes (Level 3) and quality flags
-            !> Tau
-            call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)
-            call AddDatum(header2,'Tau,qc_Tau', separator)
-            call AddDatum(header3,'[kg+1m-1s-2],[#]', separator)
-            if (RUsetup%meth /= 'none') then
-                call AddDatum(header1, '', separator)
-                call AddDatum(header2,'rand_err_Tau', separator)
-                call AddDatum(header3,'[kg+1m-1s-2]', separator)
-            end if
+        !> Corrected fluxes (Level 3) and quality flags
+        !> Tau
+        call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)
+        call AddDatum(header2,'Tau,qc_Tau', separator)
+        call AddDatum(header3,'[kg+1m-1s-2],[#]', separator)
+        if (RUsetup%meth /= 'none') then
+            call AddDatum(header1, '', separator)
+            call AddDatum(header2,'rand_err_Tau', separator)
+            call AddDatum(header3,'[kg+1m-1s-2]', separator)
+        end if
 
-            !> H
+        !> H
+        call AddDatum(header1, ',', separator)
+        call AddDatum(header2, 'H,qc_H', separator)
+        call AddDatum(header3, '[W+1m-2],[#]', separator)
+        if (RUsetup%meth /= 'none') then
+            call AddDatum(header1, '', separator)
+            call AddDatum(header2, 'rand_err_H', separator)
+            call AddDatum(header3, '[W+1m-2]', separator)
+        end if
+
+        !> LE
+        if(OutVarPresent(PrimaryWaterOutSlot())) then
             call AddDatum(header1, ',', separator)
-            call AddDatum(header2, 'H,qc_H', separator)
+            call AddDatum(header2, 'LE,qc_LE', separator)
             call AddDatum(header3, '[W+1m-2],[#]', separator)
             if (RUsetup%meth /= 'none') then
                 call AddDatum(header1, '', separator)
-                call AddDatum(header2, 'rand_err_H', separator)
+                call AddDatum(header2, 'rand_err_LE', separator)
                 call AddDatum(header3, '[W+1m-2]', separator)
             end if
-
-            !> LE
-            if(OutVarPresent(h2o)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2, 'LE,qc_LE', separator)
-                call AddDatum(header3, '[W+1m-2],[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_LE', separator)
-                    call AddDatum(header3, '[W+1m-2]', separator)
-                end if
-            end if
-
-            !> Corrected co2 fluxes
-            if(OutVarPresent(co2)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2, 'co2_flux,qc_co2_flux', separator)
-                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_co2_flux', separator)
-                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                end if
-            end if
-
-            !> Corrected h2o fluxes
-            if(OutVarPresent(h2o)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2,'h2o_flux,qc_h2o_flux', separator)
-                call AddDatum(header3,'[mmol+1s-1m-2],[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_h2o_flux', separator)
-                    call AddDatum(header3, '[mmol+1s-1m-2]', separator)
-                end if
-            end if
-
-            !> Corrected ch4 fluxes
-            if(OutVarPresent(ch4)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2,'ch4_flux,qc_ch4_flux', separator)
-                call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_ch4_flux', separator)
-                    call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                end if
-            end if
-
-            !> Corrected 4th gas fluxes
-            if(OutVarPresent(gas4)) then
-                call AddDatum(header1, ',', separator)
-                call AddDatum(header2, e2sg(gas4)(1:len_trim(e2sg(gas4))) &
-                    // 'flux,qc_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
-                call AddDatum(header3, gas4_flux_label(1:len_trim(gas4_flux_label)) // ',[#]', separator)
-                if (RUsetup%meth /= 'none') then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, 'rand_err_' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux', separator)
-                    call AddDatum(header3, gas4_flux_label, separator)
-                end if
-            end if
-
-            !> Storage
-            call AddDatum(header1, 'storage_fluxes', separator)
-            call AddDatum(header2,'H_strg', separator)
-            call AddDatum(header3,'[W+1m-2]', separator)
-            if(OutVarPresent(h2o)) call AddDatum(header1, '', separator)
-            if(OutVarPresent(h2o)) call AddDatum(header2,'LE_strg', separator)
-            if(OutVarPresent(h2o)) call AddDatum(header3,'[W+1m-2]', separator)
-            do gas = co2, gas4
-                if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
-                    if(gas == gas4) then
-                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
-                    else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                    end if
-                else
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1s-1m-2]', separator)
-                end if
-            end do
-
-            !> Advection fluxes
-            header1 = header1(1:len_trim(header1)) // 'vertical_advection_fluxes'
-            do gas = co2, gas4
-                if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
-                    if(gas == gas4) then
-                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label, separator)
-                    else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2]', separator)
-                    end if
-                else
-                    if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1s-1m-2]', separator)
-                end if
-            end do
-
-            !> Average gas concentrations
-            call AddDatum(header1,'gas_densities_concentrations_and_timelags', separator)
-            do gas = co2, gas4
-                if(OutVarPresent(gas)) call AddDatum(header1, ',,,,', separator)
-                if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'molar_density,' &
-                    // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mole_fraction,' &
-                    // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mixing_ratio,' &
-                    // e2sg(gas)(1:len_trim(e2sg(gas))) // 'time_lag,' &
-                    // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag', separator)
-                if (gas == gas4) then
-                    if(OutVarPresent(gas)) call AddDatum(header3, gas4_dens_label // ',' &
-                        // gas4_conc_label // ',' // gas4_mixr_label // ',[s],[1=default]', separator)
-                else if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1m-3],[' // utf8_mu// &
-                        'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default]', separator)
-                else
-                    if(OutVarPresent(gas)) &
-                        call AddDatum(header3, '[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default]', separator)
-                end if
-            end do
-            !> In Header 1 there is one comma too much, take it away
-            header1 = header1(1:len_trim(header1) - 1)
-
-            !> Air properties, wind components and rotation angles
-            call AddDatum(header1, 'air_properties,,,,,,,,,,,,,,unrotated_wind,,,rotated_wind&
-                          &,,,,,,rotation_angles_for_tilt_correction,,', separator)
-            call AddDatum(header2,'sonic_temperature,air_temperature,air_pressure,air_density,air_heat_capacity,air_molar_volume,&
-                          &ET,water_vapor_density,e,es,specific_humidity,RH,VPD,Tdew&
-                          &,u_unrot,v_unrot,w_unrot,u_rot,v_rot,w_rot,wind_speed,max_wind_speed,wind_dir,yaw,pitch,roll', separator)
-            call AddDatum(header3,'[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],&
-                          &[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
-                          &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],&
-                          &[m+1s-1],[deg_from_north],[deg],[deg],[deg]', separator)
-
-            !> Turbulence
-            call AddDatum(header1, 'turbulence,,,,,', separator)
-            call AddDatum(header2,'u*,TKE,L,(z-d)/L,bowen_ratio,T*', separator)
-            call AddDatum(header3,'[m+1s-1],[m+2s-2],[m],[#],[#],[K]', separator)
-
-            !> Footprint, if requested
-            if (Meth%foot /= 'none') then
-                call AddDatum(header1, 'footprint,,,,,,,', separator)
-                call AddDatum(header2,'model,x_peak,x_offset,x_10%,x_30%,x_50%,x_70%,x_90%', separator)
-                call AddDatum(header3,'[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m]', separator)
-            end if
-
-            !> uncorrected fluxes
-            !> Tau and H
-            call AddDatum(header1, 'uncorrected_fluxes,,,', separator)
-            call AddDatum(header2,'un_Tau,Tau_scf,un_H,H_scf', separator)
-            call AddDatum(header3,'[kg+1m-1s-2],[#],[W+1m-2],[#]', separator)
-            !> LE
-            if(OutVarPresent(h2o)) call AddDatum(header1, ',', separator)
-            if(OutVarPresent(h2o)) call AddDatum(header2,'un_LE,LE_scf', separator)
-            if(OutVarPresent(h2o)) call AddDatum(header3,'[W+1m-2],[#]', separator)
-            !> Uncorrected gas fluxes (Level 0) and spectral correction factors
-            do gas = co2, gas4
-                if (gas /= h2o) then
-                    if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
-                        // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
-                    if (gas == gas4) then
-                        if(OutVarPresent(gas)) call AddDatum(header3, gas4_flux_label // ',[#]', separator)
-                    else
-                        if(OutVarPresent(gas)) call AddDatum(header3, '[' // utf8_mu// 'mol+1s-1m-2],[#]', separator)
-                    end if
-                else
-                    if(OutVarPresent(gas)) call AddDatum(header1, ',', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
-                        // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
-                    if(OutVarPresent(gas)) call AddDatum(header3, '[mmol+1s-1m-2],[#]', separator)
-                end if
-            end do
-
-            !> Vickers and Mahrt 97 hard and soft flags
-            call AddDatum(header1,'statistical_flags,,,,,,,,,,,', separator)
-            call AddDatum(header2,'spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
-                &skewness_kurtosis_hf,skewness_kurtosis_sf,discontinuities_hf,discontinuities_sf,timelag_hf,&
-                &timelag_sf,attack_angle_hf,non_steady_wind_hf', separator)
-            call AddDatum(header3,'8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8aa,8U', separator)
-
-            !> Add spikes for EddyFlow variables
-            call AddDatum(header1,'spikes,,,', separator)
-            call AddDatum(header2,'u_spikes,v_spikes,w_spikes,ts_spikes', separator)
-            call AddDatum(header3,'[#],[#],[#],[#]', separator)
-            do var = co2, gas4
-                if(OutVarPresent(var)) then
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, e2sg(var)(1:len_trim(e2sg(var))) // 'spikes' , separator)
-                    call AddDatum(header3, '[#]', separator)
-                end if
-            end do
-
-            !> LI-COR's diagnostic flags
-            if (Diag7200%present) then
-                call AddDatum(header1,'diagnostic_flags_LI-7200,,,,,,,,', separator)
-                call AddDatum(header2,'head_detect_LI-7200,t_out_LI-7200,t_in_LI-7200,aux_in_LI-7200,delta_p_LI-7200,&
-                    &chopper_LI-7200,detector_LI-7200,pll_LI-7200,sync_LI-7200', separator)
-                call AddDatum(header3,'[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                    &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs]', separator)
-            end if
-            if (Diag7500%present) then
-                call AddDatum(header1,'diagnostic_flags_LI-7500,,,', separator)
-                call AddDatum(header2,'chopper_LI-7500,detector_LI-7500,pll_LI-7500,sync_LI-7500', separator)
-                call AddDatum(header3,'[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs]', separator)
-            end if
-            if (Diag7700%present) then
-                call AddDatum(header1,'diagnostic_flags_LI-7700,,,,,,,,,,,,,,,', separator)
-                call AddDatum(header2,'not_ready_LI-7700,no_signal_LI-7700,re_unlocked_LI-7700,bad_temp_LI-7700,&
-                    &laser_temp_unregulated_LI-7700,block_temp_unregulated_LI-7700,motor_spinning_LI-7700,&
-                    &pump_on_LI-7700,top_heater_on_LI-7700,bottom_heater_on_LI-7700,calibrating_LI-7700,&
-                    &motor_failure_LI-7700,bad_aux_tc1_LI-7700,bad_aux_tc2_LI-7700,&
-                    &bad_aux_tc3_LI-7700,box_connected_LI-7700', separator)
-                call AddDatum(header3,'[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                    &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                    &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs]', separator)
-            end if
-
-            !> AGCs and RSSIs for LI-7200 and LI-7500
-            if (Diag7200%present) then
-                if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
-                    call AddDatum(header1,'RSSI_LI-7200', separator)
-                    call AddDatum(header2,'mean_value_RSSI_LI-7200', separator)
-                    call AddDatum(header3,'[#]', separator)
-                else
-                    call AddDatum(header1,'AGC_LI-7200', separator)
-                    call AddDatum(header2,'mean_value_AGC_LI-7200', separator)
-                    call AddDatum(header3,'[#]', separator)
-                end if
-            end if
-            if (Diag7500%present) then
-                if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
-                    call AddDatum(header1,'RSSI_LI-7500', separator)
-                    call AddDatum(header2,'mean_value_RSSI_LI-7500', separator)
-                    call AddDatum(header3,'[#]', separator)
-                else
-                    call AddDatum(header1,'AGC_LI-7500', separator)
-                    call AddDatum(header2,'mean_value_AGC_LI-7500', separator)
-                    call AddDatum(header3,'[#]', separator)
-                end if
-            end if
-
-            !> Variances
-            call AddDatum(header1, 'variances,,,', separator)
-            call AddDatum(header2, 'u_var,v_var,w_var,ts_var', separator)
-            call AddDatum(header3, '[m+2s-2],[m+2s-2],[m+2s-2],[K+2]', separator)
-            do gas = co2, gas4
-                if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'var', separator)
-                if(OutVarPresent(gas)) call AddDatum(header3, '--', separator)
-            end do
-            !> w/ts covariance
-            call AddDatum(header1, 'covariances', separator)
-            call AddDatum(header2,'w/ts_cov', separator)
-            call AddDatum(header3,'[m+1K+1s-1]', separator)
-            !> w-gases covariances
-            do gas = co2, gas4
-                if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
-                if(OutVarPresent(gas)) call AddDatum(header2, 'w/' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'cov', separator)
-                if(OutVarPresent(gas)) call AddDatum(header3, '--', separator)
-            end do
-
-            !> Mean values of user variables
-            if (NumUserVar > 0) then
-                call AddDatum(header1, 'custom_variables', separator)
-                do var = 1, NumUserVar
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
-                    call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
-                end do
-            end if
-
-            !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
-            if (EddyFlowProj%do_cec == 1) then
-                call AddDatum(header1, 'conditional_eddy_covariance,,,,,,,,,,', separator)
-            else if (EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance,,,,,', separator)
-            else if (EddyFlowProj%do_cec == 3) then
-                call AddDatum(header1, 'conditional_eddy_covariance,,,,', separator)
-            end if
-            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
-                call AddDatum(header3, &
-                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
-            end if
-            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
-                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
-            end if
-
-            !> Write on output file
-            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
-            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
-            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
-
-        else
-            header1 = 'file_info,,,,,,,corrected_fluxes_and_quality_flags,,,,,,,,,,,,,,,,,,,,,&
-                &storage_fluxes,,,,,,vertical_advection_fluxes,,,,&
-                &gas_densities_concentrations_and_timelags,,,,,,,,,,,,,,,,,,,,&
-                &air_properties,,,,,,,,,,,,,,unrotated_wind,,,rotated_wind,,,,,,&
-                &rotation_angles_for_tilt_correction,,,turbulence,,,,,,footprint,,,,,,,,&
-                &uncorrected_fluxes_and_spectral_correction_factors_(scf),,,,,,,,,,,,,,&
-                &statistical_flags,,,,,,,,,,,,spikes,,,,,,,,&
-                &diagnostic_flags_LI-7200,,,,,,,,,&
-                &diagnostic_flags_LI-7500,,,,diagnostic_flags_LI-7700,,,,,,,,,,,,,,,,'
-                if(CompareSwVer(E2Col(co2)%instr%sw_ver, SwVerFromString('6.0.0'))) then
-                    header1 = trim(header1) // 'RSSI_LI-7200,RSSI_LI-7500,variances,,,,,,,,covariances,,,,,'
-                else
-                    header1 = trim(header1) // 'AGC_LI-7200,AGC_LI-7500,variances,,,,,,,,covariances,,,,,'
-                end if
-            header2 = 'filename,date,time,DOY,daytime,file_records,used_records,Tau,qc_Tau,rand_err_Tau,&
-                &H,qc_H,rand_err_H,LE,qc_LE,rand_err_LE,&
-                &co2_flux,qc_co2_flux,rand_err_co2_flux,h2o_flux,qc_h2o_flux,rand_err_h2o_flux,ch4_flux,qc_ch4_flux,&
-                &rand_err_ch4_flux,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,qc_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,rand_err_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,H_strg,LE_strg,co2_strg,h2o_strg,ch4_strg,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'strg,co2_v-adv,h2o_v-adv,ch4_v-adv,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'v-adv,co2_molar_density,co2_mole_fraction,&
-                &co2_mixing_ratio,co2_time_lag,co2_def_timelag,&
-                &h2o_molar_density,h2o_mole_fraction,h2o_mixing_ratio,h2o_time_lag,h2o_def_timelag,&
-                &ch4_molar_density,ch4_mole_fraction,ch4_mixing_ratio,ch4_time_lag,ch4_def_timelag,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'molar_density,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'mole_fraction,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'mixing_ratio,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'time_lag,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'def_timelag,&
-                &sonic_temperature,air_temperature,air_pressure,air_density,air_heat_capacity,air_molar_volume,&
-                &ET,water_vapor_density,e,es,specific_humidity,RH,VPD,Tdew&
-                &,u_unrot,v_unrot,w_unrot,u_rot,v_rot,w_rot,wind_speed,max_wind_speed,wind_dir,yaw,pitch,roll,&
-                &u*,TKE,L,(z-d)/L,bowen_ratio,T*,model,x_peak,x_offset,x_10%,x_30%,x_50%,x_70%,x_90%,&
-                &un_Tau,Tau_scf,un_H,H_scf,un_LE,LE_scf,un_co2_flux,co2_scf,un_h2o_flux,h2o_scf,un_ch4_flux,ch4_scf,un_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'flux,un_' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'scf,spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
-                &skewness_kurtosis_hf,skewness_kurtosis_sf,discontinuities_hf,discontinuities_sf,timelag_hf,&
-                &timelag_sf,attack_angle_hf,non_steady_wind_hf,u_spikes,v_spikes,&
-                &w_spikes,ts_spikes,co2_spikes,h2o_spikes,ch4_spikes,' &
-                 // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'spikes,&
-                &head_detect_LI-7200,t_out_LI-7200,t_in_LI-7200,aux_in_LI-7200,delta_p_LI-7200,&
-                &chopper_LI-7200,detector_LI-7200,pll_LI-7200,sync_LI-7200,&
-                &chopper_LI-7500,detector_LI-7500,pll_LI-7500,sync_LI-7500,&
-                &not_ready_LI-7700,no_signal_LI-7700,re_unlocked_LI-7700,bad_temp_LI-7700,laser_temp_unregulated_LI-7700,&
-                &block_temp_unregulated_LI-7700,motor_spinning_LI-7700,pump_on_LI-7700,top_heater_on_LI-7700,&
-                &bottom_heater_on_LI-7700,calibrating_LI-7700,&
-                &motor_failure_LI-7700,bad_aux_tc1_LI-7700,bad_aux_tc2_LI-7700,bad_aux_tc3_LI-7700,box_connected_LI-7700,&
-                &mean_value_RSSI_LI-7200,mean_value_LI-7500,&
-                &u_var,v_var,w_var,ts_var,co2_var,h2o_var,ch4_var,' // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'var,&
-                &w/ts_cov,w/co2_cov,w/h2o_cov,w/ch4_cov,w/' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'cov,'
-            header3 = ',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#],[kg+1m-1s-2],[#],[kg+1m-1s-2],&
-                &[W+1m-2],[#],[W+1m-2],[W+1m-2],[#],[W+1m-2],&
-                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[#],[mmol+1s-1m-2],&
-                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
-                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],&
-                &[W+1m-2],[W+1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
-                &[mmol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
-                &[' // utf8_mu// 'mol+1s-1m-2],[mmol+1s-1m-2],[' // utf8_mu&
-                // 'mol+1s-1m-2],[' // utf8_mu// 'mol+1s-1m-2],&
-                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[mmol+1mol_a-1],[mmol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
-                &[mmol+1m-3],[' // utf8_mu// 'mol+1mol_a-1],[' // utf8_mu// 'mol+1mol_d-1],[s],[1=default],&
-                &[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
-                &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[deg_from_north],[deg],[deg],[deg],&
-                &[m+1s-1],[m+2s-2],[m],[#],[#],[K],[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m],&
-                &[kg+1m-1s-2],[#],[W+1m-2],[#],[W+1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],[mmol+1s-1m-2],[#],&
-                &[' // utf8_mu// 'mol+1s-1m-2],[#],[' // utf8_mu// 'mol+1s-1m-2],[#],&
-                &8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8u/v/w/ts/co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8co2/h2o/ch4/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) &
-                // ',8aa,8U,[#],[#],[#],[#],[#],[#],[#],[#],&
-                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
-                &[#],[#],[m+2s-2],[m+2s-2],[m+2s-2],[K+2],--,--,--,--,[m+1s-1K+1],--,--,--,--,'
-            !> Mean values of user variables
-            if (NumUserVar > 0) then
-                call AddDatum(header1, 'custom_variables', separator)
-                do var = 1, NumUserVar
-                    call AddDatum(header1, '', separator)
-                    call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
-                    call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
-                end do
-            end if
-
-            !> Conditional Eddy Covariance outputs (Zahn et al. 2022)
-            if (EddyFlowProj%do_cec == 1) then
-                call AddDatum(header1, 'conditional_eddy_covariance,,,,,,,,,,', separator)
-            else if (EddyFlowProj%do_cec == 2) then
-                call AddDatum(header1, 'conditional_eddy_covariance,,,,,', separator)
-            else if (EddyFlowProj%do_cec == 3) then
-                call AddDatum(header1, 'conditional_eddy_covariance,,,,', separator)
-            end if
-            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 2) then
-                call AddDatum(header2, 'E_cec,Tr_cec,E_cec_ET,Tr_cec_ET,r_ET_cec,qc_cec_h2o', separator)
-                call AddDatum(header3, &
-                    '[mmol+1m-2s-1],[mmol+1m-2s-1],[mm+1hour-1],[mm+1hour-1],[#],[#]', separator)
-            end if
-            if (EddyFlowProj%do_cec == 1 .or. EddyFlowProj%do_cec == 3) then
-                call AddDatum(header2, 'Reco_cec,P_cec,NEE_cec,r_Fc_cec,qc_cec_co2', separator)
-                call AddDatum(header3, '[umol+1m-2s-1],[umol+1m-2s-1],[umol+1m-2s-1],[#],[#]', separator)
-            end if
-
-            !> Write on output file
-            write(uflx, '(a)') header1(1:len_trim(header1) - 1)
-            write(uflx, '(a)') header2(1:len_trim(header2) - 1)
-            write(uflx, '(a)') header3(1:len_trim(header3) - 1)
         end if
+
+        !> Corrected gas fluxes, one block per configured gas. The four
+        !> historical blocks were unrolled and only the fourth took its
+        !> units from the project, which is why a fifth gas had no columns
+        !> here at all rather than merely mislabelled ones.
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(.not. OutVarPresent(gas)) cycle
+            call AddDatum(header1, ',', separator)
+            call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) &
+                // 'flux,qc_' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'flux', separator)
+            call AddDatum(header3, gas_flux_label(gas)(1:len_trim(gas_flux_label(gas))) &
+                // ',[#]', separator)
+            if (RUsetup%meth /= 'none') then
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, 'rand_err_' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'flux', separator)
+                call AddDatum(header3, gas_flux_label(gas), separator)
+            end if
+        end do
+
+        !> Storage
+        call AddDatum(header1, 'storage_fluxes', separator)
+        call AddDatum(header2,'H_strg', separator)
+        call AddDatum(header3,'[W+1m-2]', separator)
+        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header1, '', separator)
+        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header2,'LE_strg', separator)
+        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2]', separator)
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(.not. OutVarPresent(gas)) cycle
+            call AddDatum(header1, '', separator)
+            call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'strg', separator)
+            call AddDatum(header3, gas_flux_label(gas), separator)
+        end do
+
+        !> Advection fluxes
+        header1 = header1(1:len_trim(header1)) // 'vertical_advection_fluxes'
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(.not. OutVarPresent(gas)) cycle
+            call AddDatum(header1, '', separator)
+            call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'v-adv', separator)
+            call AddDatum(header3, gas_flux_label(gas), separator)
+        end do
+
+        !> Average gas concentrations
+        call AddDatum(header1,'gas_densities_concentrations_and_timelags', separator)
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(OutVarPresent(gas)) call AddDatum(header1, ',,,,', separator)
+            if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'molar_density,' &
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mole_fraction,' &
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mixing_ratio,' &
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'time_lag,' &
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag', separator)
+            !> Trimmed, unlike the fourth slot's arm this replaces: those
+            !> labels are character(32) and were concatenated unpadded,
+            !> so the units row carried trailing blanks inside three of
+            !> its fields. Every gas now spells them the same way.
+            if(OutVarPresent(gas)) call AddDatum(header3, &
+                trim(gas_dens_label(gas)) // ',' // trim(gas_conc_label(gas)) &
+                // ',' // trim(gas_mixr_label(gas)) // ',[s],[1=default]', separator)
+        end do
+        !> In Header 1 there is one comma too much, take it away
+        header1 = header1(1:len_trim(header1) - 1)
+
+        !> Air properties, wind components and rotation angles
+        call AddDatum(header1, 'air_properties,,,,,,,,,,,,,,,,,unrotated_wind,,,rotated_wind&
+                      &,,,,,,rotation_angles_for_tilt_correction,,', separator)
+        call AddDatum(header2,'sonic_temperature,air_temperature,air_pressure,air_density,air_heat_capacity,air_molar_volume,&
+                      &ET,water_vapor_density,e,es,specific_humidity,RH,VPD,Tdew&
+                      &,h2o_biomet_mole_fraction,h2o_biomet_mixing_ratio,h2o_biomet_molar_density&
+                      &,u_unrot,v_unrot,w_unrot,u_rot,v_rot,w_rot,wind_speed,max_wind_speed,wind_dir,yaw,pitch,roll', separator)
+        call AddDatum(header3,'[K],[K],[Pa],[kg+1m-3],[J+1kg-1K-1],[m+3mol-1],&
+                      &[mm+1hour-1],[kg+1m-3],[Pa],[Pa],[kg+1kg-1],[%],[Pa],[K],&
+                      &[mmol+1mol_a-1],[mmol+1mol_d-1],[mmol+1m-3],&
+                      &[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],[m+1s-1],&
+                      &[m+1s-1],[deg_from_north],[deg],[deg],[deg]', separator)
+
+        !> Turbulence
+        call AddDatum(header1, 'turbulence,,,,,', separator)
+        call AddDatum(header2,'u*,TKE,L,(z-d)/L,bowen_ratio,T*', separator)
+        call AddDatum(header3,'[m+1s-1],[m+2s-2],[m],[#],[#],[K]', separator)
+
+        !> Footprint, if requested
+        if (Meth%foot /= 'none') then
+            call AddDatum(header1, 'footprint,,,,,,,', separator)
+            call AddDatum(header2,'model,x_peak,x_offset,x_10%,x_30%,x_50%,x_70%,x_90%', separator)
+            call AddDatum(header3,'[0=KJ/1=KM/2=HS],[m],[m],[m],[m],[m],[m],[m]', separator)
+        end if
+
+        !> uncorrected fluxes
+        !> Tau and H
+        call AddDatum(header1, 'uncorrected_fluxes,,,', separator)
+        call AddDatum(header2,'un_Tau,Tau_scf,un_H,H_scf', separator)
+        call AddDatum(header3,'[kg+1m-1s-2],[#],[W+1m-2],[#]', separator)
+        !> LE
+        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header1, ',', separator)
+        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header2,'un_LE,LE_scf', separator)
+        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2],[#]', separator)
+        !> Uncorrected gas fluxes (Level 0) and spectral correction factors
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(.not. OutVarPresent(gas)) cycle
+            call AddDatum(header1, ',', separator)
+            call AddDatum(header2, 'un_' // e2sg(gas)(1:len_trim(e2sg(gas))) &
+                // 'flux,' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'scf', separator)
+            call AddDatum(header3, trim(gas_flux_label(gas)) // ',[#]', separator)
+        end do
+
+        !> Vickers and Mahrt 97 hard and soft flags
+        call AddDatum(header1,'statistical_flags,,,,,,,,,,,', separator)
+        call AddDatum(header2,'spikes_hf,amplitude_resolution_hf,drop_out_hf,absolute_limits_hf,&
+            &skewness_kurtosis_hf,skewness_kurtosis_sf,discontinuities_hf,discontinuities_sf,timelag_hf,&
+            &timelag_sf,attack_angle_hf,non_steady_wind_hf', separator)
+        !> Eight per-variable flags, then two gas-only time-lag flags,
+        !> then two single-variable ones. Built from the shared legend so
+        !> the units row names exactly the digits the data row carries -
+        !> it was ten copies of a literal naming eight variables while
+        !> the row emitted sixty-nine characters.
+        call AddDatum(header3, &
+            '8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+            // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+            // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+            // ',8' // trim(flag_legend) // ',8' // trim(flag_legend) &
+            // ',8' // trim(tl_legend) // ',8' // trim(tl_legend) &
+            // ',8aa,8U', separator)
+
+        !> Add spikes for EddyFlow variables
+        call AddDatum(header1,'spikes,,,', separator)
+        call AddDatum(header2,'u_spikes,v_spikes,w_spikes,ts_spikes', separator)
+        call AddDatum(header3,'[#],[#],[#],[#]', separator)
+        do k = 1, n_fo_slots
+            var = fo_slots(k)
+            if(OutVarPresent(var)) then
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, e2sg(var)(1:len_trim(e2sg(var))) // 'spikes' , separator)
+                call AddDatum(header3, '[#]', separator)
+            end if
+        end do
+
+        !> LI-COR's diagnostic flags
+        if (Diag7200%present) then
+            call AddDatum(header1,'diagnostic_flags_LI-7200,,,,,,,,', separator)
+            call AddDatum(header2,'head_detect_LI-7200,t_out_LI-7200,t_in_LI-7200,aux_in_LI-7200,delta_p_LI-7200,&
+                &chopper_LI-7200,detector_LI-7200,pll_LI-7200,sync_LI-7200', separator)
+            call AddDatum(header3,'[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
+                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs]', separator)
+        end if
+        if (Diag7500%present) then
+            call AddDatum(header1,'diagnostic_flags_LI-7500,,,', separator)
+            call AddDatum(header2,'chopper_LI-7500,detector_LI-7500,pll_LI-7500,sync_LI-7500', separator)
+            call AddDatum(header3,'[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs]', separator)
+        end if
+        if (Diag7700%present) then
+            call AddDatum(header1,'diagnostic_flags_LI-7700,,,,,,,,,,,,,,,', separator)
+            call AddDatum(header2,'not_ready_LI-7700,no_signal_LI-7700,re_unlocked_LI-7700,bad_temp_LI-7700,&
+                &laser_temp_unregulated_LI-7700,block_temp_unregulated_LI-7700,motor_spinning_LI-7700,&
+                &pump_on_LI-7700,top_heater_on_LI-7700,bottom_heater_on_LI-7700,calibrating_LI-7700,&
+                &motor_failure_LI-7700,bad_aux_tc1_LI-7700,bad_aux_tc2_LI-7700,&
+                &bad_aux_tc3_LI-7700,box_connected_LI-7700', separator)
+            call AddDatum(header3,'[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
+                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],&
+                &[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs],[#_flagged_recs]', separator)
+        end if
+
+        !> AGCs and RSSIs for LI-7200 and LI-7500
+        !>
+        !> The word each column is headed with follows the firmware of the
+        !> analyser that column names. Both branches read E2Col(co2), so a
+        !> site with a 7200 and a 7500 of different vintage had both headed
+        !> from whichever held slot five - and the row writer, now asking
+        !> each analyser separately, would have disagreed with this header.
+        if (Diag7200%present) then
+            if(CompareSwVer(InstrSwVerFor('li7200'), SwVerFromString('6.0.0'))) then
+                call AddDatum(header1,'RSSI_LI-7200', separator)
+                call AddDatum(header2,'mean_value_RSSI_LI-7200', separator)
+                call AddDatum(header3,'[#]', separator)
+            else
+                call AddDatum(header1,'AGC_LI-7200', separator)
+                call AddDatum(header2,'mean_value_AGC_LI-7200', separator)
+                call AddDatum(header3,'[#]', separator)
+            end if
+        end if
+        if (Diag7500%present) then
+            if(CompareSwVer(InstrSwVerFor('li7500'), SwVerFromString('6.0.0'))) then
+                call AddDatum(header1,'RSSI_LI-7500', separator)
+                call AddDatum(header2,'mean_value_RSSI_LI-7500', separator)
+                call AddDatum(header3,'[#]', separator)
+            else
+                call AddDatum(header1,'AGC_LI-7500', separator)
+                call AddDatum(header2,'mean_value_AGC_LI-7500', separator)
+                call AddDatum(header3,'[#]', separator)
+            end if
+        end if
+
+        !> Variances
+        call AddDatum(header1, 'variances,,,', separator)
+        call AddDatum(header2, 'u_var,v_var,w_var,ts_var', separator)
+        call AddDatum(header3, '[m+2s-2],[m+2s-2],[m+2s-2],[K+2]', separator)
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
+            if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'var', separator)
+            if(OutVarPresent(gas)) call AddDatum(header3, '--', separator)
+        end do
+        !> w/ts covariance
+        call AddDatum(header1, 'covariances', separator)
+        call AddDatum(header2,'w/ts_cov', separator)
+        call AddDatum(header3,'[m+1K+1s-1]', separator)
+        !> w-gases covariances
+        do k = 1, n_fo_slots
+            gas = fo_slots(k)
+            if(OutVarPresent(gas)) call AddDatum(header1, '', separator)
+            if(OutVarPresent(gas)) call AddDatum(header2, 'w/' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'cov', separator)
+            if(OutVarPresent(gas)) call AddDatum(header3, '--', separator)
+        end do
+
+        !> Mean values of user variables
+        if (NumUserVar > 0) then
+            call AddDatum(header1, 'custom_variables', separator)
+            do var = 1, NumUserVar
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, user_header(var)(1:len_trim(user_header(var))), separator)
+                call AddDatum(header3, user_unit(var)(1:len_trim(user_unit(var))), separator)
+            end do
+        end if
+
+        !> Conditional Eddy Covariance outputs (Zahn et al. 2022), one block per
+        !> pairing. The width is counted rather than written out as a run of
+        !> commas: it depends on how many species the pairing partitions.
+        if (EddyFlowProj%do_cec > 0) then
+            call CecPairs(cec_pairs, n_cec_pairs)
+            do cec_p = 1, n_cec_pairs
+                call CecOutputColumns(cec_pairs(cec_p), gas_flux_label, cec_names, cec_units, &
+                    n_cec_cols)
+                if (n_cec_cols <= 0) cycle
+                call AddDatum(header1, 'conditional_eddy_covariance' &
+                    // trim(cec_pairs(cec_p)%tag) &
+                    // repeat(',', n_cec_cols - 1), separator)
+                do cec_k = 1, n_cec_cols
+                    call AddDatum(header2, trim(cec_names(cec_k)), separator)
+                    call AddDatum(header3, trim(cec_units(cec_k)), separator)
+                end do
+            end do
+        end if
+
+        !> Write on output file
+        write(uflx, '(a)') header1(1:len_trim(header1) - 1)
+        write(uflx, '(a)') header2(1:len_trim(header2) - 1)
+        write(uflx, '(a)') header3(1:len_trim(header3) - 1)
+
     end if
 
     !>==========================================================================
@@ -674,36 +548,34 @@ subroutine InitOutFiles_rp()
             &master_sonic_manufacturer,master_sonic_model,master_sonic_height,&
             &master_sonic_wformat,master_sonic_wref,master_sonic_north_offset,&
             &master_sonic_hpath_length,master_sonic_vpath_length,master_sonic_tau', separator)
-        if (OutVarPresent(co2)) &
-            call AddDatum(dataline,'co2_irga_manufacturer,co2_irga_model,co2_measure_type,co2_irga_northward_separation,&
-                &co2_irga_eastward_separation,co2_irga_vertical_separation,&
-                &co2_irga_tube_length,co2_irga_tube_diameter,co2_irga_tube_flowrate,&
-                &co2_irga_kw,co2_irga_ko,co2_irga_hpath_length,co2_irga_vpath_length,co2_irga_tau', separator)
-        if (OutVarPresent(h2o)) &
-            call AddDatum(dataline,'h2o_irga_manufacturer,h2o_irga_model,h2o_measure_type,h2o_irga_northward_separation,&
-                &h2o_irga_eastward_separation,h2o_irga_vertical_separation,&
-                &h2o_irga_tube_length,h2o_irga_tube_diameter,h2o_irga_tube_flowrate,&
-                &h2o_irga_kw,h2o_irga_ko,h2o_irga_hpath_length,h2o_irga_vpath_length,h2o_irga_tau', separator)
-        if (OutVarPresent(ch4)) &
-            call AddDatum(dataline,'ch4_irga_manufacturer,ch4_irga_model,ch4_measure_type,ch4_irga_northward_separation,&
-                &ch4_irga_eastward_separation,ch4_irga_vertical_separation,&
-                &ch4_irga_tube_length,ch4_irga_tube_diameter,ch4_irga_tube_flowrate,&
-                &ch4_irga_kw,ch4_irga_ko,ch4_irga_hpath_length,ch4_irga_vpath_length,ch4_irga_tau', separator)
-        if (OutVarPresent(gas4)) &
-            call AddDatum(dataline, e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_manufacturer,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_model,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'measure_type,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_northward_separation,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_eastward_separation,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vertical_separation,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_length,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_diameter,' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tube_flowrate' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_kw' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_ko' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_hpath_length' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_vpath_length' &
-                // e2sg(gas4)(1:len_trim(e2sg(gas4))) // 'irga_tau', separator)
+        !> One block per configured gas, named from e2sg - the same tags the
+        !> full output uses, already filled from FullOutputGasTags above.
+        !>
+        !> This was four hand-written blocks: three literals and a fourth
+        !> built by concatenation. WriteOutMetadata emits fourteen fields per
+        !> gas, and the fourth block declared only nine names - `tube_flowrate`
+        !> and the five after it were concatenated with no comma between them,
+        !> so they arrived as one run-together name. Header and row have
+        !> disagreed by five fields for any project with a fourth gas, and
+        !> every column after that point was read under the wrong name.
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
+            call AddDatum(dataline, &
+                  trim(e2sg(gas)) // 'irga_manufacturer,' &
+               // trim(e2sg(gas)) // 'irga_model,' &
+               // trim(e2sg(gas)) // 'measure_type,' &
+               // trim(e2sg(gas)) // 'irga_northward_separation,' &
+               // trim(e2sg(gas)) // 'irga_eastward_separation,' &
+               // trim(e2sg(gas)) // 'irga_vertical_separation,' &
+               // trim(e2sg(gas)) // 'irga_tube_length,' &
+               // trim(e2sg(gas)) // 'irga_tube_diameter,' &
+               // trim(e2sg(gas)) // 'irga_tube_flowrate,' &
+               // trim(e2sg(gas)) // 'irga_kw,' &
+               // trim(e2sg(gas)) // 'irga_ko,' &
+               // trim(e2sg(gas)) // 'irga_hpath_length,' &
+               // trim(e2sg(gas)) // 'irga_vpath_length,' &
+               // trim(e2sg(gas)) // 'irga_tau', separator)
+        end do
         write(umd, '(a)') dataline(1:len_trim(dataline) - 1)
     end if
 
@@ -726,76 +598,40 @@ subroutine InitOutFiles_rp()
         call AddDatum(header1,'file_info,,,,stationarity test,,', separator)
         call AddDatum(header2,'filename,date,time,DOY,dev(u),dev(w),dev(ts)', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[%],[%],[%]', separator)
-        if (OutVarPresent(co2)) then
+        !> One column per configured gas. These were four blocks
+        !> naming co2/h2o/ch4 and whatever sat in the fourth slot,
+        !> so a gas past the fourth had no dev or flag column at
+        !> all. WriteOutQCDetails had the same four, which is what
+        !> kept the two in step; they move together or the file
+        !> shifts.
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
             call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(co2)', separator)
+            call AddDatum(header2,'dev(' // e2sg(gas)(1:len_trim(e2sg(gas)) - 1) // ')', separator)
             call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(h2o)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(h2o)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(ch4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(ch4)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(gas4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)  // ')', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
+        end do
 
         call AddDatum(header1,',', separator)
         call AddDatum(header2,'dev(w/u),dev(w/ts)', separator)
         call AddDatum(header3,'[%],[%]', separator)
 
-        if (OutVarPresent(co2)) then
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
             call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/co2)', separator)
+            call AddDatum(header2,'dev(w/' // e2sg(gas)(1:len_trim(e2sg(gas)) - 1) // ')', separator)
             call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(h2o)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/h2o)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(ch4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/ch4)', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
-        if (OutVarPresent(gas4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'dev(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)  // ')', separator)
-            call AddDatum(header3,'[%]', separator)
-        end if
+        end do
 
         call AddDatum(header1,',', separator)
         call AddDatum(header2,'flag(w/u),flag(w/ts)', separator)
         call AddDatum(header3,'[#],[#]', separator)
 
-        if (OutVarPresent(co2)) then
+        do gas = firstGas, lastGas
+            if (.not. OutVarPresent(gas)) cycle
             call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/co2)', separator)
+            call AddDatum(header2,'flag(w/' // e2sg(gas)(1:len_trim(e2sg(gas)) - 1) // ')', separator)
             call AddDatum(header3,'[#]', separator)
-        end if
-        if (OutVarPresent(h2o)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/h2o)', separator)
-            call AddDatum(header3,'[#]', separator)
-        end if
-        if (OutVarPresent(ch4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/ch4)', separator)
-            call AddDatum(header3,'[#]', separator)
-        end if
-        if (OutVarPresent(gas4)) then
-            call AddDatum(header1,'', separator)
-            call AddDatum(header2,'flag(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1)  // ')', separator)
-            call AddDatum(header3,'[#]', separator)
-        end if
+        end do
 
         call AddDatum(header1,'well-developed_turbulence_test,,,,,', separator)
         call AddDatum(header2,'dev(u),dev(w),dev(ts),flag(u),flag(w),flag(ts)', separator)
@@ -811,6 +647,72 @@ subroutine InitOutFiles_rp()
     !>*********************************************************************************************
 
     !> Statistics files Level 1
+    !> Statistics files st1..st7 all carry the same columns, so the header is
+    !> built once here and written to whichever units are opened below.
+    !>
+    !> It used to be seven byte-identical literals naming twelve variables,
+    !> while WriteOutStats looped `u, pe`. Those agreed while E2NumVar was 14;
+    !> at 102 the rows carried 528 fields against a header of 88 and the files
+    !> could not be read at all. Both sides now walk StatsLayoutSlots.
+    call StatsLayoutSlots(st_slots, n_st_slots)
+    n_st_gas = 0
+    do i = 1, n_st_slots
+        j = st_slots(i)
+        if (j >= firstGas .and. j <= lastGas) then
+            n_st_gas = n_st_gas + 1
+            st_gas(n_st_gas) = j
+            st_name(j) = e2sg(j)(1:len_trim(e2sg(j)) - 1)
+        else if (j == u) then
+            st_name(j) = 'u'
+        else if (j == v) then
+            st_name(j) = 'v'
+        else if (j == w) then
+            st_name(j) = 'w'
+        else if (j == ts) then
+            st_name(j) = 'ts'
+        else if (j == tc) then
+            st_name(j) = 'tc'
+        else if (j == pi) then
+            st_name(j) = 'pc'
+        else if (j == te) then
+            st_name(j) = 'te'
+        else
+            st_name(j) = 'pe'
+        end if
+    end do
+
+    call clearstr(stats_header)
+    call AddDatum(stats_header, 'filename,date,time,DOY,used_records', separator)
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'mean(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'WindDirection', separator)
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'var(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(u/v),cov(u/w),cov(u/ts)', separator)
+    do i = 1, n_st_gas
+        call AddDatum(stats_header, 'cov(u/' // trim(st_name(st_gas(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(v/w),cov(v/ts)', separator)
+    do i = 1, n_st_gas
+        call AddDatum(stats_header, 'cov(v/' // trim(st_name(st_gas(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(w/ts)', separator)
+    do i = 1, n_st_gas
+        call AddDatum(stats_header, 'cov(w/' // trim(st_name(st_gas(i))) // ')', separator)
+    end do
+    call AddDatum(stats_header, 'cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe)', separator)
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'st_dev(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'skw(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+    do i = 1, n_st_slots
+        call AddDatum(stats_header, 'kur(' // trim(st_name(st_slots(i))) // ')', separator)
+    end do
+
     if (RPsetup%out_st(1)) then
         Test_Path = StatsDir(1:len_trim(StatsDir)) &
                   // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
@@ -820,25 +722,7 @@ subroutine InitOutFiles_rp()
         open(ust1, file = St1_Path, iostat = open_status, encoding = 'utf-8')
 
         write(ust1, '(a)') 'first_statistics:_on_raw_data'
-        write(ust1, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust1, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 2
@@ -851,25 +735,7 @@ subroutine InitOutFiles_rp()
         open(ust2, file = St2_Path, iostat = open_status, encoding = 'utf-8')
 
         write(ust2, '(a)') 'second_statistics:_on_raw_data_after_after_despiking'
-        write(ust2, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust2, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 3
@@ -882,25 +748,7 @@ subroutine InitOutFiles_rp()
         open(ust3, file = St3_Path, iostat = open_status, encoding = 'utf-8')
 
         write(ust3, '(a)') 'third_statistics:_on_raw_data_after_after_despiking_and_cross-wind_correction'
-        write(ust3, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust3, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 4
@@ -914,25 +762,7 @@ subroutine InitOutFiles_rp()
 
         write(ust4, '(a)') 'forth statistics:_on_raw_data_after_despiking_cross_wind_correction&
                             &_and_angle-of-attack_correction'
-        write(ust4, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust4, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 5
@@ -946,25 +776,7 @@ subroutine InitOutFiles_rp()
 
         write(ust5, '(a)') 'fifth_statistics:_on_raw_data_after_despiking_cross_wind_correction&
                             &_angle-of-attack_correction_and_tilt_correction'
-        write(ust5, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust5, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 6
@@ -978,25 +790,7 @@ subroutine InitOutFiles_rp()
 
         write(ust6, '(a)') 'sixth statistics:_on_raw_data_after_despiking_cross_wind_correction&
             &_angle-of-attack_correction_tilt_correction_and_time-lag_compensation'
-        write(ust6, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust6, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
 
     !> Statistics files Level 7
@@ -1010,26 +804,13 @@ subroutine InitOutFiles_rp()
 
         write(ust7, '(a)') 'seventh_statistics:seventh_statistics:_on_raw_data_after_despiking_cross_wind_correction&
             &_angle-of-attack_correction_tilt_correction_time-lag_compensation_and_detrending'
-        write(ust7, '(a)') 'filename,date,time,DOY,used_records,&
-                           &mean(u),mean(v),mean(w),mean(ts),mean(co2),mean(h2o),&
-                           &mean(ch4),mean(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),mean(tc),mean(pc),mean(te),&
-                           &mean(pe),WindDirection,&
-                           &var(u),var(v),var(w),var(ts),var(co2),var(h2o),&
-                           &var(ch4),var(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),var(tc),var(pc),var(te),var(pe),&
-                           &cov(u/v),cov(u/w),cov(u/ts),cov(u/co2),cov(u/h2o),&
-                           &cov(u/ch4),cov(u/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(v/w),cov(v/ts),cov(v/co2),cov(v/h2o),cov(v/ch4),&
-                           &cov(v/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/ts),cov(w/co2),cov(w/h2o),cov(w/ch4),cov(w/' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &cov(w/tc),cov(w/pc),cov(w/te),cov(w/pe),&
-                           &st_dev(u),st_dev(v),st_dev(w),st_dev(ts),st_dev(co2),st_dev(h2o),&
-                           &st_dev(ch4),st_dev(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),&
-                           &st_dev(tc),st_dev(pc),st_dev(te),st_dev(pe),&
-                           &skw(u),skw(v),skw(w),skw(ts),skw(co2),skw(h2o),&
-                           &skw(ch4),skw(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),skw(tc),skw(pc),skw(te),skw(pe),&
-                           &kur(u),kur(v),kur(w),kur(ts),kur(co2),kur(h2o),&
-                           &kur(ch4),kur(' // e2sg(gas4)(1:len_trim(e2sg(gas4)) - 1) // '),kur(tc),kur(pc),kur(te),kur(pe)'
+        write(ust7, '(a)') stats_header(1:len_trim(stats_header) - 1)
     end if
+
+    !> Last, so it can name every column family the headers above just wrote -
+    !> including the FLUXNET tags, which SelectFluxnetGasSlots fills when
+    !> InitFluxnetFile_rp runs earlier in this same period.
+    call WriteColumnLegend()
 
 contains
 

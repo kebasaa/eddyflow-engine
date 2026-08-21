@@ -92,14 +92,18 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
         if (printout) then
             if (nfl == bLastFile) write(*, '(a)') &
                 '  Searching biomet data in file: '
+            if (nfl == bLastFile) write(ulog, '(a)') &
+                '  Searching biomet data in file: '
             write(*, '(a)') '   ' &
+                // trim(adjustl(bFileList(nfl)%path))
+            write(ulog, '(a)') '   ' &
                 // trim(adjustl(bFileList(nfl)%path))
         end if
 
         !> Open current biomet file
         inquire(udf, opened=isopen)
         if (isopen) close(udf)
-        open(udf, file = bFileList(nfl)%path, iostat = io_status)
+        open(udf, file = bFileList(nfl)%path, status = 'old', iostat = io_status)
         if (io_status /= 0) cycle file_loop
 
         !> Skip header if necessary
@@ -153,6 +157,8 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
         write(LogInteger, '(i3)') cnt
         if (printout) write(*, '(a)') '   ' // trim(adjustl(LogInteger )) &
             // ' biomet record(s) imported.'
+        if (printout) write(ulog, '(a)') '   ' // trim(adjustl(LogInteger )) &
+            // ' biomet record(s) imported.'
 
         !> Calculate mean values of biomet over the averaging interval
         call BiometAggregate(bSet, size(bSet, 1), size(bSet, 2), bAggr)
@@ -174,5 +180,6 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
         if (bSetup%sel(i) > 0) biomet%val(i) = bAggrEddyFlow(bSetup%sel(i))
     end do
     if (printout) write(*,'(a)') '  Done.'
+    if (printout) write(ulog,'(a)') '  Done.'
 
 end subroutine BiometRetrieveExternalData

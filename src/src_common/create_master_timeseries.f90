@@ -49,6 +49,7 @@ subroutine CreateTimeSeries(StartTimestamp, EndTimestamp, &
 
 
     if (printout) write(*, '(a)', advance = 'no') ' Creating master time series..'
+    if (printout) write(ulog, '(a)', advance = 'no') ' Creating master time series..'
 
     !> create master timestamps array
     RawTimeSeries(1) = StartTimestamp
@@ -61,6 +62,7 @@ subroutine CreateTimeSeries(StartTimestamp, EndTimestamp, &
     end do
 
     if (printout) write(*, '(a)') ' Done.'
+    if (printout) write(ulog, '(a)') ' Done.'
 end subroutine CreateTimeSeries
 
 !***************************************************************************

@@ -171,6 +171,76 @@ subroutine MetadataFileValidation(LocCol, passed, faulty_col)
             return
         end if
     end do
+
+    !> Two records competing for one slot.
+    !>
+    !> ApplyDiagnosticRecordColumns maps every diag_72 record onto the single
+    !> Col(E2NumVar + diag72), so a second one overwrote the first and the
+    !> loser vanished with nothing said. That is how a record left behind by an
+    !> edit survives in a project file: it is inert until the day it is the one
+    !> that wins, and then it takes a working diagnostic down with it.
+    !>
+    !> Records naming a column the metadata ignores are already inert and do
+    !> not count - they are what an edit leaves behind, and refusing the
+    !> project for one would put the user back where this check is meant to
+    !> keep them out of.
+    !>
+    !> The key is the collision, not the name. Cell records repeat their
+    !> variable by design - one cell_t per analyser - and are keyed by
+    !> instrument, so only a true duplicate collides. Gas records cannot
+    !> collide at all: their slot is the record index.
+    do i = 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+        if (.not. RecordIsLive(LocCol, EddyFlowProj%diag(i))) cycle
+        do j = i + 1, min(EddyFlowProj%diag_num, MaxNumDiagCols)
+            if (.not. RecordIsLive(LocCol, EddyFlowProj%diag(j))) cycle
+            if (trim(adjustl(EddyFlowProj%diag(i)%var)) /= &
+                trim(adjustl(EddyFlowProj%diag(j)%var))) cycle
+            passed(1) = .false.
+            passed(27) = .false.
+            faulty_col = EddyFlowProj%diag(j)%col
+            return
+        end do
+    end do
+
+    do i = 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+        if (.not. RecordIsLive(LocCol, EddyFlowProj%cell(i))) cycle
+        do j = i + 1, min(EddyFlowProj%cell_num, MaxNumCellCols)
+            if (.not. RecordIsLive(LocCol, EddyFlowProj%cell(j))) cycle
+            if (trim(adjustl(EddyFlowProj%cell(i)%var)) /= &
+                trim(adjustl(EddyFlowProj%cell(j)%var))) cycle
+            !> Same quantity on two analysers is the design, not a duplicate.
+            if (trim(adjustl(EddyFlowProj%cell(i)%instr)) /= &
+                trim(adjustl(EddyFlowProj%cell(j)%instr))) cycle
+            passed(1) = .false.
+            passed(27) = .false.
+            faulty_col = EddyFlowProj%cell(j)%col
+            return
+        end do
+    end do
+
+contains
+
+!> Whether a record is one the run will actually read.
+!>
+!> Two ways it is not. The column may be one the metadata declares `ignore` or
+!> `not_numeric`, which is dropped at import. Or the column may have been
+!> re-declared since the record was written, so the record now names a column
+!> that measures something else - which is what an edit in the Raw File
+!> Description leaves behind, and it is no more in competition for the slot
+!> than an ignored column is. RecordNamesColumn decides both.
+!>
+!> The record, not just its column number, because the second test needs to
+!> know what the record claims the column is.
+logical function RecordIsLive(Cols, rec)
+    type(ColType), intent(in) :: Cols(MaxNumCol)
+    type(MeasRecordType), intent(in) :: rec
+    logical, external :: RecordNamesColumn
+
+    RecordIsLive = .false.
+    if (rec%col < 1 .or. rec%col > MaxNumCol) return
+
+    RecordIsLive = RecordNamesColumn(Cols(rec%col)%var, rec%var)
+end function RecordIsLive
 end subroutine MetadataFileValidation
 
 !***************************************************************************
@@ -192,11 +262,24 @@ subroutine InstrumentValidation(LocInstr, LocCol, passed)
     type(InstrumentType), intent(in) :: LocInstr
     type(ColType), intent(in) :: LocCol
     logical, intent(out) :: passed(32)
+    !> local variables
+    character(32) :: sel_var
+    logical, external :: IsGasVar
 
     passed = .true.
 
+    !> Which arm of the select below a column takes. Every gas the project
+    !> declares takes the gas arm, not just the four historic names: a COS
+    !> column used to fall to `case default` and have its analyser's firm and
+    !> model go unchecked entirely. Standing in as 'co2' rather than being
+    !> listed keeps the arm's own tests untouched - they are about the
+    !> analyser, and the one test that is about the species, the hygrometer
+    !> check, reads LocCol%var directly and so still sees the real name.
+    sel_var = LocCol%var
+    if (IsGasVar(LocCol%var)) sel_var = 'co2'
+
     !> Check firm & model
-    select case (LocCol%var)
+    select case (trim(adjustl(sel_var)))
         !> Anemometric variables must come from a sonic anemometer
         case ('u', 'v', 'w', 'ts', 'sos')
             !> check firm
@@ -328,23 +411,23 @@ subroutine ColumnValidation(LocCol, passed)
     logical, intent(out) :: passed(32)
     !> local variables
     character(32) :: units
+    logical, external :: IsGasVar
 
     passed = .true.
 
-    !> Check measure type for gas concentrations
-    select case (LocCol%var)
-        case ('co2', 'h2o', 'ch4', 'n2o')
-            select case (LocCol%measure_type)
-                case ('molar_density', 'mole_fraction', 'mixing_ratio')
-                    continue
-                case default
-                    passed(1) = .false.
-                    passed(10) = .false.
-                    return
-            end select
-        case default
-            continue
-    end select
+    !> Check measure type for gas concentrations. Every gas the project
+    !> declares, not the four historic names - a COS or a second N2O column
+    !> used to fall through unchecked.
+    if (IsGasVar(LocCol%var)) then
+        select case (LocCol%measure_type)
+            case ('molar_density', 'mole_fraction', 'mixing_ratio')
+                continue
+            case default
+                passed(1) = .false.
+                passed(10) = .false.
+                return
+        end select
+    end if
 
     !> Check output units compatibility, in case conversion is performed or
     !> input units compatibility, in case conversion is not performed
@@ -354,16 +437,17 @@ subroutine ColumnValidation(LocCol, passed)
     else
         units = LocCol%unit_in
     end if
+    if (IsGasVar(LocCol%var)) then
+        select case (units)
+            case ('ppt', 'ppm', 'ppb', 'pmol_mol', 'mmol_m3', 'umol_m3', 'g_m3', 'mg_m3', 'ug_m3')
+                continue
+            case default
+                passed(1) = .false.
+                passed(11) = .false.
+                return
+        end select
+    end if
     select case (LocCol%var)
-        case ('co2', 'h2o', 'ch4', 'n2o')
-            select case (units)
-                case ('ppt', 'ppm', 'ppb', 'pmol_mol', 'mmol_m3', 'umol_m3', 'g_m3', 'mg_m3', 'ug_m3')
-                    continue
-                case default
-                    passed(1) = .false.
-                    passed(11) = .false.
-                    return
-            end select
         case ('u', 'v', 'w', 'sos')
             select case (units)
                 case ('m_sec', 'mm_sec', 'cm_sec')

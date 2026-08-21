@@ -45,6 +45,7 @@ subroutine CospectraMoncrieff97(nf, kf, Cospectrum, zL, N)
     type(SpectralType), intent(out)  :: Cospectrum(N)
     ! local variables
     integer :: i = 0
+    integer :: gas
     real(kind = dbl) :: Ac
     real(kind = dbl) :: Au
     real(kind = dbl) :: Bc
@@ -57,7 +58,7 @@ subroutine CospectraMoncrieff97(nf, kf, Cospectrum, zL, N)
             !> Scalar fluxes (T, CO2, H2O)
             Ac = 0.284d0 * ((1.d0 + 6.4d0 * zL)**0.75d0)
             Bc = 2.34d0 * (Ac**(-1.1d0))
-            Cospectrum(i)%of(w_co2) = kf(i) / (nf(i) * (Ac + Bc * kf(i)**2.1d0))
+            Cospectrum(i)%of(firstGas) = kf(i) / (nf(i) * (Ac + Bc * kf(i)**2.1d0))
             ! Reynolds stress, however not corrected so far
             Au = 0.124d0 * ((1.d0 + 7.9d0 * zL)**0.75d0)
             Bu = 2.34d0 * (Au**(-1.1d0))
@@ -68,9 +69,9 @@ subroutine CospectraMoncrieff97(nf, kf, Cospectrum, zL, N)
             !> 1.2 unstable conditions
             !> Scalar fluxes (T, CO2, H2O)
             if(kf(i) < 0.54d0) then
-                Cospectrum(i)%of(w_co2) = 12.92d0 * kf(i) / (nf(i) * (1.d0 + 26.7d0 * kf(i))**1.375d0)
+                Cospectrum(i)%of(firstGas) = 12.92d0 * kf(i) / (nf(i) * (1.d0 + 26.7d0 * kf(i))**1.375d0)
             else
-                Cospectrum(i)%of(w_co2) = 4.378d0 * kf(i) / (nf(i) * (1.d0 + 3.8d0 * kf(i))**2.4d0)
+                Cospectrum(i)%of(firstGas) = 4.378d0 * kf(i) / (nf(i) * (1.d0 + 3.8d0 * kf(i))**2.4d0)
             end if
             ! reynolds stress, however not corrected so far
             if(kf(i) < 0.24d0) then
@@ -80,9 +81,21 @@ subroutine CospectraMoncrieff97(nf, kf, Cospectrum, zL, N)
             end if
         end do
     end if
-    !> Set cospectral model for temperature, h2o, ch4 and gas4 equal to co2
-    Cospectrum(:)%of(w_ts)  = Cospectrum(:)%of(w_co2)
-    Cospectrum(:)%of(w_h2o) = Cospectrum(:)%of(w_co2)
-    Cospectrum(:)%of(w_ch4) = Cospectrum(:)%of(w_co2)
-    Cospectrum(:)%of(w_gas4) = Cospectrum(:)%of(w_co2)
+    !> Set the cospectral model for temperature and every gas equal to the
+    !> first scalar slot, which is where the formulae above deposit it.
+    !>
+    !> Moncrieff's scalar cospectrum is the same curve for temperature and
+    !> every scalar - the formulae carry no species term - so which slot it
+    !> is computed in is arbitrary and the rest are copies.
+    !>
+    !> This used to name h2o, ch4 and gas4 one by one, so a gas past the fourth
+    !> kept the error value the array is initialised to. That made its
+    !> cospectrum "all error", which is how SpectralCorrectionFactors decides a
+    !> correction factor is unavailable - so every analytic method silently
+    !> declined to correct those gases, without the cospectra file being
+    !> involved at all.
+    Cospectrum(:)%of(w_ts) = Cospectrum(:)%of(firstGas)
+    do gas = firstGas, lastGas
+        Cospectrum(:)%of(gas) = Cospectrum(:)%of(firstGas)
+    end do
 end subroutine CospectraMoncrieff97

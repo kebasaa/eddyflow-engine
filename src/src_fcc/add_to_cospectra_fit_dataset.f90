@@ -69,7 +69,7 @@ subroutine AddToCospectraFitDataset(lEx, BinCospForStable, BinCospForUnstable, s
 
 
     if (sort == 1) then
-        do var = w_ts, w_gas4
+        do var = ts, lastGas
             do i = 1, nbins
                 if (BinCospForUnstable(i)%fnorm /= error .and. BinCospForUnstable(i)%of(var) > 0d0) then
                     nfit(var, unstable) = nfit(var, unstable) + 1
@@ -79,7 +79,7 @@ subroutine AddToCospectraFitDataset(lEx, BinCospForStable, BinCospForUnstable, s
             end do
         end do
     elseif(sort == 2) then
-        do var = w_ts, w_gas4
+        do var = ts, lastGas
             do i = 1, nbins
                 if (BinCospForStable(i)%fnorm /= error .and. BinCospForStable(i)%of(var) > 0d0) then
                     nfit(var, stable) = nfit(var, stable) + 1

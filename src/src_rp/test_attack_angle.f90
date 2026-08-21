@@ -47,7 +47,7 @@ subroutine TestAttackAngle(Set, N)
     real(kind = dbl) :: hwind
 
 
-    write(*, '(a)', advance = 'no') '   Angle of attack test..'
+    call LogSayNoAdv('   Angle of attack test..')
 
     !> Calculation of angle of attack for each row
     cnt = 0
@@ -67,5 +67,5 @@ subroutine TestAttackAngle(Set, N)
     Essentials%aa_s = dble(ocnt) / dble(cnt) * 1d2
     IntHF%aa = 0
     if (dble(ocnt) / dble(cnt) * 1d2 >= aa%lim) IntHF%aa = 1
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine TestAttackAngle

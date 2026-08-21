@@ -53,6 +53,7 @@ subroutine CrossWindCorr(LocCol, Set, nrow, ncol, printout)
 
 
     if (printout) write(*, '(a)', advance = 'no') '  Cross-wind correction..'
+    if (printout) write(ulog, '(a)', advance = 'no') '  Cross-wind correction..'
 
     !> Define correction coefficients, depending on anemometer model
     call CrossWindCoeff(LocCol, A, B, C)
@@ -67,6 +68,7 @@ subroutine CrossWindCorr(LocCol, Set, nrow, ncol, printout)
         end if
     end do
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine CrossWindCorr
 
 !***************************************************************************

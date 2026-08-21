@@ -55,6 +55,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     logical :: cache_found
     logical :: cache_default_used
     logical :: cache_hit(E2NumVar)
+    logical :: donor_ok
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
     integer :: max_rl(ncol)
@@ -64,15 +65,26 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: TmpSet(nrow, ncol)
     type(PWBResultType) :: lPwbResult
     logical :: pwb_success
-    character(8) :: cache_stage
     real(kind = dbl) :: cache_actual_lag
     real(kind = dbl) :: cache_used_lag
     integer :: cache_row_lag
+    !> The hygrometer that corrects the gas being handled, from that gas's
+    !> own record. Was the site's water for every gas.
+    integer :: msl
+    !> Base slot of the cell block belonging to the analyser that measured the
+    !> gas being handled: cellBase + 0..3 is cell_t, int_t_1, int_t_2, int_p.
+    integer :: cellBase
+    !> Row lag the water covariance is taken at: the gas's own where the two
+    !> share an analyser, the hygrometer's where they do not.
+    integer :: lagRow
+    include '../src_common/interfaces_1.inc'
 
     skip_apply = pwb_detect_only_mode
     pwb_detect_only_mode = .false.
 
     if  (.not. InTimelagOpt .and. .not. skip_apply) write(*, '(a)', advance = 'no') &
+        '  Compensating time-lags..'
+    if  (.not. InTimelagOpt .and. .not. skip_apply) write(ulog, '(a)', advance = 'no') &
         '  Compensating time-lags..'
 
     !> for E2Set scalars, initialise auxiliary vars to zero
@@ -126,15 +138,10 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 PWBResult = pwb_raw_Result
                 pwb_raw_detection_done = .false.
             else
-            if (skip_apply) then
-                cache_stage = 'pre_wpl'
-            else
-                cache_stage = 'post_wpl'
-            end if
             !> Pass 1: Run PWB detection and S1/S2 classification for all gases
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
-                call LookupPwbTimelagCache(j, cache_stage, cache_found, cache_actual_lag, &
+                call LookupPwbTimelagCache(j, cache_found, cache_actual_lag, &
                     cache_used_lag, cache_row_lag, cache_default_used, lPwbResult)
                 if (cache_found) then
                     cache_hit(j) = .true.
@@ -157,6 +164,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 if (pwb_success .and. .not. lPwbResult%edge_pinned) then
                     if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
                         lPwbResult%reliability_class = 'S1_optimal'
+                        lPwbResult%fill_method = 'native'
                         RowLags(j) = lPwbResult%row_lag
                         TLag(j) = lPwbResult%selected_lag
                         ActTLag(j) = lPwbResult%selected_lag
@@ -169,6 +177,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         abs(lPwbResult%selected_lag - pwb_last_optimal_lag(j)) &
                         <= PWBSetup%dev_thresh_s) then
                         lPwbResult%reliability_class = 'S2_optimal'
+                        lPwbResult%fill_method = 'native'
                         RowLags(j) = lPwbResult%row_lag
                         TLag(j) = lPwbResult%selected_lag
                         ActTLag(j) = lPwbResult%selected_lag
@@ -191,18 +200,32 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 PWBResult(j) = lPwbResult
             end do
 
-            !> Pass 2: Same-instrument lag sharing for gases that didn't get S1/S2
-            do j = co2, gas4
+            !> Pass 2: gases on one analyser share a tube, so they share a
+            !> delay. A gas with no detection of its own takes its neighbour's.
+            !>
+            !> The neighbour is decided by analyser identity, not by the model
+            !> string: two LI-7200s at one site are two tubes, and matching on
+            !> the model made them one - the same distinction this file already
+            !> draws below for the water covariance.
+            !>
+            !> And never from water. Its lag is RH-dependent in a way the trace
+            !> gases' is not, which is exactly why the aggregate summary in
+            !> ResolvePwbAggregateSummary refuses it as a donor. The per-period
+            !> rule allowed it, so the two halves of one rule disagreed.
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
-                do k = co2, gas4
+                do k = firstGas, lastGas
                     if (k == j) cycle
                     if (.not. E2Col(k)%present) cycle
-                    if (E2Col(k)%instr%model /= E2Col(j)%instr%model) cycle
+                    if (GasSlotIsWater(k)) cycle
+                    donor_ok = SameAnalyser(j, k)
+                    if (.not. donor_ok) cycle
                     if (trim(PWBResult(k)%reliability_class) /= 'S1_optimal' &
                         .and. trim(PWBResult(k)%reliability_class) /= 'S2_optimal') cycle
                     PWBResult(j)%reliability_class = 'S4_instrument_shared'
                     PWBResult(j)%fallback_used = .false.
+                    PWBResult(j)%fill_method = 'instrument_shared'
                     PWBResult(j)%fallback_source = 'instrument_shared'
                     PWBResult(j)%donor_gas = GasLabel(k)
                     PWBResult(j)%origin_gas = merge(PWBResult(k)%origin_gas, k, &
@@ -221,11 +244,12 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             end do
 
             !> Pass 3: S3 carry-forward or maxcov/default fallback for remaining gases
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
                 if (pwb_has_previous(j)) then
                     PWBResult(j)%reliability_class = 'S3_carryforward'
+                    PWBResult(j)%fill_method = 'carryforward'
                     PWBResult(j)%fallback_source = 'S3_carryforward'
                     PWBResult(j)%origin_gas = pwb_last_optimal_origin(j)
                     if (PWBResult(j)%origin_gas > 0) &
@@ -243,6 +267,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                         .true., def_rl(j), min_rl(j), max_rl(j), &
                         ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
                     PWBResult(j)%reliability_class = 'fallback'
+                    PWBResult(j)%fill_method = 'maxcov_default'
                     PWBResult(j)%fallback_used = .true.
                 end if
                 if (PWBResult(j)%applied_lag == error) then
@@ -252,22 +277,26 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             end do
 
             !> Finalize: set fallback_source labels and write diagnostics
-            do j = co2, gas4
+            do j = firstGas, lastGas
                 if (.not. E2Col(j)%present) cycle
                 if (PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
                     PWBResult(j)%fallback_source = 'maxcov_default'
                 if (.not. PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
                     PWBResult(j)%fallback_source = 'native'
+                if (trim(PWBResult(j)%fill_method) == 'none') PWBResult(j)%fill_method = 'native'
                 if (.not. cache_hit(j)) then
-                    call WritePwbDiagnostic(j, PWBResult(j))
-                    call StorePwbTimelagCache(j, cache_stage, ActTLag(j), TLag(j), &
+                    !> Counted here for the live path. A pre-generation run
+                    !> recounts from the settled table afterwards, so these
+                    !> streaming guesses never reach the summary.
+                    call CountPwbDiagnostic(j, PWBResult(j))
+                    call StorePwbTimelagCache(j, ActTLag(j), TLag(j), &
                         RowLags(j), DefTlagUsed(j), PWBResult(j))
                 end if
             end do
 
             !> Handle non-gas scalars (ts, etc.)
             do j = ts, pe
-                if (j >= co2 .and. j <= gas4) cycle
+                if (j >= firstGas .and. j <= lastGas) cycle
                 if (E2Col(j)%present) then
                     RowLags(j) = def_rl(j)
                     TLag(j) = E2Col(j)%def_tl
@@ -289,61 +318,107 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     if (.not. skip_apply .and. .not. InTimelagOpt) then
         !> For closed path instruments, calculate H2O covariances
         !> for time-lags of other scalars from the same instrument
-        Stats%h2ocov_tl_co2 = error
-        Stats%h2ocov_tl_ch4 = error
-        Stats%h2ocov_tl_gas4 = error
-        if (E2Col(h2o)%present &
-            .and. E2Col(h2o)%instr%path_type == 'closed') then
-            ColW(1:nrow) = Set(1:nrow, w)
-            ColH2O(1:nrow) = Set(1:nrow, h2o)
-            if (E2Col(co2)%present &
-                .and. E2Col(co2)%instr%model == E2Col(h2o)%instr%model &
-                .and. RowLags(co2) > 0) &
-                call CovarianceW(ColW, ColH2O, size(ColW), &
-                    RowLags(co2), Stats%h2ocov_tl_co2)
-            if (E2Col(ch4)%present &
-                .and. E2Col(ch4)%instr%model == E2Col(h2o)%instr%model &
-                .and. RowLags(ch4) > 0) &
-                call CovarianceW(ColW, ColH2O, size(ColW), &
-                    RowLags(ch4), Stats%h2ocov_tl_ch4)
-            if (E2Col(gas4)%present &
-                .and. E2Col(gas4)%instr%model == E2Col(h2o)%instr%model &
-                .and. RowLags(gas4) > 0) &
-                call CovarianceW(ColW, ColH2O, size(ColW), &
-                RowLags(gas4), Stats%h2ocov_tl_gas4)
-        end if
+        !>
+        !> One pass per configured gas, replacing three unrolled arms that
+        !> named co2, ch4 and the fourth slot. A gas is skipped against its
+        !> own hygrometer by identity rather than by position: that
+        !> covariance is the water flux itself, not a cross term.
+        !> Each gas against the water that corrects IT, not against the site's.
+        !>
+        !> This asked the primary hygrometer three questions on every gas's
+        !> behalf: is the primary present, is the primary closed-path, and is
+        !> this gas on the same analyser as the primary. A gas whose
+        !> moist_ref is a second hygrometer therefore got no covariance at
+        !> all, and so no water-flux term in its WPL correction - while its
+        !> sigma and rho_w came from that second hygrometer. The two halves of
+        !> one term disagreed about which water they meant.
+        !>
+        !> The same-model test was doing what moist_ref does properly:
+        !> ResolveGasRef already prefers a hygrometer on the gas's own
+        !> instrument. Asking the reference directly covers the case the model
+        !> string cannot - two analysers of the same model - and drops the
+        !> primary-only restriction with it.
+        Stats%h2ocov_tl = error
+        ColW(1:nrow) = Set(1:nrow, w)
+        do j = firstGas, lastGas
+            if (.not. E2Col(j)%present) cycle
+            msl = E2Col(j)%moist_ref
+            !> Out of slot range covers the biomet reference as well as an
+            !> unresolved one, and declining is right for both: this is a
+            !> covariance of w with a high-frequency water signal, and a
+            !> half-hourly RH sensor has none. Fluxes0 then finds
+            !> h2ocov_tl at error and leaves E_gas unset, which is the
+            !> honest answer rather than a missing term to explain later.
+            if (msl < firstGas .or. msl > lastGas) cycle
+            if (j == msl) cycle
+            if (.not. E2Col(msl)%present) cycle
+            !> The covariance is only meaningful where the water is sampled
+            !> through the same cell the gas is, which is what closed-path
+            !> means here.
+            if (E2Col(msl)%instr%path_type /= 'closed') cycle
+            !> At whichever lag the water itself has.
+            !>
+            !> A gas and a hygrometer sharing an analyser share a tube, so the
+            !> gas's own lag is the water's too. Down a different tube it is
+            !> not, and this used to decline the pairing on that ground -
+            !> which left the gas with no water-flux term at all while
+            !> MoistTerms went on taking its sigma and rho_w from that same
+            !> hygrometer. Two halves of one term disagreeing about which
+            !> water they meant, which is the fault the paragraph above
+            !> records for a second hygrometer, returning by another route.
+            !>
+            !> The quantity wanted is that hygrometer's own water flux, so it
+            !> is evaluated at that hygrometer's lag. Borrowing across
+            !> analysers is a compromise and ExceptionHandler(106) says so;
+            !> declaring an H2O on the gas's own analyser makes ResolveGasRef
+            !> prefer it and the two lags become one again.
+            if (E2Col(j)%instr%model == E2Col(msl)%instr%model) then
+                lagRow = RowLags(j)
+            else
+                lagRow = RowLags(msl)
+            end if
+            if (lagRow <= 0) cycle
+            ColH2O(1:nrow) = Set(1:nrow, msl)
+            call CovarianceW(ColW, ColH2O, size(ColW), &
+                lagRow, Stats%h2ocov_tl(j))
+        end do
 
-        !> Calculate cell temperature covariances with
-        !> time-lags of scalars from the same instrument
-        Stats%tc_cov_tl_co2 = error
-        Stats%tc_cov_tl_h2o = error
-        Stats%tc_cov_tl_ch4 = error
-        Stats%tc_cov_tl_gas4 = error
-        if (E2Col(tc)%present) then
-            !> Store vertical wind component and tc in ad-hoc arrays
-            ColW(1:nrow) = Set(1:nrow, w)
-            ColTC(1:nrow) = Set(1:nrow, tc)
-            if (E2Col(co2)%present &
-                .and. E2Col(co2)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(co2) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(co2), Stats%tc_cov_tl_co2)
-            if (E2Col(h2o)%present &
-                .and. E2Col(h2o)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(h2o) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(h2o), Stats%tc_cov_tl_h2o)
-            if (E2Col(ch4)%present &
-                .and. E2Col(ch4)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(ch4) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(ch4), Stats%tc_cov_tl_ch4)
-            if (E2Col(gas4)%present &
-                .and. E2Col(gas4)%instr%model == E2Col(tc)%instr%model &
-                .and. RowLags(gas4) > 0) &
-                call CovarianceW(ColW, ColTC, size(ColTC), &
-                    RowLags(gas4), Stats%tc_cov_tl_gas4)
-        end if
+        !> Cell temperature covariance, each gas against the cell it was
+        !> measured in, at its own time lag.
+        !>
+        !> This read `tc` - firstCell, the *first* cell block - and admitted a
+        !> gas only if its analyser matched that block's. One global cell made
+        !> the two the same thing. With per-instrument blocks the first is
+        !> whichever analyser happens to hold cell record one, so every gas on
+        !> any other analyser failed the test, got no covariance, and lost the
+        !> cell-temperature term of its WPL correction entirely - reported as
+        !> H_CELL = -9999 while the analyser that owned record one had it.
+        !>
+        !> On CH-LAE the MIRO owns record one, so the LI-7200's CO2 and H2O
+        !> were the ones going without. v7.2.5 does the same, its single cell
+        !> record belonging to the MIRO; this is not a regression, it is the
+        !> defect becoming expressible now that cells are per-instrument.
+        !>
+        !> cell_ref is resolved in DefineE2Set and is what AirAndCellParameters
+        !> and PointByPointToMixingRatio already read. A project with one cell
+        !> block falls back to firstCell and behaves exactly as before.
+        Stats%tc_cov_tl = error
+        ColW(1:nrow) = Set(1:nrow, w)
+        do j = firstGas, lastGas
+            if (.not. E2Col(j)%present) cycle
+            !> Zero when no cell record belongs to this gas's analyser, in
+            !> which case there is no cell temperature to correlate against -
+            !> the first block belongs to a different instrument.
+            cellBase = E2Col(j)%cell_ref
+            if (cellBase < firstCell .or. cellBase > lastCell) cycle
+            if (.not. E2Col(cellBase)%present) cycle
+            if (RowLags(j) <= 0) cycle
+            !> Inside the loop: the column is this gas's cell now, not one
+            !> array filled once for every gas.
+            ColTC(1:nrow) = Set(1:nrow, cellBase)
+            call CovarianceW(ColW, ColTC, size(ColTC), &
+                RowLags(j), Stats%tc_cov_tl(j))
+        end do
     end if
 
     if (.not. skip_apply) then
@@ -374,6 +449,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         end do
         Set = TmpSet
         if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
+        if  (.not. InTimelagOpt) write(ulog,'(a)') ' Done.'
     end if
 end subroutine TimeLagHandle
 

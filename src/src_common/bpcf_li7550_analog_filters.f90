@@ -39,6 +39,7 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
     wind_speed, zL, ac_frequency, printout)
     use m_common_global_var
     implicit none
+    integer :: gas
     !> in/out variables
     real(kind = dbl), intent(in) :: measuring_height
     real(kind = dbl), intent(in) :: displ_height
@@ -58,6 +59,8 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
 
 
     if (printout) write(*,'(a)', advance='no') &
+        '   Calculating correction for LI-7550 analog signals filtering..'
+    if (printout) write(ulog,'(a)', advance='no') &
         '   Calculating correction for LI-7550 analog signals filtering..'
 
     !> Log natural frequencies in an artificial freq range
@@ -84,12 +87,25 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
         loc_var_present, BPTF)
     call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), ts, ac_frequency, &
         loc_var_present, BPTF)
-    if (loc_var_present(co2)) &
-        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), co2, ac_frequency, &
+    !> Every gas measured through an LI-7550, whichever slots those are.
+    !>
+    !> The LI-7550 is the interface box of the LI-7500 and LI-7200, and the
+    !> block-averaging term describes what it does to the analog signals it
+    !> digitises - so it belongs to the gases on such an analyser and to no
+    !> others. This asked for slots five and six, which is those gases only on
+    !> a single-analyser project that happens to declare CO2 and H2O first: on
+    !> a site with a QCL first, the term went to the QCL's channels and the
+    !> LI-7200's were left uncorrected.
+    !>
+    !> The model string carries a trailing revision, so it is matched by
+    !> substring, as every other instrument test in the engine does.
+    do gas = firstGas, lastGas
+        if (.not. loc_var_present(gas)) cycle
+        if (index(E2Col(gas)%instr%model, 'li7500') == 0 .and. &
+            index(E2Col(gas)%instr%model, 'li7200') == 0) cycle
+        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), gas, ac_frequency, &
             loc_var_present, BPTF)
-    if (loc_var_present(h2o)) &
-        call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), h2o, ac_frequency, &
-            loc_var_present, BPTF)
+    end do
 
     !> reset to 1 BA and ZOH low-pass transfer functions if the case
     if (.not. EddyFlowProj%hf_correct_ghg_ba) then
@@ -109,27 +125,20 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
     !> calculate correction factors
     call BandPassTransferFunction(BPTF, w,  u,  w_u, nfreq)
     call BandPassTransferFunction(BPTF, w, ts, w_ts, nfreq)
-    if (loc_var_present(co2)) &
-        call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-    if (loc_var_present(h2o))  &
-        call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-    if (loc_var_present(ch4))  &
-        call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-    if (loc_var_present(gas4)) &
-        call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+    end do
 
     !> calculate correction factors
     call SpectralCorrectionFactors(Cospectrum%of(w_u),  u,  nf, nfreq, BPTF)
     call SpectralCorrectionFactors(Cospectrum%of(w_ts), ts, nf, nfreq, BPTF)
-    if(loc_var_present(co2)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_co2), co2, nf, nfreq, BPTF)
-    if(loc_var_present(h2o)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_h2o), h2o, nf, nfreq, BPTF)
-    if(loc_var_present(ch4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_ch4), ch4, nf, nfreq, BPTF)
-    if(loc_var_present(gas4)) &
-        call SpectralCorrectionFactors(Cospectrum%of(w_gas4), gas4, nf, nfreq, BPTF)
+    do gas = firstGas, lastGas
+        if (loc_var_present(gas)) &
+            call SpectralCorrectionFactors(Cospectrum%of(gas), gas, nf, nfreq, BPTF)
+    end do
 
     if (printout) write(*,'(a)') ' Done.'
+    if (printout) write(ulog,'(a)') ' Done.'
 end subroutine BPCF_LI7550AnalogFilters
 

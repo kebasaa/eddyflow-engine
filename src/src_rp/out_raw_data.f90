@@ -57,6 +57,7 @@ subroutine OutRawData(date, time, Set, nrow, ncol, level)
     !> perform all related calculations
     write(lev_char, '(i1)') level
     write(*, '(a)', advance = 'no') '  Writing raw dataset (level ' // lev_char // ') on output..'
+    write(ulog, '(a)', advance = 'no') '  Writing raw dataset (level ' // lev_char // ') on output..'
 
     Datestring = date(1:4) // date(6:7) // date(9:10) &
                // '-' // time(1:2) // time(4:5)
@@ -72,7 +73,7 @@ subroutine OutRawData(date, time, Set, nrow, ncol, level)
     write(udf, '(a)') 'ts: sonic temperature [K]'
     write(udf, '(a)') 'air_t: ambient temperature [K]'
     write(udf, '(a)') 'air_p: ambient pressure [Pa]'
-    string =  'co2, ch4, 4th gas: molar density [mmol m-3],&
+    string =  'trace gases: molar density [mmol m-3],&
         & mole fraction [' // char(181) // 'mol/mol] or mixing ratio &
         &[' // char(181) // 'mol/mol], depending on raw data'
     call latin1_to_utf8(string, string_utf8)
@@ -97,5 +98,5 @@ subroutine OutRawData(date, time, Set, nrow, ncol, level)
         write(udf,*) OutSet(i, 1: num_var)
     end do
     close(udf)
-    write(*, '(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine OutRawData

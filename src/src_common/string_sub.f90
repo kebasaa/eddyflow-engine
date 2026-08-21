@@ -322,25 +322,66 @@ subroutine int2char(num, string, pad)
     integer, intent(in) :: num
     character(*) :: string
     !> local variables
-    integer :: i
-    character(32) :: str
+    integer :: n
+    integer :: width
+    character(32) :: digits
 
 
-    !> Convert integer to string and adjust left
-    call clearstr(str)
-    write(str, '(i32)') num
-    str = adjustl(str)
+    !> Render the number, then right-align it in a zero-padded field `pad`
+    !> characters wide. The result is built directly in `string`: the padded
+    !> field can be wider than any fixed scratch buffer now that the flag
+    !> strings scale with the gas count, and building it in place also avoids
+    !> the overlapping character assignment the previous version relied on.
+    write(digits, '(i0)') num
+    digits = adjustl(digits)
+    n = min(len_trim(digits), len(string))
+    width = min(max(pad, n), len(string))
 
-    !> Pad with zeros on the left if
-    !> passed length is /= zero and > length of str
-    if (pad > len_trim(str)) then
-        i = pad - len_trim(str)
-        str(i + 1:) = str
-        str(1:i) = repeat('0', i)
+    string = ''
+    if (width > n) then
+        string(1:width - n) = repeat('0', width - n)
+        string(width - n + 1:width) = digits(1:n)
+    else
+        string(1:n) = digits(1:n)
     end if
-
-    string = trim(adjustl(str))
 end subroutine int2char
+
+!***************************************************************************
+!
+! \brief       Build a packed per-variable quality-flag string: a leading
+!              filler digit followed by one digit per variable, so that
+!              string(j + 1 : j + 1) is the flag for variable j.
+! \author      Jonathan Muller
+! \note        Replaces the previous encoding, which accumulated
+!              900000000 + sum(flag(j) * 10**(n - j)) into a default integer
+!              and then rendered it with int2char. That overflows a 32-bit
+!              integer once n exceeds about 9, so it could not survive the
+!              gas count being raised. Building the characters directly keeps
+!              the same digit-per-variable layout with no ceiling.
+!              Any digit outside 0-9 (e.g. the "variable absent" marker) is
+!              written as 9, matching the old behaviour.
+!***************************************************************************
+subroutine PackFlagString(digits, n, string)
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: n
+    integer, intent(in) :: digits(n)
+    character(*), intent(out) :: string
+    !> local variables
+    integer :: j
+    integer :: d
+
+
+    !> Positions not covered by a variable stay '9', which is also what the
+    !> leading filler digit was under the integer encoding.
+    string = repeat('9', len(string))
+    do j = 1, n
+        if (j + 1 > len(string)) exit
+        d = digits(j)
+        if (d < 0 .or. d > 9) d = 9
+        write(string(j + 1:j + 1), '(i1)') d
+    end do
+end subroutine PackFlagString
 
 !***************************************************************************
 !
@@ -453,14 +494,55 @@ subroutine WriteDatumChar(char_in, char_datum, err_label)
     character(*), intent(in) :: char_in
     character(*), intent(out) :: char_datum
     character(*), intent(in) :: err_label
+    logical, external :: AllFlagsNotPerformed
+    logical :: flags_not_performed
 
+    flags_not_performed = AllFlagsNotPerformed(char_in)
     if (trim(adjustl(char_in)) /= 'none' .and. trim(adjustl(char_in)) /= 'None' &
-        .and. trim(adjustl(char_in)) /= '899999999') then
+        .and. .not. flags_not_performed) then
         char_datum = trim(adjustl(char_in))
     else
         char_datum = trim(adjustl(err_label))
     end if
 end subroutine WriteDatumChar
+
+!***************************************************************************
+!
+! \brief       Whether a packed flag cell reports no outcome at all.
+! \author      Jonathan Muller
+! \note        A cell is a filler digit followed by one digit per variable, and
+!              9 is what PackFlagString writes for a test that did not run or a
+!              variable that is not there. A cell that is all nines behind its
+!              filler therefore carries nothing, and the row is better off with
+!              the project's error label than with an opaque run of nines.
+!
+!              This is the rule the literal '899999999' was reaching for. That
+!              literal is the nine-character VM97 cell - one filler plus eight
+!              tests - and matched nothing else, so the same "nothing was
+!              performed" cell rendered as the error label at one width and as
+!              raw nines at another: a four-gas project's time-lag cell is
+!              89999 and passed straight through. It also collided by
+!              coincidence, because the time-lag cell carries one digit per gas
+!              and at exactly eight gases becomes that very string.
+!
+!              The first character is required to be a digit so that an
+!              instrument model or a file name cannot be mistaken for a cell.
+!***************************************************************************
+logical function AllFlagsNotPerformed(cell)
+    implicit none
+    character(*), intent(in) :: cell
+    character(len(cell)) :: body
+    integer :: k
+
+    AllFlagsNotPerformed = .false.
+    body = trim(adjustl(cell))
+    if (len_trim(body) < 2) return
+    if (body(1:1) < '0' .or. body(1:1) > '9') return
+    do k = 2, len_trim(body)
+        if (body(k:k) /= '9') return
+    end do
+    AllFlagsNotPerformed = .true.
+end function AllFlagsNotPerformed
 
 !***************************************************************************
 !

@@ -43,10 +43,29 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     character(*), intent(in) :: string
     !local variables
     integer :: j = 0
+    integer :: i = 0
+    integer :: k = 0
+    integer :: slots(E2NumVar)
+    integer :: nslots = 0
+    integer :: gasslots(GHGNumVar)
+    integer :: ngas = 0
     character(LongOutstringLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
+
+    !> The layout both this writer and the header in InitOutFiles_rp walk.
+    !> They used to agree only because `u, pe` happened to enumerate the
+    !> twelve names the header lists, which stopped being true when E2NumVar
+    !> grew from 14 to 102.
+    call StatsLayoutSlots(slots, nslots)
+    ngas = 0
+    do i = 1, nslots
+        if (slots(i) >= firstGas .and. slots(i) <= lastGas) then
+            ngas = ngas + 1
+            gasslots(ngas) = slots(i)
+        end if
+    end do
 
     call clearstr(dataline)
     !> add file info
@@ -54,8 +73,8 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     call WriteDatumInt(N, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     !> add mean values
-    do j = u, pe
-        if (j == ti1 .or. j == ti2) cycle
+    do i = 1, nslots
+        j = slots(i)
         if (E2Col(j)%present) then
             call WriteDatumFloat(LocStats%Mean(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
@@ -67,8 +86,8 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     call WriteDatumFloat(LocStats%wind_dir, datum, EddyFlowProj%err_label)
     call AddDatum(dataline, datum, separator)
     !> add variances
-    do j = u, pe
-        if (j == ti1 .or. j == ti2) cycle
+    do i = 1, nslots
+        j = slots(i)
         if (E2Col(j)%present) then
             call WriteDatumFloat(LocStats%Cov(j, j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
@@ -96,30 +115,17 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     else
         call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(u)%present .and. E2Col(co2)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, co2), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(u)%present .and. E2Col(h2o)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, h2o), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(u)%present .and. E2Col(ch4)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, ch4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(u)%present .and. E2Col(gas4)%present) then
-        call WriteDatumFloat(LocStats%Cov(u, gas4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
+    !> One covariance per configured gas. These were four arms
+    !> naming co2/h2o/ch4/gas4; the header had the same four, so
+    !> both stop at the fourth gas or neither does.
+    do k = 1, ngas
+        if (E2Col(u)%present .and. E2Col(gasslots(k))%present) then
+            call WriteDatumFloat(LocStats%Cov(u, gasslots(k)), datum, EddyFlowProj%err_label)
+            call AddDatum(dataline, datum, separator)
+        else
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+        end if
+    end do
 
     !> add remaining v-covariances
     if (E2Col(v)%present .and. E2Col(w)%present) then
@@ -134,30 +140,14 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     else
         call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(v)%present .and. E2Col(co2)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, co2), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(v)%present .and. E2Col(h2o)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, h2o), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(v)%present .and. E2Col(ch4)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, ch4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(v)%present .and. E2Col(gas4)%present) then
-        call WriteDatumFloat(LocStats%Cov(v, gas4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
+    do k = 1, ngas
+        if (E2Col(v)%present .and. E2Col(gasslots(k))%present) then
+            call WriteDatumFloat(LocStats%Cov(v, gasslots(k)), datum, EddyFlowProj%err_label)
+            call AddDatum(dataline, datum, separator)
+        else
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+        end if
+    end do
 
     !> add remaining w-covariances
     if (E2Col(w)%present .and. E2Col(ts)%present) then
@@ -166,30 +156,14 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     else
         call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(w)%present .and. E2Col(co2)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, co2), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(w)%present .and. E2Col(h2o)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, h2o), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(w)%present .and. E2Col(ch4)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, ch4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
-    if (E2Col(w)%present .and. E2Col(gas4)%present) then
-        call WriteDatumFloat(LocStats%Cov(w, gas4), datum, EddyFlowProj%err_label)
-        call AddDatum(dataline, datum, separator)
-    else
-        call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
-    end if
+    do k = 1, ngas
+        if (E2Col(w)%present .and. E2Col(gasslots(k))%present) then
+            call WriteDatumFloat(LocStats%Cov(w, gasslots(k)), datum, EddyFlowProj%err_label)
+            call AddDatum(dataline, datum, separator)
+        else
+            call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
+        end if
+    end do
     if (E2Col(w)%present .and. E2Col(tc)%present) then
         call WriteDatumFloat(LocStats%Cov(w, tc), datum, EddyFlowProj%err_label)
         call AddDatum(dataline, datum, separator)
@@ -216,8 +190,8 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     end if
 
     !> add standard deviations
-    do j = u, pe
-        if (j == ti1 .or. j == ti2) cycle
+    do i = 1, nslots
+        j = slots(i)
         if (E2Col(j)%present) then
             call WriteDatumFloat(LocStats%StDev(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
@@ -226,8 +200,8 @@ subroutine WriteOutStats(unt, LocStats, string, N)
         end if
     end do
     !> add skewness and kurtosis
-    do j = u, pe
-        if (j == ti1 .or. j == ti2) cycle
+    do i = 1, nslots
+        j = slots(i)
         if (E2Col(j)%present) then
             call WriteDatumFloat(LocStats%Skw(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)
@@ -235,8 +209,8 @@ subroutine WriteOutStats(unt, LocStats, string, N)
             call AddDatum(dataline, EddyFlowProj%err_label(1:len_trim(EddyFlowProj%err_label)), separator)
         end if
     end do
-    do j = u, pe
-        if (j == ti1 .or. j == ti2) cycle
+    do i = 1, nslots
+        j = slots(i)
         if (E2Col(j)%present) then
             call WriteDatumFloat(LocStats%Kur(j), datum, EddyFlowProj%err_label)
             call AddDatum(dataline, datum, separator)

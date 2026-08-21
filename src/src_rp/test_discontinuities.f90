@@ -47,6 +47,10 @@ subroutine TestDiscontinuities(Set, N)
     integer :: wdw_num = 0
     integer :: wdw = 0
     integer :: npoints_par
+    integer :: gas
+    !> How many variables this routine can flag: the anemometric block plus
+    !> the gas block. Not GHGNumVar, which is the *width* of the flag arrays.
+    integer :: nvars_tested
     integer :: hflags(GHGNumVar)
     integer :: sflags(GHGNumVar)
     real(kind = dbl) :: Mean(GHGNumVar)
@@ -60,9 +64,10 @@ subroutine TestDiscontinuities(Set, N)
     real(kind = dbl), allocatable :: XX(:, :)
     real(kind = dbl), allocatable :: XX_dw(:, :)
     real(kind = dbl), allocatable :: XX_up(:, :)
+    include '../src_common/interfaces_1.inc'
 
 
-    write(*, '(a)', advance = 'no') '   Discontinuities test..'
+    call LogSayNoAdv('   Discontinuities test..')
 
     !> Additional control parameters
     win_len = RPsetup%avrg_len / 6
@@ -74,6 +79,9 @@ subroutine TestDiscontinuities(Set, N)
 
     hflags = 0
     sflags = 0
+    !> u, v, w, ts and every gas slot. The early exit below counts against
+    !> this rather than against the array width.
+    nvars_tested = (ts - u + 1) + (lastGas - firstGas + 1)
     allocate(XX(nn, GHGNumVar))
     allocate(XX_dw(nn/2, GHGNumVar))
     allocate(XX_up(nn/2, GHGNumVar))
@@ -89,12 +97,19 @@ subroutine TestDiscontinuities(Set, N)
             XX_dw(i, :) = XX(i, :)
             XX_up(i, :) = XX(nn/2 + i, :)
         end do
-        !> Convert instantaneous molar densities into mole fractions using standard air molar volume
-        do i = 1, nn
-            if(E2Col(co2)%measure_type == 'molar_density') XX(i, co2) = XX(i, co2) * StdVair * 1d3
-            if(E2Col(h2o)%measure_type == 'molar_density') XX(i, h2o) = XX(i, h2o) * StdVair
-            if(E2Col(ch4)%measure_type == 'molar_density') XX(i, ch4) = XX(i, ch4) * StdVair * 1d3
-            if(E2Col(gas4)%measure_type == 'molar_density') XX(i, gas4) = XX(i, gas4) * StdVair * 1d3
+        !> Convert instantaneous molar densities into mole fractions using
+        !> standard air molar volume. The 1d3 is the umol basis every gas but
+        !> water is held on, so it is asked of the species rather than spelled
+        !> out per slot - four arms named four positions and a fifth gas was
+        !> left on its raw molar density, which then failed the threshold
+        !> comparisons against a mole-fraction limit.
+        do gas = firstGas, lastGas
+            if (E2Col(gas)%measure_type /= 'molar_density') cycle
+            if (GasSlotIsWater(gas)) then
+                XX(1:nn, gas) = XX(1:nn, gas) * StdVair
+            else
+                XX(1:nn, gas) = XX(1:nn, gas) * StdVair * 1d3
+            end if
         end do
 
         !> Whole window mean values
@@ -129,41 +144,42 @@ subroutine TestDiscontinuities(Set, N)
         if (HaarAvr(ts) > ds%sf_t)      sflags(ts) = 1
         if (HaarVar(ts) > ds%hf_var)    hflags(ts) = 1
         if (HaarVar(ts) > ds%sf_var)    sflags(ts) = 1
-        if (HaarAvr(co2) > ds%hf_co2)   hflags(co2) = 1
-        if (HaarAvr(co2) > ds%sf_co2)   sflags(co2) = 1
-        if (HaarVar(co2) > ds%hf_var)   hflags(co2) = 1
-        if (HaarVar(co2) > ds%sf_var)   sflags(co2) = 1
-        if (HaarAvr(h2o) > ds%hf_h2o)   hflags(h2o) = 1
-        if (HaarAvr(h2o) > ds%sf_h2o)   sflags(h2o) = 1
-        if (HaarVar(h2o) > ds%hf_var)   hflags(h2o) = 1
-        if (HaarVar(h2o) > ds%sf_var)   sflags(h2o) = 1
-        if (HaarAvr(ch4) > ds%hf_ch4)   hflags(ch4) = 1
-        if (HaarAvr(ch4) > ds%sf_ch4)   sflags(ch4) = 1
-        if (HaarVar(ch4) > ds%hf_var)   hflags(ch4) = 1
-        if (HaarVar(ch4) > ds%sf_var)   sflags(ch4) = 1
-        if (HaarAvr(gas4) > ds%hf_gas4)   hflags(gas4) = 1
-        if (HaarAvr(gas4) > ds%sf_gas4)   sflags(gas4) = 1
-        if (HaarVar(gas4) > ds%hf_var)   hflags(gas4) = 1
-        if (HaarVar(gas4) > ds%sf_var)   sflags(gas4) = 1
+        !> Sixteen comparisons over four named slots, all with the same shape
+        !> and all reading a per-gas threshold that has been GHGNumVar-wide
+        !> since the absolute-limit settings were made per record.
+        do gas = firstGas, lastGas
+            if (HaarAvr(gas) > ds%hf_gas(gas)) hflags(gas) = 1
+            if (HaarAvr(gas) > ds%sf_gas(gas)) sflags(gas) = 1
+            if (HaarVar(gas) > ds%hf_var)      hflags(gas) = 1
+            if (HaarVar(gas) > ds%sf_var)      sflags(gas) = 1
+        end do
 
-        if((sum(hflags) == GHGNumVar) .and. (sum(sflags) == GHGNumVar)) exit
+        !> Stop early once every variable under test is flagged both ways -
+        !> more windows cannot change the outcome.
+        !>
+        !> The count was against GHGNumVar, which is 68: the width of the flag
+        !> arrays, not the number of variables set. Only u, v, w, ts and the
+        !> gas slots are ever written, so the sum could not reach it and the
+        !> exit never fired - every call ran every window. Counted over the
+        !> slots this routine actually flags, it fires again.
+        if (count(hflags(u:ts) == 1) + count(hflags(firstGas:lastGas) == 1) &
+                == nvars_tested &
+            .and. count(sflags(u:ts) == 1) &
+                + count(sflags(firstGas:lastGas) == 1) == nvars_tested) exit
     end do
     if(allocated(XX)) deallocate(XX)
     if(allocated(XX_dw)) deallocate(XX_dw)
     if(allocated(XX_up)) deallocate(XX_up)
 
-    ! creates a 8-digits number containing - in each digit -
-    ! the values of the h/s flags:
-    IntHF%ds = 900000000
-    IntSF%ds = 900000000
+    ! Pack one digit per variable into the flag strings; absent variables
+    ! are marked 9.
     do j = 1, GHGNumVar
-        if (E2Col(j)%present) then
-            IntHF%ds = IntHF%ds + hflags(j) * 10 **(GHGNumVar - j)
-            IntSF%ds = IntSF%ds + sflags(j) * 10 **(GHGNumVar - j)
-        else
-            IntHF%ds = IntHF%ds + 9 * 10 **(GHGNumVar - j)
-            IntSF%ds = IntSF%ds + 9 * 10 **(GHGNumVar - j)
+        if (.not. E2Col(j)%present) then
+            hflags(j) = 9
+            sflags(j) = 9
         end if
     end do
-    write(*,'(a)') ' Done.'
+    call PackFlagString(hflags, GHGNumVar, CharHF%ds)
+    call PackFlagString(sflags, GHGNumVar, CharSF%ds)
+    call LogSay(' Done.')
 end subroutine TestDiscontinuities

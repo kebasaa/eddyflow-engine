@@ -45,12 +45,18 @@ subroutine SpectraSortingAndAveraging(lEx, BinSpec, nrow, nbins)
     integer :: i
     integer :: gas
     integer :: month
+    logical, external :: GasSlotIsWater
 
 
     call char2int(lEx%end_date(6:7), month, 2)
-    do gas = co2, gas4
+    !> Water is sorted by relative humidity and everything else by month,
+    !> because water's tube attenuation drifts with humidity. That is a
+    !> property of the species: keyed on the h2o slot, a second hygrometer was
+    !> month-sorted like a trace gas, and on a project that declared its water
+    !> elsewhere the roles were exchanged outright.
+    do gas = firstGas, lastGas
         sort = 0
-        if (gas /= h2o) then
+        if (.not. GasSlotIsWater(gas)) then
             sort = FCCsetup%SA%class(gas, month)
         else
             if (lEx%RH > 5d0 .and. lEx%RH < 15d0) then

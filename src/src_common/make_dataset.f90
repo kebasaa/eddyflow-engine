@@ -74,9 +74,12 @@ subroutine MakeDataset(PathIn, MasterTimeSeries, nrow, StartIndx, &
         iostat = open_status, encoding = 'utf-8')
     if (open_status /= 0 ) then
         write(*,'(a)')
+        write(ulog,'(a)')
         write(*,'(a)') '  A problem occurred while opening file: ', &
             trim(adjustl(PathIn))
-        write(*,'(a)') '   File not imported.'
+        write(ulog,'(a)') '  A problem occurred while opening file: ', &
+            trim(adjustl(PathIn))
+        call LogSay('   File not imported.')
         return
     end if
 

@@ -49,16 +49,28 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     logical, intent(out) :: skip_cospectra
     !> Local variables
     integer :: i
-    character(9) :: hf_sr
-    character(9) :: hf_do
-    character(9) :: hf_sk, sf_sk
-    character(9) :: hf_ds, sf_ds
+    !> One digit per variable, taken from the transposed VM97 strings. These
+    !> were character(9), which covered u,v,w,ts and exactly four gases, so a
+    !> fifth gas could never be flagged here and its cospectra were kept
+    !> regardless of what the tests said.
+    character(FlagStrLen) :: hf_sr
+    character(FlagStrLen) :: hf_do
+    character(FlagStrLen) :: hf_sk, sf_sk
+    character(FlagStrLen) :: hf_ds, sf_ds
     integer :: STFlg(GHGNumVar)
     integer :: DTFlg(GHGNumVar)
-    integer :: qc_tau, qc_H, qc_co2, qc_h2o, qc_ch4, qc_gas4
+    integer :: qc_tau, qc_H
+    !> Composite Foken flag per gas slot. Was four named scalars.
+    integer :: qc_gas(GHGNumVar)
+    logical :: all_gases_failed
     integer :: month
+    integer :: gas
     integer :: sort
     real(kind = dbl) :: flux
+    real(kind = dbl) :: gas_flux
+    real(kind = dbl) :: lo, hi
+    logical :: all_low
+    logical, external :: GasSlotIsWater
     logical :: usable_wt
     logical :: vm_ok(GHGNumVar)
     logical :: foken_ok(GHGNumVar)
@@ -85,34 +97,53 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (dabs(lEx%Flux0%H) > FCCsetup%SA%min_un_H &
         .and. dabs(lEx%Flux0%H) < FCCsetup%SA%max_H) then
 
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_un_LE &
-            .or. dabs(lEx%Flux0%LE) > FCCsetup%SA%max_LE) then
-            SADiagRejectedFlux(h2o) = SADiagRejectedFlux(h2o) + 1
-            BinSpec%of(h2o) = error
-            BinCospForUnstable%of(h2o) = error
-        end if
-        if (dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 &
-            .or. dabs(lEx%Flux0%co2) > FCCsetup%SA%max_co2)  then
-            SADiagRejectedFlux(co2) = SADiagRejectedFlux(co2) + 1
-            BinSpec%of(co2) = error
-            BinCospForUnstable%of(co2) = error
-        end if
-        if (dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 &
-            .or. dabs(lEx%Flux0%ch4) > FCCsetup%SA%max_ch4)  then
-            SADiagRejectedFlux(ch4) = SADiagRejectedFlux(ch4) + 1
-            BinSpec%of(ch4) = error
-            BinCospForUnstable%of(ch4) = error
-        end if
-        if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4 &
-            .or. dabs(lEx%Flux0%gas4) > FCCsetup%SA%max_gas4) then
-            SADiagRejectedFlux(gas4) = SADiagRejectedFlux(gas4) + 1
-            BinSpec%of(gas4) = error
-            BinCospForUnstable%of(gas4) = error
-        end if
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_un_LE .and. &
-            dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 .and. &
-            dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 .and. &
-            dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4) then
+        !> One test per configured gas, replacing four hand-written blocks
+        !> that named co2/ch4/gas4 and water. Water is tested on its latent
+        !> heat flux and its own thresholds - the carve-out water has
+        !> everywhere else in this work - and every other gas on its own.
+        !>
+        !> A threshold still at the sentinel means the project never set one:
+        !> that test is skipped rather than applied at zero, which would read
+        !> as "accept everything" for a minimum and "reject everything" for a
+        !> maximum. The gas then contributes no term to the all-fluxes-low
+        !> conjunction below either.
+        all_low = .true.
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > &
+                min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (.not. fcc_var_present(gas)) cycle
+            if (GasSlotIsWater(gas)) then
+                !> This hygrometer's own latent heat flux, not the
+                !> site's. Every water slot was screened on Flux0%LE,
+                !> so a second hygrometer's spectra were accepted or
+                !> rejected on the primary's flux. lambda turns its own
+                !> water flux into the latent heat these thresholds are
+                !> stated in; for the primary that reproduces Flux0%LE
+                !> exactly, so a single-hygrometer site is unchanged.
+                if (lEx%Flux0%gas(gas) /= error &
+                    .and. lEx%lambda /= error) then
+                    gas_flux = dabs(lEx%Flux0%gas(gas) * lEx%lambda &
+                        * MW_H2O * 1d-3)
+                else
+                    gas_flux = dabs(lEx%Flux0%LE)
+                end if
+                lo = FCCsetup%SA%min_un_LE
+                hi = FCCsetup%SA%max_LE
+            else
+                gas_flux = dabs(lEx%Flux0%gas(gas))
+                lo = FCCsetup%SA%min_un_gas(gas)
+                hi = FCCsetup%SA%max_gas(gas)
+            end if
+            if (gas_flux == dabs(error)) cycle
+            if ((lo /= error .and. gas_flux < lo) .or. &
+                (hi /= error .and. gas_flux > hi)) then
+                SADiagRejectedFlux(gas) = SADiagRejectedFlux(gas) + 1
+                BinSpec%of(gas) = error
+                BinCospForUnstable%of(gas) = error
+            end if
+            if (lo /= error .and. gas_flux >= lo) all_low = .false.
+        end do
+        if (all_low) then
             BinSpec = ErrSpec
             BinCospForUnstable = ErrSpec
             skip_spectra = .true.
@@ -134,26 +165,41 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (dabs(lEx%Flux0%H) > FCCsetup%SA%min_st_H &
         .and. dabs(lEx%Flux0%H) < FCCsetup%SA%max_H) then
 
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_st_LE &
-            .or. dabs(lEx%Flux0%LE) > FCCsetup%SA%max_LE) &
-            BinCospForStable%of(h2o) = error
-
-        if (dabs(lEx%Flux0%co2) < FCCsetup%SA%min_st_co2 &
-            .or. dabs(lEx%Flux0%co2) > FCCsetup%SA%max_co2)  &
-            BinCospForStable%of(co2) = error
-
-        if (dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_st_ch4 &
-            .or. dabs(lEx%Flux0%ch4) > FCCsetup%SA%max_ch4)  &
-            BinCospForStable%of(ch4) = error
-
-        if (dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_st_gas4 &
-            .or. dabs(lEx%Flux0%gas4) > FCCsetup%SA%max_gas4) &
-            BinCospForStable%of(gas4) = error
-
-        if (dabs(lEx%Flux0%LE) < FCCsetup%SA%min_st_LE .and. &
-            dabs(lEx%Flux0%co2) < FCCsetup%SA%min_un_co2 .and. &
-            dabs(lEx%Flux0%ch4) < FCCsetup%SA%min_un_ch4 .and. &
-            dabs(lEx%Flux0%gas4) < FCCsetup%SA%min_un_gas4) then
+        !> Same shape as the unstable case above, on the stable thresholds.
+        all_low = .true.
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > &
+                min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (.not. fcc_var_present(gas)) cycle
+            if (GasSlotIsWater(gas)) then
+                !> This hygrometer's own latent heat flux, not the
+                !> site's. Every water slot was screened on Flux0%LE,
+                !> so a second hygrometer's spectra were accepted or
+                !> rejected on the primary's flux. lambda turns its own
+                !> water flux into the latent heat these thresholds are
+                !> stated in; for the primary that reproduces Flux0%LE
+                !> exactly, so a single-hygrometer site is unchanged.
+                if (lEx%Flux0%gas(gas) /= error &
+                    .and. lEx%lambda /= error) then
+                    gas_flux = dabs(lEx%Flux0%gas(gas) * lEx%lambda &
+                        * MW_H2O * 1d-3)
+                else
+                    gas_flux = dabs(lEx%Flux0%LE)
+                end if
+                lo = FCCsetup%SA%min_st_LE
+                hi = FCCsetup%SA%max_LE
+            else
+                gas_flux = dabs(lEx%Flux0%gas(gas))
+                lo = FCCsetup%SA%min_st_gas(gas)
+                hi = FCCsetup%SA%max_gas(gas)
+            end if
+            if (gas_flux == dabs(error)) cycle
+            if ((lo /= error .and. gas_flux < lo) .or. &
+                (hi /= error .and. gas_flux > hi)) &
+                BinCospForStable%of(gas) = error
+            if (lo /= error .and. gas_flux >= lo) all_low = .false.
+        end do
+        if (all_low) then
             BinCospForStable = ErrSpec
             skip_cospectra = .true.
         end if
@@ -172,14 +218,16 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     !> Filter based on results of Vickers and Mahrt (1997) quality tests
     !> if requested
     if (FCCsetup%SA%filter_cosp_by_vm_flags) then
-        hf_sr(1:8) = lEx%vm_flags(1)(2:9)
-        hf_do(1:8) = lEx%vm_flags(3)(2:9)
+        !> Position 1 of each transposed string is the filler digit, so the
+        !> variable digits start at 2 and run to the end.
+        hf_sr(1:GHGNumVar) = lEx%vm_flags(1)(2:FlagStrLen)
+        hf_do(1:GHGNumVar) = lEx%vm_flags(3)(2:FlagStrLen)
 
-        hf_sk(1:8) = lEx%vm_flags(5)(2:9)
-        sf_sk(1:8) = lEx%vm_flags(6)(2:9)
+        hf_sk(1:GHGNumVar) = lEx%vm_flags(5)(2:FlagStrLen)
+        sf_sk(1:GHGNumVar) = lEx%vm_flags(6)(2:FlagStrLen)
 
-        hf_ds(1:8) = lEx%vm_flags(7)(2:9)
-        sf_ds(1:8) = lEx%vm_flags(8)(2:9)
+        hf_ds(1:GHGNumVar) = lEx%vm_flags(7)(2:FlagStrLen)
+        sf_ds(1:GHGNumVar) = lEx%vm_flags(8)(2:FlagStrLen)
 
         !> If vertical wind speed is flagged, all cospectra are eliminated
         wind_vm_bad = hf_sr(w:w) == '1' .or. hf_do(w:w) == '1' &
@@ -190,15 +238,15 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
 
         !> Elimination of individual (co)spectra based on the flags on
         !> the relevant variable
-        do i = u, gas4
+        do i = u, lastGas
             if (hf_sr(i:i) == '1' .or. hf_do(i:i) == '1' &
                 .or. hf_sk(i:i) == '1' .or. hf_ds(i:i) == '1') then
-                if (i >= co2) SADiagRejectedVM(i) = SADiagRejectedVM(i) + 1
+                if (i >= firstGas) SADiagRejectedVM(i) = SADiagRejectedVM(i) + 1
                 BinSpec%of(i) = error
                 BinCospForUnstable%of(i) = error
             end if
         end do
-        do i = co2, gas4
+        do i = firstGas, lastGas
             vm_ok(i) = .not. wind_vm_bad .and. .not. (hf_sr(i:i) == '1' &
                 .or. hf_do(i:i) == '1' .or. hf_sk(i:i) == '1' .or. hf_ds(i:i) == '1')
         end do
@@ -210,10 +258,13 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
     if (FCCsetup%SA%foken_lim >= 0) then
         !> Partial flags
         !> Stationarity flags
-        call PartialFlagLF(nint(lEx%FC_SS), STFlg(w_co2))
-        call PartialFlagLF(nint(lEx%FH2O_SS), STFlg(w_h2o))
-        call PartialFlagLF(nint(lEx%FCH4_SS), STFlg(w_ch4))
-        call PartialFlagLF(nint(lEx%FGS4_SS), STFlg(w_gas4))
+        !> One flag per configured gas. Four named slots meant a fifth gas's
+        !> cospectra were never rejected on their own Foken flag, however bad
+        !> it was, and never contributed to the all-gases-failed test below.
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            call PartialFlagLF(nint(lEx%F_SS(gas)), STFlg(gas))
+        end do
         call PartialFlagLF(nint(lEx%H_SS),  STFlg(w_ts))
         call PartialFlagLF(nint(lEx%TAU_SS),   STFlg(w_u))
         !> Developed turbulence flags
@@ -225,38 +276,31 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
         !> Composite flags
         call GTK2Flag(STFlg(w_u),   DTFlg(u), qc_tau)
         call GTK2Flag(STFlg(w_ts),  DTFlg(w), qc_H)
-        call GTK2Flag(STFlg(w_co2), DTFlg(w), qc_co2)
-        call GTK2Flag(STFlg(w_h2o), DTFlg(w), qc_h2o)
-        call GTK2Flag(STFlg(w_ch4), DTFlg(w), qc_ch4)
-        call GTK2Flag(STFlg(w_gas4), DTFlg(w), qc_gas4)
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            call GTK2Flag(STFlg(gas), DTFlg(w), qc_gas(gas))
+        end do
 
-        !> Actual (co)spectra elimination
+        !> Actual (co)spectra elimination.
+        !>
+        !> Present gases only. A slot the project does not configure carries
+        !> `error` in F_SS, which flags as failing - so counting those would
+        !> hold all_gases_failed true whatever the real gases did, and throw
+        !> the whole period away.
         if (qc_H < FCCsetup%SA%foken_lim &
             .and. qc_tau < FCCsetup%SA%foken_lim) then
-            if (qc_h2o >= FCCsetup%SA%foken_lim) then
-                SADiagRejectedFoken(h2o) = SADiagRejectedFoken(h2o) + 1
-                BinSpec%of(h2o) = error
-                BinCospForUnstable%of(h2o) = error
-            end if
-            if (qc_co2 >= FCCsetup%SA%foken_lim)  then
-                SADiagRejectedFoken(co2) = SADiagRejectedFoken(co2) + 1
-                BinSpec%of(co2) = error
-                BinCospForUnstable%of(co2) = error
-            end if
-            if (qc_ch4 >= FCCsetup%SA%foken_lim)  then
-                SADiagRejectedFoken(ch4) = SADiagRejectedFoken(ch4) + 1
-                BinSpec%of(ch4) = error
-                BinCospForUnstable%of(ch4) = error
-            end if
-            if (qc_gas4 >= FCCsetup%SA%foken_lim) then
-                SADiagRejectedFoken(gas4) = SADiagRejectedFoken(gas4) + 1
-                BinSpec%of(gas4) = error
-                BinCospForUnstable%of(gas4) = error
-            end if
-            if (qc_h2o >= FCCsetup%SA%foken_lim &
-                .and. qc_co2 >= FCCsetup%SA%foken_lim &
-                .and. qc_ch4 >= FCCsetup%SA%foken_lim &
-                .and. qc_gas4 >= FCCsetup%SA%foken_lim) then
+            all_gases_failed = .true.
+            do gas = firstGas, lastGas
+                if (.not. fcc_var_present(gas)) cycle
+                if (qc_gas(gas) >= FCCsetup%SA%foken_lim) then
+                    SADiagRejectedFoken(gas) = SADiagRejectedFoken(gas) + 1
+                    BinSpec%of(gas) = error
+                    BinCospForUnstable%of(gas) = error
+                else
+                    all_gases_failed = .false.
+                end if
+            end do
+            if (all_gases_failed) then
                 BinSpec = ErrSpec
                 BinCospForUnstable = ErrSpec
                 skip_spectra = .true.
@@ -266,36 +310,35 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             BinCospForUnstable = ErrSpec
             skip_spectra = .true.
         end if
-        foken_ok(h2o) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_h2o < FCCsetup%SA%foken_lim
-        foken_ok(co2) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_co2 < FCCsetup%SA%foken_lim
-        foken_ok(ch4) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_ch4 < FCCsetup%SA%foken_lim
-        foken_ok(gas4) = qc_H < FCCsetup%SA%foken_lim .and. qc_tau < FCCsetup%SA%foken_lim &
-            .and. qc_gas4 < FCCsetup%SA%foken_lim
+        do gas = firstGas, lastGas
+            if (.not. fcc_var_present(gas)) cycle
+            foken_ok(gas) = qc_H < FCCsetup%SA%foken_lim &
+                .and. qc_tau < FCCsetup%SA%foken_lim &
+                .and. qc_gas(gas) < FCCsetup%SA%foken_lim
+        end do
     end if
 
     !> Keep flux candidates that passed every non-flux quality requirement.
     !> These support informational, data-driven threshold suggestions only.
     call char2int(lEx%end_date(6:7), month, 2)
-    do i = co2, gas4
+    do i = firstGas, lastGas
         if (.not. lEx%var_present(i) .or. .not. usable_wt) cycle
         if (.not. vm_ok(i) .or. .not. foken_ok(i)) cycle
         sort = 0
-        if (i == h2o) then
+        !> Water sorts by relative humidity and is judged on its latent heat
+        !> flux; every other species sorts by month and is judged on its own.
+        !> Asked of the record, not of the slot - the two tests above in this
+        !> routine already do, and a second hygrometer sits well past slot 6.
+        if (GasSlotIsWater(i)) then
             if (lEx%RH > 5d0 .and. lEx%RH < 95d0) sort = nint(lEx%RH / 10d0)
             flux = dabs(lEx%Flux0%LE)
         else
             if (month >= JAN .and. month <= DEC) sort = FCCsetup%SA%class(i, month)
-            select case (i)
-                case (co2)
-                    flux = dabs(lEx%Flux0%co2)
-                case (ch4)
-                    flux = dabs(lEx%Flux0%ch4)
-                case default
-                    flux = dabs(lEx%Flux0%gas4)
-            end select
+            !> Was a select case whose arms each read their own slot and whose
+            !> default read gas4's, so every gas past the seventh was judged
+            !> on the fourth slot's flux. The arms were all the same
+            !> expression; the slot is the loop variable.
+            flux = dabs(lEx%Flux0%gas(i))
         end if
         if (flux == dabs(error)) cycle
         if (sort == 0) cycle
@@ -311,7 +354,7 @@ subroutine CospectraQAQC(BinSpec, BinCosp, nrow, lEx, &
             call RecordSpectralAssessmentFluxCandidate(i, SADiagStable, flux, sort)
     end do
 
-    do i = co2, gas4
+    do i = firstGas, lastGas
         if (any(BinSpec%of(i) /= error)) SADiagAccepted(i) = SADiagAccepted(i) + 1
     end do
 

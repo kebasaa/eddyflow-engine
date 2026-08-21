@@ -48,65 +48,65 @@ subroutine CreateDatasetsRP(TimeSeries, nrow, StartIndx, EndIndx)
 
     !> L1 statistics
     if (RPsetup%out_st(1)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 1 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 1 Statistics dataset..')
         call MakeDataset(St1_Path(1:len_trim(St1_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> L2 statistics
     if (RPsetup%out_st(2)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 2 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 2 Statistics dataset..')
         call MakeDataset(St2_Path(1:len_trim(St2_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> L3 statistics
     if (RPsetup%out_st(3)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 3 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 3 Statistics dataset..')
         call MakeDataset(St3_Path(1:len_trim(St3_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> L4 statistics
     if (RPsetup%out_st(4)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 4 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 4 Statistics dataset..')
         call MakeDataset(St4_Path(1:len_trim(St4_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> L5 statistics
     if (RPsetup%out_st(5)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 5 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 5 Statistics dataset..')
         call MakeDataset(St5_Path(1:len_trim(St5_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> L6 statistics
     if (RPsetup%out_st(6)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 6 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 6 Statistics dataset..')
         call MakeDataset(St6_Path(1:len_trim(St6_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> L7 statistics
     if (RPsetup%out_st(7)) then
-        write(*,'(a)', advance = 'no') '  Creating Level 7 Statistics dataset..'
+        call LogSayNoAdv('  Creating Level 7 Statistics dataset..')
         call MakeDataset(St7_Path(1:len_trim(St7_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     if (NumUserVar > 0) then
@@ -114,83 +114,97 @@ subroutine CreateDatasetsRP(TimeSeries, nrow, StartIndx, EndIndx)
         if (RPsetup%out_st(1)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 1 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 1 Statistics dataset for user variables..'
             call MakeDataset(UserSt1_Path(1:len_trim(UserSt1_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
 
         if (RPsetup%out_st(2)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 2 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 2 Statistics dataset for user variables..'
             call MakeDataset(UserSt2_Path(1:len_trim(UserSt2_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
 
         if (RPsetup%out_st(3)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 3 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 3 Statistics dataset for user variables..'
             call MakeDataset(UserSt3_Path(1:len_trim(UserSt3_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
 
         if (RPsetup%out_st(4)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 4 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 4 Statistics dataset for user variables..'
             call MakeDataset(UserSt4_Path(1:len_trim(UserSt4_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
 
         if (RPsetup%out_st(5)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 5 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 5 Statistics dataset for user variables..'
             call MakeDataset(UserSt5_Path(1:len_trim(UserSt5_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
 
         if (RPsetup%out_st(6)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 6 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 6 Statistics dataset for user variables..'
             call MakeDataset(UserSt6_Path(1:len_trim(UserSt6_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
 
         if (RPsetup%out_st(7)) then
             write(*,'(a)', advance = 'no') &
                 '  Creating Level 7 Statistics dataset for user variables..'
+            write(ulog,'(a)', advance = 'no') &
+                '  Creating Level 7 Statistics dataset for user variables..'
             call MakeDataset(UserSt7_Path(1:len_trim(UserSt7_Path)), &
                 TimeSeries, size(TimeSeries), &
                 StartIndx, EndIndx, .true., 2)
-            write(*,'(a)') ' Done.'
+            call LogSay(' Done.')
         end if
     end if
 
     !> QC file
     if(RPsetup%out_qc_details .and. Meth%qcflag /= 'none') then
-        write(*,'(a)', advance = 'no') '  Creating QC details dataset..'
+        call LogSayNoAdv('  Creating QC details dataset..')
         call MakeDataset(QCdetails_Path(1:len_trim(QCdetails_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .true., 3)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> Biomet measurements file
     if (EddyFlowProj%out_biomet .and. nbVars > 0) then
-        write(*,'(a)', advance = 'no') '  Creating Biomet dataset..'
+        call LogSayNoAdv('  Creating Biomet dataset..')
         call MakeDataset(Biomet_Path(1:len_trim(Biomet_Path)), &
             TimeSeries, size(TimeSeries), &
             StartIndx, EndIndx, .false., 2)
-        write(*,'(a)') ' Done.'
+        call LogSay(' Done.')
     end if
 
     !> Remove temporary output file

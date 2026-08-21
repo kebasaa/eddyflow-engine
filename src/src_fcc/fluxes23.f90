@@ -41,25 +41,57 @@ subroutine Fluxes23(lEx)
     !> local variables
     real(kind = dbl) :: Tp
     real(kind = dbl) :: E_nowpl
+    !> Water vapour terms of the H2O that corrects each gas. Equal to the
+    !> global lEx%sigma / lEx%RHO%w unless the project gives that gas its own
+    !> moisture reference, so a single-analyser site is unaffected.
+    real(kind = dbl) :: sigma_g, rhow_g
+    integer :: msl
+    integer :: wsl
+    integer :: wsx
+    include '../src_common/interfaces_1.inc'
     real(kind = dbl), parameter :: alpha = 0.51d0
 
+
+    !> Water's own slot, from the records. FCC is what publishes the FLUXNET
+    !> row under fcc_follows, so leaving this at the h2o constant undid the
+    !> RP-side work entirely: on a project with water anywhere but record
+    !> two, FCC wrote water's flux into slot 6 - overwriting whatever gas is
+    !> actually there - and left the real water on the generic trace-gas path.
+    wsl = PrimaryWaterSlot()
+    !> An always-in-bounds stand-in for wsl inside guard expressions.
+    !>
+    !> Fortran does not mandate short-circuit `.and.`, so
+    !> `wsl >= firstGas .and. X(wsl)` still evaluates X(wsl) - and with no
+    !> hygrometer wsl is 0, which is out of bounds. The wsl >= firstGas test
+    !> still decides the outcome; wsx only keeps the subscript legal while it
+    !> is being decided.
+    wsx = max(wsl, firstGas)
 
     Flux2 = errFlux
     Flux3 = errFlux
 
     !> Level 2 end 3 internal sensible heat, do nothing
-    Flux2%Hi_co2 = Flux1%Hi_co2
-    Flux2%Hi_h2o = Flux1%Hi_h2o
-    Flux2%Hi_ch4 = Flux1%Hi_ch4
-    Flux2%Hi_gas4 = Flux1%Hi_gas4
-    Flux3%Hi_co2 = Flux2%Hi_co2
-    Flux3%Hi_h2o = Flux2%Hi_h2o
-    Flux3%Hi_ch4 = Flux2%Hi_ch4
-    Flux3%Hi_gas4 = Flux2%Hi_gas4
+    !>
+    !> A pass-through, so it carries the whole gas block. Spelled out for
+    !> co2, the water slot, ch4 and gas4, it dropped every gas past the
+    !> fourth record: Fluxes0_rp computes Hi_gas for each configured gas and
+    !> the FLUXNET file writes an H_CELL_* column for each, but only four
+    !> survived the level 1 -> 2 -> 3 chain, so the rest were error codes
+    !> whatever the analyser reported. It also relocated them - which four
+    !> slots those names pick out depends on where water sits, so two
+    !> projects differing only in record order disagreed about H_CELL.
+    Flux2%Hi_gas(firstGas:lastGas) = Flux1%Hi_gas(firstGas:lastGas)
+    Flux3%Hi_gas(firstGas:lastGas) = Flux2%Hi_gas(firstGas:lastGas)
 
     !> Level 2 evapotranspiration WPL corrected, including Burba if the case
     if (EddyFlowProj%wpl) then
-        if (lEx%instr(ih2o)%path_type == 'open') then
+        if (wsl < firstGas) then
+            !> No hygrometer, so there is no evapotranspiration to correct.
+            !> Tested on its own: Fortran does not mandate short-circuit
+            !> `.and.`, so folding it into the open-path test below is not a
+            !> guard, and the closed-path arm reached measure_type(0).
+            Flux2%E = error
+        elseif (lEx%gas_instr(wsl)%path_type == 'open') then
             if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
                 .and. Flux1%E /= error .and. Flux1%H /= error &
                 .and. lEx%sigma /= error) then
@@ -77,39 +109,39 @@ subroutine Fluxes23(lEx)
             !> Closed-path uses Ibrom et al. (2007) if conversion to mixing
             !> ratio did not already occur (which implies that some variables
             !> were missing)
-            select case(lEx%measure_type(h2o))
+            select case(lEx%measure_type(wsl))
                 case ('molar_density', 'mole_fraction')
                     if (Flux1%E /= error .and. lEx%sigma /= error &
-                        .and. lEx%Vcell(h2o) > 0d0 .and. lEx%Va > 0d0) then
+                        .and. lEx%Vcell(wsl) > 0d0 .and. lEx%Va > 0d0) then
 
-                        if (Flux1%Hi_h2o /= error &
-                            .and. lEx%cov_w(pi) /= error) then
+                        if (Flux1%Hi_gas(wsl) /= error &
+                            .and. lEx%cov_w_pcell(wsl) /= error) then
                             !> Complete formulation, should actually never be
                             !> used cause conversion to mixing ratio should have
                             !> already happened if everything is available
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
-                                * lEx%Vcell(h2o) / lEx%Va &
-                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_h2o &
-                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell) &
-                                - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) &
-                                * lEx%RHO%w / (lEx%Pcell)
+                                * lEx%Vcell(wsl) / lEx%Va &
+                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(wsl) &
+                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(wsl)) &
+                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(wsl) &
+                                * lEx%RHO%w / (lEx%Pcell_at(wsl))
 
-                        elseif (Flux1%Hi_h2o /= error) then
+                        elseif (Flux1%Hi_gas(wsl) /= error) then
                             !> Correct only for effect of T
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
-                                * lEx%Vcell(h2o) / lEx%Va &
-                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_h2o &
-                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell)
+                                * lEx%Vcell(wsl) / lEx%Va &
+                                + (1d0 + mu * lEx%sigma) * Flux1%Hi_gas(wsl) &
+                                * lEx%RHO%w / (lEx%RhoCp * lEx%Tcell_at(wsl))
 
-                        elseif (lEx%cov_w(pi)  /= error) then
+                        elseif (lEx%cov_w_pcell(wsl)  /= error) then
                             !> Correct only for effect of P
                             Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
-                                * lEx%Vcell(h2o) / lEx%Va &
-                                - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) &
-                                * lEx%RHO%w / (lEx%Pcell)
+                                * lEx%Vcell(wsl) / lEx%Va &
+                                - (1d0 + mu * lEx%sigma) * lEx%cov_w_pcell(wsl) &
+                                * lEx%RHO%w / (lEx%Pcell_at(wsl))
                         else
                             !> Can't correct for T and P
-                            Flux2%E = Flux1%E * lEx%Vcell(h2o) / lEx%Va
+                            Flux2%E = Flux1%E * lEx%Vcell(wsl) / lEx%Va
                         end if
                     else
                         Flux2%E = error
@@ -126,25 +158,28 @@ subroutine Fluxes23(lEx)
     if (Flux1%E == error) Flux2%E = error
 
     !> Level 2 h2o and latent heat flux
-    if (Flux2%E /= error) then
-        Flux2%h2o = Flux2%E * 1d3 / MW(h2o)
-        Flux2%ET = Flux2%h2o * h2o_to_ET
+    if (wsl < firstGas) then
+        Flux2%LE  = error
+        Flux2%ET  = error
+    elseif (Flux2%E /= error) then
+        Flux2%gas(wsl) = Flux2%E * 1d3 / MW_H2O
+        Flux2%ET = Flux2%gas(wsl) * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux2%LE = Flux2%E * lEx%lambda
         else
             Flux2%LE = error
         end if
     else
-        Flux2%h2o = error
+        Flux2%gas(wsl) = error
         Flux2%LE  = error
         Flux2%ET  = error
     end if
 
     !> Level 2 evapotranspiration fluxes with H2O covariances
-    !> at time-lags of other scalars. Do nothing, WPL is deleterious here
-    Flux2%E_co2 = Flux1%E_co2
-    Flux2%E_ch4 = Flux1%E_ch4
-    Flux2%E_gas4 = Flux1%E_gas4
+    !> at time-lags of other scalars. Do nothing, WPL is deleterious here.
+    !> Another pass-through, so it carries the whole gas block; the water
+    !> slot has no entry by construction and copying it costs nothing.
+    Flux2%E_gas(firstGas:lastGas) = Flux1%E_gas(firstGas:lastGas)
 
     !> Level 2 Sensible heat
     if (lEx%instr(sonic)%category == 'sonic') then
@@ -186,7 +221,8 @@ subroutine Fluxes23(lEx)
 
     !> Level 3 for evapotranspiration: for open path, WPL again with corrected H
     !> Starts again from Level 1 of E, Level 2 was only used to calculate H Level 3.
-    if(EddyFlowProj%wpl .and. lEx%instr(ih2o)%path_type == 'open') then
+    if(EddyFlowProj%wpl .and. wsl >= firstGas &
+        .and. lEx%gas_instr(wsx)%path_type == 'open') then
         if (lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. Flux1%E /= error &
             .and. Flux1%H /= error .and. lEx%sigma /= error) then
             Flux3%E = (1d0 + mu * lEx%sigma) * Flux1%E &
@@ -203,29 +239,30 @@ subroutine Fluxes23(lEx)
     !> Level 3 latent heat fluxes with H2O covariances at
     !> timelags of other scalars
     !> Do nothing
-    Flux3%E_co2 = Flux2%E_co2
-    Flux3%E_ch4 = Flux2%E_ch4
-    Flux3%E_gas4 = Flux2%E_gas4
+    Flux3%E_gas(firstGas:lastGas) = Flux2%E_gas(firstGas:lastGas)
 
     !> Level 3 h2o flux and latent heat flux
-    if (Flux3%E /= error) then
-        Flux3%h2o = Flux3%E * 1d3 / MW(h2o)
-        Flux3%ET = Flux3%h2o * h2o_to_ET
+    if (wsl < firstGas) then
+        Flux3%LE  = error
+        Flux3%ET  = error
+    elseif (Flux3%E /= error) then
+        Flux3%gas(wsl) = Flux3%E * 1d3 / MW_H2O
+        Flux3%ET = Flux3%gas(wsl) * h2o_to_ET
         if (lEx%lambda /= error) then
             Flux3%LE = Flux3%E * lEx%lambda
         else
             Flux3%LE = error
         end if
     else
-        Flux3%h2o = error
+        Flux3%gas(wsl) = error
         Flux3%LE  = error
         Flux3%ET  = error
     end if
 
     !> Calculate E_nowpl for closed and open path systems
-    if (lEx%instr(ih2o)%path_type == 'closed') then
-        if (Flux1%E /= error .and. BPCF%of(w_h2o) /= error) then
-            E_nowpl = Flux1%E * BPCF%of(w_h2o)
+    if (wsl >= firstGas .and. lEx%gas_instr(wsx)%path_type == 'closed') then
+        if (Flux1%E /= error .and. BPCF%of(wsl) /= error) then
+            E_nowpl = Flux1%E * BPCF%of(wsl)
         elseif(Flux1%E /= error) then
             E_nowpl = Flux1%E
         else
@@ -236,612 +273,60 @@ subroutine Fluxes23(lEx)
     end if
 
     !> Apply spectral correction to h2o and E/LE Level 3 fluxes for closed path
-    if (lEx%instr(ih2o)%path_type == 'closed' .and. Flux3%E /= error) then
-        !> Level 3, spectral correction
-        Flux3%h2o = Flux3%h2o * BPCF%of(w_h2o)
-        Flux3%E   = Flux3%E   * BPCF%of(w_h2o)
-        Flux3%LE  = Flux3%LE  * BPCF%of(w_h2o)
-        Flux3%ET  = Flux3%ET  * BPCF%of(w_h2o)
+    if (wsl >= firstGas .and. Flux3%E /= error) then
+        if (lEx%gas_instr(wsl)%path_type == 'closed') then
+            !> Level 3, spectral correction
+            Flux3%gas(wsl) = Flux3%gas(wsl) * BPCF%of(wsl)
+            Flux3%E   = Flux3%E   * BPCF%of(wsl)
+            Flux3%LE  = Flux3%LE  * BPCF%of(wsl)
+            Flux3%ET  = Flux3%ET  * BPCF%of(wsl)
+        end if
     end if
 
-    if (.not. lEx%var_present(h2o)) then
-        Flux3%h2o = error
+    if (wsl < firstGas) then
+        Flux3%E = error; Flux3%LE = error; Flux3%ET = error
+    elseif (.not. lEx%var_present(wsl)) then
+        Flux3%gas(wsl) = error
         Flux3%E   = error
         Flux3%LE  = error
         Flux3%ET  = error
     end if
 
-    !> Level 2 other gases
-    !> co2
-    if (lEx%instr(ico2)%path_type == 'closed') then
-        !> Level 2, WPL for closed path, implemented after Ibrom et al. (2007),
-        !> Tellus, eq. 3a with H contribution from WPL24
-        select case(lEx%measure_type(co2))
-            !> Analitically, it is verified that:
-            !> (E * mu * sigma / rho%w * co2_density)
-            !> equals
-            !> (r_c * w'chi_w' / Va)
-            case('molar_density')
 
-                !> E, T and P effects (should never be actually used)
-                if (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
+    !> Level 2 other gases.
+    !>
+    !> One loop over the gases, replacing three near-duplicate blocks that had
+    !> drifted apart; see Level2GasFlux for the two differences resolved.
+    !>
+    !> Runs the full gas range: lEx%gas_instr is indexed by gas slot and the
+    !> ex file now carries an analyser for every configured gas.
+    do msl = firstGas, lastGas
+        !> H2O's own flux is the evapotranspiration handled above.
+        if (msl == wsl) cycle
+        call MoistTerms(msl, sigma_g, rhow_g)
+        call Level2GasFlux(msl, sigma_g, rhow_g)
+    end do
 
-                !> Onlt E and T effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt T and P effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Only E and P effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt E effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 ) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt T effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt P effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> No WPL effects
-                elseif (Flux1%co2 /= error) then
-                    Flux2%co2 = Flux1%co2 * lEx%Vcell(co2) / lEx%Va
-                else
-                    Flux2%co2 = error
-                end if
-
-            case('mole_fraction')
-
-                !> E, T and P effects (should never be actually used)
-                if (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt E and T effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%co2 = Flux1%co2 &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt T and P effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Only E and P effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt E effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%E_co2 /= error .and. lEx%RHO%w > 0d0 ) then
-                    Flux2%co2 = Flux1%co2 &
-                        + Flux3%E_co2 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt T effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. Flux3%Hi_co2 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%co2 = Flux1%co2 &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_co2 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> Onlt P effects
-                elseif (Flux1%co2 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(co2) > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%co2 = Flux1%co2 &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(co2) / lEx%Va
-
-                !> No WPL effects
-                elseif (Flux1%co2 /= error) then
-                    Flux2%co2 = Flux1%co2
-                else
-                    Flux2%co2 = error
-                end if
-
-            case('mixing_ratio')
-                Flux2%co2 = Flux1%co2
-        end select
-    else
-        !> Level 2, WPL for open path implemented after e.g. Burba et al. (2008, GCB, eq. 1)
-        if (Flux1%co2 /= error .and. Flux3%H /= error .and. Flux3%E /= error &
-            .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-            Flux2%co2 = Flux1%co2 + mu * Flux3%E * lEx%d(co2) * 1d3 &
-                / ((1d0 + mu * lEx%sigma) * lEx%RHO%d) &
-                + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) * lEx%d(co2) * 1d3 &
-                / (lEx%RhoCp * lEx%Ta)
-        elseif(Flux1%co2 /= error .and. Flux3%H /= error &
-            .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) then
-            Flux2%co2 = Flux1%co2 &
-                + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) * lEx%d(co2) * 1d3 &
-                / (lEx%RhoCp * lEx%Ta)
-        elseif(Flux1%co2 /= error .and. Flux3%E /= error &
-            .and. lEx%RHO%d > 0d0 .and. lEx%sigma /= error) then
-            Flux2%co2 = Flux1%co2 &
-                + mu * Flux3%E * lEx%d(co2) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d)
-        elseif(Flux1%co2 /= error) then
-            Flux2%co2 = Flux1%co2
-        else
-            Flux2%co2 = error
-        end if
-    end if
-    if (.not. lEx%var_present(co2)) Flux2%co2 = error
-
-    !> ch4
-    if (lEx%instr(ich4)%path_type == 'closed') then
-        !> Level 2, WPL for closed path, implemented after Ibrom et al. (2007),
-        !> Tellus, eq. 3a with H contribution from WPL24
-        select case(lEx%measure_type(ch4))
-            case('molar_density')
-
-                !> E, T and P effects (should never be actually used)
-                if (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt E and T effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt T and P effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Only E and P effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt E effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 ) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt T effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt P effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> No WPL effects
-                elseif (Flux1%ch4 /= error) then
-                    Flux2%ch4 = Flux1%ch4 * lEx%Vcell(ch4) / lEx%Va
-                else
-                    Flux2%ch4 = error
-                end if
-
-            case('mole_fraction')
-
-                !> E, T and P effects
-                if (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt E and T effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt T and P effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Only E and P effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt E effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%E_ch4 /= error .and. lEx%RHO%w > 0d0 ) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        + Flux3%E_ch4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt T effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. Flux3%Hi_ch4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_ch4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> Onlt P effects
-                elseif (Flux1%ch4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(ch4) > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%ch4 = Flux1%ch4 &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(ch4) / lEx%Va
-
-                !> No WPL effects
-                elseif (Flux1%ch4 /= error) then
-                    Flux2%ch4 = Flux1%ch4
-                else
-                    Flux2%ch4 = error
-                end if
-
-            case('mixing_ratio')
-                Flux2%ch4 = Flux1%ch4
-        end select
-    else
-        !> Level 2, WPL for open path implemented after Webb et al. 1980 (+ 7700 multipliers)
-        if (lEx%instr(ich4)%model(1:len_trim(lEx%instr(ich4)%model) - 2)  == 'li7700') then
-            !> Flux formulation including multipliers requires the use of the original WPL formulation
-            !> making use of E not corrected for WPL (E_nowpl) and H, both spectrally corrected.
-            if (Flux1%ch4 /= error .and. Flux3%H /= error .and. E_nowpl /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-                Flux2%ch4 = lEx%Mul7700%A *(Flux1%ch4 &
-                          + lEx%Mul7700%B * mu * lEx%d(ch4) * 1d3 * E_nowpl / lEx%RHO%d &
-                          + lEx%Mul7700%C * (1d0 + mu * lEx%sigma) * Flux3%H * lEx%d(ch4) * 1d3 / (lEx%RhoCp * lEx%Ta))
-            elseif(Flux1%ch4 /= error .and. Flux3%H /= error &
-                .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-                Flux2%ch4 = lEx%Mul7700%A *(Flux1%ch4 &
-                          + lEx%Mul7700%C * (1d0 + mu * lEx%sigma) * Flux3%H * lEx%d(ch4) * 1d3 / (lEx%RhoCp * lEx%Ta))
-            elseif(Flux1%ch4 /= error .and. E_nowpl /= error .and. lEx%RHO%d > 0d0) then
-                Flux2%ch4 = lEx%Mul7700%A *(Flux1%ch4 &
-                          + lEx%Mul7700%B * mu * lEx%d(ch4) * 1d3 * E_nowpl / lEx%RHO%d)
-            elseif (Flux1%ch4 /= error) then
-                Flux2%ch4 = lEx%Mul7700%A * Flux1%ch4
+    !> Level 3 other gases. For closed path apply the spectral correction now
+    !> (e.g. Ibrom et al. 2007); for open path it is already included.
+    do msl = firstGas, lastGas
+        if (msl == wsl) cycle
+        if (lEx%gas_instr(msl)%path_type == 'closed' &
+            .and. Flux2%gas(msl) /= error) then
+            !> No correction factor means the corrected flux is
+            !> unavailable, not that it equals the uncorrected one - and
+            !> certainly not Flux2 times the error sentinel, which is what the
+            !> unguarded multiply produced for any gas the spectral chain
+            !> could not reach.
+            if (BPCF%of(msl) /= error) then
+                Flux3%gas(msl) = Flux2%gas(msl) * BPCF%of(msl)
             else
-                Flux2%ch4 = error
+                Flux3%gas(msl) = error
             end if
         else
-            !> Flux formulation without multipliers follows Burba et al. 2008.
-            if (Flux1%ch4 /= error .and. Flux3%H /= error .and. Flux3%E /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-                Flux2%ch4 = Flux1%ch4 &
-                    + mu * Flux3%E * lEx%d(ch4) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d) &
-                    + Flux3%H * lEx%d(ch4) * 1d3 / (lEx%RhoCp * lEx%Ta)
-            elseif(Flux1%ch4 /= error .and. Flux3%H /= error &
-                .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) then
-                Flux2%ch4 = Flux1%ch4 &
-                    + Flux3%H * lEx%d(ch4) * 1d3 / (lEx%RhoCp * lEx%Ta)
-            elseif(Flux1%ch4 /= error .and. Flux3%E /= error &
-                .and. lEx%RHO%d > 0d0 .and. lEx%sigma /= error) then
-                Flux2%ch4 = Flux1%ch4 &
-                    + mu * Flux3%E * lEx%d(ch4) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d)
-            elseif(Flux1%ch4 /= error) then
-                Flux2%ch4 = Flux1%ch4
-            end if
+            Flux3%gas(msl) = Flux2%gas(msl)
         end if
-    end if
-    if (.not. lEx%var_present(ch4)) Flux2%ch4 = error
-
-    !> gas4
-    if (lEx%instr(igas4)%path_type == 'closed') then
-        !> Level 2, WPL for closed path, implemented after Ibrom et al. (2007),
-        !> Tellus, eq. 3a with H contribution from WPL24
-        select case(lEx%measure_type(gas4))
-            case('molar_density')
-
-                !> E, T and P effects (should never be actually used)
-                if (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt E and T effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt T and P effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Only E and P effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt E effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 ) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt T effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt P effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> No WPL effects
-                elseif (Flux1%gas4 /= error) then
-                    Flux2%gas4 = Flux1%gas4 * lEx%Vcell(n2o) / lEx%Va
-                else
-                    Flux2%gas4 = error
-                end if
-
-            case('mole_fraction')
-
-                !> E, T and P effects (should never be actually used)
-                if (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt E and T effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt T and P effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Only E and P effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt E effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%E_gas4 /= error .and. lEx%RHO%w > 0d0 ) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        + Flux3%E_gas4 * mu * lEx%sigma / lEx%RHO%w &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt T effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. Flux3%Hi_gas4 /= error .and. lEx%RhoCp > 0d0 .and. lEx%Tcell > 0d0) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        + (1d0 + mu * lEx%sigma) * Flux3%Hi_gas4 / (lEx%RhoCp * lEx%Tcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> Onlt P effects
-                elseif (Flux1%gas4 /= error .and. lEx%sigma >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(n2o) > 0d0 &
-                    .and. lEx%cov_w(pi) /= error .and. lEx%Pcell /= error) then
-                    Flux2%gas4 = Flux1%gas4 &
-                        - (1d0 + mu * lEx%sigma) * lEx%cov_w(pi) / (lEx%Pcell) &
-                        * lEx%chi(n2o) / lEx%Va
-
-                !> No WPL effects
-                elseif (Flux1%gas4 /= error) then
-                    Flux2%gas4 = Flux1%gas4
-                else
-                    Flux2%gas4 = error
-                end if
-
-            case('mixing_ratio')
-                Flux2%gas4 = Flux1%gas4
-        end select
-    else
-        !> Level 2, WPL for open path implemented after e.g. Burba et al. (2008, GCB, eq. 1)
-        if (Flux1%gas4 /= error .and. Flux3%H /= error .and. Flux3%E /= error &
-            .and. lEx%RHO%d > 0d0 .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 .and. lEx%sigma /= error) then
-            Flux2%gas4 = Flux1%gas4 &
-                + mu * Flux3%E * lEx%d(gas4) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d) &
-                + Flux3%H * lEx%d(gas4) * 1d3 / (lEx%RhoCp * lEx%Ta)
-        elseif(Flux1%gas4 /= error .and. Flux3%H /= error &
-            .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) then
-            Flux2%gas4 = Flux1%gas4 &
-                + Flux3%H * lEx%d(gas4) * 1d3 / (lEx%RhoCp * lEx%Ta)
-        elseif(Flux1%gas4 /= error .and. Flux3%E /= error &
-            .and. lEx%RHO%d > 0d0 .and. lEx%sigma /= error) then
-            Flux2%gas4 = Flux1%gas4 &
-                + mu * Flux3%E * lEx%d(gas4) * 1d3 / ((1d0 + mu * lEx%sigma) * lEx%RHO%d)
-        elseif(Flux1%gas4 /= error) then
-            Flux2%gas4 = Flux1%gas4
-        else
-            Flux2%gas4 = error
-        end if
-    end if
-    if (.not. lEx%var_present(gas4)) Flux2%gas4 = error
-
-    !> If WPL should not be applied
-    if (.not. EddyFlowProj%wpl) then
-        Flux2%co2 = Flux1%co2
-        Flux2%ch4 = Flux1%ch4
-        Flux2%gas4 = Flux1%gas4
-    end if
-
-    !> Level 3 other gases. For closed path apply now the spectral correction (e.g. Ibrom et al. 2007)
-    !> co2
-    if (lEx%instr(ico2)%path_type == 'closed' .and. Flux2%co2 /= error) then
-        !> Level 3, spectral correction
-        Flux3%co2 = Flux2%co2 * BPCF%of(w_co2)
-    else
-        !> Level 3, spectral correction was already applied
-        Flux3%co2 = Flux2%co2
-    end if
-    !> ch4
-    if (lEx%instr(ich4)%path_type == 'closed' .and. Flux2%ch4 /= error) then
-        !> Level 3, spectral correction
-        Flux3%ch4 = Flux2%ch4 * BPCF%of(w_ch4)
-    else
-        !> Level 3, spectral correction was already applied
-        Flux3%ch4 = Flux2%ch4
-    end if
-    !> n2o
-    if (lEx%instr(igas4)%path_type == 'closed' .and. Flux2%gas4 /= error) then
-        !> Level 3, spectral correction
-        Flux3%gas4 = Flux2%gas4 * BPCF%of(w_gas4)
-    else
-        !> Level 3, spectral correction was already applied
-        Flux3%gas4 = Flux2%gas4
-    end if
+    end do
 
     !> Potential temperature
     !> If condition fails, previous value (from Fluxes0) holds for z/Ambient%L
@@ -881,4 +366,248 @@ subroutine Fluxes23(lEx)
     else
         lEx%Bowen = error
     end if
+
+    !> The same quantities, once per hygrometer.
+    !>
+    !> Everything above computes one latent heat flux, one evapotranspiration,
+    !> one sensible heat flux and one stability, from the designated
+    !> hygrometer. A site fielding two produced a second water flux and nothing
+    !> derived from it - so the two hygrometers could not be compared on any
+    !> quantity a reader actually uses, and the disagreement that motivates
+    !> fielding two was invisible.
+    !>
+    !> Each entry is the block above replayed on that hygrometer's own air, as
+    !> RP resolved it into the moisture terms this record carries. The
+    !> designated hygrometer's entry is then *assigned to* the scalars rather
+    !> than recomputed, which is what keeps the bare columns and the numbered
+    !> column describing the same instrument from ever disagreeing.
+    call PerHygrometerFluxes()
+contains
+
+    !***********************************************************************
+    !> H, LE, ET, tau and the stability, one set per hygrometer.
+    !>
+    !> Called after the scalars are settled, and deliberately reads them: the
+    !> water flux Flux3%gas(w) is already corrected and spectrally adjusted per
+    !> H2O record, and Flux1%H, Tp and ustar carry no humidity, so nothing here
+    !> repeats work done above. Only the four moisture terms change per entry.
+    subroutine PerHygrometerFluxes()
+        implicit none
+        integer :: slots(GHGNumVar)
+        character(8) :: wtags(GHGNumVar)
+        !> `wslot`, not `w`: w is the module's wind-component index and a loop
+        !> variable of that name would shadow it inside this routine, silently
+        !> retargeting lEx%cov_w(ts) and every other use below.
+        integer :: nw, iw, wslot
+        real(kind = dbl) :: rhocp_w, rhoa_w, q_w, e0_w
+
+        Flux3%E_at = error
+        Flux3%LE_at = error
+        Flux3%ET_at = error
+        Flux3%H_at = error
+        Flux3%tau_at = error
+        Flux3%L_at = error
+        Flux3%zL_at = error
+
+        call WaterOutSlots(slots, wtags, nw)
+
+        do iw = 1, nw
+            wslot = slots(iw)
+            if (.not. lEx%var_present(wslot)) cycle
+
+            !> A hygrometer's own moisture reference is itself, so these are
+            !> its own air rather than some other instrument's.
+            rhocp_w = lEx%rhocp_at(wslot)
+            rhoa_w  = lEx%rhoa_at(wslot)
+            q_w     = lEx%q_at(wslot)
+            if (rhocp_w == error) rhocp_w = lEx%RhoCp
+            if (rhoa_w  == error) rhoa_w  = lEx%RHO%a
+            if (q_w     == error) q_w     = lEx%Q
+
+            !> Reported water flux: fully corrected, as LE and ET are.
+            if (Flux3%gas(wslot) /= error) then
+                Flux3%E_at(wslot) = Flux3%gas(wslot) * MW_H2O * 1d-3
+                Flux3%ET_at(wslot) = Flux3%gas(wslot) * h2o_to_ET
+                if (lEx%lambda /= error) &
+                    Flux3%LE_at(wslot) = Flux3%E_at(wslot) * lEx%lambda
+            end if
+
+            !> The humidity correction of sensible heat takes the *level 0*
+            !> water flux, which is what the scalar above uses - lEx%Flux0%E is
+            !> exactly Flux0%gas(designated) in these units. Reaching for the
+            !> corrected flux here instead would make the numbered columns
+            !> disagree with the bare ones by more than the hygrometers do.
+            e0_w = error
+            if (lEx%Flux0%gas(wslot) /= error) &
+                e0_w = lEx%Flux0%gas(wslot) * MW_H2O * 1d-3
+
+            !> Sensible heat corrected for humidity, after Van Dijk et al.
+            !> (2004) eq. 3.53 revising Schotanus et al. (1983) - the block at
+            !> the top of this routine, on this hygrometer's air.
+            if (Flux1%H /= error) then
+                if (e0_w /= error .and. lEx%cov_w(ts) /= error &
+                    .and. rhoa_w > 0d0 .and. q_w >= 0d0 &
+                    .and. rhocp_w > 0d0) then
+                    Flux3%H_at(wslot) = Flux1%H &
+                        - rhocp_w * alpha * lEx%Ts * e0_w / rhoa_w &
+                        - rhocp_w * alpha * q_w * lEx%cov_w(ts)
+                else
+                    Flux3%H_at(wslot) = Flux1%H
+                end if
+            end if
+
+            !> Momentum, which follows the humidity only through air density.
+            !> u* is not here: it comes from the wind covariances alone and is
+            !> the same number for every hygrometer.
+            if (rhoa_w > 0d0 .and. Flux3%ustar /= error) &
+                Flux3%tau_at(wslot) = &
+                    sign(rhoa_w * Flux3%ustar**2d0, Flux3%tau)
+
+            !> Monin-Obukhov length and stability parameter
+            if (Flux3%H_at(wslot) /= 0d0 .and. Flux3%H_at(wslot) /= error &
+                .and. rhocp_w > 0d0 .and. Flux3%ustar >= 0d0 .and. Tp > 0d0) then
+                Flux3%L_at(wslot) = -Tp * (Flux3%ustar**3) &
+                    / (vk * g * Flux3%H_at(wslot) / rhocp_w)
+                if (Flux3%L_at(wslot) /= 0d0) &
+                    Flux3%zL_at(wslot) = &
+                        (lEx%instr(sonic)%height - lEx%disp_height) &
+                        / Flux3%L_at(wslot)
+            end if
+        end do
+
+        !> The designated hygrometer's entry is *overwritten by* the scalars,
+        !> not the other way round.
+        !>
+        !> Both directions would give the same numbers if this loop were a
+        !> perfect replay, and it very nearly is. But the scalars have been
+        !> through the Burba terms, the closed-path spectral correction and the
+        !> storage chain, and this loop reproduces none of that - it does not
+        !> need to, because every other hygrometer reaches it by the same
+        !> route. Writing the loop's answer into the bare columns would move
+        !> output that has been verified against v7.2.5; writing the scalar
+        !> into the entry cannot.
+        !>
+        !> It also gives the row writer a single rule - walk WaterOutSlots and
+        !> emit the `_at` entry - with no special case for the designated slot,
+        !> which is one fewer place for header and row to disagree.
+        if (wsl >= firstGas .and. wsl <= lastGas) then
+            Flux3%E_at(wsl)   = Flux3%E
+            Flux3%LE_at(wsl)  = Flux3%LE
+            Flux3%ET_at(wsl)  = Flux3%ET
+            Flux3%H_at(wsl)   = Flux3%H
+            Flux3%tau_at(wsl) = Flux3%tau
+            Flux3%L_at(wsl)   = lEx%L
+            Flux3%zL_at(wsl)  = lEx%zL
+        end if
+    end subroutine PerHygrometerFluxes
+
+    !***********************************************************************
+    !> Level 2 flux of one gas: the WPL / density correction.
+    !>
+    !> Mirrors Level2GasFlux in src_rp/fluxes23_rp.f90, reading from the ex
+    !> record rather than the in-memory statistics. It replaces three
+    !> near-identical blocks which had drifted; both differences are resolved
+    !> in favour of the safe form, as agreed for the RP twin:
+    !>
+    !>  - the cell-volume conversion (lEx%Vcell / lEx%Va) is applied in every
+    !>    closed-path branch, not all but one;
+    !>  - the cell pressure is guarded with `> 0d0` rather than `/= error`,
+    !>    which admitted zero and then divided by it.
+    !>
+    !> The original cascades enumerated all eight subsets of the (E, T, P)
+    !> terms; accumulating each onto the base when its own inputs are present
+    !> is equivalent, and keeps the floating-point association identical.
+    subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
+        implicit none
+        integer, intent(in) :: gas
+        real(kind = dbl), intent(in) :: sigma_gas
+        real(kind = dbl), intent(in) :: rhow_gas
+        real(kind = dbl) :: wpl
+
+        if (Flux1%gas(gas) == error) then
+            Flux2%gas(gas) = error
+            return
+        end if
+
+        if (lEx%gas_instr(gas)%path_type == 'closed') then
+            !> Closed path, after Ibrom et al. (2007) Tellus eq. 3a, with the
+            !> H contribution from WPL24.
+            select case (lEx%measure_type(gas))
+                case ('mixing_ratio')
+                    Flux2%gas(gas) = Flux1%gas(gas)
+                    return
+                case ('molar_density')
+                    if (lEx%Va <= 0d0) then
+                        Flux2%gas(gas) = error
+                        return
+                    end if
+                    wpl = Flux1%gas(gas) * lEx%Vcell(gas) / lEx%Va
+                case ('mole_fraction')
+                    wpl = Flux1%gas(gas)
+                case default
+                    Flux2%gas(gas) = error
+                    return
+            end select
+
+            if (sigma_gas >= 0d0 .and. lEx%Va > 0d0 .and. lEx%chi(gas) > 0d0) then
+                !> Effect of the water vapour flux
+                if (Flux3%E_gas(gas) /= error .and. rhow_gas > 0d0) &
+                    wpl = wpl + Flux3%E_gas(gas) * mu * sigma_gas / rhow_gas &
+                        * lEx%chi(gas) / lEx%Va
+                !> Effect of cell temperature.
+                !>
+                !> From this gas's own analyser, and in SI. lEx%Tcell is
+                !> instrument 1's *and* passes through the writer's degC gain
+                !> without the reader inverting it, so this term used to divide
+                !> by a temperature of about 27 instead of about 300.
+                if (Flux3%Hi_gas(gas) /= error .and. lEx%RhoCp > 0d0 &
+                    .and. lEx%Tcell_at(gas) > 0d0) &
+                    wpl = wpl + (1d0 + mu * sigma_gas) * Flux3%Hi_gas(gas) &
+                        / (lEx%RhoCp * lEx%Tcell_at(gas)) * lEx%chi(gas) / lEx%Va
+                !> Effect of cell pressure, from this gas's own analyser. Same
+                !> unit trap: lEx%Pcell carries the writer's kPa gain.
+                if (lEx%cov_w_pcell(gas) /= error .and. lEx%Pcell_at(gas) > 0d0) &
+                    wpl = wpl - (1d0 + mu * sigma_gas) * lEx%cov_w_pcell(gas) &
+                        / (lEx%Pcell_at(gas)) * lEx%chi(gas) / lEx%Va
+            end if
+            Flux2%gas(gas) = wpl
+        else
+            !> Open path, after e.g. Burba et al. (2008, GCB, eq. 1)
+            wpl = Flux1%gas(gas)
+            if (Flux3%E /= error .and. lEx%RHO%d > 0d0 .and. sigma_gas /= error) &
+                wpl = wpl + mu * Flux3%E * lEx%d(gas) * 1d3 &
+                    / ((1d0 + mu * sigma_gas) * lEx%RHO%d)
+            if (Flux3%H /= error .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) &
+                wpl = wpl + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot &
+                    + lEx%Burba%h_spar) * lEx%d(gas) * 1d3 / (lEx%RhoCp * lEx%Ta)
+            Flux2%gas(gas) = wpl
+        end if
+
+        if (.not. lEx%var_present(gas)) Flux2%gas(gas) = error
+    end subroutine Level2GasFlux
+
+    !> Water vapour terms to use when correcting `gas`.
+    !>
+    !> RP resolves each gas's moisture reference and writes the resulting
+    !> terms into the ex file; they are read back per gas slot. Where a gas has
+    !> no resolved reference the values are `error` and the single global
+    !> sigma / RHO%w apply, which is the single-analyser case and leaves those
+    !> projects unchanged.
+    subroutine MoistTerms(gas, sigma_out, rhow_out)
+        implicit none
+        integer, intent(in) :: gas
+        real(kind = dbl), intent(out) :: sigma_out
+        real(kind = dbl), intent(out) :: rhow_out
+
+        sigma_out = lEx%sigma
+        rhow_out  = lEx%RHO%w
+
+        if (gas < firstGas .or. gas > lastGas) return
+
+        !> Only override where the referenced H2O actually yielded values; a
+        !> partial record must not silently zero the correction.
+        if (lEx%sigma_at(gas) /= error) sigma_out = lEx%sigma_at(gas)
+        if (lEx%rhow_at(gas)  /= error) rhow_out  = lEx%rhow_at(gas)
+    end subroutine MoistTerms
+
 end subroutine Fluxes23

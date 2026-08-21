@@ -55,7 +55,7 @@ subroutine Tapering(Window, xx, N, M, sumw)
     real(kind = dbl) :: win_wel(N)
     real(kind = dbl) :: win_sqr(N)
 
-    write(*, '(a)', advance = 'no') '   Tapering timeseries..'
+    call LogSayNoAdv('   Tapering timeseries..')
     !> Selection of window shape
     facm = dble(N)
     facp = 1d0 / dble(N)
@@ -106,5 +106,5 @@ subroutine Tapering(Window, xx, N, M, sumw)
         sqr_sum = sqr_sum + win(i)**2
     end do
     sumw = sqr_sum * dfloat(N)
-    write(*,'(a)') ' Done.'
+    call LogSay(' Done.')
 end subroutine Tapering

@@ -1,3 +1,845 @@
+8.0.0 (2026-08-20)
+
+    Engine:
+	- New feature: cec_min_flux_sigma refuses to partition a flux that is not
+	               distinguishable from zero. Zahn et al. (2022) apply no such test and on a
+	               well-coupled daytime record none is needed; it is the weak-turbulence case
+	               this guards. The octants mean something only if the sign of c' carries a
+	               surface signature, and where the scalar is barely coupled to the vertical
+	               wind that sign is noise: the moist ejections split near evenly between O1
+	               and O2, and the method returns an E/T and a Reco/P split of a signal that
+	               is not there. Nothing else in CEC notices - the occupancy gates see two
+	               well-filled octants and the components still sum to the total. On the
+	               record this came from, night |r(w,CO2)| ran at 0.079 against 0.336 by day,
+	               below one sigma. Set it to a number of sigma and a pairing whose water or
+	               carbon flux is smaller than that many times its own Finkelstein & Sims
+	               random error is refused, reported as status 6 in qc_cec_<species> so that
+	               "no resolvable flux" is distinguishable from every other reason a period
+	               is dropped. Each further species is judged on its own account, so a
+	               carbonyl sulfide flux lost in its own noise rejects itself rather than the
+	               pairing that carried it. |F|/RE is about |r|*sqrt(N_indep/2), so this is
+	               the significance of that correlation with the number of independent
+	               samples taken from the period's own integral timescale rather than
+	               assumed. It REJECTS periods rather than rescuing them - the opposite trade
+	               to cec_stationarity_mode, and independent of it, applying in either mode.
+	               0 is off and is the default, so an untouched project reproduces the
+	               published method. It needs ru_meth on; with the estimator off there is no
+	               random error to read, and the run says so as Warning(115) and refuses
+	               nothing rather than refusing everything.
+	- Fix: A column named AGC or RSSI reaches the engine at all. IsCustomOutputColumn
+	               listed `agc` and `rssi` beside `ignore` and `flag_1`, so such a column
+	               was dropped before it could become a user column - and the two loops
+	               that go looking for one, CecSignalColumnFor and SetLicorDiagnostics,
+	               search exactly that list. Both were dead code: the conditional eddy
+	               covariance signal-strength screen ran on nothing whatever the project
+	               asked for, and INST_LI7700_RSSI was always the error value. Neither
+	               said so. The exclusion is gone from all three copies of the predicate,
+	               each of which now says why it must not come back.
+	- New feature: agc_num and agc_<i>_var / _instr / _col in the project file name the
+	               signal-strength columns and the analyser each belongs to, on the same
+	               shape as the cell and diagnostic records. The screen resolves the
+	               column through them first, and reads the record's var lower-cased, so
+	               a metadata file spelling the variable `agc` is read the way it was
+	               meant - the name comparison this replaces was case-sensitive and
+	               failed silently. A project with no agc_num predates the records and
+	               still falls back to matching the variable name, so nothing in the
+	               field changes behaviour by being left alone. The tags are appended
+	               after the cec block, so no existing record origin moves.
+	- Fix: A measurement record whose column has since been re-declared is inert rather
+	               than honoured. A diagnostic column re-declared as something else left
+	               its record behind, and the record was still believed: where it
+	               collided with a real diagnostic on the same analyser the run was
+	               refused outright - "Two measurement records describe the same quantity
+	               on the same instrument" - over a record the interface does not show
+	               and the user cannot remove, and where it did not collide it won the
+	               slot instead and the engine decoded whatever the column now held as a
+	               diagnostic bitfield. RecordNamesColumn compares what the record claims
+	               against what the metadata declares, case-insensitively, and the three
+	               places that consume a record all ask it. The `ignore` / `not_numeric`
+	               exemption that was already there is the same rule, generalised.
+	- Fix: The anemometer diagnostic survives a project that carries diagnostic records.
+	               ApplyCellDiagRecords accepted only `anemometer_diagnostic` while the
+	               interface writes the slug `diag_anem`, so on any project with
+	               diag_num > 0 it cleared the anemometer slot and then cycled past the
+	               record that would have refilled it. The flags were read and the
+	               presence flag was set, and the data was gone. Both spellings are
+	               accepted, as they already were in ApplyDiagnosticRecordColumns and
+	               DefineUsedVariables.
+	- Fix: Each analyser gets its own signal-strength column in the essentials. Every
+	               branch of the loop in SetLicorDiagnostics ended it, not only the one
+	               that matched its own analyser, so the first AGC or RSSI column of any
+	               kind stopped the search: a site with an LI-7500 and an LI-7700 filled
+	               one of AGC75 / RSSI77 and left the other at its error value.
+	- Fix: An essentials file from an older version is refused with the message that
+	               says so, rather than with "no valid data records found". The check on
+	               the header ran after InitExVars, which parses the whole file by field
+	               position - so every record had already failed and the run had already
+	               died by the time the check could speak. It now runs before anything
+	               reads a record, on a unit of its own, since at that point none is open.
+	               Found by pointing this version at a genuine older file and getting
+	               error 61 where error 107 was intended; both directions are now tested.
+	- New feature: cec_stationarity_mode chooses which stationarity criterion gates the
+	               partition. 0, the default, is Zahn et al.'s and leaves every existing
+	               project computing exactly what it computed before. 1 asks instead
+	               whether the SPLIT between the two octants holds steady through the
+	               period, which is the only thing about a period the partition depends
+	               on.
+	               Foken's statistic divides by the covariance whose stationarity it is
+	               testing, so it runs away as that covariance approaches zero - which
+	               for carbon at night it does. On the day this was built against it read
+	               755%, 471%, 314% on periods whose octants were perfectly well sampled,
+	               and 30 of 48 periods were rejected, 28 of them on that gate, while 26
+	               of the 30 had occupancies of 0.24 to 0.44 against a 0.20 requirement.
+	               Half a day of sound partitions was being discarded, and it was the
+	               half the paper reports the method handling best: at night CEC gives
+	               the whole flux to E and R through the sparse-octant rule, which never
+	               got to run.
+	               The new criterion divides the period into six as StationarityTest
+	               does, re-centres each sixth on its own mean as StationarityTest does,
+	               and compares the octant split of the averaged sixths against the split
+	               of the whole. Both splits are normalised by |f_O1| + |f_O2|, the size
+	               of the partition itself, which cannot vanish while the octants hold
+	               anything - so the statistic is bounded by 200 and reads as the
+	               percentage of its own range by which the split moved. A trend that
+	               scales both octants together moves neither split and cancels, which is
+	               the robustness a ratio method should have.
+	               cec_max_stationarity is still the threshold in either mode and 0 still
+	               disables the gate. Fewer than three sixths with enough samples to
+	               centre on leaves the statistic undefined, and undefined PASSES:
+	               refusing a period on a number that could not be computed is the fault
+	               the mode exists to correct, and sparse periods are the occupancy
+	               gate's business. Completeness and occupancy gate unconditionally in
+	               both modes; this replaces one criterion, not three.
+	- New feature: cec_ns_<species> reports that statistic per target, in per cent, in
+	               both modes - so the two criteria can be compared on one run and a
+	               threshold chosen from data rather than guessed at. Reported for a
+	               rejected period too, for the same reason the octant fractions are.
+	               BREAKING for the essentials file: the per-target block grows from six
+	               fields to seven. A file written before this is refused with Fatal
+	               error(107) on the missing CEC_NS_ header marker rather than read one
+	               field short per target. The marker is checked only when the header
+	               carries a CEC block at all, since a project with the partition off
+	               writes none and such a file is not old.
+	- Fix: A period the partition rejects reports its octant counts AND its octant
+	               fractions, which used to disagree. The counts are accumulated in the
+	               sample loop and the fractions were computed after the completeness and
+	               stationarity gates, both of which return early - so a rejected period
+	               published cec_n_o1 and cec_n_o2 with cec_frac_o1 and cec_frac_o2 at the
+	               error value, and no way to divide one by the other, because n_valid is
+	               not written out. On the run this was found in, 30 of 48 periods came out
+	               that way. They are computed before the gates now. No flux moves: every
+	               arm still leaves the targets invalid and ApplyCecDescriptor reads that,
+	               not these. The occupancy gate still sits after them, being the one that
+	               reads them.
+	- Fix: A gas whose every time-lag detection was rejected tries its tube-mate
+	               before falling back to a number the rule has already thrown out. The
+	               instrument-shared step only borrowed from a donor the rule trusted
+	               outright in that same period, which is the right first answer; but a
+	               gas like carbonyl sulfide, whose pre-whitened HDI routinely spans the
+	               whole search window, then reached the median step with nothing to take a
+	               median of and had only its own rejected covariance maximisation left.
+	               On the run this was found in, that put COS at 10.6 s in a tube whose
+	               delay is 16.2 s, while the CO2 beside it in the same tube carried an
+	               interpolated 16.5 s - five periods took a lag 2.8 to 6.2 s wrong. There
+	               is now a second shared pass, after the median and before the terminal
+	               arm, taking a donor in any settled class rather than only S1 or S2. It
+	               reports as S4_instrument_filled, distinct from the S4_instrument_shared
+	               of the first pass, because a donor that was itself filled is weaker
+	               evidence; and it will not take a lag this same pass just borrowed, so
+	               nothing walks from tube-mate to tube-mate. A gas that detects its own
+	               lag is untouched.
+	- Fix: Builds clean again. import_ascii_with_text declared a datum buffer it
+	               never used.
+	- Fix: An EddyPro project that states no tlag_meth is imported with
+	               tlag_meth=2 rather than with nothing. The key has no
+	               *TagFound guard at its reader, so an absent one fell through
+	               read_ini_rp's case default to Meth%tlag = 'none' and the run
+	               did no time-lag compensation at all, silently. Two is
+	               covariance maximization with default - EddyPro's own default
+	               and the interface's - so the converted project now runs what
+	               the interface displays for it.
+	               This is the one entry in the import's defaults table that is
+	               NOT a no-op; every other states the value the engine already
+	               applies when the key is absent. The table's comment says which
+	               and why.
+	               A project that DOES state tlag_meth is untouched, as before:
+	               the key is in none of the importer's three lists, so the
+	               source's choice is copied through verbatim. EddyPro has no
+	               fifth method, so an import can never select the pre-whitening
+	               block-bootstrap.
+	               Deliberately not widened to the reader: a hand-written
+	               .eddyflow that omits tlag_meth still gets 'none'.
+	- Fix: Conditional Eddy Covariance is off in an imported project, and is
+	               now pinned to stay that way. It already was - cec_meth is
+	               written 0 whenever the source is silent, and no EddyPro file
+	               can state it - but nothing said so, and nothing said the
+	               pairing list must stay unwritten either. An absent cec_num
+	               means "derive one pairing per CO2 channel from the analyser
+	               layout", which is the interface's decision to make once
+	               someone opens the converted project, not the importer's.
+	               The two importers are now checked against each other: the
+	               engine writes these values into the file, while the interface
+	               applies its own defaults on load and saves them, and the
+	               numbers have to match or the same project computes different
+	               fluxes depending on whether it was opened or run.
+	- BREAKING: Conditional Eddy Covariance is rebuilt. The cec_* key set, the CEC output
+	               column names and the CEC block of the essentials record all change, and
+	               ini_version goes to 5.1.0 so an older engine refuses a newer file rather
+	               than reading past the parts it does not know.
+	- New feature: A project may state which CO2 channel is partitioned against which H2O
+	               channel, as cec_num plus cec_<i>_meth / _co2 / _h2o / _extra, and may run
+	               several pairings at once. Absent, the layout decides: one pairing per CO2
+	               channel, each with the water on its own analyser. That was previously the
+	               first record of each species wherever each happened to sit, so a site with
+	               two analysers could have its carbon partitioned against the other
+	               instrument's water without anything saying so. A pairing that still crosses
+	               two analysers is warned about.
+	               Output columns carry the analyser their CO2 sits on - E_cec_li7200_1,
+	               Reco_cec_miro_mga4_6_2 - with an occurrence number after it when two
+	               pairings share one.
+	- New feature: Any declared species can be partitioned in a pairing's octants, named in
+	               cec_<i>_extra. Zahn et al. define the indicator functions on the vertical
+	               wind, the water and the carbon dioxide alone and reuse them unchanged for
+	               the second scalar, so nothing about the octants is specific to CO2 - which
+	               is what makes carbonyl sulfide a drop-in. Its plant uptake is stomatal and
+	               effectively irreversible, so its stomatal component is a cleaner
+	               photosynthesis proxy than P_cec. Emitted as <species>_nonstomatal_cec,
+	               <species>_stomatal_cec, <species>_total_cec, r_<species>_cec and
+	               qc_cec_<species>, in that gas's own flux units.
+	- Fix: The hyperbolic threshold H is dimensionless. It was compared against the raw
+	               product w's', so what it meant depended on whether the gas was carried in
+	               umol/mol or mmol/m3 and no single value was usable anywhere; it is now
+	               |w's'| >= H*sigma_w*sigma_s, which is the form Thomas et al. (2008) state
+	               and the form in which H = 0.25 means something. The default is still 0,
+	               which is what Zahn et al. themselves used, so a project that never set it
+	               is unaffected.
+	               What the threshold is FOR is leaving out the events nearest the origin,
+	               whose sign is noise rather than a surface signature - the failure mode
+	               that would otherwise fill both octants about equally and walk the CO2
+	               ratio into the r ~ -1 singularity. Whether that helps at a given site is
+	               an open question rather than a claim of this release: the paper tested a
+	               threshold for CEC and reported the results "not sensitive to the choice
+	               of H" at its four sites. It is offered as a usable control, now that a
+	               value of it means the same thing everywhere; it is not a fix for weak
+	               turbulence. Raising H also thins the octants, so the occupancy limits may
+	               need to come down with it.
+	- Fix: The singularity band is a setting, cec_singular_band, defaulting to the 0.2
+	               Zahn et al. use. It was hard-coded at 0.05 - a quarter of the paper's
+	               width, and in contradiction with the repository's own reference model,
+	               which had been using 0.2 all along.
+	- Fix: An extra species can no longer move the pairing it was added to. A sample
+	               counted only where EVERY target had a value, extras included, so adding
+	               carbonyl sulfide to a pairing silently revised the E, Tr, Reco and P it
+	               had already published - on the test dataset, all four components, both
+	               ratios and both octant counts moved. The octants are defined on the
+	               vertical wind, the water and the carbon dioxide alone, so those three now
+	               decide which samples a period has; a target absent for a sample
+	               contributes nothing for that sample and does not remove it from the
+	               octant. Each target normalises by its own count, which leaves the ratio -
+	               the only thing carried forward - untouched. The completeness gate now
+	               applies per target too, so a sparse extra species rejects itself instead
+	               of taking the pairing down with it.
+	- Fix: A sparse octant is no longer vetoed by the sign check. Where one octant
+	               holds fewer than cec_min_octant of the points, Zahn et al. Sec. 2.4 give
+	               the whole flux to the other component - which is how the method works at
+	               night - but the wrong-sign guard ran ahead of that and could discard it.
+	               That branch divides by nothing and leaves the total's sign on the single
+	               component it fills, so there was no inversion there for the guard to
+	               catch and it only cost periods. It now guards the ratio branch alone.
+	- New feature: Warning(114) when the partition is on and the WPL density correction is
+	               off. The raw series are converted to mixing ratios only when WPL is
+	               requested, and the octants are the SIGNS of the water and carbon
+	               fluctuations - in a molar density from an open-path analyser, part of
+	               that fluctuation is the air expanding rather than the gas arriving, and
+	               it is large enough to reverse the sign. Zahn et al. require the
+	               fluctuations themselves to carry the density correction, separately from
+	               the totals. A closed-path analyser already reporting mixing ratios is
+	               unaffected.
+	- Fix: A period whose corrected total points against its own octant sums is flagged
+	               rather than split. Substituting the ratio into the partition gives each
+	               component the sign of its own sample flux only when the total points the
+	               way the two of them point together; otherwise the arithmetic still returns
+	               two numbers that sum to the total, and they are a negative respiration
+	               beside a positive photosynthesis, or a negative transpiration. Both were
+	               being emitted as valid. On the first three hours this was run against, one
+	               period produced Reco = -5.13 umol m-2 s-1 flagged normal, and the same
+	               period's dewfall was split into a negative evaporation and a negative
+	               transpiration. Reported now as qc_cec_* = 5 with the ratio kept.
+	- Fix: The signal-strength screen runs BEFORE the gap filler, which is the order
+	               Zahn et al. Sec. 3.2 state: samples below the threshold are deleted, then
+	               "small gaps (up to four consecutive points) were filled by linear
+	               interpolation". The gaps worth repairing are the ones the screen has just
+	               made, so a brief dropout now costs four interpolated samples instead of
+	               costing the whole period at the 90% completeness gate.
+	               This corrects a change that had the two the other way round and
+	               described that as the paper's order. It was not: filling first left every
+	               condemned sample permanent and counted it against the completeness gate,
+	               rejecting periods the reference method keeps. Anyone who prefers that
+	               stricter reading - never interpolate across an analyser that was not
+	               seeing - gets it exactly by setting cec_max_gap_fill to 0.
+	- Fix: The screen runs on the raw series rather than on the finished fluctuations, so
+	               the trend is no longer fitted through the samples being rejected. The
+	               partition builds its own compact copy of w and its targets to do it, and
+	               touches neither E2Set nor E2Primes: the fluxes themselves do not move
+	               because a partition asked for a stricter screen.
+	- Fix: Each gas is screened against its OWN analyser's diagnostic. The first column
+	               named AGC or RSSI on anything matching li7200 or li7500 was used for both
+	               gases of the pair, so a two-analyser site screened one analyser's gas with
+	               the other's diagnostic, and a quantum cascade laser measuring carbonyl
+	               sulfide was not screened at all.
+	- Fix: The diagnostic is read in the right direction. RSSI is a received-signal
+	               strength, so low is dirty; the AGC of a pre-5.3.0 LI-7500 is the gain the
+	               instrument had to apply to see through its windows, so HIGH is dirty. Both
+	               are conventionally compared against 70 and the test was "below threshold"
+	               whichever it was - so on an old open-path analyser it kept the dirtiest
+	               samples and discarded the cleanest.
+	- Fix: The partition refuses a period whose columns are not present, rather than
+	               reading whatever the freshly allocated E2Primes happened to contain.
+	               EliminateCorruptedVariables clears that flag per period, and the detrending
+	               routines leave such a column untouched, so the values were arbitrary and
+	               often finite enough to be accepted.
+	- Fix: The occupancy limits cec_min_o1_o2, cec_min_octant and cec_min_valid are read
+	               as percentages and nothing else. The normalizer used to pick between a
+	               percentage and a fraction by magnitude, so an interface spin box labelled
+	               [%] and set to 0.5 came back as fifty per cent.
+	- Fix: The CEC block of the essentials record is read forward off its own count of
+	               pairings, like the hygrometer and analyser blocks before it, instead of
+	               being found by counting eleven fields back from the end of the row. That
+	               anchor made "never append after the descriptor" a rule four files had to
+	               keep unaided, and it could not survive a block of variable width. Nothing
+	               in that row is anchored to its end any more.
+	- Fix: The skipped-period essentials row is the width its own header declares. It
+	               wrote three fields per gas where the reader steps over seven, fourteen per
+	               analyser where it steps over fifteen, and no hygrometer count at all. The
+	               end-anchored CEC block had been absorbing the shortfall into the biomet
+	               chunk, which is why nothing had noticed.
+	- Fix: The octant counts and fractions reach the full output, not only the essentials
+	               file, as cec_n_o1, cec_n_o2, cec_frac_o1 and cec_frac_o2 per pairing. They
+	               are what distinguishes a confident partition from a badly sampled one, and
+	               the one output most people read could not show it.
+	- Fix: CEC component columns carry their gas's own flux scale and label, taken from
+	               the caller. A shared helper resolving units through GasUnitIn is right in
+	               RP and wrong in FCC, which keeps its own copy - carbonyl sulfide came out
+	               of FCC labelled in umol and printed unscaled, a thousandfold error.
+	- Fix: cec_meth is parsed from the whole value rather than its first character, and
+	               it is now a master switch (0 or 1). Which fluxes a pairing partitions is
+	               the pairing's own cec_<i>_meth.
+	- Removed: CECFluxType%ok, computed and never read; GPP_cec, computed, never written
+	               and carrying photosynthesis's sign; FileType%cec, a path for an RP-to-FCC
+	               file that does not exist and never did - the handoff is the essentials row.
+	- New feature: The EddyPro import writes complete EddyFlow files, not merely readable
+	               ones. It used to produce a project and a metadata the engine accepts but
+	               which are not in this format: the interface would migrate both on open and
+	               mark them modified before anyone had touched them.
+	               The metadata gains the three key families EddyFlow added and nothing else -
+	               diffed against the interface's EddyPro 6.2.2 base, those three ARE the whole
+	               delta: instr_<K>_ac_freq, instr_<K>_integrates and col_<N>_error_value, for
+	               every instrument and column the source describes. The project gains the
+	               settings no EddyPro file can state: the eight cec_*, automatic_spectra_config,
+	               rot_pf_assessment_only, tlag_assessment_only, the whole
+	               [RawProcess_PWBTimelag_Settings] block, and the three keys only the interface
+	               reads. The section a key lands in matters even though ReadIniRP sweeps every
+	               RawProcess* group as one scope, because the interface reads through QSettings,
+	               which groups by section.
+	               Every added key carries THE VALUE THIS ENGINE ALREADY APPLIES WHEN THE KEY IS
+	               ABSENT - not the interface's default, not a fresh opinion - so stating it is a
+	               no-op. Verified rather than asserted: the imported project and its hand-checked
+	               native twin produce output byte-identical to each other AND to what they
+	               produced before this change. The only file that moves is the copy of the
+	               project the run leaves in its output folder, which is the change itself.
+	               A key whose ABSENCE is a decision is deliberately still absent, because no
+	               value reproduces it: pf_sect_* and wdf_sect_* because presence CREATES a wind
+	               sector, gas_<i>_pwb_min_lag/_max_lag because presence sets
+	               lag_bounds_provided and set_timelags takes the window from instrument geometry
+	               without it, gas_<i>_drift_dir_*/_inv_* because absent means the gas is not
+	               drift-corrected and there is no default curve, instr_<K>_max_lack because
+	               absent means "follow max_lack", and gas_<i>_fluxnet_default because absent
+	               means the lowest record of the species is designated. pf_sect_* and wdf_sect_*
+	               are EddyPro keys in any case, present since the fork, and are copied through
+	               whenever the source states them
+	- Fix: The per-instrument sampling rate and sampling mode are read only when the metadata
+	       states them. SearchLocalTags clears CharTags%value before it searches but not
+	       NumTags%value, so an unmatched numeric tag keeps whatever the module-level array
+	       already held - and instr_<K>_ac_freq and instr_<K>_integrates were the only two
+	       numeric reads in that routine taking the value unguarded. "Absent" therefore did not
+	       mean "the default", it meant "whatever was last put there". Harmless for a standalone
+	       metadata, which is parsed once; for a GHG archive, where one metadata is parsed per
+	       raw file through the same ANTags, file N inherited file N-1's rate and sampling mode.
+	       Nothing needed defaulting on the new false arm - Instr = NullInstrument already
+	       leaves ac_freq at the error code, which ColumnAcFreq reads as "the file's rate" like
+	       any value <= 0, and integrates at .false., which is instantaneous. No fixture moves
+	- Fix: The imported metadata states ;GHG_METADATA rather than carrying the source's first
+	       line through. That is what DlProject::saveProject emits unconditionally; the
+	       EDDYFLOW spelling is accepted on read and never written
+	- Change: PWB detection runs on rotated, pre-WPL data, and the option to choose is retired.
+	          7.2.5 introduced pwb_detect_prewpl and it never actually ran: the interface wrote the
+	          same setting as pwb_detect_on_raw, SearchLocalTags matches tag labels by exact
+	          equality, and so the checkbox reached nothing for every project ever saved. Renaming
+	          it would have switched on, for everybody at once, a pass that had never executed.
+	          It is retired instead, because there was never a choice worth offering. Both
+	          alternatives ran on rotated 20 Hz data; the only difference was whether the gas series
+	          had already been through the pointwise mixing-ratio conversion, and that conversion
+	          runs BEFORE time-lag compensation - so detecting after it puts the cell temperature
+	          and water signals into the gas series at the wrong relative lag, and the gas series is
+	          the one being cross-correlated.
+	          Checked rather than assumed: over a three-hour run every one of the thirteen reliable
+	          S1/S2 detections is bit-identical either way, and the rows that move are the ones PWB
+	          itself rejected as unreliable. Both spellings are removed from any project the EddyPro
+	          import writes, so no dead key is left behind
+	- Fix: pwb_smoothing_width agreed on 5. The engine applies 5 when the key is absent and the
+	       interface defaulted to 6 - and since the interface writes the key unconditionally,
+	       every project it saved carried a 6 while a project without the key got a 5, with
+	       nothing anywhere to say the two disagreed. The interface defaults to 5 now. A project
+	       already saved keeps whatever it states; only a new one changes
+	- New feature: A check on the interface side reads BOTH repositories and fails if a PWB key
+	               it writes is absent from this engine's tag table, or if a shared default
+	               disagrees. Nothing at build time connects the two, so a name or a default can
+	               drift with both sides compiling and running - which is exactly how both of the
+	               two fixes above went unnoticed
+	- New feature: An EddyPro project can be run directly. Hand `eddyflow_rp` a *.eddypro
+	               file - or any project whose first line says `;EDDYPRO_PROCESSING` - and it
+	               is converted into an ordinary EddyFlow pair beside the file it came from,
+	               `<name>_ep_imported.eddyflow` and `<name>_ep_imported.metadata`, and run.
+	               Nothing downstream knows an import happened. The source files are never
+	               written, and the import runs once: RP edits the project it ran and FCC
+	               reads that edit back, so a second import on the FCC run would send FCC to
+	               the EddyPro file's stale ex_file. An imported project already on disk is
+	               reused, and the run says so.
+	               Two things could not be read before. InitEnv discarded a positional path
+	               that was not *.eddyflow, and a project stating no gas_num has been refused
+	               outright since format 5.0.0 - which is the shape of every EddyPro file
+	               there is. Of the keys in one, all but about ninety are read verbatim under
+	               the same name; those ninety are the four fixed gas slots with their
+	               per-species settings, which become records. The mapping is the interface's,
+	               not a new one, and a static check reads the interface's own tables so the
+	               two repositories cannot drift apart unnoticed.
+	               The fourth slot's species is recoverable only from the metadata - the
+	               project states col_n2o and nothing else - so a COS column declared there
+	               would otherwise be given nitrous oxide's molecular weight, wrong by a
+	               third, with nothing in the output looking unusual. EddyPro also spells that
+	               slot two ways within one file (n2o in the parameter settings and in
+	               out_full_sp_*/out_full_cosp_w_*, gas4 in the spectral, time-lag and
+	               out_raw_* families); both are accepted everywhere.
+	               A setting the project does not state is not written, because the engine
+	               applies a record override whenever the tag is present and 0 is a
+	               meaningful absolute limit, default time lag and minimum flux. Nothing
+	               EddyFlow-only is invented either - cec_*, the PWB block, the planar-fit
+	               sectors are all *TagFound-guarded with defaults, and writing those defaults
+	               would dress them up as decisions somebody made.
+	- Fix: A Campbell site's instrument key is rewritten everywhere it appears, not only where
+	       the reader already handles it. `csat3` and `csat3b` became `csi_csat3` and
+	       `csi_csat3b`, and a model key sits in three places: the metadata's instr_<K>_model,
+	       the metadata's col_<N>_instrument, and the project's master_sonic. Only the first is
+	       canonicalised on read; the other two are compared by index() against a model that
+	       has been, so index('csat3_1', 'csi_csat3_1') is zero. The columns keep a null
+	       instrument and metadata validation rejects the file - for a GHG archive, every file
+	       in the run - and no column is flagged master_sonic, taking the sonic axis
+	       adjustment, the angle-of-attack and w-boost overrides and the anemometric block of
+	       DefineE2Set with it. The import rewrites all three. The regression fixture is a
+	       CSAT-3B for exactly this reason: a Gill one would pass either way.
+	       Scoped to the import: the same mismatch is still reachable by a hand-written
+	       native .metadata that spells a Campbell model the old way, which is a reader
+	       fix rather than an import one
+	- New feature: The import names any instrument model this engine does not know, once per
+	               file. That used to surface only as ExceptionHandler(25) per raw file, with
+	               nothing to say which key was at fault
+	- New feature: Gas/cell/diagnostic column records (EddyFlowProj%gas, %cell, %diag) replace the four fixed gas slots, so the same species can be measured by more than one instrument
+	- New feature: Project and metadata tag tables are now generated by prj/gen_project_tags.py and prj/gen_metadata_tags.py instead of hand-numbered
+	- New feature: Overflow sentinel detects metadata describing more instruments than the engine can hold, instead of silently dropping them
+	- New feature: Cell temperature/pressure blocks are now one per instrument, and every gas is
+	               density-corrected in the cell its record names. Verified on CH-LAE against two
+	               v7.2.5 runs: the LI-7200 gases reproduce the LI-7200-only run and the MIRO gases
+	               the MIRO-only run to within 0.35% on every flux, while N2O - which v7.2.5 gave
+	               the LI-7200's cell, 13.5x too dense - moves as expected
+	- New feature: Each gas is WPL-corrected with the water its record names, and each hygrometer
+	               carries its own moisture regime; a second hygrometer reports its own H, LE, ET,
+	               TAU, MO_LENGTH and ZL
+	- New feature: A column legend file naming, for every output column, the species, the instrument
+	               and the raw column behind it
+	- New feature: Each block of the spectral assessment file states the species and analyser it
+	               was fitted for (`var=`/`instr=`, written past `fc` so older builds ignore it),
+	               and the reader resolves a block by that before falling back to the block name.
+	               Block names are ordinals over repeats of a species - CO2_1 is whichever CO2
+	               record comes first - so a project that lists its records in another order used
+	               to hand one analyser's transfer function to the other
+	- Fix: The second hygrometer's RH block is named for the tag alone. It was written as
+	       "<TAG> vapour TFP" and the reader takes everything before TFP as the block name, so the
+	       block called itself "H2O_2 VAPOUR", matched nothing, and was consumed and discarded on
+	       every read - the second hygrometer was fitted and thrown away, which is what writing the
+	       block was meant to stop. Files already carrying the old header still resolve
+	- Fix: The unnamed primary-water table is stamped too, and read onto the hygrometer it names
+	       rather than onto whichever record the reading project calls primary
+	- New feature: The RH/cut-off relation is fitted per hygrometer, and each hygrometer's block
+	               carries its own coefficients (`exp=`, again past `fc`). The correction
+	               evaluates exp(A*RH^2 + B*RH + C), and A/B/C were one project-wide set fitted
+	               from the primary - so a second hygrometer's nine fitted cut-offs were written,
+	               read back and then overridden by the primary's curve. Each analyser's own path
+	               type now decides which arm fits it, and the project-wide set remains the
+	               fallback for a hygrometer the assessment never reached
+	- Fix: Species molecular weights carry six figures, on the atomic weights the table already
+	       used. CO2 and N2O weigh nearly the same and were both written as 44.01, so the one
+	       place a gas's identity is stated in numbers could not tell them apart; they are
+	       44.0095 and 44.0128. CH4 16.0425, H2O 18.0153 and dry air 0.0289647 moved with them.
+	       Water and dry air had to move together: mu = Md/MW_H2O and their roundings cancelled,
+	       so refining water alone would have made the WPL ratio less accurate than before.
+	       Effect: LE, ET and the ambient humidity terms shift by ~0.026%, every flux by
+	       ~0.0005% through mu, and a gas measured as a mass density by its own weight change
+	- Fix: A hygrometer reports what it measured. The biomet RH used to be written over the primary
+	       hygrometer's chi/r/d, so on a two-hygrometer site which instrument's number was real
+	       followed the primary designation. The biomet humidity is now reported in its own right as
+	       h2o_biomet_mole_fraction/_mixing_ratio/_molar_density, and the corrections that used it
+	       still use it
+	- Fix: err_label tag collision and missing out_full_sp_gas4 key in the metadata tag tables
+	- Fix: Mark gas/cell/diagnostic record columns as used so they survive column pruning and reach DefineE2Set
+	- Fix: The RP evapotranspiration and drift corrections read the primary hygrometer's own cell
+	       temperature, pressure and pressure covariance instead of the first instrument's, which is
+	       what FCC has always done - the two disagreed for a site whose hygrometer is not on cell
+	       record one
+	- Fix: CopyFile closes both units, and EditIniFile checks its opens before the close that
+	       deletes its input. FCC copies the project into the output folder and then edits that
+	       copy, and the copy came out zero bytes on every run where the automatic spectral
+	       configuration had a recommendation to write
+	- Fix: Unit conversion leaves the error code alone. `error` is -9999, and three arms of
+	       ConvertTraceGasUnits scaled the whole column, so a missing sample in a ppb, ppt or
+	       pmol_mol gas came out as -9.999 - past CleanUpE2Set's -300 test, past every
+	       "/= error" check downstream, and into the flux as a plausible mixing ratio. It
+	       reached any sample left at the error code, an unread row or a short file included.
+	       The six arms beside them were already guarded. No regression fixture moves: the
+	       test dataset carries no error code for these arms to scale
+	- Fix: A record with one unparseable field is no longer discarded whole. The CH-LAE files
+	       carry a quoted "NAN" in the analyser's gas columns - 1202 of 36001 rows in one file -
+	       and every such record was thrown away, wind data included: used_records per half hour
+	       read 17474 of 18000 and SONIC_NR 17471. The whole-record read stays, because it
+	       carries millions of rows; only a record it cannot parse is walked field by field, and
+	       then one field's worth is lost instead of the record. Each gas now loses exactly its
+	       own NAN samples. Every flux moves - this is a re-baselining, reconciled column by
+	       column in tests/regression/README.md
+	- New feature: Whatever a file writes for "no reading" is recognised in the units the file is
+	               written in, before anything scales it. NaN and infinity are caught by
+	               self-inequality rather than by comparing to a sentinel - a NaN reads as a
+	               perfectly good real and passed every "/= error" test downstream - and a column
+	               can declare its own fill through col_<N>_error_value, which only ADDS to the
+	               values that always mean missing: -9999, NaN, an unparseable token, an empty
+	               field. An absent declaration means the built-ins alone
+	- New feature: Warning(109) when a gas states no absolute limits, said once per run. The test
+	               already declined to run and flagged the gas 9, but a digit in a flag string is
+	               not where someone looks when a flux is suspect
+	- New feature: A run log. Each binary writes everything it prints to a .log beside the
+	               other outputs, named the same way - project id, run timestamp, run-mode tag.
+	               A run used to leave a dozen files behind and no record of what the engine
+	               said while producing them: which warnings fired, which periods were skipped
+	               and why. That record existed only in whatever terminal the run happened in,
+	               and under the interface it did not exist at all. The console is untouched -
+	               this is a tee, not a redirect, because the interface reads standard output
+	               to drive its progress display. Verified line for line against a capture of
+	               the console taken before the change; the only two lines the log lacks are
+	               gfortran's own "STOP" and IEEE notice, which the engine never emits
+	- Fix: SpectralAnalysis no longer writes through its intent(in) argument. It handed the
+	       caller's array straight to Tapering and FourierTransform, both intent(inout), and
+	       compiled only because those two have implicit interfaces - the binned pass now
+	       transforms a copy. No output moves; nothing read the array afterwards
+	- New feature: A column sampled below the file's rate has its spectrum and its cospectrum
+	               with w rebuilt from its own samples, on its own grid, instead of from the
+	               linear interpolation that fills its missing rows. The interpolation is a
+	               low-pass filter and it showed: on the slow-instrument fixture the analyser's
+	               CO2 read 0.242 near its cut-off interpolated against 0.623 rebuilt. Decimating
+	               by an integer factor over the same span leaves the frequency axis unchanged,
+	               so the result occupies the same bins; nothing above a column's own Nyquist is
+	               reported at all. Single-rate projects are byte-identical
+	- New feature: How the vertical wind is paired with a slower instrument's samples follows
+	               instr_<K>_integrates: the w at that instant by default, or w averaged over the
+	               interval the sample closes when the instrument integrates - which is what the
+	               instrument itself did to the gas. Instantaneous is the default because pairing
+	               an averaged wind against a point-sampled gas biases the covariance. The
+	               Metadata File Editor offers it per instrument, beside the acquisition frequency
+	- Fix: The FCC cut-off validation uses each hygrometer's own Nyquist instead of the station's.
+	       A hygrometer slower than the station resolves nothing above its own half-rate, so the
+	       station's bound accepted fitted cut-offs it could not have measured, by exactly the
+	       ratio of the two rates. FCC has no metadata file, so the FLUXNET analyser block now
+	       carries the rate RP resolved for each gas (<TAG>_INSTR_AC_FREQ). Purely additive:
+	       one column per analyser, every pre-existing cell byte-identical, and an ex record
+	       written without the column falls back to the station's rate
+	- Fix: The spectra feasibility test allows a third of what the COLUMN should have produced
+	       rather than a third of the file's rows, and the longest-gap duration discounts the
+	       rows between one sample of a slower instrument and the next. Measured against the
+	       rows, a 1 Hz column in a 10 Hz file was excluded from the spectra whatever its data
+	       said, and reported a permanent 0.9 s gap that never happened
+	- New feature: An instrument can state the rate it samples at (instr_<K>_ac_freq in the
+	               .metadata) and how much of its own expected data may be missing
+	               (instr_<K>_max_lack in [RawProcess_Settings]). Completeness is measured
+	               against what that instrument should have produced rather than against the
+	               file's rows, so a 1 Hz analyser in a 10 Hz file is complete rather than 90%
+	               missing. Before this, such a column was dropped outright and its flux was
+	               -9999. Both settings are optional and absent means "the file's rate" and
+	               "the project-wide max_lack", so no existing project moves - every regression
+	               fixture is byte-identical. The project-wide setting now means the anemometer's
+	               allowance and the file's own completeness
+	- Fix: Spike detection counts consecutive samples, not consecutive rows. A run was
+	       extended across the error rows a slower column carries between its samples, and the
+	       total compared against sr_num_spk, so a single-sample spike in a 1 Hz analyser in a
+	       10 Hz file counted as ten: with the default allowance of three, every run in a column
+	       at a quarter of the file's rate or slower was discarded as a physical excursion and
+	       the column was never despiked, reporting no spikes rather than "not assessed". An
+	       accepted run's interpolation also wrote its whole row span, turning the error rows
+	       inside it into fabricated samples - which let a period with under 90% real data pass
+	       the CEC validity gate. The interpolation now draws its line in row distance from the
+	       last good sample and writes sample rows only, and the sr_hf_lim percentage is taken
+	       over the column's own samples instead of the file's rows. A column with no missing
+	       values is byte-identical; on CH-LAE, where the gas columns carry NAN, a spike beside
+	       a gap was detected and then left in the record - CO2 kurtosis 1638 against 8.07 once
+	       it is removed
+	- Fix: The exponential running mean computes the trend for its own column. The
+	       assignment inside the loop over columns subscripted every column, guarded on one of
+	       them, so each pass overwrote the others using that column's choice of lag and folded
+	       in whatever the row held elsewhere. At a single rate the assignment was identical on
+	       every pass and the mistake was idempotent; once columns sample at different rates, a
+	       fast column's pass writes the error code from a slower column's missing rows into
+	       that column's trend, and only the last column present survives it. Affects the 'ew'
+	       detrending option alone
+	- New feature: The spectral assessment succeeds per gas. It was all or nothing: the file was
+	               written only if the primary hygrometer had a usable RH class, so a site whose water
+	               could not be fitted lost the blocks of the gases that had been - and at correction time
+	               one unfitted gas, or an unfitted RH regression, demoted every gas to Moncrieff. On a
+	               one-day CH-LAE assessment that cost CO2, N2O and COS their in-situ corrections because
+	               nine RH classes cannot be filled from 48 half-hours. The file is now written whenever
+	               any gas was fitted, each gas is corrected by the method its own data supports, and the
+	               gases that cannot be corrected in situ go through the analytic method instead of
+	               dragging the rest down with them
+	- Fix: The high-frequency method no longer sticks. The per-period fallback to Moncrieff was
+	       written back into the project's own setting, so the first period that could not be
+	       corrected in situ demoted every period after it for the rest of the run, whatever their
+	       own data looked like. The decision is now local to the period that makes it
+	- New feature: Warning(110) when the assessment file covers some gases and not others, raised
+	               whether the file was just written or read from disk. A file covering four gases out of
+	               six looks exactly like a file covering all six, and the difference decides whether half
+	               the fluxes carry an in-situ correction
+	- New feature: The readiness report says what each gas actually gets - in situ or analytically
+	               - and reports PARTIAL as its own outcome rather than calling it SUCCESS or FAILED
+	- Fix: The report stops recommending a flux limit that cannot help. A gas rejected for small
+	       fluxes is fixed by lowering the floor; a gas whose classes are too thinly populated is
+	       not, and the suggested floor - a percentile of what is already there - removes records
+	       when it lands above the current one, which is what it did for water at CH-LAE. The two
+	       failures now read differently: the second names the best class occupancy reached and
+	       points at the assessment window or sa_min_smpl
+	- New feature: A path the project states, which does not exist, now stops the run. Five settings
+	               used to answer a missing path by quietly computing something else: a missing planar
+	               fit file became double rotation, a missing time-lag file became covariance
+	               maximisation, and a missing spectral assessment file, binned co-spectra directory or
+	               full co-spectra directory became Moncrieff 1997. The run finished and the numbers
+	               were labelled as the method that had been asked for, which is what made it dangerous
+	               - the first two change every flux in the run. The engine already stopped for three
+	               other missing inputs (the project file, the alternative metadata file, the raw data
+	               directory); these five now do the same. The message names the setting, the path as
+	               given, and what to change - either correct the path, or choose the interface option
+	               that makes EddyFlow produce the thing itself. A path the project does not state is
+	               unaffected
+	- Fix: The spectral fit arrays no longer overrun on a project with no water. xFit, yFit
+	       and ddum are one global set shared by FitRHtoCutoff and FitTFModels, sized
+	       differently by each under the same "only if not already allocated" test.
+	       FitRHtoCutoff claimed them at a fixed 10 and then returned early when the project
+	       had no primary water, without freeing them, so the next FitTFModels found them
+	       allocated, skipped its own sizing and indexed past the end - a crash. It could only
+	       bite a project with no water, and those never reached it while a missing
+	       binned-spectra directory was quietly demoting every run to Moncrieff
+	- Fix: A biomet file that is not there is reported instead of created. scanCsvFile opened its
+	       input without status='old', so a path that did not exist was CREATED, empty; the open then
+	       succeeded, the scan found no rows, and its own "too few rows or columns" guard fired. The
+	       run announced a content problem for a file that was simply absent, carried on without
+	       biomet data, and left an empty file behind in the working directory.
+	       That is not hypothetical: a project whose biomet path had been corrupted upstream produced
+	       exactly this, and the only trace was a stray file named after the wreckage of the path.
+	       Two further biomet opens had the same shape and are closed with it; the fourth already had
+	       status='old', which is what showed the other three to be oversights rather than policy
+	- Fix: A project that NAMES a biomet file and cannot open it stops, through the same
+	       AbortOnMissingPath every other user-named path already uses - pf_file, to_file, sa_file
+	       and proj_file all abort, and biomet was the one that degraded quietly. The message names
+	       the setting, quotes the path as the project gave it, and says what to do about it. Only
+	       for an explicitly named file: one that came from a biomet DIRECTORY listing existed a
+	       moment ago, so its disappearance is a different and much rarer event and is reported
+	       without taking the run down
+	- Change: scanCsvFile can say whether a file was absent or merely unusable. Without that the
+	          caller cannot tell a wrong path from a bad file, which is why the original message had
+	          to hedge between them and ended up describing the wrong one
+	- Change: Thirty-eight regression fixtures declared an external biomet file on a drive that does
+	          not exist. They were never reading biomet - the run logged Error(2), then Error(71),
+	          then continued without it - so they now state use_biom=0, which is what they actually
+	          do. The two fixtures that genuinely exercise biomet name a file that is present and are
+	          untouched. A new static check keeps the two in step: a fixture either names a biomet
+	          file it can open, or says it uses none
+	- Fix: An even PWB smoothing width uses the window it names. The centred rolling mean summed
+	       2*(width/2)+1 terms and divided by that, so an even width became a symmetric window one
+	       sample WIDER than asked for - a different filter, not a rescaling, and free to move the
+	       argmax it feeds. R, zoo and dyco all take exactly `width` terms, an odd window being
+	       symmetric and an even one putting its extra sample after the centre; dyco verified that
+	       against R for widths 4, 5 and 6.
+	       This is not a corner: the paper's smoothing width is hz/2 + 1, which is 6 at 10 Hz. An
+	       odd width is unaffected, so the default of 5 and every project using it produce
+	       identical numbers
+	- Fix: S2 no longer accepts a detection for sitting close to a lag the carry limit has already
+	       expired. S2 exists to accept an uncertain detection that agrees with a trusted
+	       neighbour, and leaning on an anchor judged too old to hand out walks the series along on
+	       evidence that no longer counts - which reintroduced the unbounded carry through the
+	       classifier while the fills below it expired correctly. With pwb_max_carry_h defaulting
+	       to 24 h this was live on every run
+	- New feature: The reference test covers the smoother. No frozen R value touches it - the
+	               pinned quantities come from the unsmoothed cross-correlation and from the raw
+	               cross-covariance - which is exactly how the even-width window fixed above went
+	               unnoticed by a check that agreed with RFlux to twelve significant digits. The
+	               driver gained a mode that smooths a synthetic series, and the test compares it
+	               against zoo's rule written out independently, at widths 4, 5 and 6
+	- Note: PWB's arithmetic WAS pinned to the original R implementation during this
+	               release's development, and no longer is. dyco shipped the fixtures and the
+	               frozen output of RFlux v3.2.0's tlag_detection() for two cases, one on each
+	               branch of the unit-root test; a driver ran this engine's own chain over them
+	               and compared the AR order chosen by AIC, the AR coefficients, the peak of the
+	               pre-whitened cross-correlation and the raw cross-covariance, all agreeing to
+	               twelve significant digits. Running it for the first time found three defects
+	               that no text-matching check could have seen, and all three fixes are below
+	               and are staying.
+	               The comparison itself is removed with dyco, which is no longer checked out
+	               beside this repository - the fixtures and the expected values both lived
+	               there, so the checks could only skip. Nothing replaces it: no check now
+	               verifies these numbers, only the source text that produces them. The head
+	               of static_checks/test_pwb_reference_static.py records what it covered and
+	               how to restore it. The driver stays, and still proves m_pwb_core links
+	               without engine state.
+	- Fix: The raw cross-covariance is read off the UNDIFFERENCED series, linearly detrended.
+	       Differencing feeds the AR filters only; taken off the differenced arrays the number
+	       is a covariance of increments, which on a drifting record is smaller by two orders of
+	       magnitude and free to carry the opposite sign. dyco had this bug and fixed it. The
+	       branch is not the rare one it sounds: it fires whenever sonic temperature drifts over
+	       an averaging period, which is most of them
+	- Fix: The cross-covariance divides by N, as R's ccf(type="covariance") does, and centres
+	       each series once on its own full-length mean. Dividing by each lag's overlap count
+	       instead inflated it by N/(N-|lag|) - 2.9% at lag 169 of 6000
+	- Fix: Differencing returns N-1 values. It wrote them back over 2..N and set the first to
+	       zero, keeping the length at N and feeding the AR fit one fabricated sample; at
+	       N = 6000 that moved the first AR coefficient in the sixth significant digit
+	- Fix: The full-data pre-whitened CCF drops the AR-initialisation samples, as R's
+	       na.action = na.omit does. Kept as zeros they shifted every mean and sum that
+	       followed, which at an AR order of 67 moved the correlation in the fourth significant
+	       digit. The bootstrap still keeps them, which is also what R does
+	- Fix: A time lag is never borrowed across instruments. It is a property of one sampling
+	       tube, so sharing one between analysers is not an approximation of the right answer
+	       but a different measurement. The identity test now requires that BOTH records name an
+	       instrument and that the names match: there is no fall-back to the model string, which
+	       cannot tell two LI-7200s at one site apart, and a record naming no instrument neither
+	       donates nor receives, because nothing then proves it shares a tube. The run log says
+	       so when a gas is in that position.
+	       Three places could hand a lag from one gas to another and only two of them asked any
+	       question at all: the aggregate summary had no instrument test whatsoever, so on a
+	       multi-analyser site it could give one tube's optimised window to a gas measured down
+	       another - and that file is read back by the next run
+	- Fix: A failed H2O relative-humidity class table no longer switches the whole run to
+	       covariance maximization when the method is PWB. Under PWB that aggregate table is a
+	       by-product; the method's output is the half-hourly table, already complete when the
+	       switch fired. It discarded all of it, processed every period with covariance
+	       maximization and reported every _TLAG_PWB_SOURCE column as missing. The classes need
+	       reliable water detections, and a hygrometer that has none says nothing about the
+	       other gases' lags
+	- Fix: The applied time lag reported for a period is the one the data actually moved by,
+	       measured back off the record shift. Interpolation makes fractional lags ordinary and
+	       the data can only move by whole records, so the requested and the applied value now
+	       differ by up to half a sample as a matter of course
+	- Change: The bootstrap block length is derived per gas as max(configured, 2 x widest search
+	          bound), following R's l = 2*LAG.MAX coupling and dyco's floor on it. A block
+	          shorter than the lag range cannot contain the structure the bootstrap exists to
+	          preserve; this warned about exactly that and then used the short block anyway. On
+	          a project with a 25 s window and the default 20 s block every gas was resampling
+	          under-blocked while the log said so and nothing acted on it. Detections improve
+	          markedly as a result
+	- New feature: pwb_max_carry_h bounds how far a lag may travel to a period that detected
+	               none, defaulting to 24 hours; zero restores the published rule, under which
+	               one reliable half hour can supply days. It bounds interpolation, the forward
+	               carry and the backward fill with one value, because bounding a single
+	               direction achieves nothing - with detections either side of a long unusable
+	               stretch the later one would fill from the future exactly the span the earlier
+	               was forbidden to cross. Past it the period falls to a same-analyser donor,
+	               and the row is classed S3_expired.
+	               Measured in elapsed hours where dyco counts averaging periods: our table has
+	               a row only where a period was processed, so a period count would reach
+	               straight across a gap in the raw files
+	- Change: The FLUXNET _TLAG_PWB_SOURCE column has a code for every way a period can reach its
+	          lag. Interpolated, back-filled and median-filled periods have none in the older
+	          scheme, so they fell through to the default arm and reported no source at all
+	- Change: The arithmetic moved to m_pwb_core, which depends on nothing but the kinds module,
+	          and states its deliberate departures from dyco and RFlux in one place - the guard band
+	          against their na.locf edge fill, the preference for a combination that did not land on
+	          the window edge, the carry limit counted in elapsed hours rather than averaging
+	          periods, the degenerate-width fallback, and the moving-block bootstrap against R's
+	          wrapping one. A difference nobody wrote down is indistinguishable from a defect the
+	          next time the two are compared.
+	          The reference driver links that module and one other object and nothing else, so it
+	          stops linking the moment a routine in the chain reaches for PWBSetup or the column
+	          table - which is what keeps the numbers reproducible outside a full run, and firmer
+	          than any scan of the source. It builds into the object directory, not bin/, because it
+	          is a test fixture and an unshipped binary beside the two real ones invites somebody to
+	          ship it
+	- New feature: PWB settles every averaging period's time lag with the whole run in hand. The
+	               classifier ran while periods streamed past, so it could only look backwards: a
+	               period before the first reliable detection had nothing to carry forward and fell
+	               back to covariance maximisation, and a gap in the middle held the last good lag
+	               flat for as long as the gap lasted. Neither was a limit of the method, only of
+	               not having read the rest of the run yet.
+	               The pre-pass has read it. Each period is now settled from the stored evidence in
+	               the reference implementation's order: the HDI pre-filter, then S1, then S2, then
+	               the gas's OWN lag in all three of its forms - interpolated between the reliable
+	               lags either side, carried forward, filled backward - and only then a lag borrowed
+	               from another gas on the same analyser, then that gas's median, then the fallback
+	               the pass recorded.
+	               The gas's own lag comes first deliberately: two gases down one tube still have
+	               measurably different delays, a systematic 0.35 s between CH4 and N2O being
+	               ordinary, so borrowing trades a stale number for a biased one. A fill_method
+	               column names which arm settled each row, so the file says how every half-hour was
+	               decided and not only what it decided. Live detection, with no pre-pass, keeps the
+	               causal classifier; nothing better is possible when the future has not been read
+	- Fix: pwb_hdi_prefilter_s does something. It has been in the interface, in the project file
+	       and in the settings fingerprint since PWB was added, and no computation has ever read
+	       it - so a detection with a very wide HDI could still be accepted by S2 merely for
+	       landing near the previous period's lag. It is applied before classification now, which
+	       is what the reference does and what its name has always promised
+	- Fix: The bootstrap draws an independent resampling per period. The seed was built from the
+	       gas and the combination only, so every half-hour drew the identical sequence of block
+	       start positions - one fixed template applied to the whole run rather than a draw. The
+	       generator itself was glibc's LCG constants (chosen for modulus 2^31) used with modulus
+	       2^31-1 and then reduced off the low bits, which are the worst-correlated bits an LCG
+	       has; a replicate draws about ninety starts in a row from them, so replicates resembled
+	       one another, the HDI came out too narrow, and S1 was handed to detections that had not
+	       earned it. It is xorshift64 read from the top bits now, seeded from the period as well,
+	       so a period stays reproducible while periods are independent of each other
+	- Change: The two PWB "speed options" are retired. Neither was one. Skipping the CCF
+	          normalisation saved two passes over the series against one per lag, well under a
+	          percent, and the divisor is constant across lags - so within a combination it
+	          changed nothing, while ACROSS combinations it changed everything: the four are
+	          compared at their modes, and they pair the scalar against vertical wind and against
+	          sonic temperature, whose covariances carry different physical units. Unnormalised,
+	          the winner was decided by that unit scale rather than by peak prominence, on every
+	          period. Capping the AR order saved about as little and under-fits the pre-whitener,
+	          which is the step that sharpens the peak the method exists to find
+	- Change: The cross-correlation is evaluated over the declared window plus a guard band, not
+	          over the mirrored symmetric range the window sits inside. Half the smoothing width
+	          is what the centred rolling mean consumes; the two seconds on top exist because the
+	          window is a guess, and a peak just outside it used to be indistinguishable from an
+	          ordinary edge-pinned failure. The applied lag still comes from inside the declared
+	          window - the guard band informs, it does not widen the search - and two new columns
+	          plus a run-log warning report when the peak keeps landing outside, which says the
+	          window is wrong rather than the detector.
+	          With that and the bootstrap scratch buffers hoisted out of the resampling loop, a
+	          three-hour eight-gas run with [-5, 25] s windows takes 70 s against 97 s, measured
+	          best-of-two on the same input
+	- Change: PWB writes two files instead of four. The per-period diagnostics repeated the
+	          half-hourly table one column apart and the per-gas summary held tallies the run log
+	          already prints; both are folded away. What remains is the half-hourly table - which is
+	          also the file a later run reads back, so a run can be replayed exactly from it - and
+	          the aggregate _pwb_timelag_opt.
+	          The table names its gases rather than numbering their slots, and carries the settled
+	          lag beside the evidence for it: carry_hours, the unit-root decision with the three AR
+	          orders it produced, and the pre-whitened diagnostics tlag_pw_s, corr_pw and cv_99 -
+	          R's Bartlett band, below which the pre-whitened correlation is not distinguishable
+	          from noise however narrow the bootstrap interval looks. It is version 4; every earlier
+	          version predates a setting that is now in the fingerprint and could not have matched
+	          this build in any case
+
 7.2.5 (2026-07-27)
 
     Engine:

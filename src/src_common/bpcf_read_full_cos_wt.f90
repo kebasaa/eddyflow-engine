@@ -51,12 +51,33 @@ subroutine ImportFullCospectra(CospFile, cospectra, nfreq, wanted, skip)
     integer :: j
     real(kind = dbl), allocatable :: aux(:)
     character(ShortInstringLen) :: dataline
-    character(32) :: var
-    character(11) :: covlabs(GHGNumVar)
+    character(72) :: var
+    !> Wide enough for a record-derived species tag. The compile-time table
+    !> this replaces named only the first eight slots and left the rest blank,
+    !> so no column ever matched for a gas past the fourth - it was imported
+    !> with no cospectrum, and every in-situ correction then declined to
+    !> correct it. Built from the same helper the writer uses.
+    character(72) :: covlabs(GHGNumVar)
+    !> The spelling the same slot had in files written before the tags became
+    !> record-derived. Accepted as well as the current one, so an existing
+    !> full-cospectra directory still imports; blank for slots that never had
+    !> a legacy name.
+    character(72) :: oldlabs(GHGNumVar)
+    character(64) :: vartags(GHGNumVar)
+    character(32), external :: LegacySpectralVarTag
     real(kind = dbl) :: cov(GHGNumVar)
-    data covlabs / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
-                   'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
+    include '../src_common/interfaces_1.inc'
 
+
+    call SpectralVarTags(vartags)
+    covlabs = ''
+    oldlabs = ''
+    do j = 1, GHGNumVar
+        if (len_trim(vartags(j)) > 0) &
+            covlabs(j) = 'cov(w_' // trim(vartags(j)) // ')'
+        if (len_trim(LegacySpectralVarTag(j)) > 0) &
+            oldlabs(j) = 'cov(w_' // trim(LegacySpectralVarTag(j)) // ')'
+    end do
 
     skip = .false.
 
@@ -84,14 +105,22 @@ subroutine ImportFullCospectra(CospFile, cospectra, nfreq, wanted, skip)
             var = dataline(1:index(dataline, ',') - 1)
             nvar = nvar + 1
             do j = 1, GHGNumVar
-                if (var == covlabs(j)) ord(j) = nvar
+                if (len_trim(covlabs(j)) > 0 .and. var == covlabs(j)) ord(j) = nvar
+            end do
+            do j = 1, GHGNumVar
+                if (ord(j) == 0 .and. len_trim(oldlabs(j)) > 0 &
+                    .and. var == oldlabs(j)) ord(j) = nvar
             end do
             dataline = dataline(index(dataline, ',') + 1:len_trim(dataline))
         else
             var = dataline(1:len_trim(dataline))
             nvar = nvar + 1
             do j = 1, GHGNumVar
-                if (var == covlabs(j)) ord(j) = nvar
+                if (len_trim(covlabs(j)) > 0 .and. var == covlabs(j)) ord(j) = nvar
+            end do
+            do j = 1, GHGNumVar
+                if (ord(j) == 0 .and. len_trim(oldlabs(j)) > 0 &
+                    .and. var == oldlabs(j)) ord(j) = nvar
             end do
             exit
         end if
@@ -128,8 +157,11 @@ subroutine ImportFullCospectra(CospFile, cospectra, nfreq, wanted, skip)
         close(udf)
         if (allocated(aux)) deallocate (aux)
 
-        !> Un-normalize cospectra
-        do j = w_u, w_gas4
+        !> Un-normalize cospectra. Over every slot, not the first four: a gas
+        !> past the fourth whose column now matches by name would otherwise be
+        !> left normalised and unchecked. `wanted` is the caller's per-slot
+        !> presence array, so an unconfigured slot contributes nothing.
+        do j = w_u, lastGas
             where (wanted(j) .and. cospectra(:)%fn /= 0d0 .and. cospectra(:)%fn /= error)
                 cospectra(:)%of(j) = cospectra(:)%of(j) /  cospectra(:)%fn * cov(j)
             elsewhere
@@ -142,7 +174,7 @@ subroutine ImportFullCospectra(CospFile, cospectra, nfreq, wanted, skip)
         !> This is somewhat arbitrary, introduced to eliminate observed
         !> implausible cospectra It's very strict: one only outranged
         !> value will eliminate the whole cospectra set
-        do j = w_u, w_gas4
+        do j = w_u, lastGas
             if (wanted(j) .and. any(dabs(cospectra(:)%of(j)) > MaxSpecValue)) then
                 cospectra = ErrSpec
                 skip = .true.
@@ -175,9 +207,6 @@ subroutine FullCospectraLength(Filepath, N)
     integer :: io_status
     integer :: i
     character(ShortInstringLen) :: dataline
-    character(11) :: covlabs(GHGNumVar)
-    data covlabs / 'cov(w_u)', 'cov(w_v)', 'cov(w_w)', 'cov(w_ts)', &
-                   'cov(w_co2)', 'cov(w_h2o)', 'cov(w_ch4)', 'cov(w_gas4)' /
 
 
     open(udf, file = Filepath, iostat = io_status)

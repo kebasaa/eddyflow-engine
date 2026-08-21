@@ -37,16 +37,20 @@ subroutine TestsNotPerformed()
     use m_rp_global_var
     implicit none
 
-    if(.not.Test%sr) IntHF%sr = 99999999
-    if(.not.Test%ar) IntHF%ar = 99999999
-    if(.not.Test%do) IntHF%do = 99999999
-    if(.not.Test%al) IntHF%al = 99999999
-    if(.not.Test%sk) IntHF%sk = 99999999
-    if(.not.Test%sk) IntSF%sk = 99999999
-    if(.not.Test%ds) IntHF%ds = 99999999
-    if(.not.Test%ds) IntSF%ds = 99999999
-    if(.not.Test%tl) IntHF%tl = 9999
-    if(.not.Test%tl) IntSF%tl = 9999
+    !> The per-variable flags are strings now, so mark every digit as 9
+    !> ("not available") rather than relying on the integer form. This also
+    !> clears any value left over from the previous averaging period, which
+    !> matters because a skipped test never writes its string.
+    if(.not.Test%sr) CharHF%sr = repeat('9', FlagStrLen)
+    if(.not.Test%ar) CharHF%ar = repeat('9', FlagStrLen)
+    if(.not.Test%do) CharHF%do = repeat('9', FlagStrLen)
+    if(.not.Test%al) CharHF%al = repeat('9', FlagStrLen)
+    if(.not.Test%sk) CharHF%sk = repeat('9', FlagStrLen)
+    if(.not.Test%sk) CharSF%sk = repeat('9', FlagStrLen)
+    if(.not.Test%ds) CharHF%ds = repeat('9', FlagStrLen)
+    if(.not.Test%ds) CharSF%ds = repeat('9', FlagStrLen)
+    if(.not.Test%tl) CharHF%tl = repeat('9', FlagStrLen)
+    if(.not.Test%tl) CharSF%tl = repeat('9', FlagStrLen)
     if(.not.Test%aa) IntHF%aa = 9
     if(.not.Test%ns) IntHF%ns = 9
 end subroutine TestsNotPerformed

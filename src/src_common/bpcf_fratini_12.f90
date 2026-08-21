@@ -37,6 +37,8 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         detrending_time_constant, detrending_method, nfull, nfreq, LocFileList, lEx, LocSetup)
     use m_common_global_var
     implicit none
+    logical :: low_flux
+    integer :: gas
     !> in/out variables
     logical, intent(in) :: loc_var_present(GHGNumVar)
     type(InstrumentType), intent(in) :: LocInstr(GHGNumVar)
@@ -64,15 +66,25 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     real(kind = dbl) :: min_bpcf_f12(GHGNumVar)
     real(kind = dbl) :: max_bpcf_f12(GHGNumVar)
     type(DateType) :: Timestamp
+    logical, external :: GasSlotIsWater
 
-    data min_bpcf_f12(co2)  / 0.8d0 / &
-         min_bpcf_f12(h2o)  / 0.8d0 / &
-         min_bpcf_f12(ch4)  / 0.8d0 / &
-         min_bpcf_f12(gas4) / 0.8d0 / &
-         max_bpcf_f12(co2)  / 5.d0  / &
-         max_bpcf_f12(h2o)  / 20.d0 / &
-         max_bpcf_f12(ch4)  / 5.d0  / &
-         max_bpcf_f12(gas4) / 5.d0  /
+    !> Plausibility band for the correction factor the direct method returns.
+    !>
+    !> This was four `data` statements naming co2/h2o/ch4/gas4, so every slot
+    !> past the fourth held whatever the saved storage did - zero in practice.
+    !> That does not make the test permissive, it inverts it: `BPCF >= 0` is
+    !> always true, so a gas past the fourth was pushed onto the Ibrom 2007
+    !> fallback in every period and never kept its direct factor.
+    !>
+    !> The band is a property of the species, not of the slot: water's upper
+    !> bound is four times the others because its tube attenuation is that
+    !> much larger, so a correction factor that would be absurd for a trace
+    !> gas is ordinary for water.
+    min_bpcf_f12(:) = 0.8d0
+    max_bpcf_f12(:) = 5d0
+    do i = firstGas, lastGas
+        if (GasSlotIsWater(i)) max_bpcf_f12(i) = 20d0
+    end do
 
     !> Detect name of file to be read
     indx = nint(error)
@@ -87,8 +99,8 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     !> Set cospectra to be retrieved
     wanted(w_u:w_w) = .false.
     wanted(w_ts) = .true.
-!    wanted(w_co2: w_gas4) = loc_var_present(co2:w_gas4)
-    wanted(w_co2: w_gas4) = .false.
+!    wanted(firstGas:lastGas) = loc_var_present(co2:w_gas4)
+    wanted(firstGas:lastGas) = .false.
 
     !> Read full co-spectrum of H from file
     if (indx /= nint(error)) &
@@ -111,10 +123,10 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         call ExperimentalLPTF('iir', nf, nfreq, BPTF)
 
         !> Combined TF (actually only low-pass insitu)
-        if (loc_var_present(co2))  call BandPassTransferFunction(BPTF, w, co2,  w_co2,  nfreq)
-        if (loc_var_present(h2o))  call BandPassTransferFunction(BPTF, w, h2o,  w_h2o,  nfreq)
-        if (loc_var_present(ch4))  call BandPassTransferFunction(BPTF, w, ch4,  w_ch4,  nfreq)
-        if (loc_var_present(gas4)) call BandPassTransferFunction(BPTF, w, gas4, w_gas4, nfreq)
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) &
+                call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+        end do
 
         !> Calculate TF to apply to cospectrum of H before using it as a model:
         !> it's applied as H_theor(k) = H_meas(k) / hBPTF%BP(k)
@@ -174,14 +186,20 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         end where
 
         !> Calculate correction factors after Fratini et al. (2012, AFM)
-        if(loc_var_present(co2)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts),  co2,  nf, nfreq, BPTF)
-        if(loc_var_present(h2o)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts),  h2o,  nf, nfreq, BPTF)
-        if(loc_var_present(ch4)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts),  ch4,  nf, nfreq, BPTF)
-        if(loc_var_present(gas4)) &
-            call SpectralCorrectionFactors(fullCospectra%of(w_ts), gas4,  nf, nfreq, BPTF)
+        !>
+        !> The model cospectrum is the *measured* w/T one, for every gas: that
+        !> substitution is the method. Only the slot being corrected varies,
+        !> which is what the loop iterates.
+        !>
+        !> Indexing the first argument by `gas` instead reads a slot `wanted`
+        !> above deliberately excludes from the import, so it is all error -
+        !> SpectralCorrectionFactors returns error, the plausibility band below
+        !> rejects it, and every gas falls to Ibrom 2007 in every period. The
+        !> direct method then never runs, silently.
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) &
+                call SpectralCorrectionFactors(fullCospectra%of(w_ts), gas, nf, nfreq, BPTF)
+        end do
 
         !> Calculate correction factors after revision of Laubach and Fratini, unpublished
 !        if(loc_var_present(co2)) &
@@ -197,25 +215,32 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         !> approach of Ibrom et al. 2007 (or Fratini et al. 2012, Eq. 4) in the following cases:
         !> 1) Fluxes too low (either sensible heat or concerned gas)
         !> 2) Unrealistic correction factors calculated from direct method
-        if ((loc_var_present(co2) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%co2) < LocSetup%SA%min_un_co2) &
-            .or. BPCF%of(co2) <= min_bpcf_f12(co2) .or. BPCF%of(co2) >= max_bpcf_f12(co2)) &
-            call CorrectionFactorsIbrom07(.true., .false., .false., .false., BPCF, lEx)
-
-        if ((loc_var_present(h2o) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE)  &
-            .or. BPCF%of(h2o) <= min_bpcf_f12(h2o) .or. BPCF%of(h2o) >= max_bpcf_f12(h2o)) &
-            call CorrectionFactorsIbrom07(.false., .true., .false., .false., BPCF, lEx)
-
-        if ((loc_var_present(ch4) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%ch4) < LocSetup%SA%min_un_ch4) &
-            .or. BPCF%of(ch4) <= min_bpcf_f12(ch4) .or. BPCF%of(ch4) >= max_bpcf_f12(ch4)) &
-            call CorrectionFactorsIbrom07(.false., .false., .true., .false., BPCF, lEx)
-
-        if ((loc_var_present(gas4) .and. dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
-            .or. dabs(lEx%Flux0%gas4) < LocSetup%SA%min_un_gas4) &
-            .or. BPCF%of(gas4) <= min_bpcf_f12(gas4) .or. BPCF%of(gas4) >= max_bpcf_f12(gas4)) &
-            call CorrectionFactorsIbrom07(.false., .false., .false., .true., BPCF, lEx)
+        !> One test per configured gas. Water keeps its own thresholds - the
+        !> latent-heat flux and its minimum, not a gas flux - which is the same
+        !> carve-out water has everywhere else in this work.
+        do gas = firstGas, lastGas
+            if (.not. loc_var_present(gas)) cycle
+            if (GasSlotIsWater(gas)) then
+                !> This hygrometer's own latent heat flux. Screening
+                !> every water slot on the site's meant a second
+                !> hygrometer was judged on the primary's.
+                if (lEx%Flux0%gas(gas) /= error &
+                    .and. lEx%lambda /= error) then
+                    low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                        .or. dabs(lEx%Flux0%gas(gas) * lEx%lambda &
+                            * MW_H2O * 1d-3) < LocSetup%SA%min_un_LE
+                else
+                    low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                        .or. dabs(lEx%Flux0%LE) < LocSetup%SA%min_un_LE
+                end if
+            else
+                low_flux = dabs(lEx%Flux0%H) < LocSetup%SA%min_un_H &
+                    .or. dabs(lEx%Flux0%gas(gas)) < LocSetup%SA%min_un_gas(gas)
+            end if
+            if (low_flux .or. BPCF%of(gas) <= min_bpcf_f12(gas) &
+                .or. BPCF%of(gas) >= max_bpcf_f12(gas)) &
+                call CorrectionFactorsIbrom07(gas, BPCF, lEx)
+        end do
 
         if(allocated(nf)) deallocate(nf)
         if(allocated(BPTF)) deallocate(BPTF)

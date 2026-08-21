@@ -64,9 +64,12 @@ subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
 
     if (printout) then
         write(*,'(a)') indent // ' Retrieving file names from directory:'
+        write(ulog,'(a)') indent // ' Retrieving file names from directory:'
         write(*,'(a)') indent // '  "' // trim(adjustl(DirIn)) // '"'
+        write(ulog,'(a)') indent // '  "' // trim(adjustl(DirIn)) // '"'
         if (Recurse) &
             write(*,'(a)') indent // '   and its sub-directories..'
+            write(ulog,'(a)') indent // '   and its sub-directories..'
     end if
 
     !> List files, recursively in all cases
@@ -161,6 +164,8 @@ subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
         write(LogInteger, '(i8)') cnt
         write(*,'(a)') indent // '  ' // trim(adjustl(LogInteger)) &
             // ' files found.'
+        write(ulog,'(a)') indent // '  ' // trim(adjustl(LogInteger)) &
+            // ' files found.'
     end if
 
     !> Retrieve timestamps from file names if requested
@@ -168,11 +173,15 @@ subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
         if (printout) write(*, '(a)', advance = 'no') &
             indent // '  Retrieving timestamps from &
             &file names..'
+        if (printout) write(ulog, '(a)', advance = 'no') &
+            indent // '  Retrieving timestamps from &
+            &file names..'
         do i = 1, cnt
             call FilenameToTimestamp(FileList(i)%name, Template, doy_format, &
                 FileList(i)%Timestamp)
         end do
         if (printout) write(*, '(a)') ' Done.'
+        if (printout) write(ulog, '(a)') ' Done.'
     end if
 
     !> Delete temporary file
@@ -180,4 +189,5 @@ subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
         // comm_err_redirect)
 
     if (printout) write(*,'(a)')   indent // ' Done.'
+    if (printout) write(ulog,'(a)')   indent // ' Done.'
 end subroutine FileListByExt
