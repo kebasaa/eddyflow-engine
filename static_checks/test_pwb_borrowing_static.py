@@ -173,10 +173,11 @@ class TheSettingReachesTheEngine(unittest.TestCase):
 class TheNumbersFollowTheReference(unittest.TestCase):
     """The three places this engine had disagreed with RFlux.
 
-    All three are pinned numerically by test_pwb_reference_static.py; these
-    assertions say where in the source the agreement comes from, so a later
-    edit that reintroduces one fails here with a reason rather than there with
-    a number.
+    All three WERE pinned numerically, by the RFlux comparison that used to
+    live in test_pwb_reference_static.py; that went with dyco, whose fixtures
+    it needed. These assertions are what is left: they say where in the source
+    each agreement comes from, so a later edit that reintroduces one fails
+    here with a reason. Nothing now fails with a number.
     """
 
     def test_the_covariance_is_read_off_the_undifferenced_series(self):

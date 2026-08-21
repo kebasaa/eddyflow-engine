@@ -535,21 +535,25 @@
 	- New feature: The reference test covers the smoother. No frozen R value touches it - the
 	               pinned quantities come from the unsmoothed cross-correlation and from the raw
 	               cross-covariance - which is exactly how the even-width window fixed above went
-	               unnoticed by a check that agrees with RFlux to twelve significant digits. The
+	               unnoticed by a check that agreed with RFlux to twelve significant digits. The
 	               driver gained a mode that smooths a synthetic series, and the test compares it
 	               against zoo's rule written out independently, at widths 4, 5 and 6
-	- New feature: PWB's arithmetic is pinned to the original R implementation. dyco ships the
-	               fixtures and the frozen output of RFlux v3.2.0's tlag_detection() for two
-	               cases, one on each branch of the unit-root test; a new driver runs this
-	               engine's own chain over them and static_checks/test_pwb_reference_static.py
-	               compares the AR order chosen by AIC, the AR coefficients, the peak of the
-	               pre-whitened cross-correlation and the raw cross-covariance. The expected
-	               values are read out of dyco's test module rather than copied into ours, so
-	               the two cannot drift. Every one of them now agrees to twelve significant
-	               digits. The bootstrap is deliberately not compared - it shares no RNG stream
-	               with R - which is how dyco treats it too.
-	               Running it for the first time found three defects, none of which any
-	               text-matching check could have seen, and all of which are fixed below
+	- Note: PWB's arithmetic WAS pinned to the original R implementation during this
+	               release's development, and no longer is. dyco shipped the fixtures and the
+	               frozen output of RFlux v3.2.0's tlag_detection() for two cases, one on each
+	               branch of the unit-root test; a driver ran this engine's own chain over them
+	               and compared the AR order chosen by AIC, the AR coefficients, the peak of the
+	               pre-whitened cross-correlation and the raw cross-covariance, all agreeing to
+	               twelve significant digits. Running it for the first time found three defects
+	               that no text-matching check could have seen, and all three fixes are below
+	               and are staying.
+	               The comparison itself is removed with dyco, which is no longer checked out
+	               beside this repository - the fixtures and the expected values both lived
+	               there, so the checks could only skip. Nothing replaces it: no check now
+	               verifies these numbers, only the source text that produces them. The head
+	               of static_checks/test_pwb_reference_static.py records what it covered and
+	               how to restore it. The driver stays, and still proves m_pwb_core links
+	               without engine state.
 	- Fix: The raw cross-covariance is read off the UNDIFFERENCED series, linearly detrended.
 	       Differencing feeds the AR filters only; taken off the differenced arrays the number
 	       is a covariance of increments, which on a drifting record is smaller by two orders of

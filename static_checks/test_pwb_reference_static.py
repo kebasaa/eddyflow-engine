@@ -1,13 +1,15 @@
-"""PWB's arithmetic against the original R implementation.
+"""The driver, and the one part of the chain no frozen R value reached.
 
-Everything else in this directory reads source text. This runs the engine's
-own pre-whitening chain over the two fixtures dyco ships and compares the
-numbers with RFlux v3.2.0's output for the same input -- the AR order chosen
-by AIC, the AR coefficients, the peak of the pre-whitened cross-correlation
-and the raw cross-covariance, on both branches of the unit-root test.
+This file used to carry the numerical pin as well: the engine's own
+pre-whitening chain run over the two fixtures dyco ships, compared against
+RFlux v3.2.0's frozen output for the same input. That is gone, because dyco is
+no longer checked out beside this repository and the fixtures and the expected
+values both lived in it, so the checks could only ever skip.
 
-It is the only check here that would notice the port computing the wrong
-thing correctly. It caught three such defects when it was first run:
+What was lost is worth stating plainly, because nothing here replaces it. It
+was the only check in this directory that would notice the port computing the
+wrong thing correctly - everything else reads source text - and it caught three
+such defects the first time it ran:
 
   * the covariance divided by each lag's overlap count rather than by N,
     inflating it by 2.9% at lag 169 of 6000;
@@ -18,61 +20,28 @@ thing correctly. It caught three such defects when it was first run:
     drops them with na.action = na.omit, which at AR order 67 moved the
     correlation in the fourth.
 
-The expected values are READ OUT of dyco's own test module rather than copied
-into this one, so the two cannot drift apart: if dyco regenerates its fixtures
-it must update that table, and this check follows.
+All three fixes are still in the source, and test_pwb_borrowing_static.py says
+where in it each one lives. What no longer exists is the check that would
+notice any of them being undone. To restore it, put dyco back beside this
+repository and recover this file from git history: it read the expected values
+out of dyco's own test module rather than copying them here, so it needs both
+the fixtures and that module.
 
-The bootstrap is deliberately not compared. It has no RNG stream in common
-with R, which is exactly how dyco's own reference test treats it.
-
-Skipped when dyco is not checked out beside this repository, or when the
-driver has not been built (`mingw32-make pwbref`).
+What remains needs the driver but not dyco: the smoother against zoo's rule
+written out independently, and the layout checks that keep m_pwb_core free of
+engine state. Skipped when the driver has not been built
+(`mingw32-make pwbref`).
 """
 
-import ast
-import gzip
-import shutil
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DYCO = ROOT / "dyco-main"
-FIXTURES = DYCO / "tests" / "data"
-DYCO_TEST = DYCO / "tests" / "test_pwb_reference.py"
 #> In obj/, not bin/. bin/ holds what a user runs; this is a test fixture.
 DRIVER = ROOT / "obj" / "win" / "pwb_reference.exe"
 if not DRIVER.exists():
     DRIVER = ROOT / "obj" / "linux" / "pwb_reference"
-
-#: The fixtures were generated at 20 Hz with a 10 s search half-width; the R
-#: run that produced the frozen numbers used the same two values.
-HZ = 20
-LAG_MAX_S = 10.0
-
-
-def rflux_expectations():
-    """The `_R` table out of dyco's test module, without importing it.
-
-    Importing would pull in numpy, pandas and dyco itself. The table is a
-    plain literal, so it can be read with ast alone.
-    """
-    tree = ast.parse(DYCO_TEST.read_text(encoding="utf-8"))
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(getattr(t, "id", None) == "_R" for t in node.targets):
-            continue
-        out = {}
-        for key, val in zip(node.value.keys, node.value.values):
-            # dict(...) call, one per case
-            out[ast.literal_eval(key)] = {
-                kw.arg: ast.literal_eval(kw.value) for kw in val.keywords
-            }
-        return out
-    raise AssertionError("no _R table found in %s" % DYCO_TEST)
-
 
 def run_smooth(width, n):
     """The engine's smoother over a fixed synthetic series."""
@@ -114,97 +83,6 @@ def synthetic_series(n):
     v = [float(i) for i in range(1, n + 1)]
     v[max(1, n // 2) - 1] += 100.0
     return v
-
-
-def run_driver(fixture_gz):
-    with tempfile.TemporaryDirectory() as tmp:
-        csv = Path(tmp) / "fixture.csv"
-        with gzip.open(fixture_gz, "rb") as fin, open(csv, "wb") as fout:
-            shutil.copyfileobj(fin, fout)
-        proc = subprocess.run(
-            [str(DRIVER), str(csv), str(HZ), str(LAG_MAX_S)],
-            capture_output=True, text=True, check=True)
-    out = {}
-    for line in proc.stdout.splitlines():
-        if "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip()
-    return out
-
-
-@unittest.skipUnless(FIXTURES.exists(),
-                     "dyco not checked out beside this repository")
-@unittest.skipUnless(DRIVER.exists(),
-                     "pwb_reference driver not built (mingw32-make pwbref)")
-class PwbMatchesRflux(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.expected = rflux_expectations()
-        cls.got = {
-            case: run_driver(FIXTURES / ("pwb_reference_%s.csv.gz" % case))
-            for case in ("stationary", "differencing")
-        }
-
-    def assertClose(self, got, want, sigfigs, what):
-        """Agreement to a number of significant digits, not to an absolute."""
-        tol = abs(want) * 10.0 ** (-sigfigs)
-        self.assertLessEqual(
-            abs(float(got) - want), tol,
-            "%s: %r against R's %r, wanted %d significant digits"
-            % (what, got, want, sigfigs))
-
-    def test_the_table_was_found_at_all(self):
-        #> Guard the guard: a parse that quietly returned nothing would make
-        #> every assertion below vacuously true.
-        self.assertEqual(set(self.expected), {"stationary", "differencing"})
-        for case in self.got.values():
-            self.assertIn("cov_mcw", case)
-
-    def test_the_unit_root_decision_matches(self):
-        #> Which branch runs is the first thing that has to agree; everything
-        #> downstream is computed on different series otherwise.
-        for case, want in self.expected.items():
-            self.assertEqual(self.got[case]["differenced"] == "T",
-                             want["differenced"], case)
-
-    def test_the_aic_order_search_matches_exactly(self):
-        #> An integer, so it agrees exactly or the search is wrong. The
-        #> differencing fixture selects 67/56/56, which is deep enough into
-        #> the Levinson-Durbin recursion to be a real test of it.
-        for case, want in self.expected.items():
-            got = self.got[case]
-            self.assertEqual(
-                (int(got["ar_order_scalar"]), int(got["ar_order_w"]),
-                 int(got["ar_order_t"])),
-                tuple(want["ar_orders"]), case)
-
-    def test_the_ar_coefficients_match_to_ten_significant_digits(self):
-        for case, want in self.expected.items():
-            got = self.got[case]
-            for key, expect in zip(("phi1_scalar", "phi1_w", "phi1_t"),
-                                   want["phi1"]):
-                self.assertClose(got[key], expect, 10, "%s %s" % (case, key))
-
-    def test_the_prewhitened_ccf_peak_matches(self):
-        #> tl_pww is a lag in records and agrees exactly; cor_pww is the CCF
-        #> there. This pair is what the AR-initialisation trim decides.
-        for case, want in self.expected.items():
-            got = self.got[case]
-            self.assertEqual(int(got["pww"]), want["pww"], case)
-            self.assertClose(got["cor_pww"], want["cor_pww"], 10,
-                             "%s cor_pww" % case)
-
-    def test_the_raw_cross_covariance_matches(self):
-        #> The quantity that has to be read off the UNDIFFERENCED series, with
-        #> R's biased divisor. Both mistakes are silent in the detected lag
-        #> and loud here.
-        for case, want in self.expected.items():
-            got = self.got[case]
-            self.assertEqual(int(got["mcw"]), want["mcw"], case)
-            self.assertClose(got["cov_mcw"], want["cov_mcw"], 10,
-                             "%s cov_mcw" % case)
 
 
 @unittest.skipUnless(DRIVER.exists(),
