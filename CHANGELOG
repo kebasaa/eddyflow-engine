@@ -1,6 +1,37 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- Doc: A stability-binned planar fit was NOT added, and the reason is
+	       worth keeping. EddyUH can compute one - planar_fit_coeff.m case
+	       0 - but cannot apply one: EddyUH_coordrot.m selects the bin from
+	       its sixth argument, and all four call sites in the package pass
+	       NaN, including the flux calculation itself. With NaN the search
+	       finds no bin and neither out-of-range branch fires, so the plane
+	       coefficients are never assigned and the next line reads them.
+	       Selecting stability bins there does not change a flux; it stops
+	       with an undefined variable. nobin and WDbin assign
+	       unconditionally and are unaffected.
+	       Nor was it used at this site. The planar-fit file holds a single
+	       nobin plane, w = 0.0845 - 0.3624u + 0.0559v, and the setup then
+	       runs Dim_coordrot = 2 - double rotation - so that plane never
+	       reached a flux either.
+	       And nothing is missing here in any case: EddyUH's nobin is one
+	       plane fitted to everything, which is what this engine computes
+	       for a single wind sector of 360 degrees. read_ini_rp.f90 forces
+	       wsect_end(num_sec) = 360 and WindSector puts every direction in
+	       sector 1 when num_sec is 1.
+	       The obstacle, if it is ever wanted anyway, is architectural.
+	       The rotation runs at eddyflow-rp_main.f90:2171 and Ambient%zL is
+	       first computed in Fluxes0_rp at :2536, so the stability that
+	       would choose the bin does not exist when the bin must be chosen;
+	       the planar-fit assessment pass keeps only the mean wind per
+	       period and never forms a heat flux at all. Both would need a
+	       provisional double-rotated stability computed for the purpose,
+	       which is a design decision with no working precedent to copy.
+	       Written up in docs/eddyuh-comparison.md. Third finding of this
+	       shape, after the analyser crosstalk and the spectral-assessment
+	       cospectral model: the file is there, the mathematics is written
+	       down, and nothing reaches it.
 	- New feature: The analytic cospectrum every spectral correction is integrated
 	               against can now be chosen: cosp_model, defaulting to the
 	               Moncrieff et al. (1997) curve this program has always used.
@@ -142,6 +173,15 @@
 	               docs/eddyuh-comparison.md with the whole published table converted.
 	               Pinned by static_checks/test_spectroscopic_static.py, because it is the
 	               kind of note that gets tidied away.
+	- Doc: EddyUH has no analyser-crosstalk correction, and the comparison document no
+	               longer claims one. EddyUH_ctc_CP.m looks like one and is unreachable -
+	               nothing calls it, and it would fail if anything did, multiplying a
+	               scalar water value by a two-element coefficient vector.
+	               crosstalk_coeff_CP.m is a table of SPECTROSCOPIC (a, b) pairs whose only
+	               live callers are the two setup dialogs, seeding set_Gan.crosstalkcoeff -
+	               which EddyUH_spect_CP.m and dilucorr.m then read as their a and b. The
+	               crosstalkflag gates the spectroscopic correction. The name is
+	               historical, and the capability is the one already implemented.
 	- New feature: The spectroscopic effect of water vapour is removed from closed-path
 	               laser analysers, off unless asked for. Water broadens the absorption
 	               lines a laser measures, so what it reports scales as 1 + a*chi_q +
