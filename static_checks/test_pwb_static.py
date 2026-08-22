@@ -22,7 +22,14 @@ def code(rel):
 
 class PwbStaticIntegrationTests(unittest.TestCase):
     def test_method_id_five_maps_to_pwb_without_moving_existing_ids(self):
+        #> Scoped to the time-lag block. This used to index the whole file for
+        #> `case ('0')`, which found whichever select case came first - it was
+        #> the time-lag one only by accident of ordering, and a later select
+        #> added above it (the despiking method) reported this as a failure
+        #> while the time-lag arms were untouched.
         source = read("src/src_rp/read_ini_rp.f90")
+        start = source.index("select case (SCTags(16)%value(1:1))")
+        block = source[start:source.index("end select", start)]
         expected_order = [
             "case ('0')",
             "case ('1')",
@@ -31,9 +38,9 @@ class PwbStaticIntegrationTests(unittest.TestCase):
             "case ('4')",
             "case ('5')",
         ]
-        positions = [source.index(token) for token in expected_order]
+        positions = [block.index(token) for token in expected_order]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("Meth%tlag = 'pwb'", source)
+        self.assertIn("Meth%tlag = 'pwb'", block)
 
     def test_pwb_setup_tags_defaults_and_typedefs_exist(self):
         typedefs = read("src/src_common/m_typedef.f90")

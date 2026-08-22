@@ -50,11 +50,14 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
 
     !> Spike count/removal (sr)
     if (Tests%sr) then
-        if (RPSetup%despike_vickers97) then
-            call TestSpikeDetectionVickers97(Set, nrow, printout)
-        else
-            call TestSpikeDetectionMauder13(Set, nrow, printout)
-        end if
+        select case (trim(adjustl(RPSetup%despike_meth)))
+            case ('vickers_97')
+                call TestSpikeDetectionVickers97(Set, nrow, printout)
+            case ('consecutive_diff')
+                call DespikeConsecutiveDiff(Set, nrow, printout)
+            case default
+                call TestSpikeDetectionMauder13(Set, nrow, printout)
+        end select
     end if
 
     !> Amplitude resolution and dropouts (ar, do)

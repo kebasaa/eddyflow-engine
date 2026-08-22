@@ -1,6 +1,59 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: Consecutive-difference despiking, EddyUH's spi_method 1:
+	               despike_vm = 2, beside Vickers & Mahrt and Mauder. If a sample
+	               steps further from the one before it than a stated limit, it is
+	               replaced by its predecessor and counted as a spike. A
+	               rate-of-change limit, NOT a statistical outlier test - nothing
+	               is scaled by a standard deviation and nothing iterates, which
+	               is the whole difference between it and the two beside it.
+	               This is the method the CH-LAE carbonyl sulfide project ran, and
+	               it was missed the first time round: the earlier pass scoped
+	               itself to capabilities EddyFlow lacked entirely and filed this
+	               under "same intent, different implementation", where it sat
+	               without being acted on. It is not the same intent. Until now a
+	               run configured to match that project was despiked by a
+	               different rule than the one that produced the fluxes it was
+	               being compared against.
+	               The limits are ABSOLUTE, in each variable's own unit: four
+	               sonic keys - sr_step_u, sr_step_v, sr_step_w, sr_step_ts -
+	               rather than the two the Vickers sigma multipliers share, and
+	               gas_<i>_step_lim per gas. Sharing one key across u and the
+	               sonic temperature would put a kelvin and a metre per second
+	               behind the same number.
+	               Zero means the column is not despiked, which is the shape
+	               EddyUH's dlim has - a NaN entry there means the same - and the
+	               run log names every column it passed over for that reason. A
+	               method that silently does nothing when nobody filled in its
+	               numbers is worse than one that says so.
+	               Where it differs from EddyUH deliberately: EddyUH replaces a
+	               NaN by its predecessor and counts that as a spike, before any
+	               method runs. This does not. A gap is a gap, the engine has its
+	               own machinery for it, and folding gaps into the spike count
+	               would make the spike percentage - which drives the hard flag -
+	               a measure of two things at once. Comparison resumes from the
+	               next valid pair rather than manufacturing a step across a gap.
+	               The historical values of despike_vm decode exactly as before:
+	               '0' was Vickers and ANYTHING else was Mauder, so the default
+	               arm stays Mauder rather than becoming the nominal default. Only
+	               '2' behaves differently from before, which is what makes an
+	               existing project byte-identical - confirmed on base_5gas,
+	               base_cec_cos and base_n_gas_analytic.
+	               Verified on CH-LAE, 48 periods, with EddyUH's own dlim values
+	               for that project. It removes 23 fewer u spikes, 71 fewer w, 20
+	               fewer sonic temperature and 18 fewer carbon dioxide than Mauder
+	               does, and 624 more on the MIRO's water channel.
+	               Worth knowing, and not obvious until it was run: at those
+	               values the method finds NOTHING in nitrous oxide (80 ppb limit
+	               on a 330 ppb signal), carbonyl sulfide (0.7 ppb on 0.44 ppb),
+	               or either LI-7200 channel. Tightening the nitrous oxide limit
+	               to 0.5 ppb and carbonyl sulfide to 0.02 ppb still finds
+	               nothing; only at 1e-4 do they respond, which is the check that
+	               the per-gas limits reach the routine at all. So EddyUH's own
+	               configuration despiked the sonic and two of six gas channels
+	               and left the rest untouched - including the two species the
+	               project exists for.
 	- Doc: A stability-binned planar fit was NOT added, and the reason is
 	       worth keeping. EddyUH can compute one - planar_fit_coeff.m case
 	       0 - but cannot apply one: EddyUH_coordrot.m selects the bin from

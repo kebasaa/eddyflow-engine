@@ -525,7 +525,7 @@ module m_common_global_var
     integer, parameter :: cellRecLeapC  = 2
     integer, parameter :: diagRecLeapN  = 1
     integer, parameter :: diagRecLeapC  = 2
-    integer, parameter :: rpGasLeapN    = 25
+    integer, parameter :: rpGasLeapN    = 26
     integer, parameter :: rpGasLeapC    = 3
     integer, parameter :: cecRecLeapN   = 3
     integer, parameter :: cecRecLeapC   = 1

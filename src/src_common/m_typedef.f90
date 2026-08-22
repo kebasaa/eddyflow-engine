@@ -1405,7 +1405,10 @@ module m_typedef
         logical :: tlag_assessment_only
         logical :: pf_subtract_b0
         logical :: recurse
-        logical :: despike_vickers97
+        !> Which despiking method runs: 'vickers_97', 'mauder_13' or
+        !> 'consecutive_diff'. Was a logical naming only the first, which
+        !> could not describe a third choice.
+        character(32) :: despike_meth
         logical :: out_biomet
         logical :: out_qc_details
         logical :: out_bin_sp
@@ -1588,6 +1591,18 @@ module m_typedef
         !> follow the slot rather than the species name.
         real(kind = dbl) :: lim_gas(GHGNumVar)
         real(kind = dbl) :: hf_lim
+        !> Consecutive-difference despiking, EddyUH's spi_method 1: the
+        !> largest step a sample may take from the one before it, in the
+        !> variable's OWN units - metres per second for the wind, kelvin for
+        !> the sonic temperature, the gas's own concentration unit for a gas.
+        !> Not a sigma multiplier: nothing here is scaled by a standard
+        !> deviation, which is the whole difference between this method and
+        !> the two above it.
+        real(kind = dbl) :: step_u
+        real(kind = dbl) :: step_v
+        real(kind = dbl) :: step_w
+        real(kind = dbl) :: step_ts
+        real(kind = dbl) :: step_gas(GHGNumVar)
     end type SRType
 
     type :: StationType

@@ -97,7 +97,8 @@ RP_GAS_NUMERIC = [
     "sr_lim", "al_min", "al_max", "ds_hf", "ds_sf", "tl_def",
     "to_min_flux", "to_min_lag", "to_max_lag", "pwb_min_lag", "pwb_max_lag",
 ] + [f"drift_dir_{k}" for k in range(7)] \
-  + [f"drift_inv_{k}" for k in range(7)]
+  + [f"drift_inv_{k}" for k in range(7)] \
+  + ["step_lim"]
 RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
 FCC_GAS_NUMERIC = [
     "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",
@@ -181,6 +182,16 @@ FIXED_TAGS = {
         #: Nemitz et al. (2018) conditional lag borrowing: how many detection
         #: limits the covariance must clear before the gas keeps its own lag.
         60: "tlag_borrow_snr",
+        #: Consecutive-difference despiking, EddyUH's spi_method 1: the
+        #: largest step a sample may take from the one before it, in the
+        #: variable's own units. Four rather than the two the Vickers test
+        #: uses, because these are absolute limits and a kelvin is not a
+        #: metre per second - sharing one key across u and Ts would be a
+        #: category error rather than a convenience.
+        61: "sr_step_u",
+        62: "sr_step_v",
+        63: "sr_step_w",
+        64: "sr_step_ts",
     },
     "RP.SCTags": {
         #: Modifier on covariance maximisation, beside covmax_var (59) and

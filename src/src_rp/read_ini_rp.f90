@@ -161,8 +161,24 @@ subroutine WriteVariablesRP()
     Test%aa = SCTags(10)%value(1:1) == '1'
     Test%ns = SCTags(11)%value(1:1) == '1'
 
-    !> method of spike removal
-    RPSetup%despike_vickers97 = SCTags(90)%value(1:1) == '0'
+    !> Method of spike removal.
+    !>
+    !> The two historical values are preserved exactly: '0' is Vickers &
+    !> Mahrt and ANYTHING ELSE was Mauder, so the default arm stays Mauder
+    !> rather than becoming the nominal default. Only the new '2' behaves
+    !> differently from before, which is what makes an existing project
+    !> byte-identical.
+    select case (SCTags(90)%value(1:1))
+        case ('0')
+            RPSetup%despike_meth = 'vickers_97'
+        case ('2')
+            !> EddyUH's spi_method 1: a rate-of-change limit, not a
+            !> statistical outlier test. Nothing about it is scaled by a
+            !> standard deviation, so it neither needs nor uses sr%lim_*.
+            RPSetup%despike_meth = 'consecutive_diff'
+        case default
+            RPSetup%despike_meth = 'mauder_13'
+    end select
 
     !> Spike removal test
     sr%num_spk = idint(SNTags(1)%value)
@@ -184,6 +200,28 @@ subroutine WriteVariablesRP()
         if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN)) &
             sr%lim_gas(firstGas + i - 1) = &
                 SNTags(rpGasOriginN + (i - 1) * rpGasLeapN)%value
+    end do
+
+    !> Consecutive-difference step limits, in each variable's own units.
+    !>
+    !> Zero is "not stated", and a column without a positive limit is left
+    !> alone by that method - the same shape as EddyUH's dlim, where a NaN
+    !> entry means the variable is not despiked. Guarded reads: an absent
+    !> numeric tag leaves whatever the previous parse left in the saved
+    !> array, so the literals below are what an older project gets.
+    sr%step_u = 0d0
+    sr%step_v = 0d0
+    sr%step_w = 0d0
+    sr%step_ts = 0d0
+    if (SNTagFound(61)) sr%step_u  = SNTags(61)%value
+    if (SNTagFound(62)) sr%step_v  = SNTags(62)%value
+    if (SNTagFound(63)) sr%step_w  = SNTags(63)%value
+    if (SNTagFound(64)) sr%step_ts = SNTags(64)%value
+    sr%step_gas = 0d0
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 25)) &
+            sr%step_gas(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 25)%value
     end do
 
     !> Dropout test

@@ -384,6 +384,9 @@ define_vars.o: \
 degraded_covariances.o: \
 	degraded_covariances.f90 \
 	m_rp_global_var.o
+despike_consecutive_diff.o: \
+	despike_consecutive_diff.f90 \
+	m_rp_global_var.o
 despike_user_set.o: \
 	despike_user_set.f90 \
 	m_rp_global_var.o
