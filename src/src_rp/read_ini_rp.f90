@@ -817,6 +817,35 @@ subroutine WriteVariablesRP()
     end select
     RPSetup%covmax_stocdet = SCTags(60)%value(1:1) == '1'
 
+    !> Flux detection limit, Wienhold et al. (1994).
+    !>
+    !> Off unless asked for, and the two window settings carry Wienhold's own
+    !> values so that switching it on reproduces the published method rather
+    !> than something chosen here. Guarded reads throughout: an absent numeric
+    !> tag leaves whatever the previous parse left in the saved array, so the
+    !> literal defaults below are what an older project gets.
+    RPSetup%detlim_meth = 'none'
+    RPSetup%detlim_offset_s = 100d0
+    RPSetup%detlim_window_s = 50d0
+    if (SNTagFound(55)) then
+        select case (nint(SNTags(55)%value))
+            case (1)
+                RPSetup%detlim_meth = 'wienhold_94'
+            case default
+                RPSetup%detlim_meth = 'none'
+        end select
+    end if
+    if (SNTagFound(56)) RPSetup%detlim_offset_s = SNTags(56)%value
+    if (SNTagFound(57)) RPSetup%detlim_window_s = SNTags(57)%value
+    !> A window that reaches the peak measures the flux, not the noise under
+    !> it, so the offset must clear the half-width. Both must be positive for
+    !> the windows to exist at all.
+    if (RPSetup%detlim_offset_s <= 0d0 .or. RPSetup%detlim_window_s <= 0d0 &
+        .or. RPSetup%detlim_window_s >= RPSetup%detlim_offset_s) then
+        RPSetup%detlim_offset_s = 100d0
+        RPSetup%detlim_window_s = 50d0
+    end if
+
     !> Biomet measurements
     select case (SCTags(61)%value(1:len_trim(SCTags(61)%value)))
         case('comma')

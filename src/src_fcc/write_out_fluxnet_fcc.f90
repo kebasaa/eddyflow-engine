@@ -477,6 +477,14 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> Write second string from Chunks
     call AddDatum(csv_row, fluxnetChunks%s(2), separator)
 
+    !> Flux detection limit, one per configured gas. Re-emitted from the
+    !> parsed value rather than arriving inside the chunk above, because FCC
+    !> also writes it into its own full output.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(lEx%detlim(gas), csv_row, EddyFlowProj%err_label)
+    end do
+
     !> Foken's QC details
     call AddFloatDatumToDataline(lEx%TAU_SS, csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(lEx%H_SS, csv_row, EddyFlowProj%err_label)

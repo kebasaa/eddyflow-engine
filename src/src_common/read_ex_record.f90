@@ -136,6 +136,9 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     !> flux-shaped ones. Copied verbatim into fluxnetChunks%s(2), so only its
     !> width follows the gas count.
     integer :: nLgdFields
+    !> Flux detection limit: one field per configured gas, no anemometric
+    !> members. Parsed into lEx%detlim and re-emitted by FCC.
+    integer :: nDetlimFields
     !> Foken statistics: SS per flux, ITC on u/w/ts. Parsed into lEx%F_SS and
     !> re-emitted by FCC, so this one is not a chunk copy.
     integer :: nSsItcFields
@@ -449,6 +452,24 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         return
     end if
     fluxnetChunks%s(2) = dataline(1: ix-1)
+    dataline = dataline(ix+1: len_trim(dataline))
+
+    !> Flux detection limit, Wienhold et al. (1994). One field per configured
+    !> gas, immediately after the chunk above and before the Foken statistics.
+    !> Parsed rather than copied because FCC writes it into its own full
+    !> output, which the chunk mechanism cannot do.
+    read(dataline, *, iostat = read_status) &
+        (lEx%detlim(exSlots(jx)), jx = 1, nExSlots)
+    if (read_status /= 0) then
+        call InvalidateRecord()
+        return
+    end if
+    nDetlimFields = n_layout_gas
+    ix = strCharIndex(dataline, ',', nDetlimFields)
+    if (ix <= 0) then
+        call InvalidateRecord()
+        return
+    end if
     dataline = dataline(ix+1: len_trim(dataline))
 
     read(dataline, *, iostat = read_status) &

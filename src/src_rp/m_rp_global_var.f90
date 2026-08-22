@@ -292,9 +292,9 @@ module m_rp_global_var
          SNTags(52)%Label  / 'v_offset' / &
          SNTags(53)%Label  / 'w_offset' / &
          SNTags(54)%Label  / 'sr_lim_w' / &
-         SNTags(55)%Label  / '' / &
-         SNTags(56)%Label  / '' / &
-         SNTags(57)%Label  / '' / &
+         SNTags(55)%Label  / 'detlim_meth' / &
+         SNTags(56)%Label  / 'detlim_offset_s' / &
+         SNTags(57)%Label  / 'detlim_window_s' / &
          SNTags(58)%Label  / '' / &
          SNTags(59)%Label  / '' / &
          SNTags(60)%Label  / '' / &

@@ -419,6 +419,16 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             call CovarianceW(ColW, ColTC, size(ColTC), &
                 RowLags(j), Stats%tc_cov_tl(j))
         end do
+
+        !> Flux detection limit, Wienhold et al. (1994).
+        !>
+        !> Here, and not from the main program after this routine returns,
+        !> because the noise windows are read off the cross-covariance
+        !> function and that needs the series on their raw alignment. The
+        !> block below shifts Set by each gas's lag, after which the function
+        !> this measures no longer exists.
+        call FluxDetectionLimit(Set, nrow, ncol)
+
     end if
 
     if (.not. skip_apply) then
@@ -592,7 +602,17 @@ subroutine CovarianceW(col1, col2, nrow, lag, cov)
     sum2 = 0d0
     Cov = 0d0
     N2 = 0
-    do i = 1, nrow - lag
+    !> Either sign of lag. This used to run `do i = 1, nrow - lag` and index
+    !> col2(i+lag) unguarded, which reads past both ends of the array for a
+    !> negative lag; both callers of the day guarded with `if (lag <= 0)
+    !> cycle` and so never met it. The detection limit does: its noise
+    !> windows sit either side of the gas's own lag, and the earlier one is
+    !> routinely negative - a gas at 16 s sampled 100 s before it is at -84 s.
+    !> The offsets are picked so that i and i+lag are both in range for every
+    !> term, which for a negative lag means starting at 1-lag rather than 1.
+    !> A positive lag walks the same terms in the same order as before, so
+    !> nothing an existing caller asks for has moved.
+    do i = max(1, 1 - lag), min(nrow, nrow - lag)
         if (col1(i) /= error .and. col2(i+lag) /= error) then
             N2 = N2 + 1
             Cov = Cov + col1(i) * col2(i+lag)

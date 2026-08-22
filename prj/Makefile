@@ -487,6 +487,9 @@ fix_timelag_opt_dataset.o: \
 fluctuations.o: \
 	fluctuations.f90 \
 	m_common_global_var.o
+flux_detection_limit.o: \
+	flux_detection_limit.f90 \
+	m_rp_global_var.o
 flux_params.o: \
 	flux_params.f90 \
 	interfaces_1.inc \

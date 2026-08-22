@@ -1145,6 +1145,10 @@ module m_typedef
         real(kind = dbl) :: degH(NumDegH + 1)
         real(kind = dbl) :: used_timelag(E2NumVar)
         real(kind = dbl) :: actual_timelag(E2NumVar)
+        !> Flux detection limit, in covariance units, one per gas. Wienhold
+        !> et al. (1994), computed beside the water covariances in
+        !> TimeLagHandle while the series are still on their raw alignment.
+        real(kind = dbl) :: detlim(E2NumVar)
         real(kind = dbl) :: AGC72
         real(kind = dbl) :: AGC75
         real(kind = dbl) :: RSSI77
@@ -1399,6 +1403,15 @@ module m_typedef
         logical :: out_st(7)
         logical :: out_raw(7)
         logical :: covmax_stocdet
+        !> Flux detection limit after Wienhold et al. (1994): the standard
+        !> deviation of the cross-covariance function measured away from the
+        !> peak, where there is no flux signal, taken as the noise floor of
+        !> the covariance. 'none' or 'wienhold_94'; the offset places the
+        !> noise windows either side of the gas's own lag and the width sets
+        !> how much of the function each one averages, both in seconds.
+        character(32) :: detlim_meth
+        real(kind = dbl) :: detlim_offset_s
+        real(kind = dbl) :: detlim_window_s
     end type RPsetupType
 
     type :: PrType
@@ -1953,6 +1966,9 @@ module m_typedef
         real(kind = dbl) :: rand_uncer(E2NumVar)
         real(kind = dbl) :: rand_uncer_LE
         real(kind = dbl) :: rand_uncer_ET
+        !> Flux detection limit, Wienhold et al. (1994), in covariance units.
+        !> Read from the ex record so FCC can carry it into its own outputs.
+        real(kind = dbl) :: detlim(E2NumVar)
         logical :: not_enough_data
         logical :: daytime
         logical :: var_present(GHGNumVar)

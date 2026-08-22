@@ -1,3 +1,44 @@
+8.1.0 (2026-08-22)
+
+    Engine:
+	- New feature: A flux detection limit after Wienhold et al. (1994), off unless asked
+	               for. The cross-covariance of w with a scalar carries the flux in a peak
+	               near the transport lag and nothing but noise far from it, so the scatter
+	               of the function out there is a noise floor on the covariance: a flux
+	               smaller than it cannot be told from zero. Two windows are placed
+	               symmetrically either side of the lag the run actually used for that gas
+	               and their standard deviations averaged, which is what the paper does.
+	               Reported per gas, in COVARIANCE units, as <gas>_detlim in the full output
+	               and <TAG>_DETLIM in the FLUXNET file. Deliberately not scaled to a flux:
+	               what it qualifies is the covariance, and carrying it through the spectral
+	               correction as if it were a flux would invite a comparison that does not
+	               hold.
+	               Three settings, all in RawProcess_Settings because FCC never recomputes
+	               the limit - it rides the ex record: detlim_meth (0 none, 1 wienhold_94,
+	               default 0), detlim_offset_s (100) and detlim_window_s (50). The two
+	               window settings carry Wienhold's own values so that switching the feature
+	               on reproduces the published method rather than something chosen here; an
+	               offset that does not clear the half-width would measure the peak instead
+	               of the noise under it, and is refused back to the defaults.
+	               Computed inside TimeLagHandle, beside the water covariances, and for the
+	               same reason: it is read off the cross-covariance function, which exists
+	               only while the series are still on their raw alignment. The routine that
+	               follows shifts every column by its own lag, after which the function this
+	               measures is gone. A call from the main program would have returned
+	               plausible numbers that meant nothing.
+	               On the test dataset this is the whole point: COS clears three times its
+	               detection limit in 10 of 48 half-hours and N2O in 16, which is the
+	               ordinary state of affairs for those species at a forest and was not
+	               previously visible from an EddyFlow run at all.
+	- Fix: CovarianceW accepts a negative lag. It ran `do i = 1, nrow - lag` and indexed
+	               col2(i+lag) unguarded, which reads off both ends of the array when the
+	               lag is negative; both callers of the day guarded with `if (lag <= 0)
+	               cycle` and so never met it. The detection limit does - its earlier noise
+	               window sits at a negative lag whenever the offset exceeds the transport
+	               delay, which for a gas at 16 s sampled 100 s before it is -84 s. The
+	               bounds now clamp both ends. A positive lag walks exactly the terms it
+	               always did, so nothing an existing caller asks for has moved.
+
 8.0.0 (2026-08-20)
 
     Engine:

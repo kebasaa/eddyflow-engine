@@ -292,6 +292,22 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_NSR', separator)
     end do
 
+    !> Flux detection limit, Wienhold et al. (1994), in covariance units.
+    !>
+    !> One field per configured gas and nothing else - not the variable shape
+    !> LGD/KID/ZCD use. The quantity is the noise floor of a scalar's
+    !> covariance with w, read off the cross-covariance function away from
+    !> its peak; the anemometric variables have no analogue of it here, and
+    !> emitting four error codes to look like the families above would be
+    !> four columns saying nothing.
+    !>
+    !> Parsed rather than copied, unlike the chunk above it: FCC needs the
+    !> value to write its own full output when it follows RP, not merely to
+    !> re-emit the field.
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_DETLIM', separator)
+    end do
+
     !> Foken statistics: the steady-state measure per flux, then the integral
     !> turbulence characteristics on the three anemometric variables.
     call AddDatum(csv_row, 'TAU_SS', separator)

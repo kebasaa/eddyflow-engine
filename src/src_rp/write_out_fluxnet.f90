@@ -748,6 +748,12 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddFloatDatumToDataline(Essentials%mahrt98_NR(FluxnetLayoutSlots(j)), &
                                      csv_row, EddyFlowProj%err_label)
     end do
+    !> Flux detection limit, Wienhold et al. (1994), one per configured gas.
+    !> Error-labelled throughout unless detlim_meth asked for it.
+    do j = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%detlim(FluxnetLayoutSlots(j)), &
+                                     csv_row, EddyFlowProj%err_label)
+    end do
     !> Foken stats used to calculate flags: the steady-state statistic per
     !> flux, then the integral turbulence characteristics on u/w/ts.
     call AddIntDatumToDataline(STDiff%w_u, csv_row, EddyFlowProj%err_label)

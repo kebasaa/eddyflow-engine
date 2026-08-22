@@ -164,8 +164,16 @@ INSTR_LACK_ORIGIN = 357
 #: silently repoint all of them.
 FIXED_TAGS = {
     "RP.SNTags": {
-        INSTR_LACK_ORIGIN + k - 1: f"instr_{k}_max_lack"
-        for k in range(1, const("MaxNumInstruments") + 1)
+        **{
+            INSTR_LACK_ORIGIN + k - 1: f"instr_{k}_max_lack"
+            for k in range(1, const("MaxNumInstruments") + 1)
+        },
+        #: Flux detection limit after Wienhold et al. (1994). Three slots out
+        #: of the blank run at 55-68, well below rpGasOriginN, so the per-gas
+        #: records do not move.
+        55: "detlim_meth",
+        56: "detlim_offset_s",
+        57: "detlim_window_s",
     },
     "EPPrjNTags": {
         4: "cec_singular_band",

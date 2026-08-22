@@ -225,6 +225,11 @@ subroutine WriteOutFullFcc(lEx)
             else
                 call AddDatum(csv_row, '0', separator)
             endif
+            !> Flux detection limit, in covariance units. Mirrors
+            !> write_out_full.f90 in src_rp; the value is RP's, read back
+            !> from the ex record.
+            call WriteDatumFloat(lEx%detlim(gas), field_val, EddyFlowProj%err_label)
+            call AddDatum(csv_row, field_val, separator)
         end if
     end do
 
