@@ -518,15 +518,35 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     integer :: i = 0
     integer :: ii = 0
     integer :: N2
+    integer :: k
+    integer :: nlag
     real(kind = dbl), allocatable :: ShSet(:, :)
     real(kind = dbl), allocatable :: ShPrimes(:, :)
+    real(kind = dbl), allocatable :: CovSeries(:)
     real(kind = dbl) :: CovMat(2,2)
     real(kind = dbl) :: Cov
     real(kind = dbl) :: MaxCov
+    real(kind = dbl) :: score
+    real(kind = dbl) :: baseline
+    logical :: debaseline
 
     Cov = 0.d0
     MaxCov = 0.d0
     TLag = 0.d0
+    !> Assigned unconditionally now. It used to be written only inside the
+    !> comparison below, so a window in which nothing beat the initial zero -
+    !> every covariance error-coded, or all of them exactly zero - returned an
+    !> undefined row lag that the caller then shifted the series by.
+    RLag = lagmin
+
+    !> Pass one: the cross-covariance across the window, kept.
+    !>
+    !> It used to be a running argmax over a scalar, which is all the plain
+    !> maximum needs. The baseline-subtracted criterion needs both ends of the
+    !> function present at once to draw the chord between them, and by the
+    !> time the far end has been computed the near one is long gone.
+    nlag = lagmax - lagmin + 1
+    allocate(CovSeries(nlag))
     do i = lagmin, lagmax
         N2 = nrow - abs(i)
         allocate(ShSet(N2, 2))
@@ -558,16 +578,49 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
 
         call CovarianceMatrixNoError(ShPrimes, size(ShPrimes, 1), size(ShPrimes, 2), CovMat, error)
         Cov = CovMat(1, 2)
+        CovSeries(i - lagmin + 1) = Cov
 
-        !> Max cov and actual time lag
-        if (abs(Cov) > MaxCov) then
-            MaxCov = abs(Cov)
-            TLag = dble(i) / Metadata%ac_freq
-            RLag = i
-        end if
         deallocate(ShSet)
         deallocate(ShPrimes)
     end do
+
+    !> Whether the chord can be drawn at all. Both ends have to exist, and
+    !> two points make a line through themselves and nothing else, so a
+    !> window of fewer than three lags has no interior to measure against.
+    debaseline = RPSetup%covmax_debaseline .and. nlag >= 3
+    if (debaseline) debaseline = CovSeries(1) /= error .and. CovSeries(nlag) /= error
+
+    !> Pass two: pick the lag.
+    do k = 1, nlag
+        !> An error-coded covariance is no covariance. It used to be compared
+        !> like any other, and since the code is -9999 its magnitude beat
+        !> every real covariance in the window - a lag at which the two series
+        !> shared no valid sample won the maximisation outright.
+        if (CovSeries(k) == error) cycle
+
+        if (debaseline) then
+            !> Departure from the straight line joining the two ends of the
+            !> window. A weak flux often sits on a sloping cross-covariance -
+            !> from a trend, from a neighbouring stronger correlation - and
+            !> the plain maximum then lands on whichever end the slope is
+            !> highest at rather than on the peak. Subtracting the chord
+            !> leaves the peak and takes the slope away.
+            baseline = CovSeries(1) &
+                + (CovSeries(nlag) - CovSeries(1)) * dble(k - 1) / dble(nlag - 1)
+            score = dabs(CovSeries(k) - baseline)
+        else
+            score = dabs(CovSeries(k))
+        end if
+
+        !> Strictly greater, so the earliest lag wins a tie, as before.
+        if (score > MaxCov) then
+            MaxCov = score
+            TLag = dble(lagmin + k - 1) / Metadata%ac_freq
+            RLag = lagmin + k - 1
+        end if
+    end do
+
+    deallocate(CovSeries)
 end subroutine CovMax
 
 

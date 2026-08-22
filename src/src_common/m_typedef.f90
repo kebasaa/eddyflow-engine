@@ -1412,6 +1412,12 @@ module m_typedef
         logical :: out_st(7)
         logical :: out_raw(7)
         logical :: covmax_stocdet
+        !> Choose the lag by the largest departure of the cross-covariance
+        !> from the straight line joining the two ends of the search window,
+        !> rather than by its largest absolute value. A modifier on covariance
+        !> maximisation, not a method of its own: it changes which lag is
+        !> picked and nothing about the covariance reported there.
+        logical :: covmax_debaseline
         !> Flux detection limit after Wienhold et al. (1994): the standard
         !> deviation of the cross-covariance function measured away from the
         !> peak, where there is no flux signal, taken as the noise floor of

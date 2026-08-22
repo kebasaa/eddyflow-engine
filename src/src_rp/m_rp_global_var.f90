@@ -2318,7 +2318,7 @@ module m_rp_global_var
          SCTags(76)%Label  / 'out_raw_v' / &
          SCTags(77)%Label  / 'out_raw_w' / &
          SCTags(78)%Label  / 'out_raw_ts' / &
-         SCTags(79)%Label  / '' / &
+         SCTags(79)%Label  / 'covmax_debaseline' / &
          SCTags(80)%Label  / '' / &
          SCTags(81)%Label  / '' / &
          SCTags(82)%Label  / '' / &

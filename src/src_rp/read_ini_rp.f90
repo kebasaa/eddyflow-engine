@@ -816,6 +816,12 @@ subroutine WriteVariablesRP()
         RPSetup%covmax_var = w
     end select
     RPSetup%covmax_stocdet = SCTags(60)%value(1:1) == '1'
+    !> Baseline-subtracted lag selection. Guarded, unlike the two above:
+    !> those are old keys that every project states, this one is new and an
+    !> absent tag must mean off rather than whatever the shared character
+    !> array happens to hold.
+    RPSetup%covmax_debaseline = SCTagFound(79) .and. SCTags(79)%value(1:1) == '1'
+
 
     !> Flux detection limit, Wienhold et al. (1994).
     !>

@@ -179,6 +179,12 @@ FIXED_TAGS = {
         58: "spectro_meth",
         59: "spectro_water",
     },
+    "RP.SCTags": {
+        #: Modifier on covariance maximisation, beside covmax_var (59) and
+        #: covmax_stocdet (60) in meaning if not in index - those are taken,
+        #: so this uses one of the blanks at 79-82.
+        79: "covmax_debaseline",
+    },
     "EPPrjNTags": {
         4: "cec_singular_band",
         5: "cec_stationarity_mode",

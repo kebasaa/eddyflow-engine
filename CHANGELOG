@@ -1,6 +1,48 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: The time lag may be chosen by the largest departure of the
+	               cross-covariance from the straight line joining the two ends of the
+	               search window, rather than by its largest absolute value:
+	               covmax_debaseline, off by default. A weak flux often sits on a sloping
+	               cross-covariance - from a trend, or from a neighbouring stronger
+	               correlation - and the plain maximum then lands on whichever end the
+	               slope is highest at instead of on the peak; subtracting the chord takes
+	               the slope away and leaves the peak.
+	               A MODIFIER on covariance maximisation, not a method of its own. A sixth
+	               tlag_meth would force a decision in the EddyPro importer, which must
+	               keep mapping EddyPro's tlag_meth=2 onto plain maxcov, and EddyPro has no
+	               such criterion. It changes which lag is selected and nothing about the
+	               covariance reported there.
+	               This is what EddyUH actually runs at this site: EddyUH_SC_Flux.m:281
+	               computes it under the menu entry labelled "standard", with the plain
+	               maximum commented out immediately above. Switching it on moves the lag
+	               populations towards EddyUH's own climatology - carbonyl sulfide from
+	               15.927 to 16.048 s against EddyUH's 16.017, carbon dioxide on the MIRO
+	               from 15.975 to 16.023 against 16.015, and the LI-7200's carbon dioxide
+	               from 0.629 to 0.648 against 0.651 - with comparable scatter. Nitrous
+	               oxide moves slightly the other way. One day against a climatology
+	               computed over a different season, so this is an order-of-magnitude
+	               agreement and not a validation.
+	               Worth knowing: with the baseline removed the two ends of the window
+	               score zero by construction, so the maximum can never land on one - and
+	               maxcov&default falls back to the nominal lag precisely when it does. On
+	               the test day the fallback fired for 9 to 38 periods per gas with the
+	               modifier off and for none with it on. For a weak flux that safety net
+	               is worth replacing rather than simply losing, which is what the
+	               detection-limit-conditional borrowing is for.
+	- Fix: CovMax no longer returns an undefined row lag. RLag is intent(out) and was
+	               assigned only inside the comparison, so a window in which nothing beat
+	               the initial zero - every covariance error-coded, or all of them exactly
+	               zero - returned whatever was on the stack, and the caller then shifted
+	               the series by it. Initialised to the start of the window.
+	- Fix: CovMax no longer lets an error-coded covariance win the maximisation.
+	               CovarianceMatrixNoError returns the error code when a lag leaves no
+	               overlapping valid samples, and the comparison was on the magnitude:
+	               abs(-9999) beats every real covariance in a window, so such a lag was
+	               selected outright. Now skipped. Latent on well-formed data - the
+	               regression is byte-identical - but a gas with a gap over part of its
+	               search window would have had its lag pinned to wherever the gap was.
 	- Doc: The spectroscopic coefficients are stated to be SPECTROSCOPIC ONLY, and the
 	               conversion from EddyUH's is written down. Both packages divide by the
 	               same polynomial, 1 + a*chi_q + b*chi_q^2, with the water in mol/mol -
