@@ -506,6 +506,12 @@ subroutine WriteProcessingProjectVariables()
             !> menu onto these numbers; renumbering would silently change
             !> the method of every project that states one.
             RUsetup%meth = 'billesbach_11'
+        case(5)
+            !> Lenschow et al. (2000) instrumental noise, as Mauder et al.
+            !> (2013) apply it. Distinct from mann_lenschow_94 above, which
+            !> is a sampling error and a different paper - the shared name
+            !> is the only thing they have in common.
+            RUsetup%meth = 'lenschow_00'
         case default
             RUsetup%meth = 'none'
     end select

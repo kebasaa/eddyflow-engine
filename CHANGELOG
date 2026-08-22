@@ -1,6 +1,56 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: Instrumental noise after Lenschow et al. (2000), as Mauder et al.
+	               (2013) apply it: ru_meth = 5, one more choice on the existing
+	               random-uncertainty method. White instrument noise is
+	               uncorrelated between samples, so it lands entirely in the
+	               autocovariance at zero lag and nowhere else. Fit a line through
+	               lags 1 to 5, read it back at zero, and the gap between that line
+	               and the measured lag-zero value is the noise variance; the flux
+	               noise is sqrt(g_noise * var_w / N).
+	               It answers a DIFFERENT QUESTION from the three beside it.
+	               Finkelstein & Sims and Mann & Lenschow give a sampling error -
+	               how much this half hour's covariance would differ from another
+	               draw. Billesbach gives a floor below which a flux cannot be told
+	               from zero. This gives the ANALYSER's own noise, and says nothing
+	               about whether the atmosphere was sampled long enough. They are
+	               not interchangeable and the tooltip says so.
+	               Not the same paper as ru_meth = 2 either. mann_lenschow_94 is a
+	               sampling error from Mann & Lenschow (1994); the shared surname is
+	               all the two have in common, which is exactly why the method here
+	               is named lenschow_00 rather than anything shorter.
+	               It DECLINES a period rather than guessing. If either intercept
+	               comes out non-positive the fitted line already sits at or above
+	               the measured lag-zero value, which is not a small noise estimate -
+	               it is the method failing to apply, and reporting it as a small
+	               number would be worse than reporting nothing. The vertical wind
+	               gates every gas, since a w autocovariance with no noise-like step
+	               breaks the assumption whatever the scalar did.
+	               The five-lag window is in SAMPLES, as EddyUH has it - fixed by
+	               the method rather than derived from the acquisition rate, so it
+	               spans 0.5 s at 10 Hz and half that at 20. Reproduced as it
+	               stands: the number of lags is what the extrapolation is
+	               conditioned on, and deriving it from the rate would be a
+	               different method wearing the same citation.
+	               Verified on CH-LAE, 48 periods, against the other two estimators.
+	               It is the smallest for the strong fluxes - sensible heat 0.21
+	               against Billesbach's 1.72 and Finkelstein & Sims's 23.1 - and
+	               converges on Billesbach for the weak ones: nitrous oxide 0.0685
+	               against 0.0663, carbonyl sulfide 0.0206 against 0.0184. That
+	               convergence is the check that matters. Billesbach's shuffle
+	               destroys every correlation, so for a series whose variance IS
+	               instrument noise it measures the same quantity this does by a
+	               completely different route; the two agreeing to a few percent
+	               where noise dominates, and diverging by a factor of two where
+	               atmospheric variance dominates, is what the physics requires.
+	               It declined 15 of 48 periods for the MIRO channels and 36 to 40
+	               for the LI-7200's, which is the low-noise instrument doing what
+	               the gate exists to catch: a small lag-zero step is easy for a
+	               five-point extrapolation to overshoot. That is the honest answer
+	               for such an analyser, not a defect.
+	               With the method not selected the output is byte-identical -
+	               confirmed on base_n_gas_ru and base_5gas.
 	- New feature: Consecutive-difference despiking, EddyUH's spi_method 1:
 	               despike_vm = 2, beside Vickers & Mahrt and Mauder. If a sample
 	               steps further from the one before it than a stated limit, it is

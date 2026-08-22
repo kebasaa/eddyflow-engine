@@ -50,6 +50,10 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
         case('mann_lenschow_94')
             call IntegralTurbulenceScale(Set, size(Set, 1), size(Set, 2))
             call RU_Mann_Lenschow_04(nrow)
+        case('lenschow_00')
+            !> No integral turbulence scale either: the fit is over a fixed
+            !> five lags, not over a scale this would measure.
+            call RU_Lenschow_00(Set, nrow, ncol)
         case('billesbach_11')
             !> No integral turbulence scale: the shuffle destroys the
             !> autocorrelation this would measure, and the estimate does not
@@ -295,6 +299,135 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
         end if
     end do
 end subroutine RU_Mahrt_98
+!***************************************************************************
+!
+! \brief       Instrumental noise from the autocovariance intercept, after
+!              Lenschow et al. (2000) as applied by Mauder et al. (2013).
+! \author      Jonathan Muller
+! \note
+!              WHAT IT MEASURES. White instrument noise is uncorrelated
+!              between samples, so it lands entirely in the lag-zero
+!              autocovariance and nowhere else. The atmospheric part is
+!              continuous across lag zero. Fit a line to the first few lags,
+!              extrapolate it back to zero, and the gap between that line and
+!              the measured lag-zero value IS the noise variance.
+!
+!              NOT THE SAME AS THE OTHER FOUR. Finkelstein & Sims and Mann &
+!              Lenschow estimate a SAMPLING error - how much this half hour's
+!              covariance would differ from another draw of the same process.
+!              Billesbach estimates a floor below which a flux cannot be told
+!              from nothing. This estimates the INSTRUMENT's own noise, and is
+!              the smallest of the four: it says what the analyser contributes
+!              and nothing about whether the atmosphere was sampled long
+!              enough. They are not interchangeable.
+!
+!              LAGS 1 TO 5, IN SAMPLES. EddyUH's own window
+!              (EC_Software_Preproc/EddyUH_unc_Preproc.m:157-160), fixed
+!              rather than derived from the sampling rate, so at 10 Hz it
+!              spans 0.1 to 0.5 s and at 20 Hz half that. Reproduced as it
+!              stands, because the number of lags is what the linear
+!              extrapolation is conditioned on; deriving it from the rate
+!              would be a different method wearing the same citation.
+!
+!              THE VERTICAL WIND GATES IT. The noise variance of w is
+!              computed and checked but does not enter the result. EddyUH
+!              rejects the period when either intercept comes out
+!              non-positive, and so does this: a w autocovariance with no
+!              noise-like step at lag zero means the assumption the whole
+!              method rests on does not hold here, whatever the scalar did.
+! \sa          RU_Finkelstein_Sims_01, RU_Billesbach_11
+!***************************************************************************
+subroutine RU_Lenschow_00(Set, N, M)
+    use m_rp_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: N
+    integer, intent(in) :: M
+    real(kind = dbl), intent(in) :: Set(N, M)
+    !> local variables
+    !> The fit window, in SAMPLES. EddyUH's, and fixed by the method rather
+    !> than by the acquisition rate - see the note above.
+    integer, parameter :: first_lag = 1
+    integer, parameter :: last_lag = 5
+    integer :: var
+    integer :: lag
+    real(kind = dbl) :: acov_w(0:last_lag)
+    real(kind = dbl) :: acov_g(0:last_lag)
+    real(kind = dbl) :: w_noise
+    real(kind = dbl) :: g_noise
+    logical :: usable
+    real(kind = dbl), external :: LaggedCovarianceNoError
+
+    !> The vertical wind's autocovariance is the same for every gas, so it is
+    !> measured once rather than once per column.
+    usable = .true.
+    do lag = 0, last_lag
+        acov_w(lag) = LaggedCovarianceNoError(Set(:, w), Set(:, w), N, lag, error)
+        if (acov_w(lag) == error) usable = .false.
+    end do
+    if (usable) then
+        w_noise = acov_w(0) - InterceptAtZero(acov_w)
+    else
+        w_noise = error
+    end if
+
+    do var = u, lastGas
+        if (var == v .or. var == w) cycle
+        Essentials%rand_uncer(var) = error
+        if (.not. E2Col(var)%present) cycle
+        if (.not. usable) cycle
+
+        do lag = 0, last_lag
+            acov_g(lag) = LaggedCovarianceNoError(Set(:, var), Set(:, var), &
+                                                  N, lag, error)
+        end do
+        if (any(acov_g == error)) cycle
+
+        g_noise = acov_g(0) - InterceptAtZero(acov_g)
+
+        !> Both intercepts must show a noise-like step. A non-positive one
+        !> means the fitted line already sits at or above the measured lag-zero
+        !> value, which is not a small noise estimate - it is the method
+        !> failing to apply, and reporting it as a small number would be worse
+        !> than reporting nothing.
+        if (w_noise <= 0d0 .or. g_noise <= 0d0) cycle
+
+        !> The scalar's noise variance against the TOTAL variance of w, not
+        !> against w's noise. EddyUH's form: what reaches the flux is the
+        !> scalar's own noise beaten against the full vertical wind signal.
+        Essentials%rand_uncer(var) = dsqrt(g_noise * acov_w(0) / dble(N))
+    end do
+
+contains
+
+    !> A straight line through lags first_lag..last_lag, read back at lag
+    !> zero. Closed form rather than a general fit: the abscissa is a fixed
+    !> short run of integers, so its mean and spread are constants and a
+    !> polyfit call would only hide that.
+    real(kind = dbl) function InterceptAtZero(acov)
+        real(kind = dbl), intent(in) :: acov(0:last_lag)
+        integer :: k
+        real(kind = dbl) :: xbar, ybar, sxy, sxx, slope
+
+        xbar = dble(first_lag + last_lag) / 2d0
+        ybar = 0d0
+        do k = first_lag, last_lag
+            ybar = ybar + acov(k)
+        end do
+        ybar = ybar / dble(last_lag - first_lag + 1)
+
+        sxy = 0d0
+        sxx = 0d0
+        do k = first_lag, last_lag
+            sxy = sxy + (dble(k) - xbar) * (acov(k) - ybar)
+            sxx = sxx + (dble(k) - xbar)**2
+        end do
+        slope = sxy / sxx
+        InterceptAtZero = ybar - slope * xbar
+    end function InterceptAtZero
+
+end subroutine RU_Lenschow_00
+
 !***************************************************************************
 !
 ! \brief       Estimate the flux noise floor after Billesbach (2011), Eq. 3 -
