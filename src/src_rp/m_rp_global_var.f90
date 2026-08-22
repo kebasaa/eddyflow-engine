@@ -354,11 +354,11 @@ module m_rp_global_var
          SNTags(114)%Label / 'biom_ppfd' / &
          SNTags(115)%Label / 'biom_lwin' / &
          SNTags(116)%Label / 'biom_rg' / &
-         SNTags(117)%Label / '' / &
-         SNTags(118)%Label / '' / &
-         SNTags(119)%Label / '' / &
-         SNTags(120)%Label / '' / &
-         SNTags(121)%Label / '' / &
+         SNTags(117)%Label / 'tilt_sensor_v_g' / &
+         SNTags(118)%Label / 'tilt_arm_x' / &
+         SNTags(119)%Label / 'tilt_arm_y' / &
+         SNTags(120)%Label / 'tilt_arm_z' / &
+         SNTags(121)%Label / 'tilt_lpf_s' / &
          SNTags(122)%Label / '' / &
          SNTags(123)%Label / '' / &
          SNTags(124)%Label / '' / &
@@ -2338,9 +2338,9 @@ module m_rp_global_var
          SCTags(28)%Label  / 'out_full_sp_v' / &
          SCTags(29)%Label  / 'out_full_sp_w' / &
          SCTags(30)%Label  / 'out_full_sp_ts' / &
-         SCTags(31)%Label  / '' / &
-         SCTags(32)%Label  / '' / &
-         SCTags(33)%Label  / '' / &
+         SCTags(31)%Label  / 'tilt_sensor_meth' / &
+         SCTags(32)%Label  / 'head_corr_meth' / &
+         SCTags(33)%Label  / 'head_corr_dir' / &
          SCTags(34)%Label  / '' / &
          SCTags(35)%Label  / 'out_full_cosp_w_u' / &
          SCTags(36)%Label  / 'out_full_cosp_w_v' / &

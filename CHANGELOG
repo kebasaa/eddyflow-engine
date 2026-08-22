@@ -1,6 +1,79 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: Two sonic hardware corrections on the raw wind, both applied
+               before any rotation and both off by default: tilt_sensor_meth,
+               an inclinometer tilt correction, and head_corr_meth, the Metek
+               USA-1 three-dimensional head correction.
+               A planar fit or a double rotation removes the MEAN tilt over an
+               averaging period. Neither can remove a tilt that changes WITHIN
+               one. An inclinometer logged at the wind's own rate can, sample
+               by sample, and that is what tilt_sensor_meth does - EddyUH's
+               EC_Software_Common/EddyUH_tiltangle.m.
+               The angles arrive as ordinary extra raw columns named theta, phi
+               and psi, read through the same custom-column machinery that
+               already carries the signal-strength channels. No new record
+               family: there is one sonic, so a name is enough to say which
+               instrument an angle belongs to. The columns hold the
+               inclinometer's output VOLTAGE, not an angle; tilt_sensor_v_g
+               says how many volts per g, defaulting to EddyUH's own 4.
+               psi is read and then discarded, because EddyUH overwrites it
+               with zeros and comments "not measured". So this is a two-angle
+               correction with three channels declared.
+               tilt_lpf_s smooths the angle series before it is used; zero, the
+               default, does not. tilt_arm_x/y/z is the lever arm from the
+               pivot to the head, read only by the swinging mode.
+               head_corr_meth applies Metek's wind-tunnel tables for the flow
+               distortion the transducers and their supports cause - three
+               tables of Fourier coefficients over elevation, evaluated at
+               three, six and nine times the azimuth (Functions_Library/
+               METEK_HC.m). Two modes: on raw data, or on data that already
+               carries Metek's online two-dimensional correction, which is
+               undone first with the closed form Metek publishes for it.
+               THE TABLES ARE NOT SHIPPED. phicorr.dat, ucorr.dat and
+               alphacorr.dat are Metek GmbH's measurements, which EddyUH
+               redistributes under the University of Helsinki's own agreement
+               and this program cannot. head_corr_dir names a directory holding
+               your own copy; without all three the correction declines for the
+               whole run and says so, rather than correcting some periods and
+               not others.
+               The head correction runs in all three of RP's raw-data passes,
+               as the angle-of-attack calibration beside it does. The
+               inclinometer correction reaches the flux loop only: the two
+               pre-passes run before DefineUserSet, so the angle columns do not
+               exist yet. A plane is therefore fitted to mean winds this
+               correction has not touched. Second order - it is aimed at
+               variation within a period, not at the mean - but real, and left
+               standing because closing it means moving DefineUserSet, a layout
+               change to the one part of the program where a layout fault is
+               silent.
+               Neither correction affects CH-LAE, which runs a Gill HS with
+               tiltcorr = 0. With the keys absent the output is byte-identical,
+               confirmed on base_n_gas_analytic, base_5gas and base_cec_cos
+               against binaries built from e847a12. Verified instead against
+               hand-computed expectations: unit tables reconstruct the wind
+               exactly, a speed table of 1.1 scales the vector by 1.1, a
+               90-degree azimuth table sends (u,v) to (-v,u), the elevation
+               grid interpolates halfway between two rows, and a 30-degree
+               inclination sends (1,0,0) to (cos30, 0, -sin30).
+	- Note: EddyUH's swinging correction adds a SCALAR to all three wind
+       components, and EddyFlow reproduces that. EddyUH_tiltangle.m:104 writes
+       omega*T*L with omega 1x3, T 3x3 and L = [-1.5 -1.5 -1.5]' 3x1, so the
+       product is one number. The velocity of a point on a rotating body is
+       omega CROSS (T L), a vector with three different components. The units
+       survive - radians per second times metres is metres per second - which
+       is why it is easy to miss.
+       Reproduced as written, because the option exists to reproduce EddyUH's
+       numbers and a silently corrected version would reproduce nothing.
+       tilt_sensor_meth = 1, the position correction alone, is unaffected and
+       is the one to use if EddyUH fidelity is not the goal. No lever arm turns
+       a scalar into a vector.
+	- Note: METEK_HC.m:81 and :90 index one row past the end of a twenty-row
+       table at exactly +45 degrees of elevation - I = fix((phiM+50)/5)+1 gives
+       20 there, and Cf0(I+1) is then Cf0(21). MATLAB raises rather than
+       reading rubbish, so it is a crash and not a silent error, and an
+       elevation of exactly 45.000 degrees is rare enough that it may never
+       have been hit. EddyFlow holds the last row instead.
 	- New feature: The spectral correction and the two flux levels can be repeated
 	               until the stability they assume and the stability they produce
 	               agree: corr_iter_meth, off by default, with corr_iter_max and

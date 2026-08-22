@@ -825,6 +825,16 @@ program EddyFlowRP
                 if (RPsetup%calib_wboost) &
                     call ApplyGillWmWBoost(E2Set, size(E2Set, 1), size(E2Set, 2))
 
+                !> Metek head correction, the same one the flux loop applies.
+                !> Without it here, a lag or a plane would be worked out from
+                !> a wind the fluxes never see. Its companion, the
+                !> inclinometer correction, cannot follow: it reads its angles
+                !> from the custom columns, and DefineUserSet has not run yet
+                !> at this point in the program. Recorded rather than worked
+                !> around, because moving DefineUserSet is a layout change and
+                !> this correction has no effect on any current dataset.
+                call MetekHeadCorrection(E2Set, size(E2Set, 1), size(E2Set, 2))
+
                 !> Calculate basic stats
                 call BasicStats(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), 4, .false.)
@@ -1277,6 +1287,16 @@ program EddyFlowRP
                 !> Gill WindMaster w-boost
                 if (RPsetup%calib_wboost) &
                     call ApplyGillWmWBoost(E2Set, size(E2Set, 1), size(E2Set, 2))
+
+                !> Metek head correction, the same one the flux loop applies.
+                !> Without it here, a lag or a plane would be worked out from
+                !> a wind the fluxes never see. Its companion, the
+                !> inclinometer correction, cannot follow: it reads its angles
+                !> from the custom columns, and DefineUserSet has not run yet
+                !> at this point in the program. Recorded rather than worked
+                !> around, because moving DefineUserSet is a layout change and
+                !> this correction has no effect on any current dataset.
+                call MetekHeadCorrection(E2Set, size(E2Set, 1), size(E2Set, 2))
 
                 !> Calculate basic stats
                 call BasicStats(E2Set, size(E2Set, 1), size(E2Set, 2), &
@@ -2167,6 +2187,25 @@ program EddyFlowRP
             if (DriftCorr%method /= 'none' .and. nCalibEvents /= 0) &
                 call DriftCorrection(E2Set, size(E2Set, 1), size(E2Set, 2), &
                     E2Col, size(E2Col), nCalibEvents, tsStart)
+
+            !> ===== 4.2 SONIC HARDWARE CORRECTIONS ===========================
+            !> Both act on the raw wind in the sonic's own frame, before any
+            !> rotation removes the mean tilt - the head correction because
+            !> flow distortion is a property of the direction the wind came
+            !> from relative to the instrument, and the inclinometer because
+            !> it is putting the instrument's own frame right in the first
+            !> place. The head correction goes first: it corrects what the
+            !> transducers measured, and the inclinometer then says where
+            !> those transducers were pointing.
+            call MetekHeadCorrection(E2Set, size(E2Set, 1), size(E2Set, 2))
+            if (NumUserVar > 0 .and. allocated(UserSet)) then
+                call InclinometerTilt(E2Set, size(E2Set, 1), size(E2Set, 2), &
+                    UserSet, size(UserSet, 1), size(UserSet, 2))
+            else if (RPSetup%tilt_sensor_meth /= 'none') then
+                call LogSay('  Inclinometer tilt correction asked for, but &
+                    &the project describes no extra columns to read the &
+                    &angles from - skipped.')
+            end if
 
             !> ===== 5. TILT CORRECTION ========================================
             !> Apply rotations for tilt correction, if requested.

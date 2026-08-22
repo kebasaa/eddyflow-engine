@@ -188,6 +188,16 @@ FIXED_TAGS = {
         #: uses, because these are absolute limits and a kelvin is not a
         #: metre per second - sharing one key across u and Ts would be a
         #: category error rather than a convenience.
+        #: Inclinometer tilt correction, EddyUH_tiltangle.m. The
+        #: sensitivity converts the logged voltage to a sine of
+        #: inclination, and the arm is the lever from the pivot to the
+        #: sonic head, which only the swinging correction uses. Both
+        #: are hard-coded in EddyUH for one mast; here they are stated.
+        117: "tilt_sensor_v_g",
+        118: "tilt_arm_x",
+        119: "tilt_arm_y",
+        120: "tilt_arm_z",
+        121: "tilt_lpf_s",
         61: "sr_step_u",
         62: "sr_step_v",
         63: "sr_step_w",
@@ -200,6 +210,13 @@ FIXED_TAGS = {
         79: "covmax_debaseline",
         #: Whether an unresolvable lag is taken from a tube-mate at all.
         80: "tlag_borrow_meth",
+        #: Sonic hardware corrections, both applied to the raw wind
+        #: before any rotation. The inclinometer mode, the Metek
+        #: head-correction mode, and where the three Metek look-up
+        #: tables live - they are Metek GmbH data and are not shipped.
+        31: "tilt_sensor_meth",
+        32: "head_corr_meth",
+        33: "head_corr_dir",
         #: Which noise floor the covariance is judged against, and who
         #: it borrows from. 81: 0 the flux detection limit (this
         #: engine's own), 1 the Lenschow instrument noise (EddyUH's).

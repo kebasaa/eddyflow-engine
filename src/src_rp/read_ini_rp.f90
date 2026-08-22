@@ -224,6 +224,50 @@ subroutine WriteVariablesRP()
                 SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 25)%value
     end do
 
+    !> Sonic hardware corrections, both applied to the raw wind before any
+    !> rotation. Off unless asked for, and the numbers below are EddyUH's own
+    !> so that switching one on reproduces EddyUH rather than something
+    !> invented here.
+    RPSetup%tilt_sensor_meth = 'none'
+    if (SCTagFound(31)) then
+        select case (SCTags(31)%value(1:1))
+            case ('1')
+                RPSetup%tilt_sensor_meth = 'position'
+            case ('2')
+                RPSetup%tilt_sensor_meth = 'position_swing'
+            case default
+                RPSetup%tilt_sensor_meth = 'none'
+        end select
+    end if
+    !> 4 V/g and -1.5 m on each axis: EddyUH_tiltangle.m:38 and :40, where
+    !> they are literals rather than settings.
+    RPSetup%tilt_sensor_v_g = 4d0
+    RPSetup%tilt_arm = -1.5d0
+    RPSetup%tilt_lpf_s = 0d0
+    if (SNTagFound(117)) RPSetup%tilt_sensor_v_g = SNTags(117)%value
+    if (SNTagFound(118)) RPSetup%tilt_arm(1) = SNTags(118)%value
+    if (SNTagFound(119)) RPSetup%tilt_arm(2) = SNTags(119)%value
+    if (SNTagFound(120)) RPSetup%tilt_arm(3) = SNTags(120)%value
+    if (SNTagFound(121)) RPSetup%tilt_lpf_s = SNTags(121)%value
+    !> A sensitivity of zero would divide the whole series by nothing, and a
+    !> negative filter length is not a length.
+    if (RPSetup%tilt_sensor_v_g <= 0d0) RPSetup%tilt_sensor_v_g = 4d0
+    if (RPSetup%tilt_lpf_s < 0d0) RPSetup%tilt_lpf_s = 0d0
+
+    RPSetup%head_corr_meth = 'none'
+    if (SCTagFound(32)) then
+        select case (SCTags(32)%value(1:1))
+            case ('1')
+                RPSetup%head_corr_meth = 'raw'
+            case ('2')
+                RPSetup%head_corr_meth = 'undo_2d'
+            case default
+                RPSetup%head_corr_meth = 'none'
+        end select
+    end if
+    RPSetup%head_corr_dir = ''
+    if (SCTagFound(33)) RPSetup%head_corr_dir = SCTags(33)%value
+
     !> Dropout test
     do%extlim_dw = SNTags(7)%value
     do%hf1_lim = SNTags(8)%value

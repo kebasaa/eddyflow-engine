@@ -1473,6 +1473,31 @@ module m_typedef
         !> is not part of the published Peltola result - see the routine.
         character(32) :: spectro_meth
         logical :: spectro_water
+        !> Inclinometer tilt correction, EddyUH_tiltangle.m: rotate the wind
+        !> by inclination angles measured alongside it, sample by sample.
+        !> 'none', 'position' or 'position_swing' - the second adds the
+        !> velocity of the sonic head as the mast swings, which needs the
+        !> lever arm from the pivot to the head.
+        !>
+        !> The sensitivity converts the logged voltage to sin(angle) and the
+        !> arm is in metres. EddyUH hard-codes 4 V/g and -1.5 m on each axis
+        !> for one particular mast; those are the defaults here, but they are
+        !> properties of somebody's hardware and have to be stated.
+        character(32) :: tilt_sensor_meth
+        real(kind = dbl) :: tilt_sensor_v_g
+        real(kind = dbl) :: tilt_arm(3)
+        !> Low-pass time constant for the angle channels, in seconds. Zero
+        !> leaves them unfiltered.
+        real(kind = dbl) :: tilt_lpf_s
+        !> Metek USA-1 3-D flow distortion, METEK_HC.m. 'none', 'raw' when no
+        !> online correction was applied, or 'undo_2d' when the logger already
+        !> applied Metek's 2-D correction and it has to be removed first.
+        !>
+        !> The look-up tables are Metek GmbH data and are NOT shipped with
+        !> this program; head_corr_dir names the directory holding
+        !> phicorr.dat, ucorr.dat and alphacorr.dat.
+        character(32) :: head_corr_meth
+        character(PathLen) :: head_corr_dir
     end type RPsetupType
 
     type :: PrType

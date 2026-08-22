@@ -565,6 +565,9 @@ import_slt_edisol.o: \
 import_tob1.o: \
 	import_tob1.f90 \
 	m_common_global_var.o
+inclinometer_tilt.o: \
+	inclinometer_tilt.f90 \
+	m_rp_global_var.o
 infer_aoa_method.o: \
 	infer_aoa_method.f90 \
 	interfaces_1.inc \
@@ -699,6 +702,9 @@ median.o: \
 metadata_file_validation.o: \
 	metadata_file_validation.f90 \
 	m_common_global_var.o
+metek_head_correction.o: \
+	metek_head_correction.f90 \
+	m_rp_global_var.o
 molefractions_and_mixingratios.o: \
 	molefractions_and_mixingratios.f90 \
 	m_rp_global_var.o

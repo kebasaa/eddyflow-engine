@@ -100,7 +100,8 @@ the spectral correction and the time lag, not by the density corrections.
 | Sonic T, crosswind | Liu et al. (2001); coefficients for **Gill R2 and Metek USA-1 only** - any other sonic prints "No crosswind correction for this sonic anemometer model available", so the Gill HS at CH-LAE could not have been corrected even if asked | Liu et al. (2001), per-model coefficients (`src/src_common/cross_wind_corr.f90`) | EddyFlow broader |
 | Sonic T, humidity | Schotanus (1983) / van Dijk et al. (2004) | van Dijk et al. (2004) eq. 3.53; FCC also offers Kaimal & Gaynor (1991) | match |
 | Angle of attack | Nakai et al. (2006) | Nakai et al. (2006) **and** Nakai & Shimoyama (2012), auto-inferred; Gill w-boost handling | **EddyFlow-only** |
-| Sonic head correction | Metek USA-1 3-D flow-distortion lookup tables | — | gap (I), niche |
+| Sonic head correction | Metek USA-1 3-D flow-distortion lookup tables | Same, `head_corr_meth`, off by default; the tables are not shipped | match (M) |
+| Inclinometer tilt | `set_sonic.tiltcorr` 0/1/2, fast inclination channels | Same, `tilt_sensor_meth`, off by default | match (M) |
 | Raw QC tests | Vickers & Mahrt (1997) suite | Same suite, plus **KID** (Vitale et al. 2020), Fisher correlation-matrix, Qn scale, repeated-values R², wind-direction sector filter | **EddyFlow-only** |
 | Flux QC flags | Foken et al. (2004) 1–9, ITC after Göckede et al. (2004) | Mauder & Foken (2004) 0-1-2, Foken (2003) 1–9, Göckede et al. (2006) 1–5 | match |
 | Stationarity | Foken & Wichura (1996); Mahrt (1998) intermittency; Vickers & Mahrt relative flux error; Haar mean/variance | Foken et al. (2004); Mahrt (1998) via `RU_Mahrt_98`; Haar inside the discontinuities test | match in substance |
@@ -406,6 +407,56 @@ compute footprint-weighted land-use class fractions.
 Genuinely absent from EddyFlow and genuinely novel. It needs raster I/O and a
 per-period z0/d feedback loop. Out of scope for a forest site.
 
+### M. Inclinometer tilt and Metek head correction — *implemented*
+
+Two hardware corrections on the raw wind, both applied before any rotation, and
+both new to EddyFlow. Neither affects CH-LAE, which runs a Gill HS with
+`tiltcorr = 0`, so neither changes a single number of the comparison dataset;
+they close the port rather than improve it.
+
+**Inclinometer tilt** — `EC_Software_Common/EddyUH_tiltangle.m`,
+`set_sonic.tiltcorr` 0/1/2, ported as `tilt_sensor_meth`. A planar fit or a
+double rotation removes the **mean** tilt over an averaging period. Neither can
+remove a tilt that changes **within** one. An inclinometer logged at the wind's
+own rate can, sample by sample.
+
+The angles arrive as ordinary extra raw columns named `theta`, `phi` and `psi`,
+read through the same custom-column machinery that already carries the
+signal-strength channels — no new record family, because there is one sonic and
+a name is enough to say which instrument an angle belongs to. The columns hold
+the inclinometer's output **voltage**; the angle is `-asin(V / sensitivity)`,
+with EddyUH's own 4 V/g as the default.
+
+`psi` is read and then discarded. EddyUH overwrites it with zeros and comments
+"not measured" (`EddyUH_tiltangle.m:60`); the rotation matrix and the swinging
+term are both built on that assumption, so it is a two-angle correction with
+three channels declared.
+
+**Metek head correction** — `Functions_Library/METEK_HC.m`,
+`set_sonic.headcorr`, ported as `head_corr_meth`. Three tables of Fourier
+coefficients over elevation angle, evaluated at three, six and nine times the
+azimuth, correcting the wind speed, the azimuth and the elevation for the flow
+distortion the transducers and their supports cause. Two modes: on raw data, or
+on data that already carries Metek's online two-dimensional correction, which
+is first undone with the closed form Metek publishes for it.
+
+**The tables are not shipped.** `phicorr.dat`, `ucorr.dat` and `alphacorr.dat`
+are Metek GmbH's measurements of 6 October 2003, which EddyUH redistributes
+under the University of Helsinki's own agreement. This program cannot, so
+`head_corr_dir` names a directory holding a user's own copy, and a run without
+all three declines the correction for its whole duration and says so — rather
+than correcting some periods and not others.
+
+**Where the port is not term-for-term:** the two RP pre-passes — time-lag
+optimisation and the planar-fit assessment — run before `DefineUserSet`, so the
+angle columns do not exist yet and the inclinometer correction reaches the flux
+loop only. The head correction, which needs nothing but the wind, reaches all
+three. A plane is therefore fitted to per-period mean winds that have not had
+their within-period tilt removed, while the fluxes are computed from winds that
+have. Second-order, since this correction is aimed at variation *within* a
+period, but real; closing it means moving `DefineUserSet`, which is a layout
+change to the one part of the program where a layout fault is silent.
+
 ## EddyFlow-only capabilities
 
 So the comparison is not one-directional. Relative to EddyUH, EddyFlow adds:
@@ -494,6 +545,30 @@ correction factor is most sensitive to z/L. At CH-LAE in June it is small: over
 48 periods the fluxes move by hundredths of a percent, the worst period is
 still changing by 0.35 % at the fourth pass, and only one period exceeds
 0.1 %.
+
+### The swinging tilt correction adds a scalar to all three wind components
+
+`EddyUH_tiltangle.m:104` writes `V_true(i,:) + omega*T*L`, with `omega` 1x3,
+`T` 3x3 and `L = [-1.5 -1.5 -1.5]'` 3x1. That product is a **single number**,
+and it is added to *u*, *v* and *w* alike. The velocity of a point on a
+rotating body is `omega` &times; `(T L)`, a vector with three different
+components; a dot product is not that. The units survive — radians per second
+times metres is metres per second — which is why it is easy to miss.
+
+EddyFlow reproduces it as written under `tilt_sensor_meth = 2`, because that
+option exists to reproduce EddyUH's numbers and a silently corrected version
+would reproduce nothing. `tilt_sensor_meth = 1`, the position correction alone,
+is unaffected and is the one to use if EddyUH fidelity is not the goal. No
+choice of lever arm turns a scalar into a vector.
+
+### The Metek elevation table is indexed one row past its end at exactly +45°
+
+`METEK_HC.m:81` sets `I = fix((phiM+50)./5)+1` for `phiM` in [-50, 45] and then
+reads `Cf0(I+1)` at line 90. At exactly +45 degrees that is `Cf0(21)` on a
+twenty-row table. MATLAB raises rather than reading rubbish, so this is a crash
+and not a silent error, and an elevation of exactly 45.000 degrees is rare
+enough that it may never have been hit. EddyFlow holds the last row there
+instead.
 
 ### Tube attenuation has no COS coefficient
 
