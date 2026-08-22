@@ -345,58 +345,85 @@ subroutine RU_Lenschow_00(Set, N, M)
     integer, intent(in) :: M
     real(kind = dbl), intent(in) :: Set(N, M)
     !> local variables
-    !> The fit window, in SAMPLES. EddyUH's, and fixed by the method rather
-    !> than by the acquisition rate - see the note above.
-    integer, parameter :: first_lag = 1
-    integer, parameter :: last_lag = 5
     integer :: var
-    integer :: lag
-    real(kind = dbl) :: acov_w(0:last_lag)
-    real(kind = dbl) :: acov_g(0:last_lag)
-    real(kind = dbl) :: w_noise
-    real(kind = dbl) :: g_noise
-    logical :: usable
-    real(kind = dbl), external :: LaggedCovarianceNoError
-
-    !> The vertical wind's autocovariance is the same for every gas, so it is
-    !> measured once rather than once per column.
-    usable = .true.
-    do lag = 0, last_lag
-        acov_w(lag) = LaggedCovarianceNoError(Set(:, w), Set(:, w), N, lag, error)
-        if (acov_w(lag) == error) usable = .false.
-    end do
-    if (usable) then
-        w_noise = acov_w(0) - InterceptAtZero(acov_w)
-    else
-        w_noise = error
-    end if
+    real(kind = dbl), external :: LenschowFluxNoise
 
     do var = u, lastGas
         if (var == v .or. var == w) cycle
         Essentials%rand_uncer(var) = error
         if (.not. E2Col(var)%present) cycle
-        if (.not. usable) cycle
-
-        do lag = 0, last_lag
-            acov_g(lag) = LaggedCovarianceNoError(Set(:, var), Set(:, var), &
-                                                  N, lag, error)
-        end do
-        if (any(acov_g == error)) cycle
-
-        g_noise = acov_g(0) - InterceptAtZero(acov_g)
-
-        !> Both intercepts must show a noise-like step. A non-positive one
-        !> means the fitted line already sits at or above the measured lag-zero
-        !> value, which is not a small noise estimate - it is the method
-        !> failing to apply, and reporting it as a small number would be worse
-        !> than reporting nothing.
-        if (w_noise <= 0d0 .or. g_noise <= 0d0) cycle
-
-        !> The scalar's noise variance against the TOTAL variance of w, not
-        !> against w's noise. EddyUH's form: what reaches the flux is the
-        !> scalar's own noise beaten against the full vertical wind signal.
-        Essentials%rand_uncer(var) = dsqrt(g_noise * acov_w(0) / dble(N))
+        Essentials%rand_uncer(var) = LenschowFluxNoise(Set, N, M, var)
     end do
+end subroutine RU_Lenschow_00
+
+!***************************************************************************
+!
+! \brief       One gas's flux noise after Lenschow et al. (2000), or the
+!              error code where the method does not apply.
+! \author      Jonathan Muller
+! \note
+!              Separated from the loop above because the conditional time-lag
+!              borrowing needs the same number, at a point in the run long
+!              before the random-uncertainty stage. EddyUH has the same split:
+!              it computes unc3 in the preprocessor and reads it back at flux
+!              time (EC_Software_FluxCalc/EddyUH_SC_Flux2.m:325).
+!
+!              The vertical wind's autocovariance is recomputed for every gas
+!              rather than hoisted. Six lagged covariances per column is
+!              nothing beside the rest of a period, and one implementation
+!              that both callers share cannot drift from itself.
+!
+!              Instrument noise does not depend on the time lag, so this is
+!              the same answer whether the series are on their raw alignment
+!              or already shifted.
+! \sa          RU_Lenschow_00, BorrowTimelagBelowDetectionLimit
+!***************************************************************************
+real(kind = dbl) function LenschowFluxNoise(Set, N, M, gas)
+    use m_rp_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: N
+    integer, intent(in) :: M
+    integer, intent(in) :: gas
+    real(kind = dbl), intent(in) :: Set(N, M)
+    !> local variables
+    !> The fit window, in SAMPLES. EddyUH's, and fixed by the method rather
+    !> than by the acquisition rate - see RU_Lenschow_00's note.
+    integer, parameter :: first_lag = 1
+    integer, parameter :: last_lag = 5
+    integer :: lag
+    real(kind = dbl) :: acov_w(0:last_lag)
+    real(kind = dbl) :: acov_g(0:last_lag)
+    real(kind = dbl) :: w_noise
+    real(kind = dbl) :: g_noise
+    real(kind = dbl), external :: LaggedCovarianceNoError
+
+    LenschowFluxNoise = error
+    if (gas < u .or. gas > lastGas) return
+    if (.not. E2Col(gas)%present) return
+
+    do lag = 0, last_lag
+        acov_w(lag) = LaggedCovarianceNoError(Set(:, w), Set(:, w), N, lag, error)
+        acov_g(lag) = LaggedCovarianceNoError(Set(:, gas), Set(:, gas), N, lag, error)
+    end do
+    if (any(acov_w == error) .or. any(acov_g == error)) return
+
+    w_noise = acov_w(0) - InterceptAtZero(acov_w)
+    g_noise = acov_g(0) - InterceptAtZero(acov_g)
+
+    !> Both intercepts must show a noise-like step. A non-positive one means
+    !> the fitted line already sits at or above the measured lag-zero value,
+    !> which is not a small noise estimate - it is the method failing to
+    !> apply, and reporting it as a small number would be worse than
+    !> reporting nothing. The vertical wind gates every gas: a w
+    !> autocovariance with no step breaks the assumption whatever the scalar
+    !> did.
+    if (w_noise <= 0d0 .or. g_noise <= 0d0) return
+
+    !> The scalar's noise variance against the TOTAL variance of w, not
+    !> against w's noise. EddyUH's form: what reaches the flux is the
+    !> scalar's own noise beaten against the full vertical wind signal.
+    LenschowFluxNoise = dsqrt(g_noise * acov_w(0) / dble(N))
 
 contains
 
@@ -426,7 +453,7 @@ contains
         InterceptAtZero = ybar - slope * xbar
     end function InterceptAtZero
 
-end subroutine RU_Lenschow_00
+end function LenschowFluxNoise
 
 !***************************************************************************
 !

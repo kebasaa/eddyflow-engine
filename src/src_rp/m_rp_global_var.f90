@@ -2384,8 +2384,8 @@ module m_rp_global_var
          SCTags(78)%Label  / 'out_raw_ts' / &
          SCTags(79)%Label  / 'covmax_debaseline' / &
          SCTags(80)%Label  / 'tlag_borrow_meth' / &
-         SCTags(81)%Label  / '' / &
-         SCTags(82)%Label  / '' / &
+         SCTags(81)%Label  / 'tlag_borrow_noise' / &
+         SCTags(82)%Label  / 'tlag_borrow_donor' / &
          SCTags(83)%Label  / 'out_raw_t_air' / &
          SCTags(84)%Label  / 'out_raw_p_air' / &
          SCTags(85)%Label  / 'out_qc_details' / &

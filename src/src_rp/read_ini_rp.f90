@@ -868,6 +868,15 @@ subroutine WriteVariablesRP()
     !> A non-positive multiplier would make every gas borrow, which is not a
     !> setting anyone means; it is a typed-in zero.
     if (RPSetup%tlag_borrow_snr <= 0d0) RPSetup%tlag_borrow_snr = 3d0
+    !> Which noise floor, and which donor. Both default to this engine's own
+    !> choice, so an existing project that switched borrowing on keeps the
+    !> behaviour it had; '1' on either selects EddyUH's.
+    RPSetup%tlag_borrow_noise = 'detlim'
+    if (SCTagFound(81) .and. SCTags(81)%value(1:1) == '1') &
+        RPSetup%tlag_borrow_noise = 'lenschow_00'
+    RPSetup%tlag_borrow_donor = 'best_resolved'
+    if (SCTagFound(82) .and. SCTags(82)%value(1:1) == '1') &
+        RPSetup%tlag_borrow_donor = 'carbon_dioxide'
 
     !> Flux detection limit, Wienhold et al. (1994).
     !>

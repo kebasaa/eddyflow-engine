@@ -1432,6 +1432,15 @@ module m_typedef
         !> there is nothing to compare against otherwise.
         logical :: tlag_borrow_meth
         real(kind = dbl) :: tlag_borrow_snr
+        !> Which noise floor the covariance is judged against, and who a gas
+        !> that fails borrows from. Both default to this engine's own choice
+        !> rather than EddyUH's: 'detlim' is the flux detection limit, which
+        !> measures what the covariance does with no flux in it, against
+        !> 'lenschow_00', which measures the analyser; and 'best_resolved'
+        !> ranks the tube-mates, against 'carbon_dioxide', which is the gas
+        !> EddyUH hard-codes.
+        character(32) :: tlag_borrow_noise
+        character(32) :: tlag_borrow_donor
         !> Flux detection limit after Wienhold et al. (1994): the standard
         !> deviation of the cross-covariance function measured away from the
         !> peak, where there is no flux signal, taken as the noise floor of

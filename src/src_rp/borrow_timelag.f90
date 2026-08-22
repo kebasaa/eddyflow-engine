@@ -37,15 +37,22 @@
 ! landing on an end of the search window, which is where a maximisation goes
 ! when there is no interior peak to find.
 !
-! WHAT THIS THRESHOLDS AGAINST IS NOT WHAT EDDYUH USES, deliberately. EddyUH
-! compares against unc3(:,3), Lenschow et al. (2000) instrumental noise
-! propagated to a covariance as sqrt(sigma2_noise * sigma2_w / N). This
-! compares against the Wienhold et al. (1994) detection limit, the scatter of
-! the cross-covariance function away from its peak. Both are noise floors in
-! covariance units and of similar size, but the second is the scatter of the
-! very function whose peak is being tested, which is the question being
-! asked - and it is what detlim_meth already computes, so the two settings
-! compose rather than each needing their own estimator.
+! WHICH NOISE FLOOR, AND WHICH DONOR, ARE BOTH CHOICES - and the defaults are
+! not EddyUH's.
+!
+! EddyUH compares against unc3(:,3), Lenschow et al. (2000) instrumental noise
+! propagated to a covariance as sqrt(sigma2_noise * sigma2_w / N), and borrows
+! specifically from the analyser's carbon dioxide, hard-coded by variable name.
+! The default here is the Wienhold et al. (1994) detection limit - the scatter
+! of the very function whose peak is being tested, which is the question being
+! asked - and the best-resolved tube-mate. tlag_borrow_noise and
+! tlag_borrow_donor select EddyUH's instead.
+!
+! Read EddyUH's own comment at that line with care: it calls unc3 a detection
+! limit, and it is not one. Both quantities are noise floors in covariance
+! units, but the Lenschow estimate measures the ANALYSER and the Wienhold one
+! measures the COVARIANCE. The first port of this took the comment at its word
+! and divided by the wrong thing.
 !
 ! Neither of EddyUH's two routines for this is reachable in the shipped
 ! package: EddyUH_SC_Flux2.m is called only from a commented-out block, and
@@ -79,6 +86,8 @@ subroutine BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
     logical, intent(inout) :: DefTlagUsed(ncol)
     !> local variables
     logical, external :: GasSlotIsWater
+    integer, external :: CarbonOnAnalyserOf
+    real(kind = dbl), external :: LenschowFluxNoise
     integer :: gas, donor, chosen
     !> Heap, not automatic arrays. At 20 Hz over half an hour each of these
     !> is some 288 kB, and this runs from deep inside the period loop with
@@ -101,7 +110,14 @@ subroutine BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
     !> Nothing to compare a covariance against otherwise. The interface greys
     !> the control for the same reason; this is the engine saying so for a
     !> hand-written project.
-    if (RPSetup%detlim_meth /= 'wienhold_94') return
+    !>
+    !> Only the detection limit has to be switched on separately - it is
+    !> computed elsewhere and read from Essentials. The Lenschow noise is
+    !> measured here, from the series in hand, so choosing it needs nothing
+    !> else enabled. That asymmetry is deliberate: it means the EddyUH-faithful
+    !> combination can be selected on its own.
+    if (RPSetup%tlag_borrow_noise == 'detlim' .and. &
+        RPSetup%detlim_meth /= 'wienhold_94') return
 
     allocate(ColW(nrow))
     allocate(ColGas(nrow))
@@ -134,25 +150,41 @@ subroutine BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
                    .or. snr(gas) == error &
                    .or. snr(gas) < RPSetup%tlag_borrow_snr)) cycle
 
-        !> The best-resolved tube-mate, not the first one in slot order.
+        !> Who to borrow from. Two rules, and the default is not EddyUH's.
         !>
-        !> Taking the first put whichever gas happened to sit lowest in the
-        !> metadata in charge, and on a tube where nothing clears the
-        !> threshold comfortably that produced pairings that read backwards -
-        !> carbon dioxide, the strongest flux on the analyser, taking its lag
-        !> from nitrous oxide. Ranking by signal-to-noise says what was
-        !> actually meant: borrow from whoever resolved their peak best.
+        !> 'best_resolved' ranks the trusted tube-mates by signal-to-noise.
+        !> Taking the first in slot order - which is what a naive loop does -
+        !> put whichever gas happened to sit lowest in the metadata in charge,
+        !> and on a tube where nothing clears the threshold comfortably that
+        !> produced pairings that read backwards: carbon dioxide, the
+        !> strongest flux on the analyser, taking its lag from nitrous oxide.
+        !>
+        !> 'carbon_dioxide' is what EddyUH does, hard-coded by variable name
+        !> at EddyUH_SC_Flux2.m:325-331 with no user switch. It is the right
+        !> answer wherever carbon dioxide IS the best-resolved channel, which
+        !> on a trace-gas analyser it usually is, and it has the merit of
+        !> being the same choice in every period - a lag population that does
+        !> not change donor halfway through the day is easier to defend. It
+        !> refuses rather than falling back when that analyser measures no
+        !> carbon dioxide, or when its carbon dioxide is not itself trusted.
         chosen = 0
-        best = 0d0
-        do donor = firstGas, lastGas
-            if (donor == gas) cycle
-            if (.not. trusted(donor)) cycle
-            if (.not. SameAnalyser(gas, donor)) cycle
-            if (snr(donor) > best) then
-                best = snr(donor)
-                chosen = donor
+        if (RPSetup%tlag_borrow_donor == 'carbon_dioxide') then
+            donor = CarbonOnAnalyserOf(gas)
+            if (donor >= firstGas .and. donor <= lastGas) then
+                if (donor /= gas .and. trusted(donor)) chosen = donor
             end if
-        end do
+        else
+            best = 0d0
+            do donor = firstGas, lastGas
+                if (donor == gas) cycle
+                if (.not. trusted(donor)) cycle
+                if (.not. SameAnalyser(gas, donor)) cycle
+                if (snr(donor) > best) then
+                    best = snr(donor)
+                    chosen = donor
+                end if
+            end do
+        end if
         if (chosen == 0) cycle
 
         RowLags(gas) = RowLags(chosen)
@@ -198,17 +230,30 @@ contains
     !> automatic array on every call.
     real(kind = dbl) function SignalToNoise(g)
         integer, intent(in) :: g
+        real(kind = dbl) :: floor_
 
         SignalToNoise = error
-        if (Essentials%detlim(g) == error) return
-        if (Essentials%detlim(g) <= 0d0) return
+        !> Which noise floor. The detection limit is this engine's own -
+        !> the scatter of the cross-covariance away from the peak, so it
+        !> measures what the covariance itself does when there is no flux.
+        !> The Lenschow noise is EddyUH's, and measures the analyser rather
+        !> than the covariance; EddyUH's own comment at that line calls it a
+        !> detection limit, which is how the first port of this came to
+        !> divide by the wrong quantity.
+        if (RPSetup%tlag_borrow_noise == 'lenschow_00') then
+            floor_ = LenschowFluxNoise(Set, nrow, ncol, g)
+        else
+            floor_ = Essentials%detlim(g)
+        end if
+        if (floor_ == error) return
+        if (floor_ <= 0d0) return
         !> CovarianceW takes either sign of lag, but a zero lag means the run
         !> compensates none and there is no peak to judge.
         if (RowLags(g) == 0) return
         ColGas(1:nrow) = Set(1:nrow, g)
         call CovarianceW(ColW, ColGas, nrow, RowLags(g), cov)
         if (cov == error) return
-        SignalToNoise = dabs(cov) / Essentials%detlim(g)
+        SignalToNoise = dabs(cov) / floor_
     end function SignalToNoise
 
     !> Did the maximisation stop at an end of the window rather than on a peak

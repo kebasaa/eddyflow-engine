@@ -1,6 +1,55 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- Fix: The conditional lag borrowing can now use EddyUH's own rules:
+	       tlag_borrow_noise chooses the noise floor a covariance is judged
+	       against, and tlag_borrow_donor chooses who a gas that fails
+	       borrows from. Both DEFAULT to this engine's own choice, so a
+	       project that already had borrowing switched on keeps exactly what
+	       it had - confirmed identical across every time-lag column on the
+	       CH-LAE comparison run.
+	       This corrects a fidelity error in the original port. EddyUH
+	       compares |cov| against 3 x unc3(:,3), the Lenschow instrumental
+	       noise, and borrows specifically from the analyser's carbon
+	       dioxide, hard-coded by variable name at EddyUH_SC_Flux2.m:325-331.
+	       The port compared against the Wienhold detection limit and
+	       borrowed from the best-resolved tube-mate. EddyUH's own inline
+	       comment at that line calls unc3 "the detection limit", which is
+	       how the mistake was made; the two are both noise floors in
+	       covariance units, but one measures the ANALYSER and the other
+	       measures the COVARIANCE.
+	       Only the detection-limit floor needs a second setting switched
+	       on. It is computed elsewhere and read from Essentials, so asking
+	       for it without detlim_meth would divide by a number nothing
+	       produced. The Lenschow floor is measured here from the series in
+	       hand, which means EddyUH's combination can be selected on its
+	       own. The interface draws the same distinction and keeps the floor
+	       control reachable even when the current choice is the unavailable
+	       one, so a user whose detection limit is off can still reach the
+	       control that fixes it.
+	       The carbon-dioxide donor refuses rather than falling back. If
+	       that analyser measures no carbon dioxide, nothing is borrowed:
+	       the point of the rule is a shared tube, and another instrument's
+	       gas shares only a clock. It also still requires the donor to have
+	       cleared the threshold itself - a deliberate departure from
+	       EddyUH, which copies the carbon dioxide lag unconditionally.
+	       Copying a donor that could not resolve its own peak would launder
+	       one bad detection onto every gas on the tube.
+	       LenschowFluxNoise is now a function of its own, called both by
+	       the random-uncertainty arm and from here. One implementation,
+	       because the two must divide by the same number and a drift
+	       between them would surface as a lag population rather than as an
+	       uncertainty column. The extraction is numerically inert: every
+	       rand_err_ column is identical to the previous engine's.
+	       Verified on CH-LAE, 48 periods, with the baseline-subtracted
+	       maximisation on. Under EddyUH's rules carbon dioxide stops
+	       borrowing entirely - 6 of 48 periods down to 0, since it is now
+	       the donor and cannot borrow from itself - nitrous oxide falls
+	       from 8 to 2 and carbonyl sulfide from 18 to 15. Fewer borrows
+	       because the Lenschow floor is the smaller of the two, so more
+	       gases clear three times it: instrument noise alone is less than
+	       the scatter of a whole cross-covariance function, which also
+	       carries the atmosphere.
 	- New feature: Instrumental noise after Lenschow et al. (2000), as Mauder et al.
 	               (2013) apply it: ru_meth = 5, one more choice on the existing
 	               random-uncertainty method. White instrument noise is

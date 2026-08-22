@@ -35,8 +35,13 @@ def read(path):
 
 
 SRC = read(HANDLE)
-ROUTINE = SRC[SRC.index("subroutine RU_Lenschow_00("):
-              SRC.index("end subroutine RU_Lenschow_00")]
+#: The loop that fills Essentials, and the estimator it calls. Separated so
+#: the conditional time-lag borrowing can reach the same number long before
+#: the random-uncertainty stage runs - see the function's own note.
+LOOP = SRC[SRC.index("subroutine RU_Lenschow_00("):
+           SRC.index("end subroutine RU_Lenschow_00")]
+ROUTINE = SRC[SRC.index("function LenschowFluxNoise(Set, N, M, gas)"):
+              SRC.index("end function LenschowFluxNoise")]
 
 
 def code(text):
@@ -103,8 +108,8 @@ class TheEstimateItself(unittest.TestCase):
         #> beaten against the full vertical wind signal. Using w_noise here
         #> would be a plausible-looking and different quantity.
         self.assertIn(
-            "dsqrt(g_noise * acov_w(0) / dble(N))", ROUTINE)
-        tail = ROUTINE[ROUTINE.index("Essentials%rand_uncer(var) = dsqrt"):]
+            "LenschowFluxNoise = dsqrt(g_noise * acov_w(0) / dble(N))", ROUTINE)
+        tail = ROUTINE[ROUTINE.index("LenschowFluxNoise = dsqrt"):]
         self.assertNotIn("w_noise", tail[:120])
 
     def test_the_intercept_is_a_closed_form_not_a_fit_call(self):
@@ -112,31 +117,45 @@ class TheEstimateItself(unittest.TestCase):
         self.assertIn("slope = sxy / sxx", helper)
         self.assertIn("InterceptAtZero = ybar - slope * xbar", helper)
 
-    def test_the_vertical_wind_is_measured_once(self):
-        #> The w autocovariance does not depend on which gas is being
-        #> estimated. Recomputing it per column would be five more lagged
-        #> covariances per gas for the same answer.
-        before = ROUTINE[:ROUTINE.index("do var = u, lastGas")]
-        self.assertIn("LaggedCovarianceNoError(Set(:, w), Set(:, w)", before)
+    def test_the_estimator_is_the_only_implementation(self):
+        #> The loop that fills Essentials and the borrowing that judges a
+        #> covariance must divide by the same number. Two copies of this
+        #> arithmetic would drift, and the drift would show up as a lag
+        #> population rather than as an uncertainty column.
+        self.assertIn("LenschowFluxNoise(Set, N, M, var)", LOOP)
+        self.assertNotIn("InterceptAtZero", LOOP)
+        self.assertIn("LaggedCovarianceNoError(Set(:, w), Set(:, w)", ROUTINE)
+
+    def test_it_refuses_a_column_that_is_not_there(self):
+        #> Called per gas from two places now, one of which does not pre-check.
+        self.assertIn("if (.not. E2Col(gas)%present) return", ROUTINE)
 
 
 class ItDeclinesRatherThanGuesses(unittest.TestCase):
 
     def test_a_non_positive_intercept_rejects_the_period(self):
-        self.assertIn("if (w_noise <= 0d0 .or. g_noise <= 0d0) cycle", ROUTINE)
+        self.assertIn("if (w_noise <= 0d0 .or. g_noise <= 0d0) return", ROUTINE)
 
     def test_the_vertical_wind_gates_every_gas(self):
         #> EddyUH rejects on either intercept. A w autocovariance with no
         #> noise-like step means the assumption fails for the period, whatever
-        #> the scalar did - so the gate is not per-gas.
-        self.assertIn("if (.not. usable) cycle", ROUTINE)
+        #> the scalar did - so w_noise is in the same condition as g_noise and
+        #> not merely reported.
+        cond = ROUTINE[ROUTINE.index("if (w_noise"):]
+        self.assertIn("w_noise <= 0d0", cond[:60])
+        #> And an error-coded autocovariance on either side refuses too.
+        self.assertIn(
+            "if (any(acov_w == error) .or. any(acov_g == error)) return",
+            ROUTINE)
 
     def test_the_declined_value_is_the_error_code_not_a_zero(self):
-        #> Set before every early exit, so a cycle leaves "not available"
-        #> rather than whatever the previous gas left behind.
-        i = ROUTINE.index("do var = u, lastGas")
-        head = ROUTINE[i:ROUTINE.index("do lag = 0, last_lag", i)]
-        self.assertIn("Essentials%rand_uncer(var) = error", head)
+        #> Set before every early return, so a refusal reads as "not
+        #> available" rather than as a very small noise estimate.
+        head = ROUTINE[:ROUTINE.index("do lag = 0, last_lag")]
+        self.assertIn("LenschowFluxNoise = error", head)
+        #> And the loop clears the slot before asking, so a gas that is not
+        #> there does not keep the previous one's answer.
+        self.assertIn("Essentials%rand_uncer(var) = error", LOOP)
 
 
 class ItMatchesEddyUH(unittest.TestCase):

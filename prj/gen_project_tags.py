@@ -200,6 +200,13 @@ FIXED_TAGS = {
         79: "covmax_debaseline",
         #: Whether an unresolvable lag is taken from a tube-mate at all.
         80: "tlag_borrow_meth",
+        #: Which noise floor the covariance is judged against, and who
+        #: it borrows from. 81: 0 the flux detection limit (this
+        #: engine's own), 1 the Lenschow instrument noise (EddyUH's).
+        #: 82: 0 the best-resolved tube-mate, 1 the analyser's carbon
+        #: dioxide, which is what EddyUH hard-codes.
+        81: "tlag_borrow_noise",
+        82: "tlag_borrow_donor",
     },
     "EPPrjNTags": {
         #: Which analytic cospectrum every spectral correction integrates
