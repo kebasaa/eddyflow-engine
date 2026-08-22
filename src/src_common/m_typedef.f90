@@ -787,6 +787,18 @@ module m_typedef
         !> integrated against. 'moncrieff_97' is the shape this program
         !> has always used and the only one an unstated project gets.
         character(32) :: cosp_model
+        !> Iterative correction. The spectral correction is computed at a
+        !> stability that the corrected heat flux itself determines, so the
+        !> two can be brought into agreement by repetition. Off by default:
+        !> a single pass is what this program has always done.
+        !>
+        !> corr_iter_tol is a percentage, and ZERO means "run every pass",
+        !> which is EddyUH's behaviour - it has no early exit at all. A
+        !> positive value stops as soon as every flux moves by less than
+        !> that much, which EddyUH does not offer.
+        logical :: corr_iter_meth
+        integer :: corr_iter_max
+        real(kind = dbl) :: corr_iter_tol
         character(32) :: err_label
         character(32) :: run_mode
         character(32) :: run_env
@@ -1162,6 +1174,11 @@ module m_typedef
         !> et al. (1994), computed beside the water covariances in
         !> TimeLagHandle while the series are still on their raw alignment.
         real(kind = dbl) :: detlim(E2NumVar)
+        !> How far the gas fluxes moved between the last two passes of the
+        !> iterative correction, in percent, worst gas of the period. The
+        !> error code when the loop ran once - which is what "off" means -
+        !> or when nothing comparable was produced.
+        real(kind = dbl) :: corr_iter_dev
         real(kind = dbl) :: AGC72
         real(kind = dbl) :: AGC75
         real(kind = dbl) :: RSSI77
@@ -2025,6 +2042,11 @@ module m_typedef
         !> Flux detection limit, Wienhold et al. (1994), in covariance units.
         !> Read from the ex record so FCC can carry it into its own outputs.
         real(kind = dbl) :: detlim(E2NumVar)
+        !> Convergence of the iterative correction, worst gas, in percent.
+        !> FCC recomputes this for itself rather than carrying RP's: the two
+        !> run their own loops over their own corrections, so RP's number
+        !> would describe a different calculation.
+        real(kind = dbl) :: corr_iter_dev
         logical :: not_enough_data
         logical :: daytime
         logical :: var_present(GHGNumVar)

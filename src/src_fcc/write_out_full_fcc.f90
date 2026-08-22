@@ -91,6 +91,13 @@ subroutine WriteOutFullFcc(lEx)
     call WriteDatumInt(lEx%nr_after_wdf, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
 
+    !> Convergence of the iterative correction
+    if (EddyFlowProj%corr_iter_meth) then
+        call WriteDatumFloat(lEx%corr_iter_dev, field_val, &
+            EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+
     !> Corrected fluxes (Level 3)
     !> Tau
     call WriteDatumFloat(Flux3%tau, field_val, EddyFlowProj%err_label)

@@ -546,9 +546,9 @@ module m_common_global_var
          EPPrjNTags(5)%Label / 'cec_stationarity_mode' / &
          EPPrjNTags(6)%Label / 'cec_min_flux_sigma' / &
          EPPrjNTags(7)%Label / 'cosp_model' / &
-         EPPrjNTags(8)%Label / '' / &
-         EPPrjNTags(9)%Label / '' / &
-         EPPrjNTags(10)%Label / '' / &
+         EPPrjNTags(8)%Label / 'corr_iter_meth' / &
+         EPPrjNTags(9)%Label / 'corr_iter_max' / &
+         EPPrjNTags(10)%Label / 'corr_iter_tol' / &
          EPPrjNTags(11)%Label / '' / &
          EPPrjNTags(12)%Label / 'col_air_t' / &
          EPPrjNTags(13)%Label / 'col_air_p' / &

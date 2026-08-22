@@ -1,6 +1,65 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: The spectral correction and the two flux levels can be repeated
+	               until the stability they assume and the stability they produce
+	               agree: corr_iter_meth, off by default, with corr_iter_max and
+	               corr_iter_tol.
+	               The three depend on each other in a circle. The analytic
+	               cospectrum is evaluated at z/L; z/L comes from the corrected
+	               sensible heat flux; that flux is what the spectral correction
+	               produces. One pass leaves them disagreeing - the correction was
+	               computed at a stability the run then went on to revise.
+	               Nothing compounds. Fluxes1_rp clears Flux1 and rebuilds it from
+	               Flux0 and BPCF; Fluxes23_rp clears Flux2 and Flux3 and rebuilds
+	               them from Flux1. Each pass corrects the same raw covariances
+	               afresh, so what changes between passes is only which z/L the
+	               cospectrum was evaluated at. The reset at the head of each
+	               routine is what makes that true, and a check asserts it - not the
+	               absence of self-reference, which Fluxes23_rp legitimately has
+	               within a single call.
+	               The feedback path was already there: Fluxes23_rp recomputes
+	               Ambient%zL, and the correction reads it. Only the repetition was
+	               missing. FCC needed one more thing - its correction is handed
+	               lEx%Flux0%zL while its Fluxes23 writes lEx%zL, two different
+	               fields, so the loop threads the stability through a local rather
+	               than letting it read the record every time.
+	               corr_iter_dev, in percent, reports how far the gas fluxes moved
+	               between the last two passes - the worst gas of the period. Worst
+	               rather than one column per gas because every gas is corrected at
+	               the same z/L, so what the loop converges is the stability and the
+	               per-gas numbers move together. Written only when the loop runs,
+	               like the random-error columns.
+	               Verified on CH-LAE, 48 periods, on the analytic correction path.
+	               With the loop off the output is byte-identical, confirmed on
+	               base_n_gas_analytic, base_5gas and base_cec_cos. With it on, the
+	               fluxes move by hundredths of a percent - latent heat +0.023 %,
+	               nitrous oxide +0.038 %, carbonyl sulfide -0.022 %, sensible heat
+	               essentially not at all - and the reported convergence has a
+	               median of 0 %, a worst period of 0.35 %, and exactly one period
+	               still moving more than 0.1 % at the fourth pass. A near-neutral
+	               forest day is where this should do least; the difference is
+	               largest in strongly non-neutral conditions, where the correction
+	               factor is most sensitive to z/L.
+	               A 1 % tolerance exits at the second pass and lands within 0.02 %
+	               of the full four, which is the trade it exists to offer.
+	- Doc: This repository said EddyUH iterates "until the flux changes by
+	       <= 1 %", and attributed the loop to EddyUH_Spectralcorr.m. Both
+	       halves were wrong, and the claim is retracted in
+	       docs/eddyuh-comparison.md.
+	       The loop is in EddyUH.m, which calls EddyUH_Spectralcorr.m. And
+	       there is NO convergence test: `while indexITER <= 3` with the
+	       counter incremented at the top runs exactly four times, always.
+	       The only break (EddyUH.m:843) tests the urban footprint's
+	       displacement height and roughness length, requires indexITER > 3
+	       - true on the final pass only, where the loop ends anyway - and
+	       sits in a branch EddyUH_footprint.m:151 makes unreachable.
+	       The 1 % came from covsvar, which EddyUH computes as the
+	       percentage change between the last two passes and writes to its
+	       output. Nothing reads it back.
+	       This matters for the defaults: corr_iter_tol = 0 means "run every
+	       pass", which is what reproduces EddyUH. A tolerance is this
+	       engine's own addition and departs from it.
 	- Fix: The conditional lag borrowing can now use EddyUH's own rules:
 	       tlag_borrow_noise chooses the noise floor a covariance is judged
 	       against, and tlag_borrow_donor chooses who a gas that fails

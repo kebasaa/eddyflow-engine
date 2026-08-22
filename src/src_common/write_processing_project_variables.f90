@@ -309,6 +309,31 @@ subroutine WriteProcessingProjectVariables()
         end select
     end if
 
+    !> Iterative correction, after EddyUH.m:722-903.
+    !>
+    !> Off, and the defaults below are EddyUH's own, so switching it on
+    !> reproduces what EddyUH does rather than something chosen here: four
+    !> passes and no early exit. EddyUH's loop is `while indexITER <= 3` with
+    !> the counter incremented at the top, so it runs four times; its only
+    !> `break` tests the urban footprint's roughness length, requires
+    !> indexITER > 3 - true on the last pass only - and sits in a branch that
+    !> EddyUH_footprint.m:151 makes unreachable. Its covsvar output is a
+    !> reported diagnostic, not a control.
+    EddyFlowProj%corr_iter_meth = .false.
+    EddyFlowProj%corr_iter_max = 4
+    EddyFlowProj%corr_iter_tol = 0d0
+    if (EPPrjNTagFound(8)) &
+        EddyFlowProj%corr_iter_meth = nint(EPPrjNTags(8)%value) == 1
+    if (EPPrjNTagFound(9)) &
+        EddyFlowProj%corr_iter_max = nint(EPPrjNTags(9)%value)
+    if (EPPrjNTagFound(10)) &
+        EddyFlowProj%corr_iter_tol = EPPrjNTags(10)%value
+    !> One pass is the un-iterated case and is what "off" already means, so a
+    !> smaller number is a typed-in mistake rather than a setting. A negative
+    !> tolerance would exit before the first comparison.
+    if (EddyFlowProj%corr_iter_max < 1) EddyFlowProj%corr_iter_max = 4
+    if (EddyFlowProj%corr_iter_tol < 0d0) EddyFlowProj%corr_iter_tol = 0d0
+
     !> Select low-pass spectral correction method.
     select case (EPPrjCTags(23)%value(1:1))
         case ('0')

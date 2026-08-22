@@ -120,6 +120,15 @@ subroutine InitOutFiles(lEx)
         call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#]', separator)
 
+        !> Convergence of the iterative correction, worst gas of the period.
+        !> Twinned with init_outfiles_rp.f90 - the two full outputs carry the
+        !> same columns in the same order, and a check asserts they do.
+        if (EddyFlowProj%corr_iter_meth) then
+            call AddDatum(header1, 'iterative_correction,', separator)
+            call AddDatum(header2, 'corr_iter_dev', separator)
+            call AddDatum(header3, '[%]', separator)
+        end if
+
         !> Corrected fluxes (Level 3) and quality flags
         !> Tau
         call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)

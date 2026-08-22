@@ -314,6 +314,9 @@ configure_for_md_retrieval.o: \
 copy_file.o: \
 	copy_file.f90 \
 	m_common_global_var.o
+corr_iteration.o: \
+	corr_iteration.f90 \
+	m_common_global_var.o
 correction_factor_model.o: \
 	correction_factor_model.f90 \
 	interfaces.inc \

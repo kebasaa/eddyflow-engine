@@ -245,6 +245,17 @@ subroutine InitOutFiles_rp()
         call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#]', separator)
 
+        !> Convergence of the iterative correction, worst gas of the period.
+        !>
+        !> Written only when the loop runs, like the random-error columns
+        !> below: a project that does not iterate has no such number, and a
+        !> column of -9999 in every file would say nothing.
+        if (EddyFlowProj%corr_iter_meth) then
+            call AddDatum(header1, 'iterative_correction,', separator)
+            call AddDatum(header2, 'corr_iter_dev', separator)
+            call AddDatum(header3, '[%]', separator)
+        end if
+
         !> Corrected fluxes (Level 3) and quality flags
         !> Tau
         call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)

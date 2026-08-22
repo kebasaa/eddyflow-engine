@@ -72,6 +72,14 @@ program EddyFlowRP
     integer :: Nmin
     integer :: max_nsmpl
     integer :: pfn
+    !> Iterative correction: the pass counter, how many passes this project
+    !> asked for, the worst relative change at the last comparison, and the
+    !> previous pass's gas fluxes to compare against.
+    integer :: corr_pass
+    integer :: corr_passes
+    real(kind = dbl) :: iter_dev
+    real(kind = dbl) :: prev_gas_flux(GHGNumVar)
+    real(kind = dbl), external :: WorstRelativeChange
     integer :: err_cnt1
     integer :: sec
     integer :: faulty_col
@@ -2548,18 +2556,57 @@ program EddyFlowRP
 !            end if
 
             if (.not. EddyFlowProj%fcc_follows) then
-                !> Low-pass and high-pass spectral correction factors
-                call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                    Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
-                    Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
-                    Metadata%logger_swver, Meth%det, &
-                    RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
+                !> Spectral correction and the two flux levels, once or
+                !> repeatedly.
+                !>
+                !> The three depend on each other in a circle: the analytic
+                !> cospectrum is evaluated at z/L, z/L comes from the
+                !> corrected sensible heat flux, and that flux is what the
+                !> spectral correction produces. One pass leaves them
+                !> disagreeing - the correction was computed at a stability
+                !> the run then went on to revise.
+                !>
+                !> Iterating closes the circle. Nothing here accumulates:
+                !> Fluxes1_rp rebuilds Flux1 from Flux0 and BPCF, and
+                !> Fluxes23_rp rebuilds Flux2 and Flux3 from Flux1, so each
+                !> pass is a fresh correction of the same raw covariances
+                !> rather than a correction of a correction. Fluxes23_rp
+                !> already recomputes Ambient%zL, which is what the next pass
+                !> reads - the feedback path was there, only the repetition
+                !> was missing.
+                !>
+                !> Off by default and a single pass then, which is exactly
+                !> what this block did before.
+                iter_dev = error
+                corr_passes = 1
+                if (EddyFlowProj%corr_iter_meth) &
+                    corr_passes = EddyFlowProj%corr_iter_max
+                do corr_pass = 1, corr_passes
+                    if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
-                !> Calculate fluxes at Level 1
-                call Fluxes1_rp()
+                    !> Low-pass and high-pass spectral correction factors
+                    call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
+                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
+                        Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
+                        Metadata%logger_swver, Meth%det, &
+                        RPsetup%Tconst, corr_pass == 1, E2Col(u:GHGNumVar)%instr, 1)
 
-                !> Calculate fluxes at Level 2 and Level 3
-                call Fluxes23_rp()
+                    !> Calculate fluxes at Level 1
+                    call Fluxes1_rp()
+
+                    !> Calculate fluxes at Level 2 and Level 3
+                    call Fluxes23_rp()
+
+                    if (corr_pass > 1) then
+                        iter_dev = WorstRelativeChange(prev_gas_flux, Flux3%gas)
+                        !> A tolerance of zero never fires, which is EddyUH's
+                        !> behaviour: it runs every pass and tests nothing.
+                        if (EddyFlowProj%corr_iter_tol > 0d0 &
+                            .and. iter_dev /= error &
+                            .and. iter_dev < EddyFlowProj%corr_iter_tol) exit
+                    end if
+                end do
+                Essentials%corr_iter_dev = iter_dev
 
                 !> Footprint estimation
                 foot_model_used = Meth%foot(1:len_trim(Meth%foot))

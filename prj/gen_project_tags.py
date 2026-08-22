@@ -214,6 +214,14 @@ FIXED_TAGS = {
         #: itself - so it has to live in [Project], where the blanks left by
         #: the retired 5.0.0 keys are the only free numeric slots.
         7: "cosp_model",
+        #: Iterative correction. The spectral correction depends on z/L,
+        #: which depends on the corrected heat flux, which depends on the
+        #: spectral correction. EddyUH closes that loop with four passes;
+        #: this makes the loop optional and its length statable, and adds
+        #: the early exit EddyUH does not have. Read by BOTH applications.
+        8: "corr_iter_meth",
+        9: "corr_iter_max",
+        10: "corr_iter_tol",
         4: "cec_singular_band",
         5: "cec_stationarity_mode",
         6: "cec_min_flux_sigma",

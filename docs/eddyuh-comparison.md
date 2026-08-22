@@ -91,7 +91,7 @@ the spectral correction and the time lag, not by the density corrections.
 | Time lag | Windowed cross-covariance; `max\|cov\|` or **baseline-subtracted**; 3σ rejection against a monthly climatology; RH-classed H2O window | constant / maxcov&default / maxcov / automatic optimisation (RH classes for H2O) / **PWB block-bootstrap** | **gap (E)** + EddyFlow-only (PWB) |
 | Spectral, high-pass | Analytic per detrending mode (Aubinet et al. 2000) | Analytic (Moncrieff et al. 2004) | match |
 | Spectral, low-pass | Moncrieff 97 closed/open, sonic-only, first-order in-situ τ, Horst 97 analytic | Moncrieff 97, Massman 00, Horst 97, Ibrom 07, Fratini 12, custom | **EddyFlow-only** (Massman, Ibrom, Fratini) |
-| Correction application | **Iterative** with WPL and spectroscopy to < 1 % change, buoyancy flux recomputed each pass | Single pass | **differs** |
+| Correction application | **Iterative**, four passes, buoyancy flux recomputed each pass; no convergence test | Single pass, or the same loop under `corr_iter_meth` (off by default) | closed (L) |
 | Response time | In-situ ensemble-cospectral ratio, fitted per RH/WD/wind-speed class; H2O fitted `τ = a + b(RH/100)^c` | Ibrom-style in-situ cut-off frequency, RH-regressed (`src/src_fcc/fit_rh_to_cutoff.f90`) | match in purpose |
 | WPL | Webb et al. (1980) open path; dilution-only closed path | Webb et al. (1980), switchable | match |
 | Spectroscopic, closed path | **Peltola et al. (2014)** flux-level; **Chen et al. (2010)** point-by-point | — | **gap (B)** |
@@ -460,16 +460,40 @@ neither will the despiked series. At CH-LAE the point is moot in a different way
 `spi_method = 1` selects the consecutive-difference limit, which has **no
 EddyFlow equivalent at all**.
 
-### Iterative vs single-pass correction
+### Iterative correction — *implemented*
 
-`EC_Software_FluxCalc/EddyUH_Spectralcorr.m` runs the spectral correction, WPL
-and the spectroscopic correction in a loop until the flux changes by ≤ 1 %,
-recomputing the buoyancy flux — and hence z/L, and hence the model cospectrum's
-peak frequency — on every pass. EddyFlow applies each once
-(`src/src_rp/fluxes0_rp.f90`, `fluxes1_rp.f90`, `fluxes23_rp.f90`).
+`EddyUH.m:722-903` runs the spectral correction, WPL and the spectroscopic
+correction in a loop, recomputing the buoyancy flux — and hence z/L, and hence
+the model cospectrum's peak frequency — on every pass. EddyFlow applied each
+once; `corr_iter_meth` now makes the loop available, off by default.
+
+**Correcting what this document said before.** It read: *"runs the spectral
+correction, WPL and the spectroscopic correction in a loop until the flux
+changes by ≤ 1 %"*, and attributed the loop to `EddyUH_Spectralcorr.m`. Both
+halves are wrong.
+
+- The loop is in `EddyUH.m`, not `EddyUH_Spectralcorr.m`, which is one of the
+  things it calls.
+- **There is no convergence test.** The loop is `while indexITER <= 3` with
+  the counter incremented at the top, so it runs **exactly four times,
+  always**. Its only `break` (`EddyUH.m:843`) tests the urban footprint's
+  displacement height and roughness length, requires `indexITER > 3` — true on
+  the final pass only, where the loop ends anyway — and sits in a branch that
+  `EddyUH_footprint.m:151` makes unreachable by hard-nulling `fpr.fpr_h`.
+- The 1 % figure came from `covsvar`, which EddyUH computes as the percentage
+  change between the last two passes and **writes to its output**. Nothing
+  reads it back.
+
+EddyFlow's defaults therefore reproduce EddyUH exactly when the loop is
+switched on: four passes, `corr_iter_tol = 0`, no early exit. A positive
+tolerance is this program's own addition and departs from EddyUH — stopping at
+pass two is not the same answer as stopping at pass four.
 
 The difference is largest in strongly non-neutral conditions, where the
-correction factor is most sensitive to z/L.
+correction factor is most sensitive to z/L. At CH-LAE in June it is small: over
+48 periods the fluxes move by hundredths of a percent, the worst period is
+still changing by 0.35 % at the fourth pass, and only one period exceeds
+0.1 %.
 
 ### Tube attenuation has no COS coefficient
 
