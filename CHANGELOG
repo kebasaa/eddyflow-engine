@@ -1,6 +1,51 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: Billesbach (2011) random-shuffle noise floor, selectable as
+	               ru_meth = 4. Reordering a scalar at random destroys every real
+	               correlation with the vertical wind, so whatever covariance survives the
+	               shuffle was produced by noise alone; the mean of twenty such
+	               covariances - EddyUH's count, and the paper's - is a floor below which
+	               a flux cannot be told from zero. Reported through the existing
+	               rand_err_* columns, so nothing about the output layout changes.
+	               This is a NOISE FLOOR and not a sampling error. It answers whether a
+	               flux is resolvable, not how uncertain it is, and is systematically the
+	               smaller of the two: on the test dataset it runs at 6 to 13 per cent of
+	               Finkelstein and Sims for the strong fluxes and 33 to 54 per cent for
+	               nitrous oxide and carbonyl sulfide, which is the point - for a weak
+	               flux the instrument is most of the uncertainty.
+	               Four rather than three because three is already Mahrt (1998), and the
+	               interface maps its menu onto these numbers; renumbering would have
+	               silently changed the method of every project that states one.
+	- Fix: The Billesbach routine has been unreachable and unusable since it was
+	               written. It carried \todo Under development, had no arm in the dispatch,
+	               and had five faults, each of which produces numbers rather than an
+	               error:
+	               (1) Its indexing was transposed. Set is declared Set(N, M) - records
+	               down, variables across - and every other routine in the file indexes it
+	               Set(:, var); this one used Set(w, 1:N), reading row w across N columns
+	               of an array that has about seventy.
+	               (2) It stored its result nowhere. The shuffled covariance went into
+	               Stats%Cov and nothing read it back.
+	               (3) That same line overwrote live state. Stats%Cov is filled by
+	               BasicStats and read fifteen times by Fluxes0_rp a few hundred lines
+	               later, so every flux in the period would have been computed from
+	               shuffled data.
+	               (4) Its shuffle was biased. RandomBetween computed
+	               int((max - min) * x + min), which never returns max; its only caller is
+	               a Fisher-Yates loop where j must be able to equal i, and unable to, the
+	               element at i always moves - drawing from the permutations that leave
+	               nothing in place rather than from all of them.
+	               (5) Its generator was never seeded. InitRandomSeed is also dead code,
+	               so the sequence came from whatever gfortran seeds itself with, which
+	               since GCC 7 is the operating system: the same project over the same
+	               data would have published a different noise floor every run. It is now
+	               seeded once per run from a fixed value, which makes a run reproducible
+	               while still leaving successive periods independent draws.
+	               The routine also shuffles the scalar rather than the wind. Shuffling w
+	               once and reusing it for every gas is cheaper, and is what the old
+	               version did, but it makes every gas's estimate a draw from the same
+	               realisation - they would rise and fall together for no physical reason.
 	- New feature: A flux detection limit after Wienhold et al. (1994), off unless asked
 	               for. The cross-covariance of w with a scalar carries the flux in a peak
 	               near the transport lag and nothing but noise far from it, so the scatter

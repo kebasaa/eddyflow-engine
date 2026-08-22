@@ -473,6 +473,12 @@ subroutine WriteProcessingProjectVariables()
             RUsetup%meth = 'mann_lenschow_94'
         case(3)
             RUsetup%meth = 'mahrt_98'
+        case(4)
+            !> Billesbach (2011) random shuffle. Four rather than three
+            !> because three is already Mahrt and the interface maps its
+            !> menu onto these numbers; renumbering would silently change
+            !> the method of every project that states one.
+            RUsetup%meth = 'billesbach_11'
         case default
             RUsetup%meth = 'none'
     end select

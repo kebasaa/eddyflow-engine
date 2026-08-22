@@ -50,6 +50,11 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
         case('mann_lenschow_94')
             call IntegralTurbulenceScale(Set, size(Set, 1), size(Set, 2))
             call RU_Mann_Lenschow_04(nrow)
+        case('billesbach_11')
+            !> No integral turbulence scale: the shuffle destroys the
+            !> autocorrelation this would measure, and the estimate does not
+            !> use it. The other two need it because they integrate over lags.
+            call RU_Billesbach_11(Set, nrow, ncol)
         case('none')
             Essentials%rand_uncer(u:lastGas) = error
             Essentials%rand_uncer_LE = error
@@ -292,39 +297,125 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
 end subroutine RU_Mahrt_98
 !***************************************************************************
 !
-! \brief       Estimate random instrument noise (RIN) according to
-!              Billesbach (2011), Eq. 3
-! \author      Gerardo Fratini
+! \brief       Estimate the flux noise floor after Billesbach (2011), Eq. 3 -
+!              the "random shuffle" method.
+! \author      Gerardo Fratini, repaired by Jonathan Muller
+!
 ! \note
-! \sa
-! \bug
-! \deprecated
-! \test
-! \todo        Under development
+! Reorder a scalar at random and its covariance with w should vanish: the
+! shuffle destroys every real correlation, so whatever covariance survives is
+! produced by noise alone. Repeat, and the average of those magnitudes is a
+! floor below which a flux cannot be told from zero.
+!
+! This is NOT a sampling error and is not interchangeable with Finkelstein &
+! Sims (2001), which answers the different question of how uncertain a
+! measured flux is. Billesbach's estimate is dominated by instrument noise and
+! is systematically the smaller of the two.
+!
+! The statistic is the mean of the ABSOLUTE covariances over the realisations,
+! which is what Billesbach specifies and what EddyUH computes
+! (EC_Software_Preproc/EddyUH_unc_Preproc.m, lines 99-116). Note that this is
+! not a standard deviation: for a zero-mean Gaussian, E|X| is sqrt(2/pi) times
+! sigma, so the value runs about four fifths of the scatter it describes.
+!
+! \sa          RU_Finkelstein_Sims_01, which fills the same slot for the
+!              sampling error.
 !***************************************************************************
-subroutine RIN_Billesbach_11(Set, N, M)
+subroutine RU_Billesbach_11(Set, N, M)
     use m_rp_global_var
     implicit none
     !> in/out variables
     integer, intent(in) :: N
     integer, intent(in) :: M
-    real(kind = dbl), intent(inout) :: Set(N, M)
+    real(kind = dbl), intent(in) :: Set(N, M)
     !> local variables
+    !> Twenty, which is what EddyUH uses and enough to steady the mean. Fixed
+    !> rather than settable: unlike a window width it has no site-dependent
+    !> right answer - more realisations simply cost more and wobble less - and
+    !> the flat project-tag table has few free slots left to spend on it.
+    integer, parameter :: ntimes = 20
+    integer :: var
     integer :: i
-    integer :: ntimes = 1
-    real(kind = dbl) :: tmpW(N)
+    real(kind = dbl) :: shuffled(N)
+    real(kind = dbl) :: cov
+    real(kind = dbl) :: acc
+    real(kind = dbl), external :: LaggedCovarianceNoError
 
-    !> Calculate ntimes (given) times the relevant covariances
-    !> with 1 time series shuffled (w, so that shuffling is done only once)
-    tmpW = Set(w, 1:N)
-    do i = 1, ntimes
-        call RandomShuffle(tmpW, Set(w, 1:N), N)
-        call CovarianceMatrixNoError(Set, size(Set, 1), size(Set, 2), &
-            Stats%Cov, error)
+    call SeedShuffleOnce()
+
+    !> Same set of variables Finkelstein & Sims fills, for the same reason:
+    !> these are the covariances with w that become fluxes.
+    do var = u, lastGas
+        if (var == v .or. var == w) cycle
+        if (.not. E2Col(var)%present) then
+            Essentials%rand_uncer(var) = error
+            cycle
+        end if
+
+        acc = 0d0
+        do i = 1, ntimes
+            !> The scalar is shuffled, not w. Shuffling w once and reusing it
+            !> for every gas would be cheaper, and is what the unreachable
+            !> version of this routine did, but it makes every gas's estimate
+            !> a draw from the same realisation - they would rise and fall
+            !> together for no physical reason. Billesbach and EddyUH both
+            !> shuffle the scalar, once per gas per realisation.
+            call RandomShuffle(Set(1:N, var), shuffled, N)
+            cov = LaggedCovarianceNoError(Set(1:N, w), shuffled, N, 0, error)
+            if (cov == error) then
+                acc = error
+                exit
+            end if
+            acc = acc + dabs(cov)
+        end do
+
+        if (acc /= error) then
+            Essentials%rand_uncer(var) = acc / dble(ntimes)
+        else
+            Essentials%rand_uncer(var) = error
+        end if
     end do
-    !> Reset w to its original shape
-    Set(w, 1:N) = tmpW
-end subroutine RIN_Billesbach_11
+end subroutine RU_Billesbach_11
+
+!***************************************************************************
+!
+! \brief       Put the shuffle's generator into a known state, once per run.
+! \author      Jonathan Muller
+!
+! \note
+! Without this the sequence comes from whatever gfortran seeds itself with,
+! which since GCC 7 is drawn from the operating system: the same project over
+! the same data would then publish a different noise floor every time it ran.
+! A fixed seed makes the run reproducible, and because it is set once rather
+! than per period, successive periods still draw independent permutations.
+!
+! Deliberately not a setting. It is not a knob anyone should want to turn -
+! two different seeds are two equally valid answers - and the point of fixing
+! it is that the number in the output file can be checked by running again.
+!
+! random_number is used nowhere else in the engine, so seeding it here reaches
+! nothing but the shuffle.
+!***************************************************************************
+subroutine SeedShuffleOnce()
+    use m_rp_global_var
+    implicit none
+    !> Arbitrary, and only has to stay put. Shares the spirit of PWBSetup's
+    !> default seed without borrowing its value, which belongs to a different
+    !> method.
+    integer, parameter :: base = 20110
+    integer :: n
+    integer :: i
+    integer, allocatable :: seed(:)
+    logical, save :: seeded = .false.
+
+    if (seeded) return
+    call random_seed(size = n)
+    allocate(seed(n))
+    seed = [(base + 37 * i, i = 0, n - 1)]
+    call random_seed(put = seed)
+    deallocate(seed)
+    seeded = .true.
+end subroutine SeedShuffleOnce
 !***************************************************************************
 !
 ! \brief       shuffle array elements randomly
@@ -369,14 +460,18 @@ end subroutine RandomShuffle
 
 !***************************************************************************
 !
-! \brief       Generate a random number between min and max
+! \brief       Generate a random integer in [min, max], both ends included.
 ! \author      Gerardo Fratini
+!
 ! \note
-! \sa
-! \bug
-! \deprecated
-! \test
-! \todo        Under development
+! Both ends, which it did not use to give. The form was
+! `int((max - min) * x + min)` with x in [0,1), which spans min to max-1 and
+! can never return max. Its only caller is the Fisher-Yates loop in
+! RandomShuffle, where j must be able to equal i or the element at i is
+! guaranteed to move: that draws uniformly from the permutations in which no
+! element stays put, not from all of them, and the shuffle it produces is
+! biased. Harmless while the shuffle was unreachable, and not while it feeds
+! a published noise floor.
 !***************************************************************************
 integer function RandomBetween(min, max)
     use m_rp_global_var
@@ -386,7 +481,10 @@ integer function RandomBetween(min, max)
     real(kind = dbl) :: x
 
     call random_number(x)
-    RandomBetween =int((max - min) * x + min)
+    RandomBetween = min + int(dble(max - min + 1) * x)
+    !> x < 1 by contract, so this cannot trigger; it is here because the cost
+    !> of being wrong is an out-of-bounds swap in the caller.
+    if (RandomBetween > max) RandomBetween = max
 end function RandomBetween
 
 !***************************************************************************
