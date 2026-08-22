@@ -1,6 +1,35 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: A gas whose cross-covariance cannot be told from noise may take
+	               its time lag from another gas on the same analyser instead of
+	               inventing one of its own: tlag_borrow_meth, off by default. Species
+	               drawn down one tube share a transport delay, so the strongest peak
+	               in the bundle is the best estimate of it. Nemitz et al. (2018) make
+	               this the rule for trace gases measured alongside a well-resolved
+	               one, which is exactly the case here - carbonyl sulfide, nitrous
+	               oxide and carbon dioxide on a single MIRO.
+	               The test is the flux detection limit, so this needs detlim_meth =
+	               wienhold_94 and the engine refuses the combination without it. A gas
+	               whose |covariance| stands at least tlag_borrow_snr detection limits
+	               above the noise - 3 by default, the paper's value - keeps its own
+	               lag and is eligible to donate. One that does not, or whose maximum
+	               landed on an end of the search window where a maximisation goes when
+	               there is no interior peak to find, borrows from the eligible gas on
+	               the same analyser with the highest ratio. The trusted set is
+	               snapshotted before any borrowing, so a borrowed lag can never itself
+	               become a donor, and the outcome does not depend on column order.
+	               Water is never borrowed for or from: its lag is the one every other
+	               gas's water covariance is taken at, and moving it would move the
+	               water term of every WPL correction with it.
+	               A borrowed lag is flagged in <gas>_def_timelag exactly as the
+	               nominal fallback is - it is not a detected lag - and the donor is
+	               named in the run log.
+	               On the test day, with the baseline-subtracted maximisation on, 31 of
+	               the 144 gas-periods borrowed and the within-period spread of the
+	               three MIRO lags fell from 0.75 s to 0.40 s. Carbonyl sulfide clears
+	               three detection limits in only 10 of 48 periods there, which is the
+	               honest measure of how little of its lag was ever its own.
 	- New feature: The time lag may be chosen by the largest departure of the
 	               cross-covariance from the straight line joining the two ends of the
 	               search window, rather than by its largest absolute value:

@@ -429,6 +429,18 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         !> this measures no longer exists.
         call FluxDetectionLimit(Set, nrow, ncol)
 
+        !> Conditional borrowing, Nemitz et al. (2018). After the detection
+        !> limit, which it tests against, and before the shift below, which
+        !> is what makes a borrowed lag take effect.
+        !>
+        !> The limits it reads were measured at each gas's pre-borrow lag.
+        !> That is not worth recomputing: the windows sit a hundred seconds
+        !> off the peak by default, and moving their centre by the second or
+        !> two a borrow changes it by leaves the scatter out there the same.
+        !> ActTLag is deliberately not passed: it reports what each gas's own
+        !> maximisation found, and borrowing must leave that alone.
+        call BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
+            TLag, DefTlagUsed)
     end if
 
     if (.not. skip_apply) then

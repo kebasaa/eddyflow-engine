@@ -1418,6 +1418,13 @@ module m_typedef
         !> maximisation, not a method of its own: it changes which lag is
         !> picked and nothing about the covariance reported there.
         logical :: covmax_debaseline
+        !> Nemitz et al. (2018): a gas whose covariance at its own detected
+        !> lag does not clear tlag_borrow_snr times its detection limit, or
+        !> whose lag sits on an end of the search window, takes the lag of a
+        !> gas that shares its analyser instead. Needs detlim_meth on, since
+        !> there is nothing to compare against otherwise.
+        logical :: tlag_borrow_meth
+        real(kind = dbl) :: tlag_borrow_snr
         !> Flux detection limit after Wienhold et al. (1994): the standard
         !> deviation of the cross-covariance function measured away from the
         !> peak, where there is no flux signal, taken as the noise floor of

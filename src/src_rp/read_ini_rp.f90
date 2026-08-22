@@ -822,6 +822,14 @@ subroutine WriteVariablesRP()
     !> array happens to hold.
     RPSetup%covmax_debaseline = SCTagFound(79) .and. SCTags(79)%value(1:1) == '1'
 
+    !> Conditional lag borrowing, Nemitz et al. (2018). Three times the
+    !> detection limit is the paper's threshold and EddyUH's.
+    RPSetup%tlag_borrow_meth = SCTagFound(80) .and. SCTags(80)%value(1:1) == '1'
+    RPSetup%tlag_borrow_snr = 3d0
+    if (SNTagFound(60)) RPSetup%tlag_borrow_snr = SNTags(60)%value
+    !> A non-positive multiplier would make every gas borrow, which is not a
+    !> setting anyone means; it is a typed-in zero.
+    if (RPSetup%tlag_borrow_snr <= 0d0) RPSetup%tlag_borrow_snr = 3d0
 
     !> Flux detection limit, Wienhold et al. (1994).
     !>

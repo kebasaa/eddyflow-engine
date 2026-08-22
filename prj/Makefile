@@ -232,6 +232,10 @@ biomet_units_conversions.o: \
 blank_missing_values.o: \
 	blank_missing_values.f90 \
 	m_common_global_var.o
+borrow_timelag.o: \
+	borrow_timelag.f90 \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 bpcf_additional_horst_lenschow_09.o: \
 	bpcf_additional_horst_lenschow_09.f90 \
 	m_common_global_var.o

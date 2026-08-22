@@ -178,12 +178,17 @@ FIXED_TAGS = {
         #: only - it acts on the raw series, and FCC never redoes it.
         58: "spectro_meth",
         59: "spectro_water",
+        #: Nemitz et al. (2018) conditional lag borrowing: how many detection
+        #: limits the covariance must clear before the gas keeps its own lag.
+        60: "tlag_borrow_snr",
     },
     "RP.SCTags": {
         #: Modifier on covariance maximisation, beside covmax_var (59) and
         #: covmax_stocdet (60) in meaning if not in index - those are taken,
         #: so this uses one of the blanks at 79-82.
         79: "covmax_debaseline",
+        #: Whether an unresolvable lag is taken from a tube-mate at all.
+        80: "tlag_borrow_meth",
     },
     "EPPrjNTags": {
         4: "cec_singular_band",

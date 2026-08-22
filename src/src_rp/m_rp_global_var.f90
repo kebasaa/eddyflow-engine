@@ -297,7 +297,7 @@ module m_rp_global_var
          SNTags(57)%Label  / 'detlim_window_s' / &
          SNTags(58)%Label  / 'spectro_meth' / &
          SNTags(59)%Label  / 'spectro_water' / &
-         SNTags(60)%Label  / '' / &
+         SNTags(60)%Label  / 'tlag_borrow_snr' / &
          SNTags(61)%Label  / '' / &
          SNTags(62)%Label  / '' / &
          SNTags(63)%Label  / '' / &
@@ -2319,7 +2319,7 @@ module m_rp_global_var
          SCTags(77)%Label  / 'out_raw_w' / &
          SCTags(78)%Label  / 'out_raw_ts' / &
          SCTags(79)%Label  / 'covmax_debaseline' / &
-         SCTags(80)%Label  / '' / &
+         SCTags(80)%Label  / 'tlag_borrow_meth' / &
          SCTags(81)%Label  / '' / &
          SCTags(82)%Label  / '' / &
          SCTags(83)%Label  / 'out_raw_t_air' / &
