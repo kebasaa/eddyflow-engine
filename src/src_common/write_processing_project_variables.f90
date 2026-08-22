@@ -282,6 +282,33 @@ subroutine WriteProcessingProjectVariables()
             EddyFlowProj%lf_meth = 'analytic'
     end select
 
+    !> Which analytic cospectrum the corrections are integrated against.
+    !> A modifier on every analytic method rather than a method of its own -
+    !> Moncrieff, Massman, Horst, Ibrom and Fratini all weight a transfer
+    !> function by this shape, and all of them keep working whichever is
+    !> chosen. Absent means the shape this program has always used, so an
+    !> older project is unaffected.
+    EddyFlowProj%cosp_model = 'moncrieff_97'
+    if (EPPrjNTagFound(7)) then
+        select case (nint(EPPrjNTags(7)%value))
+            case (1)
+                EddyFlowProj%cosp_model = 'kaimal_72'
+            case (2)
+                EddyFlowProj%cosp_model = 'sakai_01'
+            case (3)
+                EddyFlowProj%cosp_model = 'su_03'
+            case (4)
+                EddyFlowProj%cosp_model = 'moraes_08'
+            case (5)
+                EddyFlowProj%cosp_model = 'kristensen_97'
+            case default
+                !> Including 0, and including a value from some later version
+                !> this one does not know. Falling back to the shape every
+                !> correction was written against is the safe direction.
+                EddyFlowProj%cosp_model = 'moncrieff_97'
+        end select
+    end if
+
     !> Select low-pass spectral correction method.
     select case (EPPrjCTags(23)%value(1:1))
         case ('0')

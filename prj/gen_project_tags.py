@@ -191,6 +191,11 @@ FIXED_TAGS = {
         80: "tlag_borrow_meth",
     },
     "EPPrjNTags": {
+        #: Which analytic cospectrum every spectral correction integrates
+        #: against. Read by BOTH applications - RP runs the analytic methods
+        #: itself - so it has to live in [Project], where the blanks left by
+        #: the retired 5.0.0 keys are the only free numeric slots.
+        7: "cosp_model",
         4: "cec_singular_band",
         5: "cec_stationarity_mode",
         6: "cec_min_flux_sigma",

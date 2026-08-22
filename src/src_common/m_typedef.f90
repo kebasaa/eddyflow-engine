@@ -783,6 +783,10 @@ module m_typedef
         character(32) :: master_sonic
         character(32) :: lf_meth
         character(32) :: hf_meth
+        !> The analytic cospectrum every spectral correction is
+        !> integrated against. 'moncrieff_97' is the shape this program
+        !> has always used and the only one an unstated project gets.
+        character(32) :: cosp_model
         character(32) :: err_label
         character(32) :: run_mode
         character(32) :: run_env

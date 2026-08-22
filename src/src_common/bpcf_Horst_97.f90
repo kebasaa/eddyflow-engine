@@ -91,7 +91,7 @@ subroutine BPCF_Horst97(measuring_height, displ_height, loc_var_present, wind_sp
         kf(:) = nf(:) * dabs((measuring_height - displ_height) / wind_speed)
 
         !> analytical cospectra after Moncrieff et al. (1997, JH)
-        call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
+        call CospectralModel(nf, kf, Cospectrum, zL, nfreq)
 
         !> combined tf (only high-pass analytic)
         !> One call per configured gas. The w_* covariance labels carry the

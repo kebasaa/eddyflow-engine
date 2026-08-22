@@ -157,6 +157,8 @@ module m_eddypro_import
     !>
     !> Keep this in step with the readers, which own these numbers:
     !>   cec_*                    write_processing_project_variables.f90:75-81
+    !>   cosp_model               write_processing_project_variables.f90, the
+    !>                            unconditional 'moncrieff_97' above the tag
     !>   automatic_spectra_config read_ini_fcc.f90:334
     !>   rot_pf_assessment_only   read_ini_rp.f90:500
     !>   tlag_assessment_only     read_ini_rp.f90:589
@@ -195,14 +197,14 @@ module m_eddypro_import
     !> pf_sect_* and wdf_sect_* are EddyPro keys in any case, present since
     !> the fork, and are copied through whenever the source states them.
     !***********************************************************************
-    integer, parameter :: nProjectDefaults = 24
+    integer, parameter :: nProjectDefaults = 25
     !> The type spec pads: these section names are parameters of their own
     !> natural lengths, and an array constructor needs them equal.
     character(40), parameter :: defaultSect(nProjectDefaults) = [ &
         character(40) :: &
         sectProject, sectProject, sectProject, sectProject, &
         sectProject, sectProject, sectProject, sectProject, &
-        sectProject, sectProject, &
+        sectProject, sectProject, sectProject, &
         sectSpectral, sectSpectral, &
         sectTilt, &
         sectTimelag, &
@@ -216,6 +218,7 @@ module m_eddypro_import
         'cec_min_valid             ', 'cec_signal_strength       ', &
         'cec_max_gap_fill          ', 'cec_max_stationarity      ', &
         'cec_singular_band         ', 'cec_stationarity_mode     ', &
+        'cosp_model                ', &
         'automatic_spectra_config  ', 'flux_run_mode             ', &
         'rot_pf_assessment_only    ', &
         'tlag_assessment_only      ', &
@@ -229,6 +232,7 @@ module m_eddypro_import
         '0       ', '0.000   ', '20.0    ', '5.0     ', &
         '90.0    ', '70.0    ', '4       ', '25.0    ', &
         '0.200   ', '0       ', &
+        '0       ', &
         '0       ', '0       ', &
         '0       ', &
         '0       ', &

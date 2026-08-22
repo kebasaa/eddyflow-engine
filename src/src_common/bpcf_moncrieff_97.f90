@@ -103,7 +103,7 @@ subroutine BPCF_Moncrieff97(measuring_height, displ_height, loc_var_present, &
     kf(:) = nf(:) * dabs((measuring_height - displ_height) / wind_speed)
 
     !> analytical co-spectra after Moncrieff et al. (1997, JH)
-    call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
+    call CospectralModel(nf, kf, Cospectrum, zL, nfreq)
 
     !> analytic low-pass transfer function
     call AnalyticLowPassTransferFunction(nf, size(nf), w, LocInstr, &

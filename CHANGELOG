@@ -1,6 +1,59 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: The analytic cospectrum every spectral correction is integrated
+	               against can now be chosen: cosp_model, defaulting to the
+	               Moncrieff et al. (1997) curve this program has always used.
+	               Kaimal et al. (1972), Sakai et al. (2001), Su et al. (2003),
+	               Moraes et al. (2008) and Kristensen et al. (1997) are the
+	               alternatives.
+	               It is a MODIFIER on whichever correction method is selected, not
+	               a method of its own. Every analytic path - Moncrieff, Massman,
+	               Horst, Ibrom, Fratini and the low-pass-only case - weights a
+	               transfer function by this shape, so it decides how much of the
+	               flux is assumed to sit where the instrument attenuates, and so
+	               how large the correction comes out. On the analytic regression
+	               fixture the six models spread the gas correction factors from
+	               1.0170 to 1.0557 against Moncrieff's 1.0335 - about four
+	               percent of the correction, a few tenths of a percent of the
+	               flux.
+	               Only the SHAPE matters: the factor is IntCO / IntTFCO, a ratio
+	               of two integrals of the same cospectrum, so any constant
+	               multiplying it divides out. That is why Kristensen's 2*pi/z
+	               prefactor is dropped, and why the numerically integrated
+	               normalisation EddyUH applies to it - which depends on hard-coded
+	               indices into whatever frequency vector it is handed - is not
+	               reproduced. Neither could change a correction factor.
+	               The Reynolds stress keeps Moncrieff's momentum cospectrum
+	               whichever option is chosen. Sakai, Su, Moraes and Kristensen are
+	               scalar cospectra with no momentum form, and pairing a chosen
+	               scalar model with an unrelated momentum one for some options and
+	               not others would be worse than not offering the choice. Tau_scf
+	               is identical across all six on the fixture, which is the check
+	               that this holds.
+	               Four of the six have no stability branch at all - a single form
+	               EddyUH applies at any zL, and this does the same. Under stable
+	               stratification the cospectral peak moves to higher frequency, so
+	               a neutral-form model puts too little flux there and will
+	               UNDERSTATE the high-frequency loss. Said in the interface
+	               tooltip as well.
+	               Worth knowing: EddyUH's CMoore, after Moore (1986), is
+	               term-for-term the curve this program calls Moncrieff et al.
+	               (1997) - scalar and momentum both. The two names are one
+	               cospectrum. Kaimal et al. (1972) is a genuinely different curve,
+	               and different again from the column the spectral assessment
+	               output labels kaimal_cosp, which kaimal() in kaimal_models.f90
+	               computes and which is also Moore's.
+	               The formulae are EddyUH's modelcospectra.m, checked against it
+	               literal by literal in the static check. EddyUH uses them for
+	               diagnostic plots, not for its own correction - it corrects
+	               against measured and fitted cospectra - so this is EddyUH's
+	               model library and not EddyUH's method.
+	               With the key absent the output is byte-identical to the previous
+	               engine on base_n_gas_analytic and base_5gas: the dispatcher
+	               calls the Moncrieff routine unconditionally and its select has
+	               no branch for moncrieff_97, so the default cannot be reached
+	               through the selector at all.
 	- New feature: A gas whose cross-covariance cannot be told from noise may take
 	               its time lag from another gas on the same analyser instead of
 	               inventing one of its own: tlag_borrow_meth, off by default. Species

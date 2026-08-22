@@ -51,6 +51,9 @@ subroutine ConfigureForExpress
     Meth%qcflag = 'mauder_foken_04'
     Meth%foot = 'kljun_04'
     EddyFlowProj%hf_meth = 'moncrieff_97'
+    !> Express is a fixed configuration, so it states the cospectral
+    !> shape rather than inheriting whatever the project asked for.
+    EddyFlowProj%cosp_model = 'moncrieff_97'
     EddyFlowProj%wpl  = .true.
     RUsetup%meth = 'none'
     RPsetup%bu_corr = 'none'
