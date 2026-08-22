@@ -295,8 +295,8 @@ module m_rp_global_var
          SNTags(55)%Label  / 'detlim_meth' / &
          SNTags(56)%Label  / 'detlim_offset_s' / &
          SNTags(57)%Label  / 'detlim_window_s' / &
-         SNTags(58)%Label  / '' / &
-         SNTags(59)%Label  / '' / &
+         SNTags(58)%Label  / 'spectro_meth' / &
+         SNTags(59)%Label  / 'spectro_water' / &
          SNTags(60)%Label  / '' / &
          SNTags(61)%Label  / '' / &
          SNTags(62)%Label  / '' / &

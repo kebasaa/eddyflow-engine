@@ -878,6 +878,9 @@ spectral_assessment_diagnostics.o: \
 spectral_density.o: \
 	spectral_density.f90 \
 	m_common_global_var.o
+spectroscopic_closed_path.o: \
+	spectroscopic_closed_path.f90 \
+	m_rp_global_var.o
 stationarity_test.o: \
 	stationarity_test.f90 \
 	m_rp_global_var.o

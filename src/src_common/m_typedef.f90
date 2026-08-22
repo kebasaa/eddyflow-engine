@@ -531,6 +531,15 @@ module m_typedef
         real(kind = dbl) :: max
         real(kind = dbl) :: a
         real(kind = dbl) :: b
+        !> Spectroscopic coefficients after Peltola et al. (2014), describing
+        !> how water vapour broadens this column's absorption lines:
+        !> the analyser's sensitivity scales as 1 + spectro_a*chi_q +
+        !> spectro_b*chi_q^2. Both zero - the default, and what every file
+        !> written before the key existed says - makes the correction the
+        !> identity. Distinct from a and b above, which are the linear
+        !> calibration gain and offset.
+        real(kind = dbl) :: spectro_a
+        real(kind = dbl) :: spectro_b
         real(kind = dbl) :: def_tl
         real(kind = dbl) :: min_tl
         real(kind = dbl) :: max_tl
@@ -1412,6 +1421,12 @@ module m_typedef
         character(32) :: detlim_meth
         real(kind = dbl) :: detlim_offset_s
         real(kind = dbl) :: detlim_window_s
+        !> Closed-path spectroscopic correction: 'none' or 'chen_10', the
+        !> point-by-point form. spectro_water additionally corrects each
+        !> hygrometer against its own reading, which is self-broadening and
+        !> is not part of the published Peltola result - see the routine.
+        character(32) :: spectro_meth
+        logical :: spectro_water
     end type RPsetupType
 
     type :: PrType

@@ -1,6 +1,61 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- Doc: The spectroscopic coefficients are stated to be SPECTROSCOPIC ONLY, and the
+	               conversion from EddyUH's is written down. Both packages divide by the
+	               same polynomial, 1 + a*chi_q + b*chi_q^2, with the water in mol/mol -
+	               the formulae are identical - but EddyUH folds the dilution into it:
+	               Functions_Library/dilucorr.m uses a = -1, b = 0 for the pure-dilution
+	               case, so every coefficient in its published table sits on a baseline of
+	               a = -1. EddyFlow corrects the density separately, and more fully, so
+	               its identity is a = b = 0.
+	               A published value entered unconverted therefore counts the dilution
+	               twice, and nothing about the two formulae makes that visible. The
+	               mapping is a_here = a_EddyUH + 1, b_here = b_EddyUH + a_EddyUH + 1, and
+	               the pure-dilution pair maps to (0, 0) exactly, as it must. EddyUH gives
+	               -1.39 for nitrous oxide on an Aerodyne cw-QCL, which is -0.39 here.
+	               Now in the routine's docstring, in both interface tooltips, and in
+	               docs/eddyuh-comparison.md with the whole published table converted.
+	               Pinned by static_checks/test_spectroscopic_static.py, because it is the
+	               kind of note that gets tidied away.
+	- New feature: The spectroscopic effect of water vapour is removed from closed-path
+	               laser analysers, off unless asked for. Water broadens the absorption
+	               lines a laser measures, so what it reports scales as 1 + a*chi_q +
+	               b*chi_q^2 (Peltola et al. 2014) and the correction is a division by
+	               that polynomial. Applied POINT BY POINT after Chen et al. (2010), using
+	               the water the same analyser read at the same sample - the broadening
+	               happens in the cell at that instant, so no time-lag alignment enters.
+	               Two settings in RawProcess_Settings, spectro_meth (0 none, 1 chen_10)
+	               and spectro_water, plus per-column coefficients col_<N>_spectro_a and
+	               col_<N>_spectro_b in the metadata. All default to zero or off, and zero
+	               coefficients make the polynomial one, so a project and a metadata file
+	               written before any of this keep their numbers exactly.
+	               On the series and not on the flux, for three reasons. The mean and the
+	               covariance are corrected together and consistently. The full
+	               nonlinearity is kept rather than a first-order term. And it reaches
+	               gases reported as a mixing ratio - which Level 2 returns early on, so a
+	               flux-level correction placed with the density terms would do NOTHING
+	               for a laser reporting mixing ratios, the common case for carbonyl
+	               sulfide and nitrous oxide and exactly the case this is for.
+	               EddyUH's flux-level form folds the dilution in with the spectroscopy,
+	               because its own WPL runs first and the formula partly undoes it;
+	               substituting one into the other, the dilution cancels exactly and what
+	               is left is the division above. EddyFlow's WPL is a fuller formulation -
+	               it carries cell temperature and pressure terms EddyUH's closed-path WPL
+	               does not - so only the spectroscopic part is taken and the density work
+	               is left where it already is.
+	               With a = -0.30 at this site's humidity the reported mixing ratio moves
+	               0.45 %, which is what 1/(1 - 0.30*0.015) is; the flux moves 0.7 % for
+	               carbonyl sulfide and 1.8 % for carbon dioxide, the difference being the
+	               cross term, which is proportionally larger the smaller the flux.
+	- New feature: The water channel can be corrected against its own reading, as
+	               spectro_water, off by default. This is self-broadening and is NOT part
+	               of the published Peltola et al. result, which derives the effect of
+	               water on another gas's lines. EddyUH corrects it too, with a flux-level
+	               coefficient whose derivation its own source comment says is not
+	               published anywhere; offered here in the same point-by-point form as
+	               every other column, behind its own switch, and labelled as such in the
+	               interface so that nobody acquires it by accident.
 	- New feature: Billesbach (2011) random-shuffle noise floor, selectable as
 	               ru_meth = 4. Reordering a scalar at random destroys every real
 	               correlation with the vertical wind, so whatever covariance survives the

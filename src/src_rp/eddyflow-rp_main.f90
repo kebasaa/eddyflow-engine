@@ -2189,6 +2189,13 @@ program EddyFlowRP
                 pwb_raw_detection_done = .true.
             end if
 
+            !> Remove the spectroscopic effect of water vapour, before the
+            !> conversion below and independently of it: what the analyser
+            !> reported is biased whatever units it reported in, and the bias
+            !> is there whether or not WPL was asked for.
+            call SpectroscopicClosedPath(E2Set, &
+                size(E2Set, 1), size(E2Set, 2), .true.)
+
             !> Convert to mixing ratios (if WPL requested, and if the case)
             if (EddyFlowProj%wpl) &
                 call PointByPointToMixingRatio(E2Set, &

@@ -421,7 +421,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
 
     FileInterpreter%file_with_text = .false.
     leap_ac_col = 7
-    leap_an_col = 9
+    leap_an_col = 11
     init_ac_col = 90 - leap_ac_col
     init_an_col = 130 - leap_an_col
     LocCol%var = 'none'
@@ -496,6 +496,16 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             LocCol(i)%max    = dble(ANTags(init_an_col + i*leap_an_col + 1)%value)
             LocCol(i)%a      = dble(ANTags(init_an_col + i*leap_an_col + 2)%value)
             LocCol(i)%b      = dble(ANTags(init_an_col + i*leap_an_col + 3)%value)
+            !> Spectroscopic coefficients, Peltola et al. (2014). Absent means
+            !> zero, which makes the correction the identity - so a metadata
+            !> file written before this key existed declares, correctly, that
+            !> the analyser has no water-broadening term to remove.
+            LocCol(i)%spectro_a = 0d0
+            LocCol(i)%spectro_b = 0d0
+            if (ANTagFound(init_an_col + i*leap_an_col + 9)) &
+                LocCol(i)%spectro_a = dble(ANTags(init_an_col + i*leap_an_col + 9)%value)
+            if (ANTagFound(init_an_col + i*leap_an_col + 10)) &
+                LocCol(i)%spectro_b = dble(ANTags(init_an_col + i*leap_an_col + 10)%value)
             LocCol(i)%def_tl = dble(ANTags(init_an_col + i*leap_an_col + 4)%value)
             LocCol(i)%min_tl = dble(ANTags(init_an_col + i*leap_an_col + 5)%value)
             LocCol(i)%max_tl = dble(ANTags(init_an_col + i*leap_an_col + 6)%value)

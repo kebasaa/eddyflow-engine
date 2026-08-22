@@ -174,6 +174,10 @@ FIXED_TAGS = {
         55: "detlim_meth",
         56: "detlim_offset_s",
         57: "detlim_window_s",
+        #: Closed-path spectroscopic correction, Peltola et al. (2014). RP
+        #: only - it acts on the raw series, and FCC never redoes it.
+        58: "spectro_meth",
+        59: "spectro_water",
     },
     "EPPrjNTags": {
         4: "cec_singular_band",

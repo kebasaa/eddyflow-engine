@@ -846,6 +846,22 @@ subroutine WriteVariablesRP()
         RPSetup%detlim_window_s = 50d0
     end if
 
+    !> Closed-path spectroscopic correction, Peltola et al. (2014), applied
+    !> point by point after Chen et al. (2010). Off unless asked for, and off
+    !> for the water channel within that, because correcting a hygrometer
+    !> against its own reading is not part of the published result.
+    RPSetup%spectro_meth = 'none'
+    RPSetup%spectro_water = .false.
+    if (SNTagFound(58)) then
+        select case (nint(SNTags(58)%value))
+            case (1)
+                RPSetup%spectro_meth = 'chen_10'
+            case default
+                RPSetup%spectro_meth = 'none'
+        end select
+    end if
+    if (SNTagFound(59)) RPSetup%spectro_water = nint(SNTags(59)%value) == 1
+
     !> Biomet measurements
     select case (SCTags(61)%value(1:len_trim(SCTags(61)%value)))
         case('comma')
