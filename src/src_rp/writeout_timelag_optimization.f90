@@ -41,7 +41,13 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     integer, intent(in) :: ncls
     integer, intent(in) :: actn(M)
     real(kind = dbl), intent(in) :: cls_size
-    integer, intent(out) :: h2o_n(ncls)
+    !> READ here, never written - so intent(in). It was intent(out), which
+    !> makes a dummy undefined on entry: OptimizeTimelags fills the caller's
+    !> array with the per-class counts, and this declaration then threw them
+    !> away and printed whatever was on the stack. The class_num column came
+    !> out as values like 1818717765, which is 0x6C696D45 - text read as an
+    !> integer. Inherited from the EddyPro 6.2.2 fork.
+    integer, intent(in) :: h2o_n(ncls)
     integer, external :: CreateDir
     !> local variables
     integer :: cls
@@ -124,7 +130,10 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     if (wsl >= firstGas .and. ncls > 1) then
         if (PwbAggregateSummary) call WritePwbProvenance(uto, wsl)
         write(uto, '(a, i4)') 'H2O_timelag_determinations_as_a_function_of_relative_humidity'
-        write(uto, '(a, i4)') 'Classes with numerosity < 30 are inferred (see software documentation)'
+        !> Built from the parameter rather than spelt out, so the sentence
+        !> cannot drift away from the gate again.
+        write(uto, '(a, i0, a)') 'Classes with numerosity < ', &
+            toMinH2OClassN, ' are inferred (see software documentation)'
         write(uto,'(a)')             'class     RH-range       med_h2o       min_h2o       max_h2o     class_num'
         do cls = 1, ncls
             write(min, '(i4)') nint((cls - 1) * cls_size)

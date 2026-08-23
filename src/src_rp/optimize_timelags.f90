@@ -55,7 +55,9 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     integer :: first
     integer :: last
     integer :: nup, ndw
-    integer, parameter :: min_numerosity = 15
+    !> The report prints this number, so it lives in m_typedef where both
+    !> can reach it.
+    integer, parameter :: min_numerosity = toMinH2OClassN
     real(kind = dbl) :: medx
     real(kind = dbl) :: medup, meddw
     real(kind = dbl), allocatable :: tmpx(:)
@@ -77,6 +79,16 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     !> runs; slot six is water only when record two holds it.
     wsl = PrimaryWaterOutSlot()
     E2Col(wsl)%present = .true.
+
+    !> Every class starts at nothing counted, before the gas loop rather than
+    !> inside the RH block below - h2o_n is intent(out), so this routine owes
+    !> the caller a defined array on EVERY path, and the RH block is reached
+    !> only when the water gas has determinations to classify. The guard at
+    !> "if (N <= 0) cycle" skips it for a water gas with none, and the counts
+    !> then stayed undefined all the way into the report, which printed the
+    !> stack. Zero is also the true answer for such a class.
+    h2o_n = 0
+
     do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             !> All gases, including H2O, are treated here

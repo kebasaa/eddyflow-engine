@@ -167,6 +167,12 @@ module m_typedef
 
     integer, parameter :: MaxGasClasses = 12
     integer, parameter :: toMaxH2OClass = 20
+    !> How many time-lag determinations an RH class needs before its lag is
+    !> fitted rather than interpolated from its neighbours. Shared, because
+    !> the report states this number in words and used to state 30 while the
+    !> optimiser used 15 - a discrepancy nobody could see while the count
+    !> column beside it printed uninitialised memory.
+    integer, parameter :: toMinH2OClassN = 15
     integer, parameter :: MaxNumWSect = 36
     integer, parameter :: MaxNumWdfSectors = 16
 

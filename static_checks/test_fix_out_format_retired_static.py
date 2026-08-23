@@ -199,8 +199,15 @@ class TheTagSlotIsBlankedNotDeleted(unittest.TestCase):
 
 class NoFixtureStillSetsIt(unittest.TestCase):
     def test_no_project_file_carries_the_key(self):
+        #> Fixtures only. run.sh writes run_ref/run_chk copies of whichever
+        #> fixture it is running into the same directory - they are gitignored
+        #> scratch, and one of them carries whatever the fixture it was copied
+        #> from carried. Counting them made this check pass or fail on whether
+        #> anyone had run the harness lately, which is not a property of the
+        #> repository.
         offenders = [p.name for p in (ROOT / "tests/regression").glob("*.eddyflow")
-                     if "fix_out_format" in p.read_text(encoding="utf-8",
+                     if not p.name.startswith("run_")
+                     and "fix_out_format" in p.read_text(encoding="utf-8",
                                                         errors="replace")]
         self.assertFalse(
             offenders,
