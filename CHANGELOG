@@ -586,6 +586,51 @@
 	               delay, which for a gas at 16 s sampled 100 s before it is -84 s. The
 	               bounds now clamp both ends. A positive lag walks exactly the terms it
 	               always did, so nothing an existing caller asks for has moved.
+	- New feature: -j/--jobs splits the planar-fit and time-lag assessment pre-passes
+	               across worker processes. Both walk every flux averaging period in
+	               their range and append one record that depends on no other period's,
+	               so the range is cut into contiguous slices, each slice runs in a copy
+	               of eddyflow_rp, and the parent concatenates the slices in order and
+	               hands the result to the unchanged fit. Processes rather than threads:
+	               the period loop reaches most of the program's global state, and a
+	               process has its own copy of all of it by construction.
+	               -j 1 is the serial path this program has always taken; -j 0, and the
+	               absent switch, use every core. The parent takes the first slice
+	               itself, so it arrives at the fit with the state the loop establishes -
+	               SortWindBySector reads the north offset out of E2Col, which is filled
+	               when a raw file's metadata is read, and a parent that had skipped the
+	               loop binned every period into a sector rotated by the site's true
+	               offset.
+	               Planar fit and the aggregate time-lag optimiser come out byte-identical
+	               to the serial run: the records are fixed-size derived types with no
+	               allocatable components, written unformatted and read back by the same
+	               binary. On two days of CH-LAE the planar fit went 120 s to 22 s and the
+	               time-lag optimiser 200 s to 57 s, both on eight workers.
+	               The PWB cache pre-pass (tlag_meth=5, to_mode=1) is deliberately NOT
+	               split, and runs exactly as it does today. Its classifier decides a
+	               period partly from the last settled detection before it, and that
+	               chain has no time limit: the streaming classifier sets its flag once
+	               and never clears it.
+	               A lead-in was built and measured before this was settled. It works in
+	               principle - one S1_optimal detection is decided on the period's own
+	               bootstrap interval alone and overwrites the carried lag, origin and
+	               flag outright, so from the first S1 a cold worker and a serial run
+	               are in the same state. It does not work in practice, because the weak
+	               species never settle: over two days of CH-LAE, COS reached no settled
+	               detection in 103 periods and nitrous oxide reached two, so no lead-in
+	               of any length rebuilds their state.
+	               Splitting it anyway left every applied lag identical period for
+	               period, but moved donor attribution on 8 of 726 rows at one seam, and
+	               the aggregate summary resolved from those donor votes moved with it -
+	               two counts by one or two, one median lag by 0.05 s. Not worth having.
+	- Fix: A switch written after the project path on the command line was silently
+	               ignored. The argument loop read a value after every token, so the path
+	               swallowed whatever followed it, and the lowercasing of the path ran on
+	               the loop's own counter and left it past the end of the command line -
+	               which ended the loop there and hid the first problem behind the second.
+	               `eddyflow_rp <project> -e <home>` therefore ran with the default home
+	               directory, not the one asked for. A switch now consumes a value only
+	               when it takes one, and the loop reads to the end of the command line.
 
 8.0.0 (2026-08-20)
 

@@ -40,6 +40,10 @@ program EddyFlowRP
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
+    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
+        StartPrepassBatches, WaitPrepassBatches, &
+        WriteTlagBatchDump, MergeTlagBatchDumps, &
+        WritePfBatchDump, MergePfBatchDumps
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -72,6 +76,15 @@ program EddyFlowRP
     integer :: Nmin
     integer :: max_nsmpl
     integer :: pfn
+    !> How the two assessment pre-passes were split across worker processes.
+    !> 1 for a serial run, which is every run that did not ask for workers,
+    !> every run too short to be worth splitting, and every PWB cache pre-pass.
+    integer :: toWorkers
+    integer :: pfWorkers
+    integer :: sliceStart
+    integer :: sliceEnd
+    logical :: toParallel
+    logical :: pfParallel
     !> Iterative correction: the pass counter, how many passes this project
     !> asked for, the worst relative change at the last comparison, and the
     !> previous pass's gas fluxes to compare against.
@@ -601,6 +614,46 @@ program EddyFlowRP
             DynamicMetadata = ErrDynamicMetadata
             LastMetadataTimestamp = DateType(0, 0, 0, 0, 0)
             toInit = .true.
+
+            !> Every period in the range is read, reduced, and turned into one
+            !> record that depends on no other period's. So the range can be
+            !> cut into slices and each slice run in a copy of this program.
+            !> PlanPrepassBatches decides whether that is worth doing - it
+            !> never is for a worker, which would otherwise spawn workers of
+            !> its own, nor for a range too short to pay for the processes.
+            !> Not when the PWB cache is being generated: that pre-pass carries
+            !> the time-lag classifier's state from one period to the next, and
+            !> a slice starting cold cannot reproduce it. See the head of
+            !> prepass_parallel.f90 for why no lead-in fixes that.
+            call PlanPrepassBatches(toEndTimestampIndx - toStartTimestampIndx, &
+                .not. PwbCacheGenerate, toWorkers)
+
+            !> A worker was handed its slice on the command line. Narrowed
+            !> here rather than where the range was computed, so the arrays
+            !> above are still allocated for the whole range and the same
+            !> bounds checks hold in parent and worker alike.
+            if (BatchIndex > 0) then
+                toStartTimestampIndx = BatchSliceStart
+                toEndTimestampIndx = BatchSliceEnd
+                pcount = toStartTimestampIndx - 1
+            end if
+
+            !> The workers go first so they are already reading raw data while
+            !> this process works through the first slice. The parent takes a
+            !> slice rather than waiting: the code after the loop reads state
+            !> the loop establishes, and a parent that had skipped it would
+            !> reach that code with the state unset.
+            toParallel = toWorkers > 1
+            if (toParallel) then
+                call StartPrepassBatches('to', toStartTimestampIndx, &
+                    toEndTimestampIndx, toWorkers)
+                call PrepassSlice(toStartTimestampIndx, toEndTimestampIndx, &
+                    toWorkers, 1, sliceStart, sliceEnd)
+                toStartTimestampIndx = sliceStart
+                toEndTimestampIndx = sliceEnd
+                pcount = toStartTimestampIndx - 1
+            end if
+
             to_periods_loop: do
                 pcount = pcount + 1
 
@@ -963,6 +1016,26 @@ program EddyFlowRP
             write(ulog, '(a)')
             call LogSay(' Done.')
 
+            !> Now collect what the other slices produced and append them to
+            !> this one, which leaves the dataset in period order - the order
+            !> a single loop over the whole range would have built it in.
+            if (toParallel) then
+                call WaitPrepassBatches('to', toWorkers)
+                call MergeTlagBatchDumps('to', toWorkers, TimelagOpt, &
+                    TimelagOptSize, ton)
+            end if
+
+            !> A worker's job ends here: it hands back the records its slice
+            !> produced and stops. The fit itself - OptimizeTimelags, the
+            !> cache post-processing - is done once, by the parent, over every
+            !> slice concatenated, so a worker doing it too would be both
+            !> wasted work and a second answer nobody reads.
+            if (BatchIndex > 0) then
+                call WriteTlagBatchDump(TimelagOpt, TimelagOptSize, ton)
+                call LogSay(' Time-lag pre-pass slice finished.')
+                stop ''
+            end if
+
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.    *************************
             !**** NOW STARTS TIME LAG OPT CALCULATIONS *************************
@@ -1105,6 +1178,31 @@ program EddyFlowRP
             day   = 0
             DynamicMetadata = ErrDynamicMetadata
             LastMetadataTimestamp = DateType(0, 0, 0, 0, 0)
+
+            !> Same split as the time-lag pre-pass above, and simpler: a
+            !> planar-fit period contributes three numbers - the mean wind -
+            !> and nothing it computes depends on the period before it, so
+            !> there is no warm-up to read and the concatenation is exact.
+            call PlanPrepassBatches(pfEndTimestampIndx - pfStartTimestampIndx, &
+                .true., pfWorkers)
+
+            if (BatchIndex > 0) then
+                pfStartTimestampIndx = BatchSliceStart
+                pfEndTimestampIndx = BatchSliceEnd
+                pcount = pfStartTimestampIndx - 1
+            end if
+
+            pfParallel = pfWorkers > 1
+            if (pfParallel) then
+                call StartPrepassBatches('pf', pfStartTimestampIndx, &
+                    pfEndTimestampIndx, pfWorkers)
+                call PrepassSlice(pfStartTimestampIndx, pfEndTimestampIndx, &
+                    pfWorkers, 1, sliceStart, sliceEnd)
+                pfStartTimestampIndx = sliceStart
+                pfEndTimestampIndx = sliceEnd
+                pcount = pfStartTimestampIndx - 1
+            end if
+
             pf_periods_loop: do
                 pcount = pcount + 1
 
@@ -1313,6 +1411,19 @@ program EddyFlowRP
             write(*, '(a)')
             write(ulog, '(a)')
             call LogSay(' Done.')
+
+            if (pfParallel) then
+                call WaitPrepassBatches('pf', pfWorkers)
+                call MergePfBatchDumps(pfWorkers, pfWind, size(pfWind, 1), pfn)
+            end if
+
+            !> As above: a worker hands back its slice of the wind means and
+            !> stops. The sector regressions are the parent's job.
+            if (BatchIndex > 0) then
+                call WritePfBatchDump(pfWind, size(pfWind, 1), pfn)
+                call LogSay(' Planar-fit pre-pass slice finished.')
+                stop ''
+            end if
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.  ***************************

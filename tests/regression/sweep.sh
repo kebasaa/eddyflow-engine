@@ -46,6 +46,12 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # samples went unnoticed. They read their data from the '_slow' sibling
 # directory gen_slow.py writes.
 #
+# base_tlag_par is base_tlag_opt with a two-day time-lag optimisation window
+# instead of a three-hour one. That is the only fixture here whose pre-pass is
+# long enough for the engine to split it across worker processes: every other
+# one covers too few averaging periods to be worth starting a process for, so
+# without this the parallel path had no gate at all. It costs about a minute.
+#
 # Keep this list free of comments: it is a word-split string, not shell source,
 # so a '#' line inside it becomes four or five bogus fixture names.
 FIXTURES="
@@ -63,6 +69,7 @@ base_cell_ref
 base_biomet_water
 base_biomet_rh
 base_tlag_opt
+base_tlag_par
 base_auto_sa
 base_mw
 base_mw_ref

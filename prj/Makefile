@@ -423,6 +423,7 @@ eddyflow-rp_main.o: \
 	interfaces_1.inc \
 	m_cec.o \
 	m_rp_global_var.o \
+	prepass_parallel.o \
 	pwb_timelag_handle.o
 edit_ini_file.o: \
 	edit_ini_file.f90 \
@@ -760,6 +761,9 @@ potential_radiation.o: \
 	m_common_global_var.o
 power_of_two.o: \
 	power_of_two.f90
+prepass_parallel.o: \
+	prepass_parallel.f90 \
+	m_rp_global_var.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \

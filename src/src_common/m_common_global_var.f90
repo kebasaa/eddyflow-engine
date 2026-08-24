@@ -98,10 +98,28 @@ module m_common_global_var
     character(16) :: comm_move
     character(16) :: comm_force_opt
     character(15) :: comm_dir
+    !> Blocking one-second pause, used while waiting on batch workers.
+    !> A shell command rather than gfortran's SLEEP, which is a GNU
+    !> extension the -std=f2008 build has no business relying on.
+    character(32) :: comm_sleep
     character(PathLen) :: homedir
     character(PathLen) :: IniDir
     character(PathLen) :: TmpDir
     character(PathLen) :: PrjPath
+
+    !> Process-level parallelism of the assessment pre-passes.
+    !> NumJobs is how many worker processes the parent may spawn; 1 is
+    !> the serial path this program has always taken. BatchIndex is 0 in
+    !> the parent and k in a worker, which processes slice k of
+    !> BatchCount and writes its accumulator to BatchOutPath instead of
+    !> going on to produce fluxes.
+    integer :: NumJobs = 1
+    integer :: BatchIndex = 0
+    integer :: BatchCount = 0
+    integer :: BatchSliceStart = 0
+    integer :: BatchSliceEnd = 0
+    character(2) :: BatchKind = ''
+    character(PathLen) :: BatchOutPath = ''
 
     character(19), parameter :: PrjFile   = 'processing.eddyflow'
     character(6), parameter :: licor_appdata = '.licor'
