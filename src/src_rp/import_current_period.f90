@@ -63,6 +63,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     !> local variables
     integer :: pN
     integer :: faulty_col
+    character(PathLen) :: NextZip
     integer :: CurrentFile
     integer :: FirstRecord
     integer :: LastRecord
@@ -167,12 +168,20 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
         select case(EddyFlowProj%ftype)
             case ('licor_ghg')
                 !> for LICOR files, goes to unzipper and file reading
+                !> The next archive in the list, which is what the next period
+                !> asks for unless it skips one - and a prefetch of the wrong
+                !> file is simply not claimed, so guessing costs nothing.
+                if (CurrentFile < NumFiles) then
+                    NextZip = FileList(CurrentFile + 1)%path
+                else
+                    NextZip = ''
+                end if
                 call ReadLicorGhgArchive(FileList(CurrentFile)%path, &
                     FirstRecord, LastRecord, LocCol, LocBypassCol, MetaIsNeeded, &
                     BiometIsNeeded, EddyFlowProj%run_mode /= 'md_retrieval', &
                     EddyFlowProj%run_mode /= 'md_retrieval', &
                     fRaw, size(fRaw, 1), size(fRaw, 2), skip_file, passed, &
-                    faulty_col, N, FileEndReached, printout)
+                    faulty_col, N, FileEndReached, printout, NextZip)
 
                 !> File skip control
                 if (skip_file .or. (.not.passed(1))) then

@@ -40,6 +40,7 @@ program EddyFlowRP
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
+    use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
@@ -374,11 +375,13 @@ program EddyFlowRP
         if (EddyFlowProj%ftype == 'licor_ghg') then
             i = 1
             do while (i <= NumRawFiles)
+                !> The preamble reads one file to learn the columns and
+                !> stops, so there is nothing to fetch ahead.
                 call ReadLicorGhgArchive(RawFileList(i)%path, -1, -1, Col, &
                     BypassCol, .true., .false., .false., &
                     EddyFlowProj%run_mode /= 'md_retrieval', &
                     Raw, size(Raw, 1), size(Raw, 2), skip_period, passed, &
-                    faulty_col, PeriodRecords, FileEndReached, .false.)
+                    faulty_col, PeriodRecords, FileEndReached, .false., '')
                 if (.not. skip_period .and. passed(1)) exit
                 i = i + 1
                 call InformOfMetadataProblem(passed, faulty_col)
@@ -2980,6 +2983,11 @@ program EddyFlowRP
         trim(adjustl(Dir%main_out)) // 'processing' &
         // Timestamp_FilePadding // '.eddyflow')
     end if
+
+    !> Whatever the last prefetch left behind. Desktop mode removes the whole
+    !> temporary directory below and would take it with it; embedded mode
+    !> keeps that directory between runs and would not.
+    call GhgPrefetchCleanup()
 
     !> Delete tmp folder if running in embedded mode
     if(EddyFlowProj%run_env == 'desktop') &

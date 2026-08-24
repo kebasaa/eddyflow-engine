@@ -34,15 +34,23 @@
 !***************************************************************************
 subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
     LocBypassCol, MetaIsNeeded, BiometIsNeeded, DataIsNeeded, ValidateMetadata, &
-    fRaw, nrow, ncol, skip_file, passed, faulty_col, N, FileEndReached, printout)
+    fRaw, nrow, ncol, skip_file, passed, faulty_col, N, FileEndReached, printout, &
+    NextZipFile)
 
     use m_rp_global_var
+    use m_ghg_prefetch
     implicit none
     !> in/out variables
     integer, intent(in) :: FirstRecord
     integer, intent(in) :: LastRecord
     integer, intent(in) :: nrow, ncol
     character(*), intent(in) :: ZipFile
+    !> The archive most likely wanted next, so its extraction can be under
+    !> way while this one's data is being turned into a flux. Empty when
+    !> there is no next - the preamble reads one file and stops. Required
+    !> rather than optional for the same reason as UnZipArchive's arguments:
+    !> no explicit interface exists for an external procedure.
+    character(*), intent(in) :: NextZipFile
     logical, intent(in) :: MetaIsNeeded
     logical, intent(in) :: BiometIsNeeded
     logical, intent(in) :: DataIsNeeded
@@ -64,24 +72,38 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
     character(PathLen) :: BiometMetaFile
     character(CommLen) :: comm
     logical :: skip_biomet_file
+    logical :: prefetched
+    character(PathLen) :: SrcDir
 
 
     skip_file = .false.
     passed = .true.
 
-    !> Unzip archive
+    !> Unzip archive, unless something already did it for this one. A claim
+    !> is granted only for this exact archive and only once the extraction
+    !> has signalled that it finished, so failing to get one costs nothing
+    !> but the ordinary extraction.
+    call GhgPrefetchClaim(ZipFile, prefetched)
+    if (prefetched) then
+        SrcDir = GhgPrefetchDir()
+    else
+        SrcDir = trim(adjustl(TmpDir))
+    end if
     call UnZipArchive(ZipFile, 'metadata','data', MetaFile, DataFile, &
-        BiometFile, BiometMetaFile, skip_file)
-    if (skip_file) return
+        BiometFile, BiometMetaFile, skip_file, SrcDir, prefetched)
+    if (skip_file) then
+        call GhgPrefetchRelease()
+        return
+    end if
 
     if (MetaFile /= 'none') &
-        MetaFile = trim(adjustl(TmpDir)) // trim(Metafile)
+        MetaFile = trim(adjustl(SrcDir)) // trim(Metafile)
     if (DataFile /= 'none') &
-        DataFile = trim(adjustl(TmpDir)) // trim(DataFile)
+        DataFile = trim(adjustl(SrcDir)) // trim(DataFile)
     if (BiometMetaFile /= 'none') &
-        BiometMetaFile = trim(adjustl(TmpDir)) // trim(BiometMetaFile)
+        BiometMetaFile = trim(adjustl(SrcDir)) // trim(BiometMetaFile)
     if (BiometFile /= 'none') &
-        BiometFile = trim(adjustl(TmpDir)) // trim(BiometFile)
+        BiometFile = trim(adjustl(SrcDir)) // trim(BiometFile)
 
     !> First, handle biomet data and metadata files
     if (BiometIsNeeded) then
@@ -104,10 +126,14 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
         if (MetaFile == 'none') then
             call ExceptionHandler(3)
             skip_file = .true.
+            call GhgPrefetchRelease()
             return
         end if
         call ReadMetadataFile(LocCol, MetaFile, skip_file, printout)
-        if (skip_file) return
+        if (skip_file) then
+            call GhgPrefetchRelease()
+            return
+        end if
         if (DataIsNeeded) then
 
             !> If it's in the raw file processing loop, define used variables
@@ -130,7 +156,10 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
         end if
         if (ValidateMetadata) then
             call MetadataFileValidation(Col, passed, faulty_col)
-            if (.not. passed(1)) return
+            if (.not. passed(1)) then
+                call GhgPrefetchRelease()
+                return
+            end if
         else
             passed(1) = .true.
         end if
@@ -141,12 +170,16 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
         if (DataFile == 'none') then
             call ExceptionHandler(4)
             skip_file = .true.
+            call GhgPrefetchRelease()
             return
         end if
         call ImportNativeData(DataFile, FirstRecord, LastRecord, &
             LocCol, fRaw, size(fRaw, 1), size(fRaw, 2), &
             skip_file, N, FileEndReached)
-        if (skip_file) return
+        if (skip_file) then
+            call GhgPrefetchRelease()
+            return
+        end if
     end if
 
     !> Delete data and metadata files
@@ -157,4 +190,11 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
         // ' *.status ' // comm_err_redirect)
 
     del_status = system(trim(comm))
+
+    !> Nothing is reading the prefetch directory any more, so the next
+    !> archive may be extracted into it - and this is the moment to ask,
+    !> because everything the caller does from here is computation this
+    !> waits behind otherwise.
+    call GhgPrefetchRelease()
+    call GhgPrefetchStart(NextZipFile)
 end subroutine ReadLicorGhgArchive

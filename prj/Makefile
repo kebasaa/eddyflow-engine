@@ -454,6 +454,7 @@ eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	ghg_prefetch.o \
 	m_cec.o \
 	m_rp_global_var.o \
 	prepass_parallel.o \
@@ -569,6 +570,9 @@ gas_slot_resolution.o: \
 	m_common_global_var.o
 generate_t_cell.o: \
 	generate_t_cell.f90 \
+	m_common_global_var.o
+ghg_prefetch.o: \
+	ghg_prefetch.f90 \
 	m_common_global_var.o
 gill_wm_w_boost.o: \
 	gill_wm_w_boost.f90 \
@@ -837,6 +841,7 @@ read_ini_rp.o: \
 	m_rp_global_var.o
 read_licor_ghg_archive.o: \
 	read_licor_ghg_archive.f90 \
+	ghg_prefetch.o \
 	m_rp_global_var.o
 read_metadata_file.o: \
 	read_metadata_file.f90 \
