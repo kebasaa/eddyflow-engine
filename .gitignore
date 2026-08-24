@@ -75,6 +75,9 @@ src/src_rp/deprecated
 /data/__pycache__
 /data_test
 
-# gfortran's fallback output; see the note in the GUI repo's .gitignore.
-fort.*
+# fort.* is deliberately NOT ignored. A fort.NN file is gfortran connecting a
+# unit nobody opened, which is always a bug and never something to filter out:
+# ignoring it is how 36 KB of ensemble cospectra sat in this directory for
+# weeks while the run log said they had been dropped. If one appears, find the
+# unguarded write - test_stray_unit_writes_static.py asserts none are here.
 /fluxnet_example

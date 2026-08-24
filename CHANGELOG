@@ -631,7 +631,31 @@
 	               `eddyflow_rp <project> -e <home>` therefore ran with the default home
 	               directory, not the one asked for. A switch now consumes a value only
 	               when it takes one, and the loop reads to the end of the command line.
-
+	- Fix: A spectral assessment output file that could not be opened was written
+	               anyway, to a file nobody would look for. All five outputs in
+	               OutputSpectralAssessmentResults did
+	                   open(udf, file = FilePath, iostat = open_status)
+	                   if (open_status /= 0) call ExceptionHandler(64)
+	               and then wrote regardless: ExceptionHandler(64) only logs, and a
+	               write to an unconnected unit does not fail - gfortran connects it
+	               to fort.<udf> in whatever directory the run started in. udf is the
+	               MILLISECOND the run began in, so the name carries no meaning either.
+	               The message it printed, "Some spectral assessment results will not
+	               be written on output file", was false: they were written, in full,
+	               somewhere else. A 36 KB fort.615 of ensemble cospectra and Massman
+	               fits had been sitting in the repository root since 2026-08-21.
+	               The five sites now share OpenSpectralOutputFile, which sinks a
+	               failed open to a scratch unit the caller's close discards. Returning
+	               instead would be wrong - these are five separate files and one
+	               failing to open says nothing about the next.
+	               This is the third time this class has bitten: unit 11 in
+	               edit_ini_file (fixed 2026-08-17), unit 163 in the run log, now udf.
+	               test_stray_unit_writes_static.py now asserts that a failed open
+	               guarded by a NON-FATAL handler cannot fall through into writes - the
+	               fatal set is parsed out of exception_handler.f90 rather than listed,
+	               so a handler that stops today and warns tomorrow comes into scope on
+	               its own. fort.* is no longer in .gitignore: ignoring it is what let
+	               this go unnoticed for weeks.
 8.0.0 (2026-08-20)
 
     Engine:
