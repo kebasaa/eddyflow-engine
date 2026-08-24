@@ -13,10 +13,14 @@
 # identical objects give two different .exe files. Compare .o files, or
 # compare behaviour, when checking whether a change is inert.
 #
-# The .mod files gfortran writes land in this directory and are moved to the
-# object directory by the link rule. Both rp and fcc do that move, so a
-# parallel `all` runs it twice; it is idempotent, and the objects each link
-# needs are already built by the time it happens.
+# -J puts the .mod files gfortran writes straight into the object directory.
+# They used to be written here and swept across by the link rule, which left a
+# window: any build that stopped between the first compile and a successful
+# link - a compile error, a link error, Ctrl-C - left them in prj/. clean_all
+# never removed them, and gfortran searches the current directory ahead of -I,
+# so a stale .mod could survive a clean and become the interface every later
+# compile bound against. That is a silent stale-interface build, which is the
+# same failure test_makefile_deps_static.py exists to prevent, by another road.
 
 #Portabilityn
 #ifdef ComSpec
@@ -100,7 +104,17 @@ COMMON_OBJS_f90d1=$(patsubst %.f90, %.o, $(COMMON_SRCS_f90d1))
 
 #CFLAGS = -ffpe-trap=invalid,zero -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
 #CFLAGS = -g -fcheck=all -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
-CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR)
+# -fbounds-check is NOT here. It traps a subscript outside its array, which is
+# a debugging aid and not something a released binary needs: it cannot change
+# any value, only turn a wrong one into a stop. It costs real time on the
+# per-sample loops, so it lives on the `debug` target below instead.
+#
+# Before it was moved, the whole regression sweep was run with it still on and
+# came back 25 passed, 0 failed - so nothing in the shipped paths is relying on
+# it to catch anything. Run `make debug` and the sweep again after any change
+# that indexes raw data, and keep it that way.
+CHECKS = -fbounds-check -fcheck=all -g -fbacktrace
+CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR) -J $(OBJS_DIR)
 
 VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OBJS_DIR)
 RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1))
@@ -111,15 +125,21 @@ $(info $(INFO))
 #Targets
 all : rp fcc
 
+# The same two binaries with the subscript checks compiled back in. Not a
+# separate output directory: it deliberately overwrites bin/, so a debug
+# build cannot be mistaken for a release one sitting beside it. Run
+# `make clean_all` then `make all` to get back to a shipping build.
+debug :
+	$(MAKE) clean_all
+	$(MAKE) all CFLAGS="$(CFLAGS) $(CHECKS)"
+
 rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(RP_EXE) $(RP_OBJS)
-	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(FCC_EXE) $(FCC_OBJS)
-	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 # The PWB reference driver. Deliberately NOT in `all`, and deliberately linked
 # against two objects only: it is what proves the pre-whitening chain does not
@@ -137,7 +157,6 @@ pwbref : m_numeric_kinds.o m_pwb_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
 	$(FC) -static -o $(OBJS_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
-	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 #Compilation
 ##RP
@@ -157,7 +176,14 @@ $(COMMON_OBJS_f90d1):
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(COMMON_SRC_DIR_f90d1)$(@:.o=.f90) -o $(OBJS_DIR)$@
 
-clean_all : clean_rp clean_fcc
+clean_all : clean_rp clean_fcc clean_stray
+
+# Anything an older build left in this directory. -J stops new ones being
+# written here, but a working tree that predates it still has them, and a
+# stale .mod here outranks the one in the object directory.
+clean_stray :
+	@$(subst FILE, *.mod, $(RM))
+	@$(subst FILE, fort.*, $(RM))
 
 clean_rp :
 	@$(subst FILE, $(OS_OBJS_DIR)*, $(RM))

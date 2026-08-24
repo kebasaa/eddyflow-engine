@@ -656,6 +656,24 @@
 	               so a handler that stops today and warns tomorrow comes into scope on
 	               its own. fort.* is no longer in .gitignore: ignoring it is what let
 	               this go unnoticed for weeks.
+	- Change: .mod files are written straight to the object directory (-J), and
+	               -fbounds-check has moved to a new `make debug` target.
+	               The modules used to be written beside the makefile and swept across
+	               by the LINK rule, so any build that stopped in between - a compile
+	               error, a link error, Ctrl-C - left them there. clean_all did not
+	               remove them and gfortran searches the current directory ahead of -I,
+	               so a stale .mod could survive a clean and become the interface every
+	               later compile bound against. A stray m_cec.mod in the repository
+	               root had already made one compile fail with a type mismatch that
+	               read like a source bug.
+	               -fbounds-check cannot change a value, only turn a wrong subscript
+	               into a stop, so a released binary does not need it. Removing it is
+	               worth 6-7 % on the compute-bound passes - the time-lag optimiser
+	               went 197 s to 183 s and the planar fit 108 s to 101 s over two days
+	               of CH-LAE - with byte-identical output, which the flag guarantees
+	               and both were checked to confirm. The whole sweep was run with it
+	               still on first (25 passed) so that nothing was relying on it.
+
 8.0.0 (2026-08-20)
 
     Engine:
