@@ -129,6 +129,13 @@ all : rp fcc
 # separate output directory: it deliberately overwrites bin/, so a debug
 # build cannot be mistaken for a release one sitting beside it. Run
 # `make clean_all` then `make all` to get back to a shipping build.
+#
+# Budget for it: this is about 1.75x slower than release, not the 6-7 % that
+# -fbounds-check alone costs. -fcheck=all is the expensive part - it adds
+# array temporary, pointer and recursion checks on top of the subscripts.
+# Measured on one day of CH-LAE planar fit: release 50 s, -fbounds-check
+# alone 54 s, this target 89 s. So the regression sweep, normally around
+# 50 minutes, takes about 90 against a debug build.
 debug :
 	$(MAKE) clean_all
 	$(MAKE) all CFLAGS="$(CFLAGS) $(CHECKS)"
