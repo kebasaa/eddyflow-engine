@@ -46,6 +46,13 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # samples went unnoticed. They read their data from the '_slow' sibling
 # directory gen_slow.py writes.
 #
+# base_ghg is the same three hours as LI-COR .ghg archives - the compressed
+# format, which had no fixture at all. It is the only path that unzips (five
+# shell invocations and a decompress per file, about 350 ms) and the only one
+# that rewrites Metadata%ac_freq and NumCol per file, since each archive
+# carries its own metadata. Built by gen_ghg.py; needs 7-Zip, and is skipped
+# rather than failed without it.
+#
 # base_tlag_par is base_tlag_opt with a two-day time-lag optimisation window
 # instead of a three-hour one. That is the only fixture here whose pre-pass is
 # long enough for the engine to split it across worker processes: every other
@@ -70,6 +77,7 @@ base_biomet_water
 base_biomet_rh
 base_tlag_opt
 base_tlag_par
+base_ghg
 base_auto_sa
 base_mw
 base_mw_ref
@@ -99,6 +107,14 @@ for f in $FIXTURES; do
         fixture="$f.eddypro"
     else
         printf '%-22s SKIP  (no such fixture)\n' "$f"; continue
+    fi
+    #> The GHG fixture is the only one that needs a tool the engine shells
+    #> out to. Without 7-Zip its archives cannot be opened and the run
+    #> produces nothing, which would read as a code failure - so it is
+    #> skipped rather than failed, and said out loud.
+    if [ "$f" = base_ghg ] && ! command -v 7z >/dev/null 2>&1 \
+            && ! command -v 7za >/dev/null 2>&1; then
+        printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
     fi
     rm -rf "$HERE/out_$WHICH"
     #> Log outside the output directory: run.sh clears that directory as its

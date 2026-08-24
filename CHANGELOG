@@ -673,7 +673,15 @@
 	               of CH-LAE - with byte-identical output, which the flag guarantees
 	               and both were checked to confirm. The whole sweep was run with it
 	               still on first (25 passed) so that nothing was relying on it.
-
+	- New feature: The compressed LI-COR GHG format has a regression fixture.
+	               Nothing exercised file_type=0 before this. It is the only raw path
+	               that shells out to 7-Zip, and the only one that rewrites
+	               Metadata%ac_freq, NumCol and FileInterpreter per file, because each
+	               archive carries its own metadata - so the one place those globals
+	               move under the period loop had no gate at all. base_ghg is the same
+	               three hours as base_tlag_opt, built by gen_ghg.py, and the standard
+	               it is held to is that its fluxes MATCH that fixture's, because it is
+	               the same data. They do, to the byte.
 8.0.0 (2026-08-20)
 
     Engine:
