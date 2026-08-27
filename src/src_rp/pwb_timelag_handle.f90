@@ -42,6 +42,7 @@ module m_pwb_timelag
     public :: LookupPwbTimelagCache, StorePwbTimelagCache, SetPwbPeriodTimestamp
     public :: PostProcessPwbTimelagCache
     public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
+    public :: RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache
 
     integer :: pwb_attempts(E2NumVar) = 0
     integer :: pwb_successes(E2NumVar) = 0
@@ -65,6 +66,13 @@ module m_pwb_timelag
     real(kind = dbl), allocatable :: sc_hdi(:)
     integer, allocatable :: sc_boot(:)
     integer :: sc_n = 0, sc_lo = 0, sc_hi = 0, sc_nboot = 0
+
+    !> Which period each row of PwbTimelagOpt came from. The dataset has no
+    !> time axis of its own - it is a bare list the optimiser reduces - so the
+    !> correspondence has to be carried alongside it, for the rebuild after the
+    !> post-pass to find each period's settled lags in the table.
+    character(10), allocatable :: PwbOptDate(:)
+    character(5), allocatable :: PwbOptTime(:)
 
 contains
 
@@ -116,6 +124,124 @@ subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
         TimelagOpt(n)%tlag(wsl) = error
     end if
 end subroutine AddPwbTimelagSummaryDataset
+
+!***************************************************************************
+!> \brief Record what a period contributes that the settled table cannot say.
+!>
+!> The cache-generation counterpart of AddPwbTimelagSummaryDataset, which gated
+!> membership of the aggregate dataset on the STREAMING classification. That
+!> classification is a guess made having read only the periods before this one,
+!> and PostProcessPwbTimelagCache overrules it once the whole run has been
+!> read - so the dataset deciding the aggregate windows, and the RH classes
+!> with them, was built from guesses the table had already discarded.
+!>
+!> Everything the table can say is left to RebuildPwbTimelagOptFromCache. Only
+!> the humidity cannot: it is a property of this period's own statistics and is
+!> nowhere in the cache. So it is recorded here, ungated, and the rebuild
+!> decides whether it stands.
+!***************************************************************************
+subroutine RecordPwbTimelagOptPeriod(TimelagOpt, nrow, n)
+    integer, intent(in) :: nrow, n
+    type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
+
+    if (.not. allocated(PwbOptDate)) allocate(PwbOptDate(nrow), PwbOptTime(nrow))
+    if (n < 1 .or. n > nrow) return
+
+    !> No lags yet: the rebuild fills them from the settled table.
+    TimelagOpt(n)%tlag = error
+    !> Provisional and ungated - the raw humidity, not yet tested against
+    !> whether water settled. Only the table knows that, so the rebuild
+    !> applies the gate.
+    if (Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
+        TimelagOpt(n)%RH = Stats%RH
+    else
+        TimelagOpt(n)%RH = error
+    end if
+    PwbOptDate(n) = PwbPeriodDate
+    PwbOptTime(n) = PwbPeriodTime
+end subroutine RecordPwbTimelagOptPeriod
+
+!***************************************************************************
+!> \brief Fill the aggregate time-lag dataset from the settled table.
+!>
+!> A period contributes its own lag for a gas only where the FINISHED table
+!> settled that gas from its own evidence - S1 or S2. Borrowed, carried,
+!> interpolated and back-filled lags are excluded, exactly as the streaming
+!> version excluded them. What changes is which rows those are, and that the
+!> lag taken is the settled one rather than whatever happened to be applied
+!> while the walk was still going.
+!>
+!> Rows and periods are both in period order, so this walks a cursor rather
+!> than scanning: a season is some twenty thousand rows against four thousand
+!> periods, and the nested form of that is quadratic for nothing.
+!***************************************************************************
+subroutine RebuildPwbTimelagOptFromCache(TimelagOpt, nrow, n)
+    integer, intent(in) :: nrow, n
+    type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
+    integer :: i, k, cursor, gas, wsl
+    integer, external :: PrimaryWaterOutSlot
+
+    if (n < 1 .or. .not. allocated(PwbOptDate)) return
+
+    do k = 1, n
+        TimelagOpt(k)%tlag = error
+    end do
+
+    cursor = 1
+    do i = 1, PwbTimelagCacheN
+        gas = PwbTimelagCache(i)%gas
+        if (gas < firstGas .or. gas > lastGas) cycle
+        if (.not. E2Col(gas)%present) cycle
+        if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'S1_optimal' &
+            .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S2_optimal') cycle
+        if (PwbTimelagCache(i)%used_lag == error) cycle
+
+        k = PeriodSlot(i, cursor, n)
+        if (k == 0) cycle
+        cursor = k
+        TimelagOpt(k)%tlag(gas) = PwbTimelagCache(i)%used_lag
+    end do
+
+    !> RH travels with the water record's own time-lag, so it is gated on the
+    !> site's water rather than on slot six - and on whether the TABLE settled
+    !> that water, which is the part the streaming version could not know.
+    wsl = PrimaryWaterOutSlot()
+    do k = 1, n
+        if (E2Col(wsl)%present .and. TimelagOpt(k)%tlag(wsl) /= error &
+            .and. TimelagOpt(k)%RH /= error) cycle
+        TimelagOpt(k)%RH = error
+        TimelagOpt(k)%tlag(wsl) = error
+    end do
+end subroutine RebuildPwbTimelagOptFromCache
+
+!***************************************************************************
+!> \brief Which period cache row i belongs to, searching forward from cursor.
+!>
+!> Zero when no period claims it, which drops the row rather than guessing.
+!***************************************************************************
+integer function PeriodSlot(i, cursor, n)
+    integer, intent(in) :: i, cursor, n
+    integer :: k
+
+    do k = cursor, n
+        if (PwbOptDate(k) == PwbTimelagCache(i)%date .and. &
+            PwbOptTime(k) == PwbTimelagCache(i)%time) then
+            PeriodSlot = k
+            return
+        end if
+    end do
+    !> Behind the cursor, which an ordered table cannot put it - but a wrong
+    !> answer here silently drops a period out of the aggregate, so it is
+    !> worth the second look rather than the assumption.
+    do k = 1, min(cursor - 1, n)
+        if (PwbOptDate(k) == PwbTimelagCache(i)%date .and. &
+            PwbOptTime(k) == PwbTimelagCache(i)%time) then
+            PeriodSlot = k
+            return
+        end if
+    end do
+    PeriodSlot = 0
+end function PeriodSlot
 
 subroutine ResolvePwbAggregateSummary(actn)
     integer, intent(inout) :: actn(E2NumVar)

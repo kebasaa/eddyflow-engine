@@ -39,6 +39,7 @@ program EddyFlowRP
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
+        RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
@@ -1004,7 +1005,12 @@ program EddyFlowRP
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
                         .or. PwbTimelagN > PwbTimelagOptSize) &
                         error stop 'PWB time-lag optimization dataset is not allocated safely.'
-                    call AddPwbTimelagSummaryDataset(PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
+                    !> Only what the table cannot say - the humidity and
+                    !> which period this is. The lags come from the settled
+                    !> table afterwards, not from the streaming guess that
+                    !> this period has just been given.
+                    call RecordPwbTimelagOptPeriod(PwbTimelagOpt, &
+                        PwbTimelagOptSize, PwbTimelagN)
                 else
                     !> Store values only for aggregate time-lag optimization.
                     ton = ton + 1
@@ -1049,6 +1055,10 @@ program EddyFlowRP
                 !> forwards as well as back. This is what the streaming
                 !> classifier in timelag_handle cannot do.
                 call PostProcessPwbTimelagCache()
+                !> The aggregate dataset is built here, from the finished
+                !> table, rather than accumulated as the walk went.
+                call RebuildPwbTimelagOptFromCache(PwbTimelagOpt, &
+                    PwbTimelagOptSize, PwbTimelagN)
                 call WritePwbTimelagCache()
                 if (PwbTimelagN > 0) then
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
