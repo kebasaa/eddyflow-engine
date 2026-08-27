@@ -45,6 +45,7 @@ program EddyFlowRP
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
+        WritePwbBatchDump, MergePwbBatchDumps, &
         WritePfBatchDump, MergePfBatchDumps
     !use netcdf
     !use iso_c_binding
@@ -625,12 +626,17 @@ program EddyFlowRP
             !> PlanPrepassBatches decides whether that is worth doing - it
             !> never is for a worker, which would otherwise spawn workers of
             !> its own, nor for a range too short to pay for the processes.
-            !> Not when the PWB cache is being generated: that pre-pass carries
-            !> the time-lag classifier's state from one period to the next, and
-            !> a slice starting cold cannot reproduce it. See the head of
-            !> prepass_parallel.f90 for why no lead-in fixes that.
+            !> A PWB cache pre-pass may be split too, now. It could not while
+            !> the streaming classifier's verdict reached the output: that
+            !> verdict depends on the last settled detection before a period,
+            !> and a slice starting cold has none. Three things carried it -
+            !> the terminal fallback's lag, the aggregate dataset's membership
+            !> and the donor tally - and each is now taken from the settled
+            !> table, which is built once, by the parent, over every slice.
+            !> What a worker produces is evidence, and evidence does not
+            !> depend on where the walk began.
             call PlanPrepassBatches(toEndTimestampIndx - toStartTimestampIndx, &
-                .not. PwbCacheGenerate, toWorkers)
+                .true., toWorkers)
 
             !> A worker was handed its slice on the command line. Narrowed
             !> here rather than where the range was computed, so the arrays
@@ -1030,8 +1036,13 @@ program EddyFlowRP
             !> a single loop over the whole range would have built it in.
             if (toParallel) then
                 call WaitPrepassBatches('to', toWorkers)
-                call MergeTlagBatchDumps('to', toWorkers, TimelagOpt, &
-                    TimelagOptSize, ton)
+                if (PwbCacheGenerate) then
+                    call MergePwbBatchDumps('to', toWorkers, PwbTimelagOpt, &
+                        PwbTimelagOptSize, PwbTimelagN)
+                else
+                    call MergeTlagBatchDumps('to', toWorkers, TimelagOpt, &
+                        TimelagOptSize, ton)
+                end if
             end if
 
             !> A worker's job ends here: it hands back the records its slice
@@ -1040,7 +1051,12 @@ program EddyFlowRP
             !> slice concatenated, so a worker doing it too would be both
             !> wasted work and a second answer nobody reads.
             if (BatchIndex > 0) then
-                call WriteTlagBatchDump(TimelagOpt, TimelagOptSize, ton)
+                if (PwbCacheGenerate) then
+                    call WritePwbBatchDump(PwbTimelagOpt, &
+                        PwbTimelagOptSize, PwbTimelagN)
+                else
+                    call WriteTlagBatchDump(TimelagOpt, TimelagOptSize, ton)
+                end if
                 call LogSay(' Time-lag pre-pass slice finished.')
                 stop ''
             end if

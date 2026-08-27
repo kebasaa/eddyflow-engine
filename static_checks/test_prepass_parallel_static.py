@@ -322,49 +322,80 @@ class AFailedWorkerStopsTheRun(unittest.TestCase):
 
     def test_a_foreign_dump_is_refused(self):
         self.assertIn("if (magic /= BatchMagic) &", PARALLEL)
-        self.assertEqual(PARALLEL.count("if (magic /= BatchMagic) &"), 2,
+        #> One per merge, and there are three of them now: time-lag records,
+        #> planar-fit means, and the PWB cache rows. A merge that skipped the
+        #> check would read a dump from a crashed earlier run as data.
+        self.assertEqual(PARALLEL.count("if (magic /= BatchMagic) &"), 3,
                          "one per merge")
 
 
-class ThePwbCachePrepassIsNotSplit(unittest.TestCase):
-    """Its classifier decides a period partly from the last settled detection
-    before it, and that chain has no time limit - the streaming classifier sets
-    its flag once and never clears it. A lead-in could rebuild the state only if
-    it held a settled detection for every gas, and the weak species do not
-    oblige: over two days of CH-LAE, COS reached no settled detection at all and
-    nitrous oxide reached two in 103 periods. So a split cannot reproduce a
-    single pass, and the aggregate summary it feeds would move with it."""
+class ThePwbCachePrepassIsSplitToo(unittest.TestCase):
+    """This class used to assert the opposite, and the reasoning it gave was
+    sound about the wrong thing.
 
-    def test_the_planner_refuses_when_the_caller_says_so(self):
+    The streaming classifier does decide a period partly from the last settled
+    detection before it, and that chain has no time limit, and the weak species
+    never settle - over two days of CH-LAE, COS reached no settled detection at
+    all. All true, and none of it decides the output of a cache-generation run.
+    `PostProcessPwbTimelagCache` does, once the whole run has been read, and it
+    overrules every row.
+
+    What actually blocked the split was four values carrying the classifier's
+    verdict into the settled table anyway. Each now comes from the table, and
+    each has its own file:
+
+      * the terminal fallback's lag - `test_pwb_terminal_fallback_static`
+      * the aggregate dataset's membership - `test_pwb_aggregate_dataset_static`
+      * the donor tally - `test_pwb_donor_tally_static`
+      * every field saying how a period was settled -
+        `test_pwb_postpass_owns_its_fields_static`
+
+    The transport itself is pinned in `test_pwb_prepass_split_static`, and the
+    end-to-end claim is `check_parallel.sh base_pwb_par.eddyflow`: 24 periods
+    across 6 workers, 85 files byte-identical to the same run under -j 1.
+    """
+
+    def test_the_planner_still_honours_a_caller_that_refuses(self):
+        """The switch remains, and remains ahead of the core count - a worker
+        must never spawn workers of its own, whatever the caller allows."""
         body = PARALLEL[PARALLEL.index("subroutine PlanPrepassBatches"):
                         PARALLEL.index("end subroutine PlanPrepassBatches")]
         self.assertIn("if (.not. allowed) return", body)
         self.assertLess(body.index("if (.not. allowed) return"),
                         body.index("DetectCoreCount()"))
 
-    def test_the_time_lag_prepass_is_gated_on_the_cache_mode(self):
+    def test_the_time_lag_prepass_is_no_longer_gated_on_the_cache_mode(self):
         i = MAIN.index("call PlanPrepassBatches(toEndTimestampIndx")
-        self.assertIn(".not. PwbCacheGenerate", MAIN[i:i + 200])
+        self.assertNotIn(".not. PwbCacheGenerate", MAIN[i:i + 200])
+        self.assertIn(".true.", MAIN[i:i + 200])
 
     def test_the_planar_fit_is_always_allowed(self):
         """A planar-fit period contributes three means and carries nothing."""
         i = MAIN.index("call PlanPrepassBatches(pfEndTimestampIndx")
         self.assertIn(".true.", MAIN[i:i + 200])
 
-    def test_nothing_pwb_crosses_the_process_boundary(self):
-        """With the cache pre-pass serial, none of it needs transporting."""
-        for name in ("PwbTimelagCache", "PwbSummaryDonorCount",
-                     "GetPwbDiagnostics", "StorePwbTimelagCacheEntry"):
-            self.assertNotIn(name, PARALLEL,
-                             "%s should no longer be reachable here" % name)
+    def test_the_cache_now_does_cross_the_process_boundary(self):
+        """It is the evidence the parent settles from, so it has to."""
+        self.assertIn("PwbTimelagCache", PARALLEL)
+        self.assertIn("PwbOptDate", PARALLEL)
 
-    def test_the_accessors_added_for_it_are_gone_again(self):
+    def test_but_the_diagnostics_still_do_not(self):
+        """They are recounted from the settled table, so transporting them
+        would be carrying a number that is about to be thrown away."""
+        for name in ("PwbSummaryDonorCount", "GetPwbDiagnostics",
+                     "AddPwbDiagnostics"):
+            self.assertNotIn(name, PARALLEL,
+                             "%s should not be reachable here" % name)
+
+    def test_the_accessors_added_for_the_first_attempt_are_still_gone(self):
         for name in ("StorePwbTimelagCacheEntry", "GetPwbDiagnostics",
                      "AddPwbDiagnostics", "nPwbDiagnostics"):
             self.assertNotIn(name, PWB, "%s is dead code" % name)
 
     def test_the_dump_format_was_versioned_when_it_changed(self):
-        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_03 '", PARALLEL)
+        """04 carries the PWB sections; an 03 dump left by an older build has
+        none of them and must be refused rather than read short."""
+        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_04 '", PARALLEL)
 
 
 if __name__ == "__main__":

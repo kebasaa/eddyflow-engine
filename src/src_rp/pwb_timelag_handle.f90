@@ -72,12 +72,6 @@ module m_pwb_timelag
     integer, allocatable :: sc_boot(:)
     integer :: sc_n = 0, sc_lo = 0, sc_hi = 0, sc_nboot = 0
 
-    !> Which period each row of PwbTimelagOpt came from. The dataset has no
-    !> time axis of its own - it is a bare list the optimiser reduces - so the
-    !> correspondence has to be carried alongside it, for the rebuild after the
-    !> post-pass to find each period's settled lags in the table.
-    character(10), allocatable :: PwbOptDate(:)
-    character(5), allocatable :: PwbOptTime(:)
 
 contains
 

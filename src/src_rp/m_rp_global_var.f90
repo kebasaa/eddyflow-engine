@@ -160,6 +160,14 @@ module m_rp_global_var
     character(5) :: PwbPeriodTime = ''
     type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
     integer :: PwbTimelagCacheN = 0
+
+    !> Which averaging period each row of the aggregate time-lag dataset came
+    !> from. The dataset has no time axis of its own, so the correspondence is
+    !> carried here - RebuildPwbTimelagOptFromCache needs it to find a period's
+    !> settled lags in the table, and a worker process has to hand it back
+    !> along with the rows themselves.
+    character(10), allocatable :: PwbOptDate(:)
+    character(5), allocatable :: PwbOptTime(:)
     type(TimeLagType) :: toPasGas(E2NumVar)
     type(TimeLagType) :: toH2O(toMaxH2OClass)
     type(StatsType) :: Stats1

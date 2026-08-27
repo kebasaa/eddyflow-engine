@@ -69,6 +69,7 @@ module m_prepass_parallel
     public :: StartPrepassBatches, WaitPrepassBatches
     public :: BatchDumpPath
     public :: WriteTlagBatchDump, MergeTlagBatchDumps
+    public :: WritePwbBatchDump, MergePwbBatchDumps
     public :: WritePfBatchDump, MergePfBatchDumps
 
     !> More workers than this is never a throughput win on a machine that also
@@ -84,7 +85,7 @@ module m_prepass_parallel
     !> Guards the unformatted dumps. Parent and workers are the same binary in
     !> the same run, so the format never has to survive a version change - but
     !> a file a crashed earlier run left behind would otherwise be read as data.
-    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_03 '
+    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_04 '
 
 contains
 
@@ -635,6 +636,117 @@ contains
             close(u)
         end do
     end subroutine MergeTlagBatchDumps
+
+    !***************************************************************************
+    !> \brief A worker's PWB slice, on its way back to the parent.
+    !>
+    !> Two things travel, and neither can be derived from the other. The cache
+    !> rows are the evidence the post-pass settles from - one per gas per
+    !> period, fixed-size and with no allocatable component, so they go over
+    !> unformatted exactly as the time-lag records do. The aggregate dataset
+    !> carries only what the table cannot say: the humidity, and which period
+    !> each row belongs to.
+    !>
+    !> The worker does NOT settle anything. Classification depends on having
+    !> read the whole run, which is the reason a slice could not be trusted to
+    !> classify its own periods in the first place.
+    !***************************************************************************
+    subroutine WritePwbBatchDump(dataset, nmax, nOpt)
+        integer, intent(in) :: nmax
+        integer, intent(in) :: nOpt
+        type(TimeLagOptType), intent(in) :: dataset(nmax)
+        integer :: u
+        integer :: io_status
+
+        open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
+            access = 'stream', status = 'replace', iostat = io_status)
+        if (io_status /= 0) &
+            error stop 'A pre-pass worker could not write its PWB records.'
+
+        write(u) BatchMagic
+        write(u) BatchIndex, BatchCount
+        write(u) PwbTimelagCacheN
+        if (PwbTimelagCacheN > 0) write(u) PwbTimelagCache(1:PwbTimelagCacheN)
+        write(u) nOpt
+        if (nOpt > 0) then
+            write(u) dataset(1:nOpt)
+            write(u) PwbOptDate(1:nOpt)
+            write(u) PwbOptTime(1:nOpt)
+        end if
+        close(u)
+    end subroutine WritePwbBatchDump
+
+    !***************************************************************************
+    !> \brief Read the workers' PWB slices back, in order, as if one loop ran.
+    !>
+    !> Slice 1 is already here - the parent ran it - so this appends 2..nEff
+    !> after it. Order is the whole point: the post-pass sorts the table by
+    !> timestamp with a stable insertion sort, so rows appended in slice order
+    !> come out exactly as a single loop would have left them, and periods
+    !> sharing a timestamp keep their gas order.
+    !>
+    !> The cache grows once per slice rather than once per row. Storing a row
+    !> at a time reallocates and copies the whole table each time, which is
+    !> quadratic and is what StorePwbTimelagCacheAt does for the serial walk.
+    !***************************************************************************
+    subroutine MergePwbBatchDumps(kind, nEff, dataset, nmax, nOpt)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: nEff
+        integer, intent(in) :: nmax
+        type(TimeLagOptType), intent(inout) :: dataset(nmax)
+        integer, intent(inout) :: nOpt
+        integer :: k, i, u, io_status
+        integer :: nrec, idx, idxCount
+        character(20) :: magic
+        type(PWBTimelagCacheEntryType), allocatable :: rows(:), grown(:)
+        type(TimeLagOptType), allocatable :: slice(:)
+        character(10), allocatable :: sdate(:)
+        character(5), allocatable :: stime(:)
+
+        do k = 2, nEff
+            open(newunit = u, file = trim(BatchDumpPath(kind, k)), &
+                form = 'unformatted', access = 'stream', status = 'old', &
+                iostat = io_status)
+            if (io_status /= 0) &
+                error stop 'A pre-pass worker PWB file could not be read.'
+
+            read(u) magic
+            if (magic /= BatchMagic) &
+                error stop 'A pre-pass worker PWB file is not one of ours.'
+            read(u) idx, idxCount
+
+            read(u) nrec
+            if (nrec > 0) then
+                allocate(rows(nrec))
+                read(u) rows
+                allocate(grown(PwbTimelagCacheN + nrec))
+                if (PwbTimelagCacheN > 0) &
+                    grown(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
+                grown(PwbTimelagCacheN + 1:PwbTimelagCacheN + nrec) = rows
+                call move_alloc(grown, PwbTimelagCache)
+                PwbTimelagCacheN = PwbTimelagCacheN + nrec
+                deallocate(rows)
+            end if
+
+            read(u) nrec
+            if (nrec > 0) then
+                allocate(slice(nrec), sdate(nrec), stime(nrec))
+                read(u) slice
+                read(u) sdate
+                read(u) stime
+                do i = 1, nrec
+                    if (nOpt >= nmax) &
+                        error stop 'Merged PWB dataset is larger than the run allowed for.'
+                    nOpt = nOpt + 1
+                    dataset(nOpt) = slice(i)
+                    PwbOptDate(nOpt) = sdate(i)
+                    PwbOptTime(nOpt) = stime(i)
+                end do
+                deallocate(slice, sdate, stime)
+            end if
+            close(u)
+        end do
+    end subroutine MergePwbBatchDumps
 
     !***************************************************************************
     !> \brief A worker's planar-fit wind means, on their way back.

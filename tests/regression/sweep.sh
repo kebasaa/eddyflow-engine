@@ -78,6 +78,15 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # came back with the SAME "maxcov_default" lag - 18.8 s three times running
 # for h2o - which a per-period maximum cannot do.
 #
+# base_pwb_par is base_pwb_cache over twelve hours instead of three, which is
+# the only PWB fixture long enough for the engine to split its pre-pass:
+# PlanPrepassBatches wants nPeriods/4 workers, so 24 periods gets 6 and 7 gets
+# none. sweep.sh passes no -j, so the engine takes its default of every core -
+# which means this fixture runs the PARALLEL path here, and base_pwb_cache the
+# serial one, on the same code.
+#
+# That they agree is not gated here. check_parallel.sh does that.
+#
 # Keep this list free of comments: it is a word-split string, not shell source,
 # so a '#' line inside it becomes four or five bogus fixture names.
 FIXTURES="
@@ -98,6 +107,7 @@ base_tlag_opt
 base_tlag_par
 base_pwb_cache
 base_pwb_prefilt
+base_pwb_par
 base_ghg
 base_auto_sa
 base_mw
