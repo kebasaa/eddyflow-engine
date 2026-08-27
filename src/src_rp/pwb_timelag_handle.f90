@@ -53,6 +53,11 @@ module m_pwb_timelag
     integer :: pwb_fallback_other(E2NumVar) = 0
     integer :: pwb_instrument_shared(E2NumVar) = 0
     integer :: pwb_outside_window(E2NumVar) = 0
+    !> Anything the classification ladder below does not name. There should
+    !> never be any; it exists so that a class added later is loud rather
+    !> than quietly counted as a detection, which is what happened to
+    !> S4_instrument_filled.
+    integer :: pwb_unclassified(E2NumVar) = 0
     logical :: pwb_bounds_warned(E2NumVar) = .false.
 
     !> Scratch shared by the four combinations of one gas, reused across gases
@@ -86,6 +91,7 @@ subroutine ResetPwbDiagnostics()
     pwb_fallback_other = 0
     pwb_instrument_shared = 0
     pwb_outside_window = 0
+    pwb_unclassified = 0
     pwb_bounds_warned = .false.
 end subroutine ResetPwbDiagnostics
 
@@ -1641,15 +1647,29 @@ subroutine CountPwbDiagnostic(gas, res)
             case default
                 pwb_fallback_other(gas) = pwb_fallback_other(gas) + 1
         end select
-    elseif (trim(res%reliability_class) == 'S4_instrument_shared') then
+    elseif (trim(res%reliability_class) == 'S4_instrument_shared' .or. &
+        trim(res%reliability_class) == 'S4_instrument_filled') then
+        !> Both arms are the same answer to a reader: this gas did not
+        !> detect a lag, and took one measured down the same tube. They
+        !> differ in when the settled table reached for the neighbour,
+        !> which is a distinction for the half-hourly file and not for a
+        !> summary line - the S3 arms are lumped here for the same reason.
         pwb_instrument_shared(gas) = pwb_instrument_shared(gas) + 1
     elseif (index(res%reliability_class, 'S3_') == 1) then
         !> Every gap-filled arm - interpolated, back-filled, carried forward,
         !> median - counts here, which is what "not detected in this period"
         !> means to a reader of the summary.
         pwb_carryforwards(gas) = pwb_carryforwards(gas) + 1
-    else
+    elseif (trim(res%reliability_class) == 'S1_optimal' .or. &
+        trim(res%reliability_class) == 'S2_optimal') then
+        !> Named, not inferred from what is left over. As a catch-all this
+        !> branch reported S4_instrument_filled as a detection - six of
+        !> them for cos on base_pwb_cache, where the settled table holds
+        !> none at all - because that class reaches here and nothing above
+        !> claimed it. A column headed S1/S2 has to mean S1 or S2.
         pwb_successes(gas) = pwb_successes(gas) + 1
+    else
+        pwb_unclassified(gas) = pwb_unclassified(gas) + 1
     end if
 end subroutine CountPwbDiagnostic
 
@@ -1679,7 +1699,7 @@ subroutine ReportPwbDiagnostics()
                 '  ', trim(GasLabel(gas)), &
                 ': attempts=', pwb_attempts(gas), &
                 ', S1/S2=', pwb_successes(gas), &
-                ', S4_shared=', pwb_instrument_shared(gas), &
+                ', S4_borrowed=', pwb_instrument_shared(gas), &
                 ', S3=', pwb_carryforwards(gas), &
                 ', fallback=', pwb_fallbacks(gas), &
                 ' (maxcov/default=', pwb_fallback_maxcov(gas), &
@@ -1689,12 +1709,26 @@ subroutine ReportPwbDiagnostics()
                 '  ', trim(GasLabel(gas)), &
                 ': attempts=', pwb_attempts(gas), &
                 ', S1/S2=', pwb_successes(gas), &
-                ', S4_shared=', pwb_instrument_shared(gas), &
+                ', S4_borrowed=', pwb_instrument_shared(gas), &
                 ', S3=', pwb_carryforwards(gas), &
                 ', fallback=', pwb_fallbacks(gas), &
                 ' (maxcov/default=', pwb_fallback_maxcov(gas), &
                 ', nominal/default=', pwb_fallback_nominal(gas), &
                 ', other=', pwb_fallback_other(gas), ')'
+        end if
+    end do
+
+    !> A class the ladder does not name would otherwise be invisible: it
+    !> would simply be missing from a line whose columns are meant to add
+    !> up to attempts. Nothing produces one today.
+    do gas = firstGas, lastGas
+        if (pwb_unclassified(gas) > 0) then
+            write(*, '(a,i0,a,a)') '  NOTE: ', pwb_unclassified(gas), &
+                ' period(s) of ' // trim(GasLabel(gas)) // &
+                ' carry a reliability class this summary does not know.'
+            write(ulog, '(a,i0,a,a)') '  NOTE: ', pwb_unclassified(gas), &
+                ' period(s) of ' // trim(GasLabel(gas)) // &
+                ' carry a reliability class this summary does not know.'
         end if
     end do
 
