@@ -67,6 +67,17 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # no coverage whatsoever. Three hours is enough to exercise the ladder: co2 and
 # h2o carry forward, cos borrows across the analyser.
 #
+# base_pwb_prefilt is base_pwb_cache with the HDI pre-filter tightened to
+# 0.10 s, which discards every detection every gas made. That drives all 21
+# rows to the terminal arm of PostProcessPwbTimelagCache - the one labelled
+# maxcov_default - which nothing else in this suite reaches at all: on
+# base_pwb_cache every gas reports fallback=0.
+#
+# It is the case that separates a per-period covariance maximum from a
+# carried lag wearing its label. Before that was fixed, consecutive periods
+# came back with the SAME "maxcov_default" lag - 18.8 s three times running
+# for h2o - which a per-period maximum cannot do.
+#
 # Keep this list free of comments: it is a word-split string, not shell source,
 # so a '#' line inside it becomes four or five bogus fixture names.
 FIXTURES="
@@ -86,6 +97,7 @@ base_biomet_rh
 base_tlag_opt
 base_tlag_par
 base_pwb_cache
+base_pwb_prefilt
 base_ghg
 base_auto_sa
 base_mw

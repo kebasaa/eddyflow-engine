@@ -1844,6 +1844,18 @@ module m_typedef
         !> was detected here, the elapsed distance where it was carried,
         !> interpolated or filled backward.
         real(kind = dbl) :: carry_hours
+        !> This period's covariance maximum, computed whether or not anything
+        !> needs it. It is what the settled table hands back for a period no
+        !> evidence ever reached - the terminal arm of
+        !> PostProcessPwbTimelagCache, which labels itself 'maxcov_default'.
+        !>
+        !> That arm used to hand back whatever the streaming pass had settled
+        !> on, which for a gas the rule rejected everywhere IS the covariance
+        !> maximum - but for a gas the streaming pass settled and the HDI
+        !> pre-filter later discarded, it is a carried lag wearing the maxcov
+        !> label. Held per period so the answer is a property of the period
+        !> and not of where the pass began.
+        real(kind = dbl) :: maxcov_lag
         !> The deterministic pre-whitening diagnostics. tlag_pw is the peak of
         !> the unsmoothed full-data pre-whitened CCF (R: tl_pww) and corr_pw
         !> its value there (R: cor_pww); cv_99 is R's Bartlett 99% band, so a

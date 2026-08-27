@@ -55,6 +55,11 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     logical :: cache_found
     logical :: cache_default_used
     logical :: cache_hit(E2NumVar)
+    !> Scratch for the per-period covariance maximum. Only mc_used is kept;
+    !> the other three are what ApplyCovMaxDefaultFallback insists on writing.
+    real(kind = dbl) :: mc_actual, mc_used
+    integer :: mc_row
+    logical :: mc_def
     logical :: donor_ok
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
@@ -160,6 +165,27 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     cycle
                 end if
                 call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
+
+                !> This period's covariance maximum, taken whether or not
+                !> anything here needs it. It is the terminal fallback the
+                !> settled table reaches for when no evidence at all got to
+                !> a period, and it has to be a property of THIS period:
+                !> the arm used to hand back whatever the streaming pass
+                !> had settled on, which depends on where the pass began.
+                !> See step 8 of PostProcessPwbTimelagCache.
+                !>
+                !> Unconditionally, and that costs about 2% of a PWB run -
+                !> measured on base_pwb_prefilt, 44.6 s against 45.5 s, best
+                !> of three interleaved. It could be skipped for a row that
+                !> is S1 and survives the pre-filter, since such a row cannot
+                !> reach step 8, and every term in that test is a property of
+                !> this period alone. It is not, because getting the test
+                !> wrong costs a silent fall back to the carried lag this
+                !> exists to remove, and 2% is not worth that risk.
+                call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, .true., &
+                    def_rl(j), min_rl(j), max_rl(j), &
+                    mc_actual, mc_used, mc_row, mc_def)
+                lPwbResult%maxcov_lag = mc_used
 
                 if (pwb_success .and. .not. lPwbResult%edge_pinned) then
                     if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then

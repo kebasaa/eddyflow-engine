@@ -321,6 +321,7 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     real(kind = dbl) :: unrestricted_lag, raw_cov, eff_min, eff_max, eff_block
     logical :: default_used, edge_pinned, outside, clamped, prefiltered, differenced
     real(kind = dbl) :: carry_hours, tlag_pw, corr_pw, cv_99
+    real(kind = dbl) :: maxcov_lag
     integer :: ar_s, ar_w, ar_t
     type(PWBResultType) :: res
 
@@ -338,7 +339,7 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     !> setting that is now in the fingerprint, so none of them could have
     !> matched this build in any case; refusing them by version says so
     !> plainly rather than letting the fingerprint say it obscurely.
-    if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=4') then
+    if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=5') then
         close(u)
         return
     end if
@@ -392,7 +393,8 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
             actual_lag, used_lag, row_lag, default_used, &
             reliability, fill_method, donor, origin_label, fallback, &
             eff_min, eff_max, eff_block, clamped, prefiltered, carry_hours, &
-            tlag_pw, corr_pw, cv_99, differenced, ar_s, ar_w, ar_t
+            tlag_pw, corr_pw, cv_99, differenced, ar_s, ar_w, ar_t, &
+            maxcov_lag
         if (ios /= 0 .or. .not. ValidPwbPeriodTimestamp(date, time)) then
             close(u)
             return
@@ -436,6 +438,7 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
         res%ar_order_scalar = ar_s
         res%ar_order_w = ar_w
         res%ar_order_t = ar_t
+        res%maxcov_lag = maxcov_lag
         res%applied_lag = used_lag
         res%applied_row_lag = row_lag
         res%fallback_used = default_used .or. trim(reliability) == 'fallback'
@@ -479,7 +482,7 @@ subroutine WritePwbTimelagCache()
         // PwbTimelag_FilePadding // Timestamp_FilePadding // CsvExt
     open(newunit=u, file=path, status='replace', iostat=ios, encoding='utf-8')
     if (ios /= 0) return
-    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=4'
+    write(u, '(a)') 'PWB_TIMELAG_CACHE_VERSION=5'
     write(u, '(a)') 'fingerprint=' // trim(PwbCacheFingerprint())
     write(u, '(a)') 'project_id=' // trim(EddyFlowProj%id)
     write(u, '(a,i0)') 'period_seconds=', RPsetup%avrg_len
@@ -491,13 +494,13 @@ subroutine WritePwbTimelagCache()
         // 'reliability_class,fill_method,donor_gas,origin_gas,fallback_source,' &
         // 'effective_min_lag_s,effective_max_lag_s,effective_block_length_s,block_length_clamped,' &
         // 'hdi_prefiltered,carry_hours,' &
-        // 'tlag_pw_s,corr_pw,cv_99,differenced,ar_order_scalar,ar_order_w,ar_order_t'
+        // 'tlag_pw_s,corr_pw,cv_99,differenced,ar_order_scalar,ar_order_w,ar_order_t,maxcov_lag_s'
     do i = 1, PwbTimelagCacheN
         write(u, '(a,",",a,",",a,",",f12.6,",",i0,",",f12.6,",",f12.6,",",f12.6,",",a,",",l1,' &
             // '",",f12.6,",",l1,",",f14.6,",",f12.6,",",f12.6,",",i0,",",l1,' &
             // '",",a,",",a,",",a,",",a,",",a,' &
             // '",",f12.6,",",f12.6,",",f12.6,",",l1,",",l1,",",f12.6,' &
-            // '",",f12.6,",",f12.8,",",f12.8,",",l1,",",i0,",",i0,",",i0)') &
+            // '",",f12.6,",",f12.8,",",f12.8,",",l1,",",i0,",",i0,",",i0,",",f12.6)') &
             trim(PwbTimelagCache(i)%date), trim(PwbTimelagCache(i)%time), &
             trim(GasLabel(PwbTimelagCache(i)%gas)), &
             PwbTimelagCache(i)%result%selected_lag, PwbTimelagCache(i)%result%row_lag, &
@@ -522,7 +525,8 @@ subroutine WritePwbTimelagCache()
             PwbTimelagCache(i)%result%tlag_pw, PwbTimelagCache(i)%result%corr_pw, &
             PwbTimelagCache(i)%result%cv_99, PwbTimelagCache(i)%result%differenced, &
             PwbTimelagCache(i)%result%ar_order_scalar, PwbTimelagCache(i)%result%ar_order_w, &
-            PwbTimelagCache(i)%result%ar_order_t
+            PwbTimelagCache(i)%result%ar_order_t, &
+            PwbTimelagCache(i)%result%maxcov_lag
     end do
     close(u)
     PwbTimelagCache_Path = path
@@ -915,14 +919,29 @@ subroutine PostProcessPwbTimelagCache()
         PwbTimelagCache(i)%result%carry_hours = 0d0
     end do
 
-    !> Step 8: nothing reached this period. Whatever the streaming pass settled
-    !> on, which for a gas the rule rejected everywhere is its own covariance
-    !> maximisation - said plainly by the label rather than dressed up.
+    !> Step 8: nothing reached this period, so it falls back to its own
+    !> covariance maximum - which is what the label has always claimed.
+    !>
+    !> It used to hand back whatever the STREAMING pass had settled on. For a
+    !> gas the rule rejected everywhere those are the same thing, the streaming
+    !> pass having had no previous lag to carry either. They part company when
+    !> the HDI pre-filter - which runs here and not there - discards every
+    !> detection a gas had: the streaming pass had settled and carried, so what
+    !> came back was a carried lag wearing the maxcov_default label, and which
+    !> lag it was depended on where the pass began.
     do i = 1, PwbTimelagCacheN
         if (PwbTimelagCache(i)%gas < firstGas .or. PwbTimelagCache(i)%gas > lastGas) cycle
         if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
             .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
-        PwbTimelagCache(i)%used_lag = fallback_lag(i)
+        !> maxcov_lag is this period's own covariance maximum, taken at
+        !> detection time. fallback_lag - whatever the streaming pass had
+        !> settled on - is kept only for a row carrying no maxcov of its
+        !> own, which a table written by this build cannot produce.
+        if (PwbTimelagCache(i)%result%maxcov_lag /= error) then
+            PwbTimelagCache(i)%used_lag = PwbTimelagCache(i)%result%maxcov_lag
+        else
+            PwbTimelagCache(i)%used_lag = fallback_lag(i)
+        end if
         PwbTimelagCache(i)%result%reliability_class = 'fallback'
         PwbTimelagCache(i)%result%fill_method = 'maxcov_default'
         PwbTimelagCache(i)%result%fallback_source = 'maxcov_default'
@@ -1261,6 +1280,7 @@ subroutine InitPwbResult(res)
     res%peak_outside_window = .false.
     res%hdi_prefiltered = .false.
     res%carry_hours = 0d0
+    res%maxcov_lag = error
     res%tlag_pw = error
     res%corr_pw = error
     res%cv_99 = error
