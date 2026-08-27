@@ -59,6 +59,14 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # one covers too few averaging periods to be worth starting a process for, so
 # without this the parallel path had no gate at all. It costs about a minute.
 #
+# base_pwb_cache is base_rec with to_mode=1, which is PWB cache generation:
+# walk every period first, then decide every time lag at once from the
+# finished table. 39 fixtures configure PWB and not one of them set to_mode=1,
+# so PostProcessPwbTimelagCache - the routine that actually settles every lag,
+# and the S1/S2/share/interpolate/back-fill/carry/median ladder inside it - had
+# no coverage whatsoever. Three hours is enough to exercise the ladder: co2 and
+# h2o carry forward, cos borrows across the analyser.
+#
 # Keep this list free of comments: it is a word-split string, not shell source,
 # so a '#' line inside it becomes four or five bogus fixture names.
 FIXTURES="
@@ -77,6 +85,7 @@ base_biomet_water
 base_biomet_rh
 base_tlag_opt
 base_tlag_par
+base_pwb_cache
 base_ghg
 base_auto_sa
 base_mw

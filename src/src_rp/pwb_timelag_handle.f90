@@ -563,7 +563,7 @@ subroutine PostProcessPwbTimelagCache()
     real(kind = dbl) :: median_lag, t0, t1, span, previous, dist, limit
     real(kind = dbl) :: previous_minutes
     logical :: stale
-    integer :: prev, nxt, shared
+    integer :: prev, nxt, shared, origin
     logical, external :: GasSlotIsWater
 
     if (PwbTimelagCacheN <= 0) return
@@ -963,6 +963,38 @@ subroutine PostProcessPwbTimelagCache()
     call ResetPwbDiagnostics()
     do i = 1, PwbTimelagCacheN
         call CountPwbDiagnostic(PwbTimelagCache(i)%gas, PwbTimelagCache(i)%result)
+    end do
+
+    !> And so does the donor tally the aggregate summary picks each gas's
+    !> lender from. It was accumulated by AddPwbTimelagSummaryDataset as the
+    !> pre-pass went, off the STREAMING classification - so it carried the
+    !> streaming classifier's state into the summary, and
+    !> ResolvePwbAggregateSummary reads it to choose a donor by count.
+    !>
+    !> Two things were wrong with that. The counts described guesses the
+    !> table above has since overruled, so the pre-pass summary and the one
+    !> production writes at the end of the same run could disagree - the
+    !> latter is already settled-table-derived, because a cache hit fills
+    !> PWBResult from the cache. And the streaming chain depends on where a
+    !> pass started, which is what stops the pre-pass being split across
+    !> processes: a worker beginning cold classifies its first periods
+    !> differently and tallies a different lender.
+    !>
+    !> Counted here instead, off the same rows the tallies above use. The
+    !> arm is the mirror of the streaming one: a row the settled table did
+    !> not settle from its own evidence borrowed, and origin_gas names who
+    !> from.
+    PwbSummaryDonorCount = 0
+    do i = 1, PwbTimelagCacheN
+        gas = PwbTimelagCache(i)%gas
+        if (gas < firstGas .or. gas > lastGas) cycle
+        if (.not. E2Col(gas)%present) cycle
+        if (trim(PwbTimelagCache(i)%result%reliability_class) == 'S1_optimal' .or. &
+            trim(PwbTimelagCache(i)%result%reliability_class) == 'S2_optimal') cycle
+        origin = PwbTimelagCache(i)%result%origin_gas
+        if (origin >= firstGas .and. origin <= lastGas .and. origin /= gas) &
+            PwbSummaryDonorCount(gas, origin) = &
+                PwbSummaryDonorCount(gas, origin) + 1
     end do
 
     deallocate(ord, tmin, idx, lag, fallback_lag, settled, sorted)
