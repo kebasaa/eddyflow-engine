@@ -123,5 +123,57 @@ class TheStatedThresholdIsTheRealOne(unittest.TestCase):
         self.assertIn("if (N < min_numerosity) cycle", O)
 
 
+class TheClassesThemselvesAreDefinedOnEveryPath(unittest.TestCase):
+    """The same defect as the counts above, one layer down and worse.
+
+    ``toH2O`` is not a local and not a dummy - it is module state in
+    ``m_rp_global_var``. It was cleared to ``error`` only inside the
+    ``gas == wsl .and. MM > 1`` block, and that block is reached only when the
+    water gas has determinations to classify. A run whose water never settles
+    does not enter it, so ``toH2O`` kept whatever the previous caller left
+    there, or on a first call was never defined at all.
+
+    Two things read it afterwards. The test at the foot of ``OptimizeTimelags``
+    decides from ``toH2O(1)%def`` whether any class could be filled, so its
+    alert fired according to stale memory; and ``SetTimelags`` takes the water
+    detection window from these classes, which reaches the fluxes rather than
+    only the report.
+
+    It showed on ``base_pwb_prefilt``, where no gas settles anywhere: the class
+    table printed ``-9999.00`` or ``0.00`` for identical input depending on what
+    had been in memory. Both runs are byte-identical now.
+    """
+
+    def test_the_classes_are_cleared_before_the_gas_loop(self):
+        cleared = O.index("toH2O%def = error")
+        loop = O.index("do gas = firstGas, lastGas")
+        self.assertLess(cleared, loop,
+                        "toH2O must be defined before any path that can skip "
+                        "the RH block")
+
+    def test_all_three_fields_are_cleared(self):
+        for field in ("toH2O%def = error", "toH2O%min = error",
+                      "toH2O%max = error"):
+            self.assertIn(field, O)
+
+    def test_it_is_cleared_beside_the_counts_it_belongs_with(self):
+        """h2o_n was fixed for this exact reason and toH2O was left behind.
+        Keeping them together is what stops that happening a third time."""
+        counts = O.index("h2o_n = 0")
+        cleared = O.index("toH2O%def = error")
+        self.assertLess(abs(O[:cleared].count(chr(10)) - O[:counts].count(chr(10))), 25,
+                        "the two initialisations should sit together")
+
+    def test_the_stale_read_is_still_what_the_alert_tests(self):
+        """If this moves, the reasoning above needs revisiting - the point of
+        clearing toH2O is that this test reads it on every path."""
+        self.assertIn("if (toH2O(1)%def == error .and. toH2O(MM)%def == error) then", O)
+
+    def test_the_window_really_is_taken_from_these_classes(self):
+        """Which is why this is a flux bug and not a reporting one."""
+        setter = read(ROOT / "src" / "src_rp" / "set_timelags.f90")
+        self.assertIn("toH2O", setter)
+
+
 if __name__ == "__main__":
     unittest.main()

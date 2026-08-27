@@ -89,6 +89,25 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     !> stack. Zero is also the true answer for such a class.
     h2o_n = 0
 
+    !> And the classes themselves, for the same reason and one worse. toH2O is
+    !> not a local: it is module state, so on a run whose water never reaches
+    !> the RH block it holds whatever the LAST caller left there - or, on the
+    !> first call, nothing defined at all. Only the block below ever cleared
+    !> it, and that block is exactly the one such a run does not enter.
+    !>
+    !> Two things then read it. The test at the foot of this routine decides
+    !> from toH2O(1)%def whether any class could be filled, so the alert it
+    !> guards fired or did not according to stale memory; and SetTimelags
+    !> takes the water detection window from these same classes, which is a
+    !> flux consequence rather than a cosmetic one.
+    !>
+    !> Seen on base_pwb_prefilt, where no gas settles anywhere: the class
+    !> table printed -9999 or 0.00 for the same input depending on what had
+    !> been in memory beforehand.
+    toH2O%def = error
+    toH2O%min = error
+    toH2O%max = error
+
     do gas = firstGas, lastGas
         if (E2Col(gas)%present) then
             !> All gases, including H2O, are treated here
