@@ -734,6 +734,32 @@ subroutine PostProcessPwbTimelagCache()
             PwbTimelagCache(i)%result%hdi_prefiltered = .true.
     end do
 
+    !> Step 1b: every field describing HOW a period was settled starts blank,
+    !> because from here on this routine owns all of them.
+    !>
+    !> The arms below each set what they decide, but not one of them sets
+    !> everything: interpolate, carry-forward, back-fill and median all leave
+    !> donor_gas alone, and median leaves carry_hours too. A field an arm does
+    !> not set keeps what the STREAMING pass left in the row - a value the
+    !> table has just finished overruling.
+    !>
+    !> That is invisible in a serial run, because the leftover is at least the
+    !> same leftover every time. It is not invisible across processes: a worker
+    !> starting cold leaves different ones, and this is what a parallel run
+    !> disagreed with a serial run about - three interpolated rows whose
+    !> donor_gas read h2o and co2 in one and co2 and none in the other, with
+    !> the settled lag, the class and origin_gas all identical. Both were
+    !> meaningless; they were merely differently meaningless.
+    !>
+    !> Blanking them here rather than patching the four arms is deliberate: an
+    !> arm added later inherits the defined value instead of a stale one.
+    do i = 1, PwbTimelagCacheN
+        PwbTimelagCache(i)%result%donor_gas = 'none'
+        PwbTimelagCache(i)%result%carry_hours = 0d0
+        PwbTimelagCache(i)%result%fallback_source = 'none'
+        PwbTimelagCache(i)%result%fallback_used = .false.
+    end do
+
     allocate(idx(PwbTimelagCacheN), lag(PwbTimelagCacheN), &
         fallback_lag(PwbTimelagCacheN), settled(PwbTimelagCacheN), &
         sorted(PwbTimelagCacheN))
