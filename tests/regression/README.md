@@ -14,6 +14,25 @@ To run every fixture rather than one, and be told which broke:
 
     bash sweep.sh chk
 
+Whether splitting a pre-pass across worker processes changes the answer:
+
+    bash check_parallel.sh                       # base_tlag_par by default
+    bash check_parallel.sh base_other.eddyflow
+
+That runs the fixture twice through `run.sh`, once `-j 1` and once `-j 0`, and
+diffs the trees. It needs a fixture whose pre-pass window spans enough
+averaging periods for `PlanPrepassBatches` to bother splitting - on a short
+one it would compare two serial runs and pass while testing nothing, so the
+script asserts the parallel run actually split before reporting a pass.
+
+The run **log** is excluded there, and only the log: a parallel run
+concatenates each worker's own log into the parent's. Everything else must be
+byte-identical.
+
+Note that `run.sh` on its own passes no `-j`, so the engine takes its default
+of every core - which means a stored reference is itself a *parallel* run.
+Use `RP_EXTRA` to pin it either way.
+
 The EddyPro import pair is diffed the same way, and is the one comparison with
 a permitted difference:
 

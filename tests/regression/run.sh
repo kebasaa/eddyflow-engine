@@ -22,6 +22,16 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # to compare a working tree against itself: both ref and chk must come from the
 # same binaries, or the diff reports build differences as regressions.
 BIN="${BIN:-/c/Users/jonmuell/Documents/GitHub/build/eddyflow-engine-win-release/bin}"
+# Extra arguments for RP only. The reason this exists is -j: nothing here
+# passes it, so the engine picks its own default (every core) and the
+# stored reference for base_tlag_par is itself a PARALLEL run. Nothing in
+# the suite compared serial against parallel until this hook, which is how
+# an equivalence claim went ungated. Use it as:
+#     RP_EXTRA="-j 1" BASE=base_tlag_par.eddyflow run.sh ref
+#     RP_EXTRA="-j 0" BASE=base_tlag_par.eddyflow run.sh chk
+# then diff out_ref against out_chk. The run log legitimately differs - the
+# parent concatenates each worker's own log into it - so compare the rest.
+RP_EXTRA="${RP_EXTRA:-}"
 # The engine links the gfortran runtime dynamically and the build does not
 # copy it next to the binaries.
 export PATH="/c/Users/jonmuell/mingw64/bin:$PATH"
@@ -57,7 +67,7 @@ esac
 sed -e "s|^out_path=.*|out_path=$WIN_OUT|" "$HERE/$BASE" > "$PRJ"
 
 echo "== RP =="
-"$BIN/eddyflow_rp.exe" "$(cygpath -w "$PRJ")" -e "$(cygpath -w "$HOME_DIR")/" > "$OUT/_rp.log" 2>&1 \
+"$BIN/eddyflow_rp.exe" "$(cygpath -w "$PRJ")" -e "$(cygpath -w "$HOME_DIR")/" ${RP_EXTRA:-} > "$OUT/_rp.log" 2>&1 \
     || { echo "RP FAILED"; tail -30 "$OUT/_rp.log"; exit 1; }
 
 # From here on, the project is whatever RP actually ran.
