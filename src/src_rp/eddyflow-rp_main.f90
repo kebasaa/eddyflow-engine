@@ -848,7 +848,7 @@ program EddyFlowRP
 
                 !> Calculate raw screening flags and despike data if requeste
                 auxTest = TestType(.true., .false., .false., .true., .false., &
-                    .false., .false., .false., .false.)
+                    .false., .false., .false., .false., .false.)
                 call StatisticalScreening(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), auxTest, .false.)
 
@@ -1386,7 +1386,7 @@ program EddyFlowRP
 
                 !> Calculate raw screening flags and despike data if requeste
                 auxTest = TestType(.true., .false., .false., .true., .false., &
-                    .false., .false., .false., .false.)
+                    .false., .false., .false., .false., .false.)
                 call StatisticalScreening(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), auxTest, .false.)
 
@@ -2872,7 +2872,7 @@ program EddyFlowRP
             call DevelopedTurbulenceTest(DtDiff)
 
             !> flagging the file, after Foken et al. (2004, Handbook of Microm.)
-            call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .true.)
+            call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .true., .true., Test%rf)
 
             !> Write details on output files if requested
             if(RPsetup%out_qc_details .and. Meth%qcflag /= 'none') &

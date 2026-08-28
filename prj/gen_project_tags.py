@@ -224,6 +224,24 @@ FIXED_TAGS = {
         #: dioxide, which is what EddyUH hard-codes.
         81: "tlag_borrow_noise",
         82: "tlag_borrow_donor",
+        #: Extra raw-signal instrument-malfunction diagnostics (AL1 lag-1
+        #: autocorrelation, DDI discrete/dominant-value test, Qn-scaled
+        #: HF5/HF10/HD5/HD10 spike counts), ported from RFlux (Vitale et al.
+        #: 2020). Opt-in and off by default; slot 12 is free right after the
+        #: test_ns block (3-11).
+        12: "test_rf",
+    },
+    "EPPrjCTags": {
+        #: Post-flux despiking (RFlux's despiking(variant="v1"), Vitale et
+        #: al. 2020): an STL decomposition of the whole run's NEE/H/LE
+        #: series with a decile-binned Laplace outlier test on the
+        #: residual. Read by FCC alone, but goes in [Project] rather than a
+        #: FluxCorrection_* group because both FCC.SNTags and FCC.SCTags
+        #: are completely full below their record origins - fccGasOriginN
+        #: = 110, fccGasOriginC = 28, every slot below each already
+        #: assigned. 19-20 are the only free EPPrjCTags slots below
+        #: gasRecOriginC (51); one of the two is spent here.
+        19: "test_pfd",
     },
     "EPPrjNTags": {
         #: Which analytic cospectrum every spectral correction integrates

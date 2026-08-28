@@ -224,6 +224,9 @@ subroutine WriteProcessingProjectVariables()
     !> record now, applied per slot a few dozen lines below with a species
     !> default when it states none. That reaches every gas, not the fourth.
 
+    !> Post-flux despiking (test_pfd), FCC-only, off by default.
+    EddyFlowProj%test_pfd = EPPrjCTags(19)%value(1:1) == '1'
+
     !> biomet measurements info
     select case (EPPrjCTags(17)%value(1:1))
         case ('1')
@@ -440,6 +443,8 @@ subroutine WriteProcessingProjectVariables()
         Meth%qcflag = 'foken_03'
         case ('3')
         Meth%qcflag = 'goeckede_06'
+        case ('4')
+        Meth%qcflag = 'vitale_20'
         case default
         Meth%qcflag = 'mauder_foken_04'
     end select

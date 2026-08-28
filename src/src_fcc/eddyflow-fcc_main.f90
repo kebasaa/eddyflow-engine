@@ -661,7 +661,11 @@ Program EddyFlowFCC
         DtDiff%u      = nint(lEx%U_ITC)
         DtDiff%w      = nint(lEx%W_ITC)
         DtDiff%ts     = nint(lEx%TS_ITC)
-        call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .false.)
+        !> raw_ok/rf_ok are always false here: FCC never re-derives KID,
+        !> Mahrt's (1998) ratio or the test_rf diagnostics from the ex
+        !> record it reads back, so Essentials does not reflect this
+        !> period for 'vitale_20' - see QualityFlags's own note.
+        call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .false., .false., .false.)
 
         !> Initialize output files
         if (InitializeOuputFiles) then
@@ -673,6 +677,14 @@ Program EddyFlowFCC
         if (EddyFlowProj%out_md .and. .not. lEx%not_enough_data) call WriteOutMetadataFcc(lEx)
         if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetFcc(lEx)
 
+        !> Post-flux despiking (test_pfd) needs the whole run's series, so
+        !> this period only banks its NEE/H/LE; PostProcessFluxDespiking
+        !> below does the actual work once every period has been seen.
+        if (EddyFlowProj%test_pfd .and. .not. lEx%not_enough_data) then
+            call StorePfdCache(lEx%end_date, lEx%end_time, &
+                Flux2%gas(PrimaryCarbonSlot()), Flux2%H, Flux2%LE)
+        end if
+
     end do ex_loop
     close(uex)
     close(uflx)
@@ -680,6 +692,8 @@ Program EddyFlowFCC
     close(uaflx)
     close(umd)
     close(uflxnt)
+
+    if (EddyFlowProj%test_pfd .and. PfdCacheN > 0) call PostProcessFluxDespiking()
 
     write(*,*)
     write(ulog,*)

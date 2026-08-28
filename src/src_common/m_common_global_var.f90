@@ -162,6 +162,8 @@ module m_common_global_var
     !> now: the half-hourly table (which is also the cache) and the aggregate
     !> _pwb_timelag_opt.
     character(8),  parameter :: FLUXNET_FilePadding     = '_fluxnet'
+    !> Post-flux despiking output (test_pfd) - see pfd_handle.f90.
+    character(15), parameter :: PFD_FilePadding         = '_flux_despiking'
     character(7),  parameter  :: Biomet_FilePadding     = '_biomet'
     character(14), parameter :: Quality_FilePadding     = '_quality_check'
     character(18), parameter :: WPL_FilePadding         = '_wpl_contributions'
@@ -1087,6 +1089,7 @@ module m_common_global_var
          EPPrjCTags(16)%Label / 'run_mode' / &
          EPPrjCTags(17)%Label / 'use_biom' / &
          EPPrjCTags(18)%Label / 'biom_file' / &
+         EPPrjCTags(19)%Label / 'test_pfd' / &
          EPPrjCTags(21)%Label / 'out_rich' / &
          EPPrjCTags(22)%Label / 'lf_meth' / &
          EPPrjCTags(23)%Label / 'hf_meth' / &
@@ -1267,9 +1270,9 @@ module m_common_global_var
          EPPrjCTags(198)%Label / 'cell_10_instr' / &
          EPPrjCTags(199)%Label / 'cell_11_var' / &
          EPPrjCTags(200)%Label / 'cell_11_instr' / &
-         EPPrjCTags(201)%Label / 'cell_12_var' / &
-         EPPrjCTags(202)%Label / 'cell_12_instr' /
-    data EPPrjCTags(203)%Label / 'cell_13_var' / &
+         EPPrjCTags(201)%Label / 'cell_12_var' /
+    data EPPrjCTags(202)%Label / 'cell_12_instr' / &
+         EPPrjCTags(203)%Label / 'cell_13_var' / &
          EPPrjCTags(204)%Label / 'cell_13_instr' / &
          EPPrjCTags(205)%Label / 'cell_14_var' / &
          EPPrjCTags(206)%Label / 'cell_14_instr' / &

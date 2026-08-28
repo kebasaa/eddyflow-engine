@@ -82,3 +82,5 @@ src/src_rp/deprecated
 # weeks while the run log said they had been dropped. If one appears, find the
 # unguarded write - test_stray_unit_writes_static.py asserts none are here.
 /fluxnet_example
+/RFlux-master
+/dyco-main

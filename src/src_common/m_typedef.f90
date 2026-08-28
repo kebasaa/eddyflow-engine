@@ -832,6 +832,11 @@ module m_typedef
         logical :: hf_meth_in_situ
         logical :: hf_correct_ghg_ba
         logical :: hf_correct_ghg_zoh
+        !> Post-flux despiking (RFlux's despiking(variant="v1")) on the
+        !> whole run's NEE/H/LE series, after FCC has written full_output.
+        !> Off by default. FCC-only, but [Project]-scoped: see
+        !> gen_project_tags.py's FIXED_TAGS comment on "test_pfd" for why.
+        logical :: test_pfd
         !> Master switch only. Which fluxes a given pairing partitions is the
         !> pairing's own business - a single project-wide 'water only' says
         !> nothing useful once there is more than one analyser.
@@ -1190,6 +1195,19 @@ module m_typedef
         real(kind = dbl) :: RSSI77
         real(kind = dbl) :: LGD(GHGNumVar)
         real(kind = dbl) :: KID(GHGNumVar)
+        !> Extra raw-signal diagnostics ported from RFlux (Vitale et al.
+        !> 2020), gated by Test%rf: lag-1 autocorrelation, the
+        !> discrete/dominant-value test, and Qn-scaled spike counts on the
+        !> raw series (HF5/HF10) and on its first differences (HD5/HD10).
+        real(kind = dbl) :: AL1(GHGNumVar)
+        real(kind = dbl) :: DDI(GHGNumVar)
+        real(kind = dbl) :: HF5(GHGNumVar)
+        real(kind = dbl) :: HF10(GHGNumVar)
+        real(kind = dbl) :: HD5(GHGNumVar)
+        real(kind = dbl) :: HD10(GHGNumVar)
+        !> Hartigan's dip test p-value (Hartigan & Hartigan 1985) on the
+        !> fluctuations - low values flag multimodality in the raw signal.
+        real(kind = dbl) :: DIP(GHGNumVar)
         real(kind = dbl) :: CorrDiff(GHGNumVar, GHGNumVar)
         real(kind = dbl) :: mahrt98_NR(GHGNumVar)
         real(kind = dbl) :: rand_uncer(E2NumVar)
@@ -1736,6 +1754,9 @@ module m_typedef
         logical :: tl
         logical :: aa
         logical :: ns
+        !> Extra RFlux-derived raw-signal diagnostics (AL1, DDI, Qn-scaled
+        !> HF5/HF10/HD5/HD10). Off by default; see Essentials%AL1 and kin.
+        logical :: rf
     end type TestType
 
     type :: TimeLagType
@@ -1881,6 +1902,17 @@ module m_typedef
         logical :: default_used
         type(PWBResultType) :: result
     end type PWBTimelagCacheEntryType
+
+    !> One period's worth of what the post-flux despiking pass (test_pfd)
+    !> needs, accumulated across the whole FCC run and consumed once, after
+    !> the per-period loop, by PostProcessFluxDespiking.
+    type :: PfdCacheEntryType
+        character(10) :: date
+        character(5) :: time
+        real(kind = dbl) :: nee
+        real(kind = dbl) :: h
+        real(kind = dbl) :: le
+    end type PfdCacheEntryType
 
     type :: TLType
         !> Nominal time lag per gas, indexed by gas slot.

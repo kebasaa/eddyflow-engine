@@ -2329,6 +2329,7 @@ module m_rp_global_var
          SCTags(9)%Label   / 'test_tl' / &
          SCTags(10)%Label  / 'test_aa' / &
          SCTags(11)%Label  / 'test_ns' / &
+         SCTags(12)%Label  / 'test_rf' / &
          SCTags(13)%Label  / 'cross_wind' / &
          SCTags(14)%Label  / 'detrend_meth' / &
          SCTags(15)%Label  / 'rot_meth' / &
@@ -2516,9 +2517,9 @@ module m_rp_global_var
          SCTags(203)%Label / 'gas_34_out_raw' / &
          SCTags(204)%Label / 'gas_35_out_full_sp' / &
          SCTags(205)%Label / 'gas_35_out_full_cosp_w' / &
-         SCTags(206)%Label / 'gas_35_out_raw' / &
-         SCTags(207)%Label / 'gas_36_out_full_sp' /
-    data SCTags(208)%Label / 'gas_36_out_full_cosp_w' / &
+         SCTags(206)%Label / 'gas_35_out_raw' /
+    data SCTags(207)%Label / 'gas_36_out_full_sp' / &
+         SCTags(208)%Label / 'gas_36_out_full_cosp_w' / &
          SCTags(209)%Label / 'gas_36_out_raw' / &
          SCTags(210)%Label / 'gas_37_out_full_sp' / &
          SCTags(211)%Label / 'gas_37_out_full_cosp_w' / &

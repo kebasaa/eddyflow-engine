@@ -26,21 +26,17 @@
 !              detection, with no dependency on engine state.
 !
 ! \details     Everything here is a function of its arguments: no project
-!              settings, no column table, no logging. That is the point, and
-!              pwb_reference_main.f90 is what proves it - a program that could
-!              not link at all if these routines reached for PWBSetup or E2Col.
+!              settings, no column table, no logging. That is the point. The
+!              deterministic half of this chain is pinned to RFlux v3.2.0 by
+!              static_checks/test_pwb_reference_static.py, which drives it
+!              through pwb_reference_main.f90 - a program that could not link
+!              at all if these routines reached for PWBSetup or E2Col.
 !
-!              The deterministic half of this chain WAS pinned to RFlux v3.2.0,
-!              numerically, at twelve significant digits. That comparison needed
-!              dyco's fixtures and dyco's frozen expectations, and went when dyco
-!              did; see the note at the head of
-!              static_checks/test_pwb_reference_static.py for what it covered and
-!              how to bring it back. Nothing checks these numbers now.
-!
-!              The reference remains dyco (dyco/pwb.py), whose own test suite
-!              pins the same chain to the same R output and whose module
-!              docstring catalogues every deliberate departure from it. Where a
-!              comment here says "R does X", dyco is where that was read.
+!              The reference is dyco (dyco/pwb.py), whose own test suite pins
+!              the same chain to the same R output at twelve significant
+!              digits and whose module docstring catalogues every deliberate
+!              departure from it. Where a comment here says "R does X", dyco
+!              is where that was read.
 !
 ! \par Deliberate departures from dyco and RFlux
 !

@@ -46,15 +46,18 @@
 !              types with no allocatable components, written unformatted and
 !              read back by the same binary, and appended in slice order.
 !
-!              The PWB cache pre-pass is deliberately NOT split. Its classifier
-!              decides a period partly from the last settled detection before
-!              it, and that chain has no time limit - the streaming classifier
-!              sets its flag once and never clears it. A lead-in could rebuild
-!              the state only if it contained a settled detection for every
-!              gas, and on real data the weak species do not oblige: over two
-!              days of CH-LAE, COS reached no settled detection at all and
-!              nitrous oxide reached two in 103 periods. So a split there could
-!              not reproduce a single pass, and it is not offered.
+!              The PWB cache pre-pass may be split too, now - see the call
+!              site in eddyflow-rp_main.f90 for why splitting it stayed unsafe
+!              for as long as it did: the streaming classifier's verdict used
+!              to depend on the last settled detection before a period, a
+!              chain with no time limit that a slice starting cold could not
+!              rebuild. That cross-period state (the terminal fallback's lag,
+!              the aggregate dataset's membership, the donor tally) has since
+!              moved into PostProcessPwbTimelagCache, which the parent runs
+!              once, serially, over every slice's output after they finish -
+!              so what a worker produces is evidence for that pass rather than
+!              a verdict of its own, and does not depend on where its slice
+!              began.
 !
 ! \author      Jonathan Muller
 ! \note

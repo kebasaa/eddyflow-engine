@@ -78,6 +78,9 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
     !> Non-steady horizontal wind speed (ns)
     if (Tests%ns) call TestNonSteadyWind(Set, nrow)
 
+    !> Extra RFlux-derived raw-signal diagnostics (rf)
+    if (Tests%rf) call TestRFluxDiagnostics(Set, nrow, printout)
+
     !> Set flags to 9 for tests not performed
     call TestsNotPerformed()
 

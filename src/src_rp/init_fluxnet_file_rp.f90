@@ -571,6 +571,22 @@ subroutine InitFluxnetFile_rp()
         end do
     end if
 
+    !> Extra RFlux-derived raw-signal diagnostics (Test%rf), off by default.
+    !> Written last, matching write_out_fluxnet.f90 exactly: this tail is what
+    !> read_ex_record.f90 captures whole as fluxnetChunks%s(6) and FCC
+    !> re-emits verbatim, so adding columns here - unlike splicing them into
+    !> the LGD/KID/ZCD family above, whose chunk is a fixed field count -
+    !> cannot misalign anything FCC parses positionally.
+    if (Test%rf) then
+        call AddVariableFamily('_AL1')
+        call AddVariableFamily('_DDI')
+        call AddVariableFamily('_HF5')
+        call AddVariableFamily('_HF10')
+        call AddVariableFamily('_HD5')
+        call AddVariableFamily('_HD10')
+        call AddVariableFamily('_DIP')
+    end if
+
     !> The header used to be built with a GS4 placeholder for the fourth gas
     !> and have its real name substituted in here, over the whole finished
     !> row. The layout pass in SelectFluxnetGasSlots names every gas for its

@@ -432,6 +432,9 @@ detect_master_sonic.o: \
 developed_turbulence_test.o: \
 	developed_turbulence_test.f90 \
 	m_rp_global_var.o
+dip_test.o: \
+	dip_test.f90 \
+	m_rp_global_var.o
 dir_sub.o: \
 	dir_sub.f90 \
 	m_common_global_var.o \
@@ -691,6 +694,9 @@ m_dates.o: \
 m_eddypro_import.o: \
 	m_eddypro_import.f90 \
 	m_common_global_var.o
+m_flux_despike_core.o: \
+	m_flux_despike_core.f90 \
+	m_numeric_kinds.o
 m_fp2_to_float.o: \
 	m_fp2_to_float.f90 \
 	m_numeric_kinds.o
@@ -780,6 +786,12 @@ parse_ini_file.o: \
 	m_common_global_var.o
 parse_month_grouping.o: \
 	parse_month_grouping.f90 \
+	m_fx_global_var_mod.o
+period_minutes.o: \
+	period_minutes.f90
+pfd_handle.o: \
+	pfd_handle.f90 \
+	m_flux_despike_core.o \
 	m_fx_global_var_mod.o
 planar_fit_aux_params.o: \
 	planar_fit_aux_params.f90 \
@@ -983,6 +995,9 @@ test_higher_moments.o: \
 	m_rp_global_var.o
 test_non_steady_wind.o: \
 	test_non_steady_wind.f90 \
+	m_rp_global_var.o
+test_rflux_diagnostics.o: \
+	test_rflux_diagnostics.f90 \
 	m_rp_global_var.o
 test_spike_detection_mauder_13.o: \
 	test_spike_detection_mauder_13.f90 \

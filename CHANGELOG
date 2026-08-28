@@ -702,6 +702,180 @@
 	               extraction can be hidden, not the shell calls around it, which still
 	               run in the main process. Output is byte-identical either way, which
 	               was checked rather than assumed.
+	- New feature: test_rf, off by default (RawProcess_Tests, RFlux-master
+	               added to the repo as a reference). Adapted from RFlux's
+	               inst_prob_test() (Vitale et al. 2020, Biogeosciences): lag-1
+	               autocorrelation (AL1), the discrete/dominant-value test (DDI),
+	               and spike counts on the raw series and its first differences
+	               (HF5/HF10/HD5/HD10), scaled by a robust median/MAD estimator
+	               rather than RFlux's Qn. qn_estimator.f90 already carries a Qn
+	               implementation, but it is O(n^2) in both memory and time over
+	               all sample pairs - at 20 Hz over 30 minutes that is ~6.5e8
+	               pairs, well past what a per-period raw-level test can spend -
+	               and it is not called from anywhere in the tree. A true
+	               O(n log n) Qn is a separate follow-up; median/MAD plays the
+	               same role at the cost this test can actually afford, the same
+	               idiom TestSpikeDetectionMauder13 already uses.
+	               KID (kurtosis of increments) already existed unconditionally,
+	               unrelated to this flag - see kid.f90, added in 110bf29.
+	               The new columns are appended at the very end of the FLUXNET
+	               row, after the biomet block, deliberately: that tail is what
+	               read_ex_record.f90 captures whole as fluxnetChunks%s(6) and
+	               FCC re-emits verbatim. The LGD/KID/ZCD family a few columns
+	               earlier is instead sized by a fixed field count
+	               (nLgdFields) that this flag does not touch, so splicing new
+	               columns in there would have silently misaligned every field
+	               FCC parses positionally after them whenever the test is on.
+	               Regression-swept with the flag at its default (off): 28
+	               fixtures, byte-identical.
+	- New feature: test_rf also computes DIP, Hartigan's dip test p-value
+	               (Hartigan & Hartigan 1985; Hartigan 1985, AS 217) for
+	               multimodality in the raw signal - RFlux's dip.test() call,
+	               ported rather than re-derived: dip_test.f90 is a direct
+	               translation of the greatest-convex-minorant/least-concave-
+	               majorant algorithm from RUrlus/diptest's diptst() (itself a
+	               C++ rewrite of R diptest's C code, an f2c translation of the
+	               original AS 217 Fortran), plus that package's default
+	               p-value method - linear interpolation, on sqrt(n)*dip, of
+	               its tabulated critical-value grid, the same table R's own
+	               dip.test() interpolates. Both were validated rather than
+	               trusted: this port's dip statistic and p-value match the
+	               diptest PyPI package to machine precision (~1e-16) across
+	               336 test vectors - 36 targeted (n=1..36000, unimodal,
+	               bimodal, trimodal, constant, heavily-tied) plus a 300-case
+	               randomised fuzz sweep - both run again against the exact
+	               installed file after two identifier collisions with
+	               m_rp_global_var (ns, na, fn - all common enough names that
+	               EddyFlow's global-variable module already owns them) forced
+	               local renames, to confirm the renames introduced nothing.
+	               np.interp's tie-breaking on the critical-value table's
+	               duplicate nodes (common at the table's small-n end, where
+	               several alpha quantiles share one critical value) had to be
+	               reverse-engineered from its actual output rather than read
+	               off its docs, which do not specify it: it resolves to the
+	               LAST matching node, not the first.
+	- Restored: static_checks/test_pwb_reference_static.py's PwbMatchesRflux
+	               suite, dropped in 83eadd7 when dyco was not checked out
+	               beside this repository. dyco-main is checked out inside it
+	               now (as a reference for the separate RFlux gap-analysis
+	               work), at exactly the path the removed test expected, and
+	               m_pwb_core.f90 has not changed since the drop - so the file
+	               was recovered verbatim from git history rather than
+	               rewritten. All eleven tests pass unmodified: the unit-root
+	               branch decision, the AIC order search (exact integers, up to
+	               order 67), the AR coefficients to ten significant digits, the
+	               pre-whitened CCF peak and the raw cross-covariance, on both
+	               of dyco's fixtures, still agree with RFlux v3.2.0's frozen
+	               output. This is the only check in static_checks that would
+	               notice the port computing the wrong thing correctly -
+	               everything else there reads source text.
+	               m_pwb_core.f90's header comment, which had been edited to
+	               say the pin was gone, is reverted to match: comment-only,
+	               no behavioural change.
+	- Fixed: prepass_parallel.f90's header comment claimed the PWB cache
+	               pre-pass "is deliberately NOT split", which stopped being
+	               true when the streaming classifier's cross-period state
+	               (the terminal fallback's lag, the aggregate dataset's
+	               membership, the donor tally) moved into
+	               PostProcessPwbTimelagCache, run once by the parent over the
+	               merged table - the call site in eddyflow-rp_main.f90 already
+	               said so and already passes .true. to PlanPrepassBatches for
+	               this pass. Comment-only, no behavioural change.
+	- New feature: test_pfd, off by default, FCC-only. Ports RFlux's
+	               despiking(variant="v1") (Vitale et al. 2020, Biogeosciences)
+	               to run once, after a run's NEE/H and LE series are complete:
+	               log10(x+1000), an STL decomposition (Cleveland et al. 1990)
+	               with RFlux's own parameters (s.window=7, s.degree=0,
+	               t.window=mfreq*7+1, t.degree=1, outer=20, inner=2, plus a
+	               post-trend "fc" extension), reconstruction back through the
+	               inverse transform, then a decile-binned Laplace-distribution
+	               outlier test (alpha=0.01) on the residual.
+	               m_flux_despike_core.f90 is a from-scratch Fortran port of R's
+	               stlplus package (Ryan Hafen, CRAN) - its loess primitive,
+	               low-pass filter and jump-interpolation - plus RFlux's own
+	               despiking.R on top, ported rather than re-derived for the
+	               same reason dip_test.f90 gives: an independent re-derivation
+	               of a multi-stage iterative algorithm is exactly where a
+	               subtle bug hides from a compiler and from casual review.
+	               Validated against R directly rather than assumed - stlplus
+	               and despiking.R run locally - at every stage: the loess
+	               primitive, the jump-interpolation wrapper, the NA-aware
+	               nearest-neighbour window, one isolated cycle-subseries
+	               smooth, the full inner/outer robustness loop (with and
+	               without missing values, several series lengths and
+	               periods), the fc extension, and finally despiking() end to
+	               end, all matched to machine precision or an exact spike-flag
+	               match across dozens of generated cases.
+	               Follows m_pwb_core.f90's discipline: the module is a pure
+	               function of its arguments, so it could be reference-tested
+	               without linking the rest of the engine.
+	               FCC has no whole-run in-memory cache today - Flux1/Flux2/
+	               Flux3 are scalars, overwritten every period - so pfd_handle.f90
+	               adds one, PfdCache, grown with move_alloc the same way
+	               PwbTimelagCache is on the RP side; StorePfdCache appends one
+	               row per period from ex_loop, and PostProcessFluxDespiking
+	               runs once after the loop closes. Periods per day comes from
+	               the modal spacing between sorted periods, not the first
+	               pair, so one irregular gap cannot mis-set it; a run under 20
+	               periods or under 4 periods/day is skipped rather than fed to
+	               a decomposition stlplus itself would refuse (n.p < 4) or
+	               despiking() itself calls too short (its own stated minimum
+	               is ten days). Output is a new file,
+	               ..._flux_despiking....csv, alongside full_output and
+	               FLUXNET, with NEE/H/LE plus a spike flag and a cleaned value
+	               for each - it does not touch any existing output.
+	               Qn (qn_estimator.f90) moved from src_rp to src_common, and
+	               PeriodMinutes was extracted out of pwb_timelag_handle.f90
+	               into its own file for the same reason: FCC needed both and
+	               previously could link neither.
+	               The ini key lives in the shared [Project] table
+	               (EPPrjCTags(19)), not FCC.SNTags/SCTags: both of those are
+	               completely full below their record origins, which cannot
+	               move.
+	               Regression-swept with the flag at its default (off): 28
+	               fixtures, byte-identical.
+	- New feature: qc_meth's fourth option, 'vitale_20' (Vitale et al. 2020,
+	               Biogeosciences), a two-tier severity flag - 0 (ok), 1
+	               (moderate, RFlux's "ModEr") or 2 (severe, "SevEr") - built
+	               entirely from diagnostics EddyFlow already computes,
+	               regardless of which qc_meth is selected: the ITC deviation
+	               (reusing DTFlg's own grade, since Vitale's 30%/100% cutoffs
+	               land exactly on two of PartialFlagLF's boundaries) and
+	               Mahrt's (1998) nonstationarity ratio, computed
+	               unconditionally by RU_Mahrt_98 alongside random
+	               uncertainty regardless of which method is chosen there -
+	               EddyFlow already had this without knowing it, since
+	               RU_Mahrt_98's own sigma_btw/rand_uncer ratio is exactly
+	               what RFlux calls M98. Two more feed in only when the
+	               corresponding EddyFlow feature is on: KID (kurtosis of
+	               increments, computed unconditionally once enabled - see
+	               kid.f90, 110bf29) and, when test_rf is also on, AL1/DDI/
+	               HF5/HF10/HD5/HD10/DIP.
+	               Deliberately narrower than RFlux's cleanFlux(): its
+	               low-signal-resolution test and its physical-range filter
+	               (hard-coded CO2/H2O/sensible-heat/momentum limits) have no
+	               EddyFlow port, and its wind-sector exclusion is left out
+	               until EddyFlow supports a time-varying sector - genuine
+	               gaps against RFlux, not oversights here.
+	               qc_flags_subs.f90's other three methods take StFlg/DtDiff
+	               only, computed the same way in RP and FCC; this one also
+	               needs Essentials%KID/mahrt98_NR/AL1/DDI/HF5/HF10/HD5/
+	               HD10/DIP, which FCC never re-derives from the ex record it
+	               reads back (it re-emits test_rf's own columns verbatim,
+	               same as the post-flux despiking entry above notes for a
+	               different field). QualityFlags takes two new arguments,
+	               raw_ok and rf_ok, so RP (which just computed all of this)
+	               and FCC (which did not) can each say honestly whether
+	               Essentials reflects the period being flagged - without
+	               that gate, a period run through FCC would read
+	               Essentials's default-initialised zeros as genuine
+	               measurements, misfiring AL1 <= 0.5 as severe on every
+	               period. Under fcc_follows this grade degrades to the ITC
+	               deviation alone for the same reason - a real gap against
+	               RP-only projects, not a design choice, and stated as such
+	               in VitaleFlag's own header.
+	               Regression-swept with the option at its default
+	               (mauder_foken_04): 28 fixtures, byte-identical.
 
 8.0.0 (2026-08-20)
 

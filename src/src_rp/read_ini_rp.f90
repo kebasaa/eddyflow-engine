@@ -160,6 +160,7 @@ subroutine WriteVariablesRP()
     Test%tl = SCTags(9)%value(1:1) == '1'
     Test%aa = SCTags(10)%value(1:1) == '1'
     Test%ns = SCTags(11)%value(1:1) == '1'
+    Test%rf = SCTags(12)%value(1:1) == '1'
 
     !> Method of spike removal.
     !>
