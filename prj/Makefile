@@ -724,6 +724,9 @@ m_pwb_core.o: \
 m_rp_global_var.o: \
 	m_rp_global_var.f90 \
 	m_common_global_var.o
+m_storage_clean_core.o: \
+	m_storage_clean_core.f90 \
+	m_numeric_kinds.o
 m_typedef.o: \
 	m_typedef.f90 \
 	m_libdate.o \
@@ -789,6 +792,8 @@ parse_month_grouping.o: \
 	m_fx_global_var_mod.o
 period_minutes.o: \
 	period_minutes.f90
+period_ordering.o: \
+	period_ordering.f90
 pfd_handle.o: \
 	pfd_handle.f90 \
 	m_flux_despike_core.o \
@@ -960,6 +965,10 @@ statistical_screening.o: \
 stats_operator_no_error.o: \
 	stats_operator_no_error.f90 \
 	m_common_global_var.o
+stor_clean_handle.o: \
+	stor_clean_handle.f90 \
+	m_rp_global_var.o \
+	m_storage_clean_core.o
 storage.o: \
 	storage.f90 \
 	interfaces_1.inc \

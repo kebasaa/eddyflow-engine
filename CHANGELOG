@@ -871,9 +871,16 @@
 	               Essentials's default-initialised zeros as genuine
 	               measurements, misfiring AL1 <= 0.5 as severe on every
 	               period. Under fcc_follows this grade degrades to the ITC
-	               deviation alone for the same reason - a real gap against
-	               RP-only projects, not a design choice, and stated as such
-	               in VitaleFlag's own header.
+	               deviation alone for the same reason - and fcc_follows is
+	               set for any project using a spectral-correction method
+	               beyond the two built-in analytic ones (moncrieff_97,
+	               massman_00), which is most real projects, not a rare
+	               corner case as first written here. Properly closing this
+	               needs FCC's ex record to carry those diagnostics the way
+	               it already carries the ITC deviation and the
+	               stationarity percentages - a real follow-up, not
+	               attempted here; stated plainly in VitaleFlag's own
+	               header and the GUI tooltip rather than implied away.
 	               Regression-swept with the option at its default
 	               (mauder_foken_04): 28 fixtures, byte-identical.
 

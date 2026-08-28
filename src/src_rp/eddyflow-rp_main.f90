@@ -848,7 +848,7 @@ program EddyFlowRP
 
                 !> Calculate raw screening flags and despike data if requeste
                 auxTest = TestType(.true., .false., .false., .true., .false., &
-                    .false., .false., .false., .false., .false.)
+                    .false., .false., .false., .false., .false., .false.)
                 call StatisticalScreening(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), auxTest, .false.)
 
@@ -1386,7 +1386,7 @@ program EddyFlowRP
 
                 !> Calculate raw screening flags and despike data if requeste
                 auxTest = TestType(.true., .false., .false., .true., .false., &
-                    .false., .false., .false., .false., .false.)
+                    .false., .false., .false., .false., .false., .false.)
                 call StatisticalScreening(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), auxTest, .false.)
 
@@ -2863,6 +2863,7 @@ program EddyFlowRP
             else
                 call Storage(PrevStats, prevAmbient)
             end if
+            if (Test%stor_clean) call StoreStorCache(Stats%date, Stats%time)
             PrevStats = Stats
             prevAmbient = Ambient
             prevBiomet = biomet
@@ -2906,6 +2907,7 @@ program EddyFlowRP
         if (allocated(DiagSet))  deallocate(DiagSet)
         if (allocated(UserSet))  deallocate(UserSet)
     end do periods_loop
+    if (Test%stor_clean .and. StorCacheN > 0) call PostProcessStorClean()
     if (allocated(bf)) deallocate(bf)
     if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
     if (Meth%tlag == 'pwb' .and. PwbCacheDirty) call WritePwbTimelagCache()

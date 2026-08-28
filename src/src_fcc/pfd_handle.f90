@@ -41,7 +41,9 @@
 !
 ! \author      Jonathan Muller, ETH Zurich
 ! \note
-! \sa          m_flux_despike_core.f90, pwb_timelag_handle.f90
+! \sa          m_flux_despike_core.f90, pwb_timelag_handle.f90,
+!              period_ordering.f90 (SortPeriodsByMinutes/ModalPeriodStep,
+!              shared with stor_clean_handle.f90's RP-side cache)
 !***************************************************************************
 
 !> Append one period's NEE/H/LE to the whole-run cache. Called from
@@ -84,7 +86,7 @@ subroutine PostProcessFluxDespiking()
     integer(8) :: modal_step
     character(PathLen) :: PfdPath, Test_Path
     integer :: dot, open_status
-    integer(8), external :: PeriodMinutes, ModalStep
+    integer(8), external :: PeriodMinutes, ModalPeriodStep
 
     if (PfdCacheN < 20) then
         !> Too short for a seasonal-trend decomposition to mean anything -
@@ -100,12 +102,12 @@ subroutine PostProcessFluxDespiking()
         ord(i) = i
         tmin(i) = PeriodMinutes(PfdCache(i)%date, PfdCache(i)%time)
     end do
-    call SortPfdByMinutes(ord, tmin, PfdCacheN)
+    call SortPeriodsByMinutes(ord, tmin, PfdCacheN)
 
     !> Periods per day, from the most common spacing between consecutive
     !> sorted periods rather than the first pair, so one irregular gap at
     !> the start of the run cannot mis-set it.
-    modal_step = ModalStep(tmin, ord, PfdCacheN)
+    modal_step = ModalPeriodStep(tmin, ord, PfdCacheN)
     if (modal_step <= 0_8) then
         call LogSay('   Post-flux despiking: could not determine the averaging period, skipped.')
         return
@@ -186,78 +188,3 @@ contains
     end function IntToStr
 
 end subroutine PostProcessFluxDespiking
-
-
-!> Insertion-sort ord(1:n) by tmin, ascending - PfdCacheN is small enough
-!> (one row per averaging period, one run) that O(n^2) costs nothing here.
-subroutine SortPfdByMinutes(ord, tmin, n)
-    implicit none
-    integer, intent(in) :: n
-    integer, intent(inout) :: ord(n)
-    integer(8), intent(in) :: tmin(n)
-    integer :: i, j, key
-    integer(8) :: keyval
-
-    do i = 2, n
-        key = ord(i)
-        keyval = tmin(key)
-        j = i - 1
-        do while (j >= 1)
-            if (tmin(ord(j)) <= keyval) exit
-            ord(j+1) = ord(j)
-            j = j - 1
-        end do
-        ord(j+1) = key
-    end do
-end subroutine SortPfdByMinutes
-
-
-!> The most common step between consecutive sorted periods. A simple
-!> "first minus second" would be wrong if the run's very first gap happens
-!> at the start; this instead counts how often each observed step occurs
-!> and keeps the winner, which is robust to any number of gaps as long as
-!> most periods are still contiguous.
-integer(8) function ModalStep(tmin, ord, n)
-    implicit none
-    integer, intent(in) :: n
-    integer(8), intent(in) :: tmin(n)
-    integer, intent(in) :: ord(n)
-    integer(8), allocatable :: steps(:), uniq(:)
-    integer, allocatable :: cnt(:)
-    integer :: i, j, nu, best_i
-
-    ModalStep = 0_8
-    if (n < 2) return
-
-    allocate(steps(n-1))
-    do i = 1, n-1
-        steps(i) = tmin(ord(i+1)) - tmin(ord(i))
-    end do
-
-    allocate(uniq(n-1), cnt(n-1))
-    nu = 0
-    do i = 1, n-1
-        if (steps(i) <= 0_8) cycle
-        do j = 1, nu
-            if (uniq(j) == steps(i)) then
-                cnt(j) = cnt(j) + 1
-                exit
-            end if
-        end do
-        if (j > nu) then
-            nu = nu + 1
-            uniq(nu) = steps(i)
-            cnt(nu) = 1
-        end if
-    end do
-
-    if (nu > 0) then
-        best_i = 1
-        do j = 2, nu
-            if (cnt(j) > cnt(best_i)) best_i = j
-        end do
-        ModalStep = uniq(best_i)
-    end if
-
-    deallocate(steps, uniq, cnt)
-end function ModalStep

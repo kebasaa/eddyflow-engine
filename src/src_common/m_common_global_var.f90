@@ -164,6 +164,7 @@ module m_common_global_var
     character(8),  parameter :: FLUXNET_FilePadding     = '_fluxnet'
     !> Post-flux despiking output (test_pfd) - see pfd_handle.f90.
     character(15), parameter :: PFD_FilePadding         = '_flux_despiking'
+    character(17), parameter :: STOR_FilePadding        = '_storage_cleaning'
     character(7),  parameter  :: Biomet_FilePadding     = '_biomet'
     character(14), parameter :: Quality_FilePadding     = '_quality_check'
     character(18), parameter :: WPL_FilePadding         = '_wpl_contributions'

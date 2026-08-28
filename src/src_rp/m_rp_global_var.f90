@@ -38,6 +38,17 @@ module m_rp_global_var
     implicit none
     save
 
+    !> One whole-run cache entry for StorCleanHandle.f90 (test_stor_clean),
+    !> RP-only: the storage term never reaches FCC's ex record, so this
+    !> lives beside Test rather than in m_typedef.f90's shared types.
+    type :: StorCacheEntryType
+        character(10) :: date
+        character(5) :: time
+        real(kind = dbl) :: strg(GHGNumVar)
+    end type StorCacheEntryType
+    type(StorCacheEntryType), allocatable :: StorCache(:)
+    integer :: StorCacheN = 0
+
     !> Gas slots the FLUXNET header declared columns for, frozen as it is
     !> written.
     !>
@@ -2338,6 +2349,7 @@ module m_rp_global_var
          SCTags(18)%Label  / 'make_dataset' / &
          SCTags(19)%Label  / 'recurse' / &
          SCTags(20)%Label  / 'me_file' / &
+         SCTags(21)%Label  / 'test_stor_clean' / &
          SCTags(22)%Label  / 'pf_start_time' / &
          SCTags(23)%Label  / 'pf_end_time' / &
          SCTags(24)%Label  / 'to_start_time' / &
@@ -2516,9 +2528,9 @@ module m_rp_global_var
          SCTags(202)%Label / 'gas_34_out_full_cosp_w' / &
          SCTags(203)%Label / 'gas_34_out_raw' / &
          SCTags(204)%Label / 'gas_35_out_full_sp' / &
-         SCTags(205)%Label / 'gas_35_out_full_cosp_w' / &
-         SCTags(206)%Label / 'gas_35_out_raw' /
-    data SCTags(207)%Label / 'gas_36_out_full_sp' / &
+         SCTags(205)%Label / 'gas_35_out_full_cosp_w' /
+    data SCTags(206)%Label / 'gas_35_out_raw' / &
+         SCTags(207)%Label / 'gas_36_out_full_sp' / &
          SCTags(208)%Label / 'gas_36_out_full_cosp_w' / &
          SCTags(209)%Label / 'gas_36_out_raw' / &
          SCTags(210)%Label / 'gas_37_out_full_sp' / &

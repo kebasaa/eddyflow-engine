@@ -230,6 +230,14 @@ FIXED_TAGS = {
         #: 2020). Opt-in and off by default; slot 12 is free right after the
         #: test_ns block (3-11).
         12: "test_rf",
+        #: Storage-flux cleaning (RFlux's cleanFlux() storage branch, Vitale
+        #: et al. 2020): a Tukey boxplot ("far out" fence) outlier test on
+        #: each gas's storage term, binned by time-of-day across the whole
+        #: run, then linear interpolation over interior gaps. RP-only - the
+        #: storage term never reaches FCC's ex record. Opt-in and off by
+        #: default; slot 21 is the one skipped between me_file (20) and
+        #: pf_start_time (22).
+        21: "test_stor_clean",
     },
     "EPPrjCTags": {
         #: Post-flux despiking (RFlux's despiking(variant="v1"), Vitale et

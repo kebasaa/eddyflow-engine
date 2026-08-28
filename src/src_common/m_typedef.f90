@@ -1757,6 +1757,10 @@ module m_typedef
         !> Extra RFlux-derived raw-signal diagnostics (AL1, DDI, Qn-scaled
         !> HF5/HF10/HD5/HD10). Off by default; see Essentials%AL1 and kin.
         logical :: rf
+        !> Storage-flux cleaning (RFlux's cleanFlux() storage branch): a
+        !> whole-run Tukey boxplot outlier test plus interpolation on each
+        !> gas's storage term. Off by default; see StorCleanHandle.
+        logical :: stor_clean
     end type TestType
 
     type :: TimeLagType

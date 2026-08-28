@@ -42,13 +42,26 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout,
     logical, intent(in) :: printout
     !> Whether Essentials%KID/mahrt98_NR reflect the period being flagged
     !> right now, and whether Essentials%AL1/DDI/HF5/HF10/HD5/HD10/DIP do
-    !> too - both feed 'vitale_20' only. True from RP, which just computed
-    !> them; false from FCC, which never re-derives per-sample raw-signal
-    !> diagnostics from the ex record it reads back - it re-emits test_rf's
-    !> own columns verbatim rather than parsing them (see pfd_handle.f90's
-    !> sibling note on the same record). rf_ok additionally needs RP's own
-    !> Test%rf, a src_rp-only type this src_common file cannot reference
-    !> directly, so the caller resolves it instead.
+    !> too - both feed 'vitale_20' only. True from RP's own call, which
+    !> just computed them; false from FCC's call, which never re-derives
+    !> per-sample raw-signal diagnostics from the ex record it reads back
+    !> - it re-emits test_rf's own columns verbatim rather than parsing
+    !> them (see pfd_handle.f90's sibling note on the same record).
+    !> rf_ok additionally needs RP's own Test%rf, a src_rp-only type this
+    !> src_common file cannot reference directly, so the caller resolves
+    !> it instead.
+    !>
+    !> This matters more than "RP's own call vs FCC's own call" suggests:
+    !> whenever EddyFlowProj%fcc_follows is set - which it is for any
+    !> project using a spectral-correction method beyond the two built-in
+    !> analytic ones (moncrieff_97, massman_00), i.e. most real projects -
+    !> RP's own QualityFlags call is the one that gets skipped (the
+    !> `else` branch below sets every flag to `error` and RP does not
+    !> even write full_output in that mode), and FCC's call - raw_ok and
+    !> rf_ok both false, always - is the one whose output the user
+    !> actually sees. So for most projects 'vitale_20' runs as ITC-only
+    !> in practice, not as the wider aggregate the tooltip's first line
+    !> promises; see VitaleFlag's own header.
     logical, intent(in) :: raw_ok
     logical, intent(in) :: rf_ok
     type(QCType), intent(out)   :: lQCFlag
@@ -362,10 +375,18 @@ end subroutine FokenFlag
 !              filter (hard-coded CO2/H2O/sensible-heat/momentum limits)
 !              have no EddyFlow port, and its wind-sector exclusion is left
 !              out until EddyFlow supports a time-varying sector - both
-!              genuine gaps against RFlux, not oversights here. And under
-!              fcc_follows, this grade degrades to the ITC deviation alone,
-!              for the reason raw_ok/rf_ok above gives - a real gap against
-!              RP-only projects, not a design choice.
+!              genuine gaps against RFlux, not oversights here.
+!
+!              Under fcc_follows this grade degrades to the ITC deviation
+!              alone, for the reason raw_ok/rf_ok's own comment on
+!              QualityFlags gives - and fcc_follows is set for any project
+!              using a spectral-correction method beyond the two built-in
+!              analytic ones, which is most real projects, not a rare
+!              corner case. Properly closing this needs FCC's ex record to
+!              carry KID/mahrt98_NR/AL1/DDI/HF5/HF10/HD5/HD10/DIP the way
+!              it already carries the ITC deviation (U_ITC/W_ITC/TS_ITC)
+!              and the stationarity percentages (TAU_SS/H_SS/F_SS) -
+!              a real follow-up, not attempted here.
 ! \author      Jonathan Muller, ETH Zurich
 ! \note
 ! \sa          RFlux-master/R/cleanFlux.R (the SevEr_ind/ModEr_ind unions)
