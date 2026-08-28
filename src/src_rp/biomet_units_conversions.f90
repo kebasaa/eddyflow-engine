@@ -43,6 +43,11 @@ subroutine BiometStandardEddyFlowUnits()
     integer :: i
 
 
+    !> Per-channel linear calibration, ahead of the unit conversion below -
+    !> a channel is calibrated in its own raw units before those units are
+    !> converted, not after. See BiometApplyCalibration's own header.
+    call BiometApplyCalibration()
+
     do i = 1, nbVars
         select case(trim(bVars(i)%nature))
             case('TEMPERATURE')
@@ -205,6 +210,67 @@ subroutine BiometStandardEddyFlowUnits()
         end select
     end do
 end subroutine BiometStandardEddyFlowUnits
+
+!***************************************************************************
+!
+! \brief       Per-channel linear calibration on raw biomet values, ahead
+!              of unit conversion: bSet(:,i) <- bSet(:,i)*gain + offset.
+! \details     Adapted from RFlux's convert_rawdata(), whose per-channel
+!              info_* lists carry the same offset+raw*gain term (plus a
+!              quadratic one this port does not have - see
+!              read_biomet_meta_file.f90's own note on why). Lets a
+!              biomet channel's raw counts or voltages become physical
+!              readings without a pre-processing step outside EddyFlow,
+!              the same way a raw high-frequency channel is calibrated
+!              before EddyFlow ever sees the equivalent gain/offset on
+!              that side.
+!
+!              Only reaches biomet imported through ReadBiometMetaFile -
+!              in practice, biomet embedded in a .ghg archive, since that
+!              is the only caller today (read_licor_ghg_archive.f90).
+!              EddyFlow's other biomet source, an external CSV file
+!              (InitExternalBiomet), derives bVars entirely from the
+!              file's own two-line header (RetrieveExtBiometVars) and has
+!              no sidecar metadata file to state _gain/_offset in at all -
+!              a genuine gap against a true "generic ASCII, arbitrary
+!              logger" import, not a design choice. biom_use_native_header
+!              (SCTags(58)) already reads as though it exists to select
+!              between the two, but nothing consumes its value; wiring it
+!              up to route external biomet through this same metadata-file
+!              path is the natural way to close that gap, and is left as a
+!              follow-up rather than attempted here - InitExternalBiomet's
+!              record count, allocation and file-consistency checks are
+!              all built directly on the two-line header assumption, so
+!              switching that path is a larger, riskier change than this
+!              pass.
+!
+!              A channel with neither stated (bVars(i)%gain still
+!              nullbVar's error sentinel) is left untouched - biomet is
+!              assumed already in physical units unless the metadata file
+!              says otherwise, so a project that never states
+!              _gain/_offset sees no change at all.
+! \author      Jonathan Muller, ETH Zurich
+! \note
+! \sa          read_biomet_meta_file.f90, RFlux-master/R/convert_rawdata.R
+!***************************************************************************
+subroutine BiometApplyCalibration()
+    use m_rp_global_var
+    implicit none
+    !> local variables
+    integer :: i
+    real(kind = dbl) :: gain, offset
+
+    do i = 1, nbVars
+        if (bVars(i)%gain == error .and. bVars(i)%offset == error) cycle
+        gain = bVars(i)%gain
+        if (gain == error) gain = 1d0
+        offset = bVars(i)%offset
+        if (offset == error) offset = 0d0
+        where (bSet(:, i) /= error)
+            bSet(:, i) = bSet(:, i) * gain + offset
+        end where
+    end do
+end subroutine BiometApplyCalibration
 
 !***************************************************************************
 !

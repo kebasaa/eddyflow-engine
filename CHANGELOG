@@ -925,6 +925,54 @@
 	               two heavy multi-process jobs at once, not a fault in
 	               this code. Regression-swept in isolation: 28 fixtures,
 	               byte-identical.
+	- New feature: Per-channel linear calibration (adapted from RFlux's
+	               convert_rawdata(): offset + raw*gain, without its
+	               quadratic term - see below) on biomet variables read
+	               through a metadata file: _gain and _offset, applied in
+	               BiometApplyCalibration ahead of the existing unit
+	               conversion. Not new tags - biometInitEmbedded already
+	               reserved a numeric slot apiece for '_gain' and
+	               '_offset' next to every variable's label/id/instrument/
+	               unit_in, and BiometVarsType/BiometColType already carry
+	               gain/offset fields - but nothing ever read the tags
+	               into those fields or applied them; both were live,
+	               unused code, most likely staged by this feature's
+	               original author for exactly this and never finished.
+	               A channel that states neither is left untouched, so a
+	               project with no metadata file - or one that never
+	               names these two tags - sees no change.
+	               Only reaches biomet imported through ReadBiometMetaFile
+	               - in practice, biomet embedded in a .ghg archive, the
+	               only caller today. EddyFlow's other biomet source, an
+	               external CSV file, derives its variables entirely from
+	               the file's own two-line header and has no sidecar
+	               metadata file to state _gain/_offset in - a genuine gap
+	               against a true "generic ASCII, arbitrary logger"
+	               import, not a design choice: biom_use_native_header
+	               (SCTags(58)) already reads as though it exists to
+	               select between the two import styles, but nothing
+	               consumes its value either. Wiring it up to route
+	               external biomet through this same metadata-file path
+	               is the natural way to close that gap, but
+	               InitExternalBiomet's record count, allocation and
+	               file-consistency checks are all built directly on the
+	               two-line-header assumption, so switching that path is a
+	               larger, riskier change than this one - left as a
+	               follow-up, not attempted here.
+	               No quadratic term, unlike RFlux's own: biometInitEmbedded
+	               reserved exactly one numeric slot apiece for gain and
+	               offset, nothing more, so a quadratic coefficient has
+	               nowhere to live without widening that reservation.
+	               Validated two ways rather than one: the arithmetic
+	               itself (gain-only, offset-only, both, neither, and
+	               error-value preservation) against hand-computed
+	               expectations in an isolated driver, and the full
+	               regression suite at the feature's default (unset): 28
+	               fixtures, byte-identical. Could not be spot-checked
+	               live end-to-end - the only fixture that exercises
+	               embedded .ghg biomet is base_ghg, and this machine has
+	               no 7-Zip on PATH, the same reason base_ghg already
+	               skips in every sweep this session.
 
 8.0.0 (2026-08-20)
 

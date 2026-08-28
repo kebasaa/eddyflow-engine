@@ -82,6 +82,8 @@ subroutine WriteBiometMetaVariables(skip_file)
     integer :: cnt
     integer :: tsCnt
     integer :: ix
+    integer :: gix
+    integer :: oix
     integer :: nbTimestamp
     character(32) :: label
     logical, external :: BiometValidateVar
@@ -186,6 +188,20 @@ subroutine WriteBiometMetaVariables(skip_file)
 
                 if (len_trim(bVars(cnt)%label) == 0) bVars(cnt)%label = bVars(cnt)%id
                 if (len_trim(bVars(cnt)%label) == 0) bVars(cnt)%label = 'UNNAMED'
+
+                !> Per-channel linear calibration (adapted from RFlux's
+                !> convert_rawdata(): offset + raw*gain, no quadratic term
+                !> - unlike RFlux's, since biometInitEmbedded only ever
+                !> reserved one numeric slot apiece for _gain and _offset).
+                !> Both stay at nullbVar's error sentinel, applied as a
+                !> no-op by BiometApplyCalibration, when the metadata file
+                !> does not state them - an external biomet file is
+                !> assumed already in physical units unless told
+                !> otherwise, same as before this existed.
+                gix = initn_col + i*leapn_col
+                oix = gix + 1
+                if (BiometNTagFound(gix)) bVars(cnt)%gain = BiometNTags(gix)%value
+                if (BiometNTagFound(oix)) bVars(cnt)%offset = BiometNTags(oix)%value
 
                 !> Retrieve variable base name
                 call biometBaseNameAndPositionalQualifierFromLabel(bVars(cnt)%label, &
