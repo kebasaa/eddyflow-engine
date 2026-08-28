@@ -690,6 +690,13 @@ module m_typedef
         real(kind = dbl) :: canopy_height
         real(kind = dbl) :: d
         real(kind = dbl) :: z0
+        !> Time-varying invalid wind-sector exclusion (adapted from RFlux's
+        !> SA_INVALID_WIND_SECTOR_c*/w* site-metadata fields), up to three
+        !> sectors as center/width degrees. `error` in wdf_center(1) means
+        !> "this record does not touch wind-sector exclusion" - the static
+        !> project setting stands; see ExtractUsableMetadataFromDynamic.
+        real(kind = dbl) :: wdf_center(3)
+        real(kind = dbl) :: wdf_width(3)
         type(InstrumentType) :: Instr(E2NumVar)
     end type DynMDType
 

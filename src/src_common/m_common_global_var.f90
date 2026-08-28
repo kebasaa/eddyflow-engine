@@ -339,14 +339,20 @@ module m_common_global_var
     !> matched per record through DynMDGasFieldNames and GasSlotFromDynMDTag,
     !> which reach every analyser rather than the first four. A header column
     !> such as co2_irga_model still resolves; it just resolves on that pass.
-    integer, parameter :: NumStdDynMDVars = 19
+    integer, parameter :: NumStdDynMDVars = 25
     character(64) :: StdDynMDVars(NumStdDynMDVars)
     data (StdDynMDVars(mmm), mmm = 1, NumStdDynMDVars) /'date', 'time', 'latitude', 'longitude', 'altitude',&
                 'file_length', 'acquisition_frequency', &
                 'canopy_height', 'displacement_height', 'roughness_length', &
                 'master_sonic_manufacturer', 'master_sonic_model', 'master_sonic_height', &
                 'master_sonic_wformat', 'master_sonic_wref', 'master_sonic_north_offset', &
-                'master_sonic_hpath_length', 'master_sonic_vpath_length', 'master_sonic_tau' /
+                'master_sonic_hpath_length', 'master_sonic_vpath_length', 'master_sonic_tau', &
+                !> Time-varying invalid wind-sector exclusion (adapted from RFlux's
+                !> SA_INVALID_WIND_SECTOR_c*/w* site-metadata fields). A record
+                !> that names wdf_sec1_center replaces the static project sectors
+                !> outright, up to three; see ExtractUsableMetadataFromDynamic.
+                'wdf_sec1_center', 'wdf_sec1_width', 'wdf_sec2_center', &
+                'wdf_sec2_width', 'wdf_sec3_center', 'wdf_sec3_width' /
 
 
 !    integer, parameter :: NumStdUnits = 107

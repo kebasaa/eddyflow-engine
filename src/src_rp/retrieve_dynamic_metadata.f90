@@ -273,6 +273,28 @@ subroutine ReadMetadataFromTextVars(mdStringVars, nrow)
         read(mdStringVars(DynamicMetadataOrder(master_sonic_tau)), *) &
         DynamicMetadata%instr(u)%tau
 
+    !> Time-varying invalid wind-sector exclusion. Each pair is read
+    !> independently, matching every field above - RFlux's own site
+    !> metadata likewise lets any one of its three sectors go unstated.
+    if (DynamicMetadataOrder(wdf_sec1_center) /= nint(error)) &
+        read(mdStringVars(DynamicMetadataOrder(wdf_sec1_center)), *) &
+        DynamicMetadata%wdf_center(1)
+    if (DynamicMetadataOrder(wdf_sec1_width) /= nint(error)) &
+        read(mdStringVars(DynamicMetadataOrder(wdf_sec1_width)), *) &
+        DynamicMetadata%wdf_width(1)
+    if (DynamicMetadataOrder(wdf_sec2_center) /= nint(error)) &
+        read(mdStringVars(DynamicMetadataOrder(wdf_sec2_center)), *) &
+        DynamicMetadata%wdf_center(2)
+    if (DynamicMetadataOrder(wdf_sec2_width) /= nint(error)) &
+        read(mdStringVars(DynamicMetadataOrder(wdf_sec2_width)), *) &
+        DynamicMetadata%wdf_width(2)
+    if (DynamicMetadataOrder(wdf_sec3_center) /= nint(error)) &
+        read(mdStringVars(DynamicMetadataOrder(wdf_sec3_center)), *) &
+        DynamicMetadata%wdf_center(3)
+    if (DynamicMetadataOrder(wdf_sec3_width) /= nint(error)) &
+        read(mdStringVars(DynamicMetadataOrder(wdf_sec3_width)), *) &
+        DynamicMetadata%wdf_width(3)
+
     !> Analyser overrides, one pass per configured gas.
     !>
     !> Four near-identical fifteen-statement blocks before, one per historical
@@ -481,6 +503,7 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
     !> Local variables
     integer :: gas
     integer :: gas2
+    integer :: sec
     logical :: instr_updated(GHGNumVar)
 
 
@@ -524,6 +547,34 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
         LocCol(u:ts)%instr%height = DynamicMetadata%instr(u)%height
     if (DynamicMetadata%instr(u)%north_offset /= error) &
         LocCol(u:ts)%instr%north_offset = DynamicMetadata%instr(u)%north_offset
+
+    !> Time-varying invalid wind-sector exclusion, converted from the
+    !> center/width RFlux-style pairs above into the start/end
+    !> representation the static project setting already uses (each
+    !> sector's own bounds, not wrapped at 0/360 - FilterDatasetForWind
+    !> Direction's own start<wd<end test does not wrap either, so a
+    !> sector that would cross due north needs two entries, the same
+    !> limitation the static setting already has). Only replaces the
+    !> sectors in effect - static, or an earlier dynamic record - when
+    !> this record actually names at least the first one; a record
+    !> that says nothing about wind sectors leaves the current regime
+    !> standing, the rule every other field here follows. Applied only
+    !> when RPsetup%apply_wdf is already on: a dynamic metadata file
+    !> cannot turn wind-sector exclusion on for a project that left it
+    !> off, only change which sectors an already-enabled filter uses.
+    if (RPsetup%apply_wdf .and. DynamicMetadata%wdf_center(1) /= error) then
+        RPsetup%wdf_num_secs = 0
+        do sec = 1, 3
+            if (DynamicMetadata%wdf_center(sec) == error &
+                .or. DynamicMetadata%wdf_width(sec) == error) cycle
+            RPsetup%wdf_num_secs = RPsetup%wdf_num_secs + 1
+            RPsetup%wdf_start(RPsetup%wdf_num_secs) = &
+                DynamicMetadata%wdf_center(sec) - DynamicMetadata%wdf_width(sec) / 2d0
+            RPsetup%wdf_end(RPsetup%wdf_num_secs) = &
+                DynamicMetadata%wdf_center(sec) + DynamicMetadata%wdf_width(sec) / 2d0
+        end do
+    end if
+
     !> Gases
     instr_updated = .false.
     do gas = firstGas, lastGas

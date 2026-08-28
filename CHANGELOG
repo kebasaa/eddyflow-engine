@@ -883,6 +883,48 @@
 	               header and the GUI tooltip rather than implied away.
 	               Regression-swept with the option at its default
 	               (mauder_foken_04): 28 fixtures, byte-identical.
+	- New feature: Time-varying invalid wind-sector exclusion (adapted from
+	               RFlux's SA_INVALID_WIND_SECTOR_c*/w* site-metadata
+	               fields), for a project that already has both wdf_apply
+	               and a dynamic metadata file on. Rather than a new file
+	               format, this extends the one dynamic metadata already
+	               reads: six new optional header columns
+	               (wdf_sec1_center/width through wdf_sec3_center/width),
+	               each independently optional the same way every other
+	               dynamic metadata field is. A record that names the first
+	               one replaces the static project sectors outright, up to
+	               three, converted into the start/end degrees
+	               FilterDatasetForWindDirection already expects; a record
+	               that says nothing about wind sectors leaves whatever
+	               regime is already in effect - static, or an earlier
+	               dynamic record - standing, the rule every other dynamic
+	               field already follows. Does not wrap at 0/360, matching
+	               FilterDatasetForWindDirection's own start<wd<end test,
+	               which does not either - a sector crossing due north
+	               needs two entries, the same limitation the static
+	               setting already has.
+	               Only takes effect when RPsetup%apply_wdf is already on:
+	               a dynamic metadata file cannot turn wind-sector exclusion
+	               on for a project that left it off, only change which
+	               sectors an already-enabled filter uses - so a project
+	               with no dynamic metadata file, or one that never uses
+	               these six column names, sees no behavioural change at
+	               all, byte-identical by construction rather than by
+	               having to prove it. No GUI change needed: the dynamic
+	               metadata file is already a plain file-path setting with
+	               no per-column configuration on that side, so extending
+	               its accepted header names is entirely an engine-side
+	               change.
+	               A live spot check surfaced a scare, not a bug: running
+	               it concurrently with an unrelated background regression
+	               sweep on this machine produced a SIGSEGV under -j
+	               (default parallel workers). Rebuilt with `make debug`
+	               (-fbounds-check -fcheck=all) and re-run in isolation -
+	               serial and parallel alike, repeatedly - it did not
+	               recur; the crash was resource contention from running
+	               two heavy multi-process jobs at once, not a fault in
+	               this code. Regression-swept in isolation: 28 fixtures,
+	               byte-identical.
 
 8.0.0 (2026-08-20)
 

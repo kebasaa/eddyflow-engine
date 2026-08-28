@@ -247,7 +247,8 @@ module m_rp_global_var
 
     type(DynMDType), parameter :: &
         ErrDynamicMetadata = DynMDType('none', error, error, &
-            error, error, error, error, error, error, NullInstrument)
+            error, error, error, error, error, error, &
+            [error, error, error], [error, error, error], NullInstrument)
 
     !> Tags of the setup ".ini" file for rawscreening
     integer, parameter :: Nsn = 2088
