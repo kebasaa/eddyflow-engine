@@ -118,7 +118,12 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout,
                 !> Two-tier severity scheme (Vitale et al. 2020, Biogeosciences),
                 !> from a wider net of tests than the three above: see
                 !> VitaleFlag's own header for what feeds it.
-                call VitaleFlag(DTFlg(u), (/u, v, w/), raw_ok, rf_ok, lQCFlag%tau)
+                !> RFlux's own ITC test (cleanFlux.R) is defined once, on
+                !> itc_w alone, and that same SevEr/ModEr set is reused for
+                !> all four fluxes including TAU - so this passes DTFlg(w),
+                !> not the max(u*,w) DTFlg(u) the other three methods above
+                !> use for their own, unrelated TAU convention.
+                call VitaleFlag(DTFlg(w), (/u, v, w/), raw_ok, rf_ok, lQCFlag%tau)
                 call VitaleFlag(DTFlg(w), (/ts, w, 0/), raw_ok, rf_ok, lQCFlag%H)
                 do gas = firstGas, lastGas
                     call VitaleFlag(DTFlg(w), (/gas, w, 0/), raw_ok, rf_ok, lQCFlag%gas(gas))
@@ -458,8 +463,13 @@ subroutine VitaleFlag(itc_flg, vars, raw_ok, rf_ok, OAFlag)
             mod_flag = mod_flag .or. (Essentials%HD5(vslot) > scth1 / 2d0 .or. Essentials%HD10(vslot) > scth2 / 2d0)
         end if
         if (Essentials%DIP(vslot) /= error) then
-            sev_flag = sev_flag .or. (Essentials%DIP(vslot) < 0d0)
-            mod_flag = mod_flag .or. (Essentials%DIP(vslot) >= 0d0 .and. Essentials%DIP(vslot) <= 0.1d0)
+            !> DIP is Hartigan's dip-test p-value, in [0,1] - RFlux's own
+            !> thresholds (inst_prob_test.R: sev_thr[11]=0.01,
+            !> mod_thr[11]=0.05) were 0.0 and 0.1 here, so severe could
+            !> never fire (a p-value is never < 0) and moderate fired 5x
+            !> too wide.
+            sev_flag = sev_flag .or. (Essentials%DIP(vslot) < 0.01d0)
+            mod_flag = mod_flag .or. (Essentials%DIP(vslot) >= 0.01d0 .and. Essentials%DIP(vslot) <= 0.05d0)
         end if
     end do
 
