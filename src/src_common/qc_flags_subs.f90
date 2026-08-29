@@ -477,8 +477,19 @@ subroutine VitaleFlag(itc_flg, vars, raw_ok, rf_ok, OAFlag)
             !> mod_thr[11]=0.05) were 0.0 and 0.1 here, so severe could
             !> never fire (a p-value is never < 0) and moderate fired 5x
             !> too wide.
-            sev_flag = sev_flag .or. (Essentials%DIP(vslot) < 0.01d0)
-            mod_flag = mod_flag .or. (Essentials%DIP(vslot) >= 0.01d0 .and. Essentials%DIP(vslot) <= 0.05d0)
+            !>
+            !> RFlux's own SC_TAU_SevEr/SC_TAU_ModEr sets (cleanFlux.R)
+            !> are themselves asymmetric between u and v: SevEr includes
+            !> DIP_U but not DIP_V, ModEr includes DIP_V but not DIP_U -
+            !> W (and, for H/gas fluxes, ts/co2/h2o) get both either way.
+            !> This looks like an RFlux typo rather than a deliberate
+            !> design, but it is what cleanFlux.R actually does, so it is
+            !> ported as-is rather than "corrected" against a guess at
+            !> the intended symmetric version.
+            if (vslot /= v) &
+                sev_flag = sev_flag .or. (Essentials%DIP(vslot) < 0.01d0)
+            if (vslot /= u) &
+                mod_flag = mod_flag .or. (Essentials%DIP(vslot) >= 0.01d0 .and. Essentials%DIP(vslot) <= 0.05d0)
         end if
     end do
 
