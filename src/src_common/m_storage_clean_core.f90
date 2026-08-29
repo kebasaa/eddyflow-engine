@@ -157,11 +157,21 @@ subroutine CleanStorageSeries(x, n, hod, mfreq, missing, spike_flag, cleaned)
             right = right + 1
         end do
         !> [left+1, right-1] is one contiguous gap run. Fill it only if it
-        !> has a valid point on both sides.
+        !> has a valid point on both sides - matching na.approx(..., na.rm
+        !> = FALSE)'s default of not extrapolating past the data. A run
+        !> that reaches the start or end of the whole series instead goes
+        !> to `missing`, same as na.approx leaves it: a leading/trailing
+        !> spike has no raw value to fall back to in RFlux either, since
+        !> Sc_Outlier positions are replaced with NA before na.approx ever
+        !> runs, not after.
         if (left >= 1 .and. right <= n) then
             do i = left + 1, right - 1
                 cleaned(i) = x(left) + (x(right) - x(left)) &
                     * dble(i - left) / dble(right - left)
+            end do
+        else
+            do i = max(left + 1, 1), min(right - 1, n)
+                cleaned(i) = missing
             end do
         end if
         i = right
