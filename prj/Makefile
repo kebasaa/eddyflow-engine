@@ -673,6 +673,7 @@ kaimal_models.o: \
 	m_common_global_var.o
 kid.o: \
 	kid.f90 \
+	m_common_global_var.o \
 	m_rp_global_var.o
 longest_gap_duration.o: \
 	longest_gap_duration.f90 \
