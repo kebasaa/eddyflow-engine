@@ -1196,6 +1196,10 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             var = rowVar(jg)
             call AddFloatDatumToDataline(Essentials%DIP(var), csv_row, EddyFlowProj%err_label)
         end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%CCF(var), csv_row, EddyFlowProj%err_label)
+        end do
     end if
 
     !> Replace error codes with user-defined error code

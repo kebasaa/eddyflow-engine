@@ -2594,8 +2594,12 @@ program EddyFlowRP
             !> inside read past the end of them. Matches the KID call above.
             call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), GHGNumVar)
 
-            !> Cross-correlation R^2 test for repeated values 
-            call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+            !> Cross-correlation R^2 test for repeated values - informational
+            !> only (see cross_corr_test.f90's own header), so gated the
+            !> same as its sibling raw-signal diagnostics rather than
+            !> always spending the two extra CCF passes per variable.
+            if (Test%rf) &
+                call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
 
             !> Calculate Mahrt's random error and Nonstationarity ratio anyway.
             call RU_Mahrt_98(E2Primes, size(E2Primes, 1), size(E2Primes, 2))

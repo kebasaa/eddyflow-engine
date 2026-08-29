@@ -585,6 +585,7 @@ subroutine InitFluxnetFile_rp()
         call AddVariableFamily('_HD5')
         call AddVariableFamily('_HD10')
         call AddVariableFamily('_DIP')
+        call AddVariableFamily('_CCF')
     end if
 
     !> The header used to be built with a GS4 placeholder for the fourth gas

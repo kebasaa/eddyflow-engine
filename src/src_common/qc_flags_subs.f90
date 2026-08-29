@@ -382,6 +382,15 @@ end subroutine FokenFlag
 !              out until EddyFlow supports a time-varying sector - both
 !              genuine gaps against RFlux, not oversights here.
 !
+!              Essentials%CCF(:) (the CCF-degradation R^2 test,
+!              cross_corr_test.f90) is deliberately NOT read here either,
+!              even though it is computed under the same Test%rf gate as
+!              AL1/DDI/etc.: RFlux's own cleanFlux.R never consumes its
+!              lrt_h/lrt_fc/lrt_le/lrt_tau values in SevEr/ModEr either -
+!              qcStat.R exports them purely as diagnostic columns. Feeding
+!              it into this flag would be inventing a threshold RFlux
+!              itself never defines, not porting one.
+!
 !              Under fcc_follows this grade degrades to the ITC deviation
 !              alone, for the reason raw_ok/rf_ok's own comment on
 !              QualityFlags gives - and fcc_follows is set for any project

@@ -1215,6 +1215,15 @@ module m_typedef
         !> Hartigan's dip test p-value (Hartigan & Hartigan 1985) on the
         !> fluctuations - low values flag multimodality in the raw signal.
         real(kind = dbl) :: DIP(GHGNumVar)
+        !> R^2 of a through-origin regression of the CCF(w, this variable)
+        !> against its own de-flatlined counterpart - degradation in a
+        !> covariance driven by repeated/flat-lined raw values (Vitale et
+        !> al. 2020). Indexed by the variable paired with w, so CCF(w)
+        !> itself is always `error` - there is no self-pair. -1 means too
+        !> much of the wider column was flat-lined to trust the
+        !> de-flatlined CCF at all; 1 means neither column had any
+        !> flat-lining to begin with.
+        real(kind = dbl) :: CCF(GHGNumVar)
         real(kind = dbl) :: CorrDiff(GHGNumVar, GHGNumVar)
         real(kind = dbl) :: mahrt98_NR(GHGNumVar)
         real(kind = dbl) :: rand_uncer(E2NumVar)
