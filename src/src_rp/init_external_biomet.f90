@@ -58,6 +58,11 @@ subroutine InitExternalBiomet(bFileList, N)
     type(BiometVarsType), allocatable :: lbVars(:)
     logical :: excluded_file(N)
     logical :: missing
+    integer :: headlines
+    integer :: skip_line
+    integer :: dot
+    logical :: skip_meta
+    character(PathLen) :: MetaFile
 
 
     call LogSayNoAdv(' Interpreting biomet data..')
@@ -70,6 +75,47 @@ subroutine InitExternalBiomet(bFileList, N)
         call FileListByExt(Dir%biomet, trim(adjustl(EddyFlowProj%biomet_tail)), &
             .false., .false., 'none', .false., .false., &
             EddyFlowProj%biomet_recurse, bFileList, size(bFileList), .false., ' ')
+    end if
+
+    !> When not using the native two-line header, every file in the list is
+    !> already required to share one column layout (the consistency check
+    !> below, unchanged from before this existed) - so unlike the native
+    !> path, which re-derives bVars from each file's own header, this reads
+    !> it once, from a sidecar .metadata file, in the same key=value format
+    !> embedded biomet already reads via ReadBiometMetaFile. A channel can
+    !> state _gain/_offset there, which the two-line header has no room
+    !> for; see biomet_units_conversions.f90's own note on why this is the
+    !> only external biomet path that can.
+    !>
+    !> ext_file names it <biomet file>.metadata, beside the one file
+    !> named. ext_dir instead names it biomet.metadata inside the biomet
+    !> directory - the files a directory listing finds are typically one
+    !> per day/period, sharing the same column layout, so there is no
+    !> single "the" file to derive a per-file name from the way ext_file
+    !> has one.
+    headlines = 2
+    if (.not. RPsetup%biom_use_native_header) then
+        if (EddyFlowProj%biomet_data == 'ext_file') then
+            MetaFile = bFileList(1)%path
+            dot = index(MetaFile, '.', .true.)
+            if (dot > 0) MetaFile = MetaFile(1:dot) // 'metadata'
+        else
+            MetaFile = trim(adjustl(Dir%biomet)) // 'biomet.metadata'
+        end if
+        call ReadBiometMetaFile(MetaFile, skip_meta)
+        if (skip_meta) then
+            call LogSay('   Biomet: could not read the sidecar metadata file ' &
+                // trim(adjustl(MetaFile)) // ', biomet data will not be used.')
+            EddyFlowProj%biomet_data = 'none'
+            return
+        end if
+        headlines = bFileMetadata%nhead
+        if (allocated(bAggr)) deallocate(bAggr)
+        allocate(bAggr(nbVars))
+        if (allocated(bAggrFluxnet)) deallocate(bAggrFluxnet)
+        allocate(bAggrFluxnet(nbVars))
+        if (allocated(bAggrEddyFlow)) deallocate(bAggrEddyFlow)
+        allocate(bAggrEddyFlow(nbVars))
     end if
 
     !> Loop to retrieve number of rows and cols, so that biomet variables
@@ -130,9 +176,10 @@ subroutine InitExternalBiomet(bFileList, N)
             end if
         end if
 
-        !> Update max number of biomet records (the -2 is because we know
-        !> external biomet files have a 2-line header)
-        nRec = nRec + fnRec - 2
+        !> Update max number of biomet records - headlines is 2 (name row,
+        !> unit row) for the native two-line header, or whatever the
+        !> sidecar metadata file itself states otherwise.
+        nRec = nRec + fnRec - headlines
     end do size_loop
 
     !> Control
@@ -164,52 +211,64 @@ subroutine InitExternalBiomet(bFileList, N)
             cycle files_loop
         end if
 
-        !> Read header, retrieve variable names and units
-        read(udf, '(a)', iostat = io_status) dataline
-        read(udf, '(a)', iostat = io_status) dataline2
+        if (RPsetup%biom_use_native_header) then
+            !> Read header, retrieve variable names and units
+            read(udf, '(a)', iostat = io_status) dataline
+            read(udf, '(a)', iostat = io_status) dataline2
 
-        !> If timestamp labels are 'Date' and 'Time', replace with
-        !> 'Timestamp_1' and 'Timestamp_2', e.g. Sutron case
-        dataline = replace(dataline, 'Date', 'TIMESTAMP_1', len(dataline))
-        dataline = replace(dataline, 'Time,', 'TIMESTAMP_2,', len(dataline))
+            !> If timestamp labels are 'Date' and 'Time', replace with
+            !> 'Timestamp_1' and 'Timestamp_2', e.g. Sutron case
+            dataline = replace(dataline, 'Date', 'TIMESTAMP_1', len(dataline))
+            dataline = replace(dataline, 'Time,', 'TIMESTAMP_2,', len(dataline))
 
-        !> Retrieve number of biomet variables excluding
-        !> TIMESTAMP-related items from dataline
-        nbVars = SplitCount(dataline, bFileMetadata%separator, &
-            'TIMESTAMP', .false.)
+            !> Retrieve number of biomet variables excluding
+            !> TIMESTAMP-related items from dataline
+            nbVars = SplitCount(dataline, bFileMetadata%separator, &
+                'TIMESTAMP', .false.)
 
-        !> Allocate and initialize bVars
-        if (allocated(bVars)) deallocate(bVars)
-        allocate(bVars(nbVars))
-        bVars = nullbVar
+            !> Allocate and initialize bVars
+            if (allocated(bVars)) deallocate(bVars)
+            allocate(bVars(nbVars))
+            bVars = nullbVar
 
-        !> Allocate vars for aggregated biomet values
-        if (allocated(bAggr)) deallocate(bAggr)
-        allocate(bAggr(nbVars))
-        if (allocated(bAggrFluxnet)) deallocate(bAggrFluxnet)
-        allocate(bAggrFluxnet(nbVars))
-        if (allocated(bAggrEddyFlow)) deallocate(bAggrEddyFlow)
-        allocate(bAggrEddyFlow(nbVars))
+            !> Allocate vars for aggregated biomet values
+            if (allocated(bAggr)) deallocate(bAggr)
+            allocate(bAggr(nbVars))
+            if (allocated(bAggrFluxnet)) deallocate(bAggrFluxnet)
+            allocate(bAggrFluxnet(nbVars))
+            if (allocated(bAggrEddyFlow)) deallocate(bAggrEddyFlow)
+            allocate(bAggrEddyFlow(nbVars))
 
-        !> Retrieve variables and timestamp prototype from
-        !> header (labels and units rows)
-        call RetrieveExtBiometVars(dataline, dataline2, nbItems)
-        if (EddyFlowProj%biomet_data == 'none') return
+            !> Retrieve variables and timestamp prototype from
+            !> header (labels and units rows)
+            call RetrieveExtBiometVars(dataline, dataline2, nbItems)
+            if (EddyFlowProj%biomet_data == 'none') return
 
-        !> Variables consistency among different biomet files
-        if (.not. allocated(lbVars)) then
-            allocate(lbVars(nbVars))
-            lbVars = bVars
-        else
-            if (size(lbVars) /= size(bVars) &
-                .or. (any(lbVars(:)%label /= bVars(:)%label) &
-                .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
-                write(*,'(a)')
-                write(ulog,'(a)')
-                call ExceptionHandler(79)
-                EddyFlowProj%biomet_data = 'none'
-                return
+            !> Variables consistency among different biomet files
+            if (.not. allocated(lbVars)) then
+                allocate(lbVars(nbVars))
+                lbVars = bVars
+            else
+                if (size(lbVars) /= size(bVars) &
+                    .or. (any(lbVars(:)%label /= bVars(:)%label) &
+                    .or. any(lbVars(:)%unit_in /= bVars(:)%unit_in))) then
+                    write(*,'(a)')
+                    write(ulog,'(a)')
+                    call ExceptionHandler(79)
+                    EddyFlowProj%biomet_data = 'none'
+                    return
+                end if
             end if
+        else
+            !> bVars already came from the sidecar metadata file, once,
+            !> before size_loop - every file in the list is already
+            !> required to share it (the consistency check above, which
+            !> this path has no need of: there is only one source for
+            !> bVars here, so nothing to compare it against). Skip
+            !> exactly as many lines as that file said to.
+            do skip_line = 1, headlines
+                read(udf, '(a)', iostat = io_status) dataline
+            end do
         end if
 
         ! if (nfl == 1) then          ****************************************** Deprecated. Replaced with the if clause above

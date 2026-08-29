@@ -984,6 +984,12 @@ subroutine WriteVariablesRP()
     end select
     bFileMetadata%tstamp_ref = SCTags(62)%value(1: len_trim(SCTags(62)%value))
     bFileMetadata%nhead = nint(SNTags(192)%value)
+    !> External biomet only; embedded biomet always reads through
+    !> ReadBiometMetaFile regardless. Default true (the only behaviour
+    !> before this was read) unless the project states '0' explicitly -
+    !> an absent key, true of every project written before this existed,
+    !> leaves SCTags(58)%value blank, which is not '0'.
+    RPsetup%biom_use_native_header = SCTags(58)%value(1:1) /= '0'
 
     !> Wheter to filter for spikes and abolute limits
     RPsetup%filter_sr = SCTags(63)%value(1:1) == '1'

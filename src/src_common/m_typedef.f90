@@ -1453,6 +1453,15 @@ module m_typedef
         logical :: tlag_assessment_only
         logical :: pf_subtract_b0
         logical :: recurse
+        !> External biomet only. True (the only behaviour before this
+        !> existed): variables come from the biomet file's own two-line
+        !> header (RetrieveExtBiometVars). False: a sidecar .metadata file
+        !> next to the biomet file - same key=value format embedded
+        !> biomet already reads via ReadBiometMetaFile, so a channel can
+        !> state _gain/_offset the two-line header has no room for. See
+        !> InitExternalBiomet's own note on why this stayed unread until
+        !> now.
+        logical :: biom_use_native_header
         !> Which despiking method runs: 'vickers_97', 'mauder_13' or
         !> 'consecutive_diff'. Was a logical naming only the first, which
         !> could not describe a third choice.
