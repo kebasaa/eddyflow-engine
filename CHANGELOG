@@ -1,6 +1,27 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- New feature: biom_use_native_header (SCTags(58), default on - unchanged
+	               behaviour) lets external-CSV biomet get its per-channel
+	               description from a sidecar .metadata file instead of the
+	               file's own two-line header, the same key=value format
+	               embedded .ghg biomet already reads via ReadBiometMetaFile.
+	               Closes the gap BiometApplyCalibration's own note flagged:
+	               external biomet had no way to state _gain/_offset because
+	               InitExternalBiomet derived everything from the header
+	               (RetrieveExtBiometVars); routing it through the metadata-
+	               file path when the option is off gives it the same
+	               calibration and channel description embedded biomet has
+	               always had.
+	               InitExternalBiomet now reads the sidecar file once, ahead
+	               of the per-file size loop (so its record count and
+	               bVars/bAggr* allocations are already settled going in),
+	               and each subsequent file's own header lines are skipped
+	               by count rather than parsed for variable names. At the
+	               option's default (on), the header is read exactly as
+	               before - this is a pure addition, not a rewrite of the
+	               existing path.
+	               Regression-swept: 28 fixtures, byte-identical.
 	- New feature: Two sonic hardware corrections on the raw wind, both applied
                before any rotation and both off by default: tilt_sensor_meth,
                an inclinometer tilt correction, and head_corr_meth, the Metek
@@ -941,38 +962,47 @@
 	               A channel that states neither is left untouched, so a
 	               project with no metadata file - or one that never
 	               names these two tags - sees no change.
-	               Only reaches biomet imported through ReadBiometMetaFile
-	               - in practice, biomet embedded in a .ghg archive, the
-	               only caller today. EddyFlow's other biomet source, an
-	               external CSV file, derives its variables entirely from
-	               the file's own two-line header and has no sidecar
-	               metadata file to state _gain/_offset in - a genuine gap
-	               against a true "generic ASCII, arbitrary logger"
-	               import, not a design choice: biom_use_native_header
-	               (SCTags(58)) already reads as though it exists to
-	               select between the two import styles, but nothing
-	               consumes its value either. Wiring it up to route
-	               external biomet through this same metadata-file path
-	               is the natural way to close that gap, but
-	               InitExternalBiomet's record count, allocation and
-	               file-consistency checks are all built directly on the
-	               two-line-header assumption, so switching that path is a
-	               larger, riskier change than this one - left as a
-	               follow-up, not attempted here.
+	               Reaches biomet imported through ReadBiometMetaFile: biomet
+	               embedded in a .ghg archive, and, once biom_use_native_header
+	               routed external biomet through the same metadata-file path
+	               (below), external biomet too.
 	               No quadratic term, unlike RFlux's own: biometInitEmbedded
 	               reserved exactly one numeric slot apiece for gain and
 	               offset, nothing more, so a quadratic coefficient has
 	               nowhere to live without widening that reservation.
-	               Validated two ways rather than one: the arithmetic
-	               itself (gain-only, offset-only, both, neither, and
-	               error-value preservation) against hand-computed
-	               expectations in an isolated driver, and the full
-	               regression suite at the feature's default (unset): 28
-	               fixtures, byte-identical. Could not be spot-checked
-	               live end-to-end - the only fixture that exercises
-	               embedded .ghg biomet is base_ghg, and this machine has
-	               no 7-Zip on PATH, the same reason base_ghg already
-	               skips in every sweep this session.
+	               Validated three ways: the arithmetic itself (gain-only,
+	               offset-only, both, neither, and error-value preservation)
+	               against hand-computed expectations in an isolated driver;
+	               the full regression suite at the feature's default
+	               (unset): 28 fixtures, byte-identical; and, once 7-Zip was
+	               on PATH for testing (see below), a live embedded-.ghg run
+	               with a hand-built archive (TA raw=50/55/60, gain=2,
+	               offset=100 -> 200/210/220 K, averaging to 210 K in the
+	               biomet output) - which is what surfaced the scanCsvFile
+	               crash fixed below, since no existing fixture had
+	               use_biom=1 against embedded .ghg biomet (base_ghg itself
+	               has use_biom=0).
+	- Bug fix:     A pre-existing, never-previously-exercised SIGSEGV in
+	               embedded-.ghg biomet: ReadBiometFile called scanCsvFile -
+	               an external procedure with no explicit interface visible
+	               at that call site - without its trailing optional
+	               `missing` argument. Omitting an optional dummy argument
+	               is only well-defined when the caller has an explicit
+	               interface for the callee; without one, gfortran passes
+	               whatever was already in that argument slot, and
+	               present(missing) on the other end can come back true
+	               against a bogus address, so the write through it
+	               segfaults. init_external_biomet.f90's call to the same
+	               routine already passed the argument correctly; only the
+	               embedded-.ghg call site omitted it. Confirmed
+	               pre-existing rather than introduced this session by
+	               reproducing it against the unmodified c419a04 build, with
+	               none of this session's changes present. Fixed by passing
+	               `missing` explicitly, matching the external-biomet call
+	               site. Regression-swept: 28 fixtures, byte-identical (the
+	               fixed code path is not on any existing fixture, so this
+	               could only have changed output for embedded-.ghg-biomet
+	               projects, none of which existed in the suite before now).
 
 8.0.0 (2026-08-20)
 

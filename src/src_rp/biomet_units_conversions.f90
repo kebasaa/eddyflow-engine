@@ -225,24 +225,17 @@ end subroutine BiometStandardEddyFlowUnits
 !              before EddyFlow ever sees the equivalent gain/offset on
 !              that side.
 !
-!              Only reaches biomet imported through ReadBiometMetaFile -
-!              in practice, biomet embedded in a .ghg archive, since that
-!              is the only caller today (read_licor_ghg_archive.f90).
-!              EddyFlow's other biomet source, an external CSV file
-!              (InitExternalBiomet), derives bVars entirely from the
-!              file's own two-line header (RetrieveExtBiometVars) and has
-!              no sidecar metadata file to state _gain/_offset in at all -
-!              a genuine gap against a true "generic ASCII, arbitrary
-!              logger" import, not a design choice. biom_use_native_header
-!              (SCTags(58)) already reads as though it exists to select
-!              between the two, but nothing consumes its value; wiring it
-!              up to route external biomet through this same metadata-file
-!              path is the natural way to close that gap, and is left as a
-!              follow-up rather than attempted here - InitExternalBiomet's
-!              record count, allocation and file-consistency checks are
-!              all built directly on the two-line header assumption, so
-!              switching that path is a larger, riskier change than this
-!              pass.
+!              Reaches biomet imported through ReadBiometMetaFile - biomet
+!              embedded in a .ghg archive (read_licor_ghg_archive.f90),
+!              and, when biom_use_native_header (SCTags(58)) is set to
+!              false, an external CSV file too: InitExternalBiomet then
+!              reads a sidecar .metadata file next to the biomet file,
+!              the same key=value format embedded biomet already uses,
+!              instead of deriving bVars from the file's own two-line
+!              header (RetrieveExtBiometVars). With biom_use_native_header
+!              left at its default (true), external biomet still has no
+!              way to state _gain/_offset, so a channel there is assumed
+!              already in physical units, same as before this existed.
 !
 !              A channel with neither stated (bVars(i)%gain still
 !              nullbVar's error sentinel) is left untouched - biomet is
