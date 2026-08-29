@@ -99,19 +99,24 @@ subroutine BiometStandardEddyFlowUnits()
                         end where
                     case('MMHG', 'TORR')
                         where (bSet(:, i) /= error)
-                            bSet(:, i) = bSet(:, i) * 133.32d0
+                            bSet(:, i) = bSet(:, i) * 133.322368d0
                         end where
                     case('PSI')
                         where (bSet(:, i) /= error)
-                            bSet(:, i) = bSet(:, i) * 6894.6d0
+                            bSet(:, i) = bSet(:, i) * 6894.757d0
                         end where
                     case('BAR')
                         where (bSet(:, i) /= error)
                             bSet(:, i) = bSet(:, i) * 1d5
                         end where
                     case('ATM')
+                        !> The standard atmosphere (101325 Pa exactly, by
+                        !> definition), not the technical atmosphere
+                        !> (98066.5 Pa, 1 kgf/cm^2) the previous constant
+                        !> here actually was - a 3.3% error for any channel
+                        !> stating ATM.
                         where (bSet(:, i) /= error)
-                            bSet(:, i) = bSet(:, i) * 0.980665d5
+                            bSet(:, i) = bSet(:, i) * 101325d0
                         end where
                     case default
                         continue
