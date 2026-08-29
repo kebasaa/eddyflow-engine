@@ -89,10 +89,9 @@ subroutine PostProcessFluxDespiking()
     integer(8), external :: PeriodMinutes, ModalPeriodStep
 
     if (PfdCacheN < 20) then
-        !> Too short for a seasonal-trend decomposition to mean anything -
-        !> stlplus.default itself refuses n.p < 4, and despiking()'s own
-        !> minimum is ten days of data. Say why nothing was written rather
-        !> than fail or silently skip.
+        !> Too short even to look for the averaging period below -
+        !> stlplus.default itself refuses n.p < 4. Say why nothing was
+        !> written rather than fail or silently skip.
         call LogSay('   Post-flux despiking: run has fewer than 20 periods, skipped.')
         return
     end if
@@ -115,6 +114,17 @@ subroutine PostProcessFluxDespiking()
     mfreq = nint(1440d0 / dble(modal_step))
     if (mfreq < 4) then
         call LogSay('   Post-flux despiking: fewer than 4 periods/day, skipped.')
+        return
+    end if
+
+    !> despiking()'s own minimum is ten days of data (RFlux-master/R/
+    !> despiking.R: N >= mfreq*10) - below that, R itself never assigns
+    !> spike_index and errors out rather than returning a degenerate
+    !> result. mfreq periods/day makes that a period count, not a fixed
+    !> number: 480 periods for half-hourly data, not the 20 checked
+    !> above, which is only enough to find mfreq in the first place.
+    if (PfdCacheN < mfreq * 10) then
+        call LogSay('   Post-flux despiking: run has fewer than 10 days of data, skipped.')
         return
     end if
 
