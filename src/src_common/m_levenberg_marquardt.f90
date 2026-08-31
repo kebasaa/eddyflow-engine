@@ -410,6 +410,16 @@ fnorm = enorm(m, fvec)
 par = zero
 iter = 1
 
+!     delta and xnorm are always set by label 60 below on this
+!     unconditional first pass, before any code path can read them - but
+!     that depends on tracing the labelled GOTO structure across the
+!     whole subroutine, which gfortran's flow analysis cannot do, hence
+!     -Wmaybe-uninitialized. Neutral values here are always overwritten
+!     before genuine use; this silences the compiler without changing
+!     the algorithm.
+delta = zero
+xnorm = zero
+
     !beginning of the outer loop.
         !calculate the jacobian matrix.
 30 iflag = 2
@@ -1020,6 +1030,16 @@ fnorm = enorm(m, fvec)
 
 par = zero
 iter = 1
+
+!     delta and xnorm are always set by label 60 below on this
+!     unconditional first pass, before any code path can read them - but
+!     that depends on tracing the labelled GOTO structure across the
+!     whole subroutine, which gfortran's flow analysis cannot do, hence
+!     -Wmaybe-uninitialized. Neutral values here are always overwritten
+!     before genuine use; this silences the compiler without changing
+!     the algorithm.
+delta = zero
+xnorm = zero
 
 !     beginning of the outer loop.
 
