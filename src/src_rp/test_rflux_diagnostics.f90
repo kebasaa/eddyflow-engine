@@ -216,7 +216,7 @@ subroutine RFluxSpikeCounts(x, n, x_mean, hf5, hf10, hd5, hd10)
     real(kind = dbl), intent(in) :: x_mean
     real(kind = dbl), intent(out) :: hf5, hf10, hd5, hd10
     real(kind = dbl) :: fluct(n)
-    real(kind = dbl) :: sigma_f, sigma_d, medx, mad
+    real(kind = dbl) :: sigma_f, sigma_d
     real(kind = dbl) :: d0(n - 1)
     real(kind = dbl), allocatable :: d1(:)
     logical :: repeat_next(n)
