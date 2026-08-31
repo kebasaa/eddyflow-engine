@@ -88,6 +88,15 @@ double precision function whimed(a, iw, n)
     real(kind = dbl) :: vbuf(n), vtmp
     integer :: wbuf(n), itmp, spos, ipos, wtot, wcum
 
+    !> vbuf = a unconditionally sets every element, including vbuf(n),
+    !> before the insertion-sort loop below only ever permutes already-
+    !> set values in place - there is no path where vbuf(n) is genuinely
+    !> unset. gfortran's -Wmaybe-uninitialized still flags the vbuf(n)
+    !> read further down at -O3 (a known false-positive class once a
+    !> later loop shifts a whole-array-assigned array in place); an
+    !> explicit per-element copy loop was tried in place of this line and
+    !> did not clear the warning either, so this is left as the clearer
+    !> code rather than chasing a compiler false positive further.
     vbuf = a;  wbuf = iw
     do spos = 2, n
         vtmp = vbuf(spos);  itmp = wbuf(spos);  ipos = spos - 1
