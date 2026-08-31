@@ -107,7 +107,7 @@ subroutine DipStatistic(x, n, dip)
         lcm_y = 2
 
         if (gcm_rel /= 2 .or. lcm_rel /= 2) then
-            call DipMaxDistance(x, n, gcm, gcm_rel, gcm_y, gcm_x, lcm, lcm_rel, lcm_y, lcm_x, d)
+            call DipMaxDistance(x, n, gcm, gcm_y, gcm_x, lcm, lcm_rel, lcm_y, lcm_x, d)
         else
             d = 0d0
         end if
@@ -190,13 +190,19 @@ end subroutine DipIndicesMajorant
 !> Greatest distance between the current GCM and LCM piecewise-linear fits,
 !> walking the two envelopes inward from (gcm_y, lcm_y) and recording where
 !> the maximum occurred in (gcm_x, lcm_x).
-subroutine DipMaxDistance(arr, n, gcm, gcm_rel, gcm_y, gcm_x, lcm, lcm_rel, lcm_y, lcm_x, ret_d)
+!>
+!> No gcm_rel counterpart to lcm_rel below: gcm_y starts at its own highest
+!> valid index and only ever decreases (clamped at a fixed lower bound of
+!> 1), so it can never need an upper-bound check the way lcm_y - which
+!> starts low and only increases - needs one against lcm_rel. Asymmetric
+!> by the algorithm's own construction, not a missing check.
+subroutine DipMaxDistance(arr, n, gcm, gcm_y, gcm_x, lcm, lcm_rel, lcm_y, lcm_x, ret_d)
     use m_rp_global_var
     implicit none
     integer, intent(in) :: n
     real(kind = dbl), intent(in) :: arr(n)
     integer, intent(in) :: gcm(n), lcm(n)
-    integer, intent(in) :: gcm_rel, lcm_rel
+    integer, intent(in) :: lcm_rel
     integer, intent(inout) :: gcm_y, lcm_y, gcm_x, lcm_x
     real(kind = dbl), intent(out) :: ret_d
     integer :: gcm_yv, lcm_yv, is_maj, i, j, i1, sign_
