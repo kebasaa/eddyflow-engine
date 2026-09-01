@@ -142,7 +142,14 @@ while IFS= read -r f; do
     sed -i -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}/CLOCK/g' "$f"
     sed -i -E 's/[0-9]+:[0-9]{2}:[0-9]{2}\.[0-9]{3}/ELAPSED/g' "$f"
     sed -i -E 's#out_(ref|chk)#OUT#g' "$f"
-    sed -i -E 's#run_(ref|chk)(_ep_imported)?\.eddyflow#run_WHICH.eddyflow#g' "$f"
+    # The generated project files an EddyPro fixture leaves beside itself are
+    # named after the run, so the run log quotes a path that differs between
+    # ref and chk and says nothing about the results. Matching only the
+    # run_<which> token covers every extension it wears - .eddyflow, .eddypro
+    # and the _ep_imported.metadata - where naming .eddyflow alone left
+    # base_ep and base_ep_licor reporting a log difference on every comparison
+    # of an unchanged tree.
+    sed -i -E 's#run_(ref|chk)#run_WHICH#g' "$f"
 done
 
 echo "== $WHICH: $(find . -type f | wc -l) output files =="

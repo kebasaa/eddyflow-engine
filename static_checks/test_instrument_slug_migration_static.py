@@ -94,9 +94,16 @@ class EveryIngestionPoint(unittest.TestCase):
 
     def test_the_metadata_reader_normalises(self):
         # ReadMetadataFile is the single reader for both the standalone
-        # metadata file and the copy inside a GHG archive, so this one call
-        # covers both.
-        self.assertEqual(1, read(READ_MD).count("CanonicalInstrumentModel("))
+        # metadata file and the copy inside a GHG archive, so these calls
+        # cover both.
+        #
+        # TWO model keys enter here, not one: instr_<k>_model, and the
+        # extended-.ghg instr_<k>_ef_model that overrides it where the first
+        # states a generic stand-in. Both are file input and both must be
+        # normalised - an ef_model left unnormalised would be the only model
+        # in the program still wearing its raw spelling, and it is the one
+        # every downstream select case then matches on.
+        self.assertEqual(2, read(READ_MD).count("CanonicalInstrumentModel("))
 
     def test_the_dynamic_metadata_normalises_sonic_and_analysers(self):
         self.assertEqual(2, read(DYN_MD).count("CanonicalInstrumentModel("))

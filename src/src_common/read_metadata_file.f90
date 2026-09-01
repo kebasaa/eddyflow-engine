@@ -87,6 +87,8 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     !> Legacy zero_fullscale, converted to its gain/offset equivalent below.
     real(kind = dbl) :: conv_gain
     real(kind = dbl) :: conv_offset
+    !> Once per run, not once per archive - see where it is used.
+    logical, save :: fmt_ver_said = .false.
     include 'interfaces.inc'
 
 
@@ -94,6 +96,23 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
         Metadata%logger_swver = SwVerFromString(trim(ACTags(1)%value))
     else
         Metadata%logger_swver = errSwVer
+    end if
+
+    !> Extended-.ghg format version, ACTags(25). Absent in every archive
+    !> LI-COR's own software writes, and absent is not an error: the extended
+    !> keys are additive and fall back individually, so nothing here is
+    !> consulted before reading anything else.
+    !>
+    !> Said once per run rather than once per file: this reader runs again for
+    !> every archive in a GHG dataset, and a line per file would bury the log.
+    !> Worth saying at all because an extended file processes silently either
+    !> way - if the run is standing in a generic instrument for a real one,
+    !> that should appear in the log rather than only in the metadata.
+    Metadata%ghg_format_version = trim(adjustl(ACTags(25)%value))
+    if (len_trim(Metadata%ghg_format_version) > 0 .and. .not. fmt_ver_said) then
+        call LogSay('  Extended .ghg metadata, format version ' &
+            // trim(Metadata%ghg_format_version) // '.')
+        fmt_ver_said = .true.
     end if
 
     Metadata%sitename = trim(adjustl(ACTags(9)%value))
@@ -201,9 +220,9 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     Instr = NullInstrument
 
     !> Instruments description
-    leap_ac_instr = 8
+    leap_ac_instr = 9
     leap_an_instr = 15
-    init_ac_instr = 25 - leap_ac_instr
+    init_ac_instr = 26 - leap_ac_instr
     init_an_instr = 10 - leap_an_instr
     NumInstruments = 0
     Instr%firm = 'none'
@@ -236,6 +255,41 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             Instr(i)%model = CanonicalInstrumentModel( &
                 ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
                 (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value)))
+
+            !> The model string exactly as the FILE spells it. col_N_instrument
+            !> refers to an instrument by this string, not by its block number,
+            !> so it has to survive an ef_model override below - otherwise an
+            !> extended file whose columns say generic_open_path_1 would find no
+            !> instrument once the block started calling itself csi_ec150_1.
+            !>
+            !> ep_label was declared, defaulted and read by define_e2_set for
+            !> exactly this and never once assigned. On a classic file it now
+            !> equals %model, which is what that reader already assumed.
+            Instr(i)%ep_label = Instr(i)%model
+
+            !> Extended .ghg: instr_<k>_ef_model states the instrument this
+            !> REALLY is, where instr_<k>_model states a generic stand-in
+            !> chosen so that EddyPro will accept the file. Applied here,
+            !> before the geometry select below, so that select sees the real
+            !> model - a csi_ec150 needs its path lengths read, and would not
+            !> get them if it were still calling itself generic_open_path.
+            !>
+            !> The manufacturer is dropped rather than kept, because the one
+            !> in the file was chosen to match the stand-in: an ec150 declared
+            !> as generic_open_path says other_irga, and its real firm is
+            !> csi_irga. Setting it to 'none' hands it to the derivation
+            !> further down, which reads it off the model.
+            if (ACTagFound(init_ac_instr + i*leap_ac_instr + 8)) then
+                if (len_trim(ACTags(init_ac_instr &
+                        + i*leap_ac_instr + 8)%value) > 0) then
+                    Instr(i)%model = CanonicalInstrumentModel( &
+                        ACTags(init_ac_instr + i*leap_ac_instr + 8)%value &
+                        (1:len_trim(ACTags(init_ac_instr &
+                            + i*leap_ac_instr + 8)%value)))
+                    Instr(i)%firm = 'none'
+                end if
+            end if
+
             Instr(i)%height = dble(ANTags(init_an_instr + i*leap_an_instr)%value)
 
             !> For "generic" instruments, retrieve path lengths, time response,
@@ -405,7 +459,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     Metadata%ac_freq = dble(ANTags(7)%value)
     Metadata%file_length = dble(ANTags(8)%value)
     FileInterpreter%header_rows = nint(ANTags(9)%value)
-    FileInterpreter%data_label = ACTags(89)%value(1:len_trim(ACTags(89)%value))
+    FileInterpreter%data_label = ACTags(98)%value(1:len_trim(ACTags(98)%value))
 
     select case (ACTags(23)%value(1:len_trim(ACTags(23)%value)))
         case('comma')
@@ -425,7 +479,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     FileInterpreter%file_with_text = .false.
     leap_ac_col = 7
     leap_an_col = 11
-    init_ac_col = 90 - leap_ac_col
+    init_ac_col = 99 - leap_ac_col
     init_an_col = 130 - leap_an_col
     LocCol%var = 'none'
     LocCol%label = 'none'
@@ -471,10 +525,26 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 (1:len_trim(ACTags(init_ac_col + i*leap_ac_col + 3)%value))
 
             !> Associate instrument information to data colums
+            !> Matched on the file's own spelling as well as the model,
+            !> because an extended .ghg names its stand-in here and its real
+            !> instrument in instr_<k>_ef_model. The two are the same string on
+            !> every classic file, so the second test only ever adds matches
+            !> that the first one would have made anyway.
+            !>
+            !> len_trim guarded: index(x, '') is 1, so an empty label would
+            !> match the first column against the first instrument.
             do j = 1, NumInstruments
-                if (index(LocCol(i)%instr_name, Instr(j)%model(1:len_trim(Instr(j)%model))) /= 0) then
+                if (index(LocCol(i)%instr_name, &
+                        Instr(j)%model(1:len_trim(Instr(j)%model))) /= 0) then
                     LocCol(i)%instr = Instr(j)
                     exit
+                end if
+                if (len_trim(Instr(j)%ep_label) > 0) then
+                    if (index(LocCol(i)%instr_name, &
+                            Instr(j)%ep_label(1:len_trim(Instr(j)%ep_label))) /= 0) then
+                        LocCol(i)%instr = Instr(j)
+                        exit
+                    end if
                 end if
             end do
 

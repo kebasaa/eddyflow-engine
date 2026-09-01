@@ -70,6 +70,33 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # averaging periods and re-reads the metadata per file. Needs 7-Zip, same as
 # base_ghg.
 #
+# base_ghg_ext is those same two archives with their embedded metadata rewritten
+# into the EXTENDED .ghg format: the LI-7500A declares itself a
+# generic_open_path stand-in with real geometry, states its true identity in
+# instr_2_ef_model, and every col_N_instrument that named it is repointed at the
+# stand-in - which is what an archive describing an analyser EddyPro cannot name
+# has to look like.
+#
+# The gate is an EQUALITY, not just a clean exit: every DATA file must be
+# byte-identical to base_ghg_licor's, because ef_model puts the same LI-7500A
+# back. The run log legitimately differs by two lines - the data directory, and
+# the one announcing the format version - and processing_adv.eddyflow by the
+# data_path it echoes.
+#
+# What it catches is the override being read at all. The stand-in states the
+# LI-7500A's TRUE geometry, so a run that ignored ef_model would compute every
+# flux to the digit and differ only in what it calls the analyser - two column
+# labels, co2_li7500a_1_mean against co2_generic_open_path_1_mean. Verified by
+# stripping ef_model back out: four output files move, none of them by a value.
+# That is the whole margin, and nothing weaker than a full diff sees it.
+#
+# sweep.sh runs the structural gates only; the equality is run.sh ref/chk across
+# the two fixtures.
+#
+# Built by gen_ghg_ext.py into data_ghg_ext/, which is not committed - the
+# archives are 3.5 MB of binary and the ten lines that differ belong in a script
+# you can read. Skipped, like the 7-Zip cases, when it has not been generated.
+#
 # base_ep_licor is the same two archives handed over as an EDDYPRO project, so
 # run.sh routes it through the importer the way base_ep does. base_ep is the
 # only other importer fixture and it is run_mode=0 (advanced), file_type=1
@@ -148,6 +175,7 @@ base_pwb_prefilt
 base_pwb_par
 base_ghg
 base_ghg_licor
+base_ghg_ext
 base_auto_sa
 base_mw
 base_mw_ref
@@ -184,12 +212,19 @@ for f in $FIXTURES; do
     #> produces nothing, which would read as a code failure - so they are
     #> skipped rather than failed, and said out loud.
     case "$f" in
-        base_ghg|base_ghg_licor|base_ep_licor)
+        base_ghg|base_ghg_licor|base_ghg_ext|base_ep_licor)
             if ! command -v 7z >/dev/null 2>&1 \
                     && ! command -v 7za >/dev/null 2>&1; then
                 printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
             fi ;;
     esac
+    #> Generated, not committed. Absent means gen_ghg_ext.py has not been run,
+    #> which is a missing input rather than a broken engine - the same reason
+    #> the 7-Zip cases skip rather than fail.
+    if [ "$f" = base_ghg_ext ] && [ ! -d "$HERE/data_ghg_ext" ]; then
+        printf '%-22s SKIP  (run gen_ghg_ext.py first)
+' "$f"; continue
+    fi
     rm -rf "$HERE/out_$WHICH"
     #> Log outside the output directory: run.sh clears that directory as its
     #> first act, so a redirect into it has nowhere to land.

@@ -677,6 +677,12 @@ module m_typedef
         real(kind = dbl) :: ac_freq
         real(kind = dbl) :: file_length
         character(256) :: sitename
+        !> The extended-.ghg format version this file declares, empty for a
+        !> classic LI-COR archive. Recorded rather than acted on: the extended
+        !> keys are additive and each one falls back on its own, so nothing
+        !> needs to branch on the version to read the file correctly. It is
+        !> here so a run can SAY what it was handed.
+        character(16) :: ghg_format_version
         type(ColType) :: E2Col(E2NumVar)
     end type MetadataType
 
