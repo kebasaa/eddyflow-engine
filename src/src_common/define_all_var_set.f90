@@ -387,12 +387,11 @@ subroutine LinearConversion(LocCol, Vec, nrow, j)
     type(ColType), intent(in) :: LocCol(MaxNumCol)
     real(kind = sgl), intent(inout) :: Vec(nrow)
 
+    !> No 'zero_fullscale' arm: WriteEddyFlowMetadataVariables converts that
+    !> legacy type into its exact gain/offset equivalent as it reads the
+    !> metadata, so by the time any column reaches here its conversion is
+    !> 'gain_offset' or 'none'. See the note there for the algebra.
     select case (LocCol(j)%conversion_type(1:len_trim(LocCol(j)%conversion_type)))
-        case ('zero_fullscale')
-            where(Vec(:) /= error)
-                Vec(:) = sngl(((LocCol(j)%b - LocCol(j)%a) / &
-                    (LocCol(j)%max - LocCol(j)%min)) * (dble(Vec(:)) - LocCol(j)%min) + LocCol(j)%a)
-            end where
         case ('gain_offset')
             where(Vec(:) /= error)
                 Vec(:) = sngl(LocCol(j)%a * dble(Vec(:)) + LocCol(j)%b)

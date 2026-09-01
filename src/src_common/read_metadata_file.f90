@@ -84,6 +84,9 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     integer :: NumSkipCol
     integer :: i = 0
     integer :: j = 0
+    !> Legacy zero_fullscale, converted to its gain/offset equivalent below.
+    real(kind = dbl) :: conv_gain
+    real(kind = dbl) :: conv_offset
     include 'interfaces.inc'
 
 
@@ -514,6 +517,47 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             if (LocCol(i)%conversion_type /= 'gain_offset' &
                 .and. LocCol(i)%conversion_type /= 'zero_fullscale') &
                 LocCol(i)%conversion_type = 'none'
+
+            !> zero_fullscale, upgraded here and nowhere else.
+            !>
+            !> It maps the input range [min, max] onto the output range
+            !> [a, b], which LinearConversion used to apply directly as
+            !>     out = ((b - a)/(max - min)) * (in - min) + a
+            !> That expression is gain*in + offset with
+            !>     gain   = (b - a)/(max - min)
+            !>     offset = a - gain*min = (a*max - b*min)/(max - min)
+            !> so converting it here lets the conversion itself be a single
+            !> form everywhere downstream. The interface has not offered
+            !> this type in years and rewrites it on load, so in practice
+            !> only a hand-written or pre-EddyFlow file still declares it.
+            !>
+            !> max == min is a zero-width input range, which the division
+            !> would divide by. It is left as 'zero_fullscale' rather than
+            !> converted, deliberately: ColumnValidation rejects exactly
+            !> that file (passed(15)), and it must go on rejecting it
+            !> rather than start processing an unscalable column because
+            !> this upgrade quietly renamed the type out from under it.
+            !> Nothing computes with the leftover type - LinearConversion
+            !> has no arm for it and applies no scaling - so a run that
+            !> skips validation is no worse off than before.
+            !>
+            !> The a == 0 .and. b == 0 rejection (passed(16)) survives the
+            !> conversion on its own: it makes gain zero, which is what
+            !> the gain_offset arm of the same check already refuses.
+            if (LocCol(i)%conversion_type == 'zero_fullscale' &
+                .and. LocCol(i)%max /= LocCol(i)%min) then
+                conv_gain = (LocCol(i)%b - LocCol(i)%a) &
+                    / (LocCol(i)%max - LocCol(i)%min)
+                conv_offset = (LocCol(i)%a * LocCol(i)%max &
+                    - LocCol(i)%b * LocCol(i)%min) &
+                    / (LocCol(i)%max - LocCol(i)%min)
+                LocCol(i)%a = conv_gain
+                LocCol(i)%b = conv_offset
+                LocCol(i)%conversion_type = 'gain_offset'
+                call LogSay('   Column ' // trim(LocCol(i)%var) &
+                    // ': legacy "zero_fullscale" conversion upgraded to ' &
+                    // 'gain/offset.')
+            end if
         end if
     end do
 end subroutine WriteEddyFlowMetadataVariables

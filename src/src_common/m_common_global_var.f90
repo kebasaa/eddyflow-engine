@@ -1401,6 +1401,18 @@ module m_common_global_var
     type (Numerical) :: ANTags(Nan)
     type (Text) :: ACTags(Nac)
 
+    !> col_<N>_min_value and col_<N>_max_value are kept here for one reason
+    !> only: reading a legacy file. They are the input endpoints of
+    !> zero_fullscale, which nothing computes with any more -
+    !> WriteEddyFlowMetadataVariables folds them into the column's gain and
+    !> offset as it reads the file, and LinearConversion has no arm for the
+    !> type at all. Neither the interface nor the EddyPro import writes them
+    !> to a new file. They stay in this table, and in the stride
+    !> arithmetic read_metadata_file.f90 derives from it, because dropping
+    !> them would renumber every column tag after them for no gain: a tag
+    !> absent from a file simply goes unmatched, so carrying two unused
+    !> entries costs nothing a reader has to reason about.
+    !>
     !> BEGIN GENERATED ANTags - edit gen_metadata_tags.py, not this block
     data ANTags(1)%Label / 'altitude' / &
          ANTags(2)%Label / 'latitude' / &

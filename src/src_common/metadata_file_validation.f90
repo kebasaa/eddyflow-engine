@@ -478,6 +478,14 @@ subroutine ColumnValidation(LocCol, passed)
     end select
 
     !> Check in/out ranges (or gain/offset) if conversion type is /= none
+    !>
+    !> A column can only still say 'zero_fullscale' here if
+    !> WriteEddyFlowMetadataVariables refused to upgrade it, which it does
+    !> for exactly one reason: max == min, a zero-width input range it
+    !> cannot divide by. So this block now rejects that one case, which is
+    !> what it always did - the min==0.and.max==0 file is a special case of
+    !> it. Everything upgradeable arrives as 'gain_offset' and is checked
+    !> below instead.
     if (LocCol%conversion_type == 'zero_fullscale') then
         if (LocCol%min == 0 .and. LocCol%max == 0) then
             passed(1) = .false.
