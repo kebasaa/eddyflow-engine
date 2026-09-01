@@ -107,7 +107,7 @@ fluxnet_standardize_biomet=1
 fluxnet_err_label=1
 out_metadata=1
 make_dataset=1
-pr_subset=1
+pr_subset=0
 pr_start_date=2021-08-21
 pr_start_time=00:00
 pr_end_date=2021-08-21
@@ -588,12 +588,12 @@ biom_use_native_header=1
 biom_hlines=2
 biom_separator=comma
 biom_tstamp_ref=end
-biom_ta=2
-biom_pa=10
-biom_rh=3
-biom_rg=5
-biom_lwin=6
-biom_ppfd=9
+biom_ta=0
+biom_pa=0
+biom_rh=0
+biom_rg=0
+biom_lwin=0
+biom_ppfd=0
 
 [RawProcess_WindDirectionFilter]
 wdf_apply=0

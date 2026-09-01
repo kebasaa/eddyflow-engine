@@ -70,6 +70,27 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # averaging periods and re-reads the metadata per file. Needs 7-Zip, same as
 # base_ghg.
 #
+# base_ep_licor is the same two archives handed over as an EDDYPRO project, so
+# run.sh routes it through the importer the way base_ep does. base_ep is the
+# only other importer fixture and it is run_mode=0 (advanced), file_type=1
+# (generic ASCII), use_pfile=1 (external metadata file). This one is
+# run_mode=1 (express), file_type=0 (GHG) and use_pfile=0 (metadata embedded
+# in each archive) - three import paths that had no coverage between them,
+# including the use_pfile=0 branch where there is no metadata file to resolve
+# gas records against and they come out naming no analyser.
+#
+# The gas columns are stated explicitly rather than left at EddyPro's -1.
+# -1 means "resolve automatically", which only happens in embedded mode: a
+# SmartFlux project run on the desktop leaves every gas column unresolved, and
+# EddyPro answers that with silent NaN gas fluxes. Pinning that would make the
+# fixture agree with a broken run, so it names the columns the metadata
+# describes - co2 at 10, h2o at 12, ch4 at 41.
+#
+# Verified against EddyPro 7.0.9 on the full 48-archive sample set before being
+# committed: Tau and u* bit-identical, concentrations and time lags
+# bit-identical, H within 2e-4, LE within 2.7e-4 - the last matching a
+# documented molecular-weight refinement whose changelog predicts ~0.026%.
+#
 # base_tlag_par is base_tlag_opt with a two-day time-lag optimisation window
 # instead of a three-hour one. That is the only fixture here whose pre-pass is
 # long enough for the engine to split it across worker processes: every other
@@ -136,6 +157,7 @@ base_slow_lack
 base_slow_integr
 base_n_gas_sa_partial
 base_ep
+base_ep_licor
 base_ep_native
 "
 
@@ -162,7 +184,7 @@ for f in $FIXTURES; do
     #> produces nothing, which would read as a code failure - so they are
     #> skipped rather than failed, and said out loud.
     case "$f" in
-        base_ghg|base_ghg_licor)
+        base_ghg|base_ghg_licor|base_ep_licor)
             if ! command -v 7z >/dev/null 2>&1 \
                     && ! command -v 7za >/dev/null 2>&1; then
                 printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
