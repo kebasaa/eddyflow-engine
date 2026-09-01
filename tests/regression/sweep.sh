@@ -53,6 +53,23 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # carries its own metadata. Built by gen_ghg.py; needs 7-Zip, and is skipped
 # rather than failed without it.
 #
+# base_ghg_licor is two GENUINE LI-COR SmartFlux archives, committed under
+# data_ghg/. base_ghg does not cover what its name suggests: gen_ghg.py builds
+# it by copying base_site.metadata into a synthesized archive, and it runs
+# use_biom=0 - so LI-COR's own embedded metadata was never read by any test,
+# and embedded biomet was never exercised at all. That is exactly how a
+# missing optional argument in ReadBiometFile's scanCsvFile call - undefined
+# behaviour that segfaulted on every embedded-biomet run - survived until it
+# was found by hand.
+#
+# So this one is use_pfile=0 (metadata read from inside each archive, written
+# by the LI-7550, not by our interface) and use_biom=1 (30 biomet records per
+# period, LI-COR's own tab-separated 6-header-row format). Open-path
+# LI-7500A + LI-7700 on a Metek sonic, which is also the suite's only
+# open-path gas analyser. Two archives rather than one so it spans two
+# averaging periods and re-reads the metadata per file. Needs 7-Zip, same as
+# base_ghg.
+#
 # base_tlag_par is base_tlag_opt with a two-day time-lag optimisation window
 # instead of a three-hour one. That is the only fixture here whose pre-pass is
 # long enough for the engine to split it across worker processes: every other
@@ -109,6 +126,7 @@ base_pwb_cache
 base_pwb_prefilt
 base_pwb_par
 base_ghg
+base_ghg_licor
 base_auto_sa
 base_mw
 base_mw_ref
@@ -139,14 +157,17 @@ for f in $FIXTURES; do
     else
         printf '%-22s SKIP  (no such fixture)\n' "$f"; continue
     fi
-    #> The GHG fixture is the only one that needs a tool the engine shells
-    #> out to. Without 7-Zip its archives cannot be opened and the run
-    #> produces nothing, which would read as a code failure - so it is
+    #> The GHG fixtures are the only ones that need a tool the engine shells
+    #> out to. Without 7-Zip their archives cannot be opened and the run
+    #> produces nothing, which would read as a code failure - so they are
     #> skipped rather than failed, and said out loud.
-    if [ "$f" = base_ghg ] && ! command -v 7z >/dev/null 2>&1 \
-            && ! command -v 7za >/dev/null 2>&1; then
-        printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
-    fi
+    case "$f" in
+        base_ghg|base_ghg_licor)
+            if ! command -v 7z >/dev/null 2>&1 \
+                    && ! command -v 7za >/dev/null 2>&1; then
+                printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
+            fi ;;
+    esac
     rm -rf "$HERE/out_$WHICH"
     #> Log outside the output directory: run.sh clears that directory as its
     #> first act, so a redirect into it has nowhere to land.
