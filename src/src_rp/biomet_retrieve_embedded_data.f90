@@ -41,6 +41,9 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     logical, intent(in) :: printout
     !> local variables
     integer :: i
+    !> Said once per run, not once per averaging period: the project states
+    !> these column numbers once, so a wrong one is wrong every period.
+    logical, save :: slot_warned = .false.
 
     !> Retrieve embedded biomet data if they exist (the option was
     !> selected and data was successfully read with at least one
@@ -79,8 +82,28 @@ subroutine BiometRetrieveEmbeddedData(proceed, printout)
     !> The - 2 is to account for the DATE and TIME columns in the file, which
     !> are not included in bAggr. The 2 shall eventually be replaced by nbTimestamp
     !> as per read_biomet_meta_file.f90
+    !>
+    !> The bounds test is not defensive padding: biom_ta and its siblings are
+    !> column NUMBERS a project states by hand, and nothing has checked them
+    !> against the file they are supposed to index. A project written for one
+    !> site and pointed at another - biom_ta=2 against a biomet file whose
+    !> second column is TIME - lands on bAggrEddyFlow(0), one element before
+    !> the array. A release build reads whatever is there and reports it as a
+    !> temperature; only -fcheck=all makes it stop. Out-of-range slots are
+    !> left at their error value, which is what an unstated slot already gets.
     do i = bTa, bRg
-        if (bSetup%sel(i) > 0) biomet%val(i) = bAggrEddyFlow(bSetup%sel(i) - 2)
+        if (bSetup%sel(i) <= 0) cycle
+        if (bSetup%sel(i) - 2 < 1 .or. bSetup%sel(i) - 2 > size(bAggrEddyFlow)) then
+            if (.not. slot_warned) then
+                call LogSay('   Warning> A biomet column selected in the project ' &
+                    // '(biom_ta and its siblings) is outside the range the biomet ' &
+                    // 'file describes, so that variable is not used. Check those ' &
+                    // 'column numbers against this file''s own columns.')
+                slot_warned = .true.
+            end if
+            cycle
+        end if
+        biomet%val(i) = bAggrEddyFlow(bSetup%sel(i) - 2)
     end do
 
     !> Deallocate variables no longer used
