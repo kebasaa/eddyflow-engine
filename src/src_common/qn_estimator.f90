@@ -88,19 +88,29 @@ double precision function whimed(a, iw, n)
     real(kind = dbl) :: vbuf(n), vtmp
     integer :: wbuf(n), itmp, spos, ipos, wtot, wcum
 
-    !> vbuf = a unconditionally sets every element, including vbuf(n),
-    !> before the insertion-sort loop below only ever permutes already-
-    !> set values in place - there is no path where vbuf(n) is genuinely
-    !> unset. gfortran's -Wmaybe-uninitialized still flags the vbuf(n)
-    !> read further down at -O3 (a known false-positive class once a
-    !> later loop shifts a whole-array-assigned array in place); an
-    !> explicit per-element copy loop was tried in place of this line and
-    !> did not clear the warning either, so this is left as the clearer
-    !> code rather than chasing a compiler false positive further.
+    !> An empty set has no weighted high median, and vbuf(n) below would
+    !> index a zero-sized array. Guarded rather than left to the caller:
+    !> every read here is of a local copy, so there is nothing a caller
+    !> could check that this cannot check for itself.
+    if (n < 1) then
+        whimed = 0d0
+        return
+    end if
+
     vbuf = a;  wbuf = iw
     do spos = 2, n
         vtmp = vbuf(spos);  itmp = wbuf(spos);  ipos = spos - 1
-        do while (ipos >= 1 .and. vbuf(ipos) > vtmp)
+        !> Written as two guarded exits rather than
+        !>     do while (ipos >= 1 .and. vbuf(ipos) > vtmp)
+        !> because Fortran does not promise short-circuit evaluation: the
+        !> standard lets a compiler evaluate both operands of .and. in
+        !> either order, so the bound test does not protect the subscript
+        !> beside it. On the last pass of this loop ipos reaches 0, and
+        !> vbuf(0) is one element before the array - which is the read
+        !> gfortran was pointing at, not the vbuf(n) on the line it named.
+        do
+            if (ipos < 1) exit
+            if (vbuf(ipos) <= vtmp) exit
             vbuf(ipos+1) = vbuf(ipos);  wbuf(ipos+1) = wbuf(ipos)
             ipos = ipos - 1
         end do
