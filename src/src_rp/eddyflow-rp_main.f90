@@ -62,6 +62,10 @@ program EddyFlowRP
     integer :: NumberOfPeriods
     integer :: i
     integer :: j
+    !> Said once per run, not once per averaging period: the instrument set is
+    !> stated once, so a second LI-7700 is a second LI-7700 for the whole run.
+    integer :: n7700
+    logical, save :: mul7700_warned = .false.
     !> The hygrometer a gas is corrected with, from its own record.
     integer :: msl
     !> Mole fraction of the water a gas names, from whichever source.
@@ -2677,6 +2681,33 @@ program EddyFlowRP
 
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
+
+            !> One LI-7700 only.
+            !>
+            !> Mul7700 is a single value, and the Ex record carries a single
+            !> set of A/B/C, so FCC could not hold more than one either. The
+            !> loop below overwrites it per gas, which means a second LI-7700
+            !> would leave the LAST one's multipliers behind for every 7700
+            !> flux to use. That was harmless while only chi and r were
+            !> scaled - each inside the loop, with its own value - but the
+            !> open-path WPL now reads it after the loop has finished.
+            !>
+            !> Said once per run rather than silently producing one analyser's
+            !> spectroscopy on another's flux.
+            if (.not. mul7700_warned) then
+                n7700 = 0
+                do j = firstGas, lastGas
+                    if (IsLi7700(E2Col(j)%Instr%model)) n7700 = n7700 + 1
+                end do
+                if (n7700 > 1) then
+                    call LogSay('   Warning> More than one LI-7700 is ' &
+                        // 'configured. Their spectroscopic multipliers are ' &
+                        // 'held in one place, so every LI-7700 flux is ' &
+                        // 'corrected with the last one''s. Fluxes from the ' &
+                        // 'others will be slightly wrong.')
+                end if
+                mul7700_warned = .true.
+            end if
 
             !> LI-7700 spectroscopic correction. It applies to whichever gas
             !> the LI-7700 measures, which is a question about the analyser -

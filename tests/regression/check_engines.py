@@ -6,9 +6,10 @@ different questions with the same machinery:
   * EddyPro on a classic archive against EddyPro on the extended one, where
     the answer must be "no column moved at all" - the whole claim of the format
     is that the extension is free.
-  * EddyFlow against EddyPro on the same archive, where some columns must agree
-    exactly, some may differ by a known amount, and one is expected to differ
-    because we fixed something EddyPro gets wrong.
+  * EddyFlow against EddyPro on the same archive, where some columns must
+    agree to the printed digit, some may differ by a known amount, and a few
+    differ structurally - the packed flag strings carry one digit per gas the
+    project has, where EddyPro always writes its four fixed slots.
 
 By name because the two programs do not write the same columns: EddyPro's
 express output has ~191 and EddyFlow's ~164, and the shared ones are not in the
@@ -56,8 +57,14 @@ GATES = (
         'u_unrot', 'v_unrot', 'w_unrot', 'u_rot', 'v_rot', 'w_rot',
         'co2_molar_density', 'co2_mixing_ratio', 'co2_mole_fraction',
         'h2o_molar_density', 'h2o_mixing_ratio', 'h2o_mole_fraction',
-        'co2_time_lag', 'h2o_time_lag',
-        'qc_Tau', 'qc_H', 'qc_LE', 'qc_co2_flux', 'qc_h2o_flux',
+        'co2_time_lag', 'h2o_time_lag', 'ch4_time_lag',
+        'ch4_molar_density', 'ch4_mixing_ratio', 'ch4_mole_fraction',
+        'qc_Tau', 'qc_H', 'qc_LE', 'qc_co2_flux', 'qc_h2o_flux', 'qc_ch4_flux',
+        #> Gated since the LI-7700 spectroscopic multipliers B and C were put
+        #> back into the open-path WPL. They had been computed, written to the
+        #> FLUXNET file and applied to nothing, leaving methane 10.6 % below
+        #> EddyPro on these archives; it is bit-identical now.
+        'ch4_flux', 'rand_err_ch4_flux',
         #> Second-moment and footprint quantities. Measured on the first run of
         #> this test at 1.2e-6 to 8.6e-6 - the same last-digit level as the
         #> wind statistics they are built from. Listed rather than left
@@ -90,31 +97,6 @@ GATES = (
 #> one somebody has looked at and understood; anything NOT here and not gated
 #> comes out as "unlisted", which is the report's way of saying nobody has.
 UNGATED = (
-    #> ch4_flux is 10.6 % below EddyPro's and it is OUR BUG, not a fix.
-    #>
-    #> Everything feeding it agrees to the digit - w/ch4_cov, ch4_molar_density,
-    #> ch4_mixing_ratio, ch4_mole_fraction, ch4_var, ch4_time_lag and even
-    #> ch4_scf are all bit-identical - so the difference is entirely in the WPL
-    #> step. EddyPro 6.2.2, the fork base, wrote a methane-specific branch:
-    #>
-    #>   Flux2%ch4 = A * (Flux1%ch4
-    #>                    + B * mu * d(ch4) * E_nowpl / RHO%d
-    #>                    + C * (1 + mu*sigma) * H * d(ch4) / (RhoCp*Ta))
-    #>
-    #> A, B and C are the LI-7700's spectroscopic multipliers. Generalising to
-    #> N gases replaced that branch with one per-gas open-path WPL that applies
-    #> A - upstream, to chi and r, which is why the concentrations still match -
-    #> and drops B and C. Both are still computed and still written to the
-    #> FLUXNET file, and on this fixture they are B = 1.417 and C = 1.322, so
-    #> two WPL terms are being scaled by 1 where they should be scaled by 1.42
-    #> and 1.32.
-    #>
-    #> NOT the AGC/RSSI story this comment first claimed: EddyFlow's own
-    #> INST_LI7700_RSSI is NaN on these archives too, so that explanation was
-    #> wrong. Ungated until it is fixed, because gating it would gate the bug in
-    #> place; see the task raised for it.
-    ('OUR BUG - LI-7700 multipliers B and C are computed and never applied',
-     ('ch4_', 'qc_ch4_flux', 'rand_err_ch4', 'none_', 'qc_none_')),
     #> The packed per-variable flag strings: a leading 8 then one digit per
     #> variable. EddyPro always writes its four fixed gas slots, EddyFlow only
     #> the gases the project actually has - three here - so the strings are
@@ -154,8 +136,8 @@ def read_table(path):
 def classify(name):
     """-> (tolerance, reason). None tolerance means ungated.
 
-    Longest prefix wins, which matters: 'ch4_flux' is ungated while 'co2_flux'
-    is on the humidity chain, and a plain startswith over an unordered list
+    Longest prefix wins, which matters: 'ch4_def_timelag' is ungated while
+    'ch4_flux' is gated tightly, and a plain startswith over an unordered list
     would let 'H' claim 'H_strg' or 'e' claim 'es'. Length settles it the same
     way every time rather than by however the tuples happen to be written.
     """

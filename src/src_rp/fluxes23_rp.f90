@@ -119,7 +119,7 @@ subroutine Fluxes23_rp()
                 .and. Ambient%sigma /= error) then
                 Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
                     + (1d0 + mu * Ambient%sigma) &
-                        * (Flux1%H + Burba%h_top + Burba%h_bot + Burba%h_spar)&
+                        * (Flux1%H + BurbaHeatFor(wsl))&
                         * RHO%w / (Ambient%RhoCp * Ambient%Ta)
             else
                 Flux2%E = error
@@ -249,7 +249,7 @@ subroutine Fluxes23_rp()
             .and. Flux1%H /= error .and. Ambient%sigma /= error) then
             Flux3%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
                 + (1d0 + mu * Ambient%sigma) &
-                * (Flux3%H + Burba%h_top + Burba%h_bot + Burba%h_spar)&
+                * (Flux3%H + BurbaHeatFor(wsl))&
                 * RHO%w / (Ambient%RhoCp * Ambient%Ta)
         else
             Flux3%E = Flux2%E
@@ -542,11 +542,40 @@ end subroutine PerHygrometerFluxes_rp
 !> The original cascades enumerated all eight subsets of the (E, T, P) terms.
 !> Adding each term when its own inputs are available is equivalent, and is
 !> what lets this be written once rather than once per gas.
+!> The instrument-body heating terms, for the gas that is being corrected.
+!>
+!> Burba et al. (2008) describes the LI-7500's own body warming the air in its
+!> path. It is a property of THAT analyser, so it belongs only to a gas that
+!> analyser measures. OverrideSettings already switches the correction off for
+!> a site with no LI-7500 at all, but that is a site-wide gate: with an
+!> LI-7500 and an LI-7700 side by side it stays on, and the generic per-gas
+!> WPL then added the LI-7500's heating to the methane flux, whose air the
+!> LI-7500 never touched.
+!>
+!> EddyPro 6.2.2 gated this per gas as well - its co2 block tested the model
+!> and its ch4 and gas4 blocks never referenced Burba at all - and the
+!> generalisation to N gases lost that test along with the blocks.
+real(kind = dbl) function BurbaHeatFor(gas)
+    implicit none
+    integer, intent(in) :: gas
+
+    if (index(E2Col(gas)%Instr%model, 'li7500') /= 0) then
+        BurbaHeatFor = Burba%h_top + Burba%h_bot + Burba%h_spar
+    else
+        BurbaHeatFor = 0d0
+    end if
+end function BurbaHeatFor
+
+
 subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
     implicit none
     integer, intent(in) :: gas
     real(kind = dbl), intent(in) :: sigma_gas
     real(kind = dbl), intent(in) :: rhow_gas
+    !> E_nowpl - the evapotranspiration without its own WPL correction - is
+    !> the host's, by association. Only the LI-7700 formulation below wants
+    !> it; every other path uses the corrected Flux3%E. Not passed in, because
+    !> a dummy of the same name would shadow the host variable it came from.
     real(kind = dbl) :: dens_to_chi
     real(kind = dbl) :: base
     real(kind = dbl) :: wpl
@@ -632,14 +661,40 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
         else
             dens_to_chi = 1d3
         end if
-        wpl = Flux1%gas(gas)
-        if (Flux3%E /= error .and. RHO%d > 0d0 .and. sigma_gas /= error) &
-            wpl = wpl + mu * Flux3%E * Stats%d(gas) * dens_to_chi &
-                / ((1d0 + mu * sigma_gas) * RHO%d)
-        if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 .and. Ambient%Ta > 0d0) &
-            wpl = wpl + (Flux3%H + Burba%h_top + Burba%h_bot + Burba%h_spar) &
-                * Stats%d(gas) * dens_to_chi / (Ambient%RhoCp * Ambient%Ta)
-        Flux2%gas(gas) = wpl
+
+        if (IsLi7700(E2Col(gas)%Instr%model)) then
+            !> The LI-7700 carries its own spectroscopic multipliers, after
+            !> Webb et al. (1980) with the corrections of the LI-7700 manual.
+            !> A scales the whole flux, B the water-vapour term and C the
+            !> sensible-heat term, and the formulation wants the UNcorrected
+            !> evapotranspiration - E_nowpl - rather than Flux3%E divided back
+            !> out, together with an extra (1 + mu*sigma) on the heat term.
+            !>
+            !> A was never lost: rp_main applies it to chi and r, which is why
+            !> the concentrations agreed with EddyPro to the digit while the
+            !> flux did not. B and C were computed, written to the FLUXNET
+            !> output and applied to nothing, leaving methane about 10 % low
+            !> against EddyPro on the LI-COR sample archives - B and C are
+            !> around 1.42 and 1.32 there, so two terms were scaled by one.
+            wpl = Flux1%gas(gas)
+            if (E_nowpl /= error .and. RHO%d > 0d0) &
+                wpl = wpl + Mul7700%B * mu * Stats%d(gas) * dens_to_chi &
+                    * E_nowpl / RHO%d
+            if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 &
+                .and. Ambient%Ta > 0d0 .and. sigma_gas /= error) &
+                wpl = wpl + Mul7700%C * (1d0 + mu * sigma_gas) * Flux3%H &
+                    * Stats%d(gas) * dens_to_chi / (Ambient%RhoCp * Ambient%Ta)
+            Flux2%gas(gas) = Mul7700%A * wpl
+        else
+            wpl = Flux1%gas(gas)
+            if (Flux3%E /= error .and. RHO%d > 0d0 .and. sigma_gas /= error) &
+                wpl = wpl + mu * Flux3%E * Stats%d(gas) * dens_to_chi &
+                    / ((1d0 + mu * sigma_gas) * RHO%d)
+            if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 .and. Ambient%Ta > 0d0) &
+                wpl = wpl + (Flux3%H + BurbaHeatFor(gas)) &
+                    * Stats%d(gas) * dens_to_chi / (Ambient%RhoCp * Ambient%Ta)
+            Flux2%gas(gas) = wpl
+        end if
     end if
 
     if (.not. E2Col(gas)%present) Flux2%gas(gas) = error

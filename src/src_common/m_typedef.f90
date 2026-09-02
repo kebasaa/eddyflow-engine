@@ -2238,6 +2238,20 @@ contains
         CanonicalInstrumentModel = trim(base) // model(model_len - 1:model_len)
     end function CanonicalInstrumentModel
 
+    !> The LI-7700 alone, because it alone carries spectroscopic multipliers.
+    !>
+    !> Its open-path WPL is Webb et al. (1980) scaled by the A, B and C of the
+    !> LI-7700 manual, where every other open-path analyser uses the plain
+    !> Burba et al. (2008) form. Asked by name rather than by path type for
+    !> that reason: open-path is not the distinction that matters here.
+    logical function IsLi7700(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+
+        IsLi7700 = InstrumentModelBase(model) == 'li7700'
+    end function IsLi7700
+
     logical function IsOpenPathIrgaModel(model)
         implicit none
         !> in/out variables

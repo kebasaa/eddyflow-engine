@@ -97,6 +97,23 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # archives are 3.5 MB of binary and the ten lines that differ belong in a script
 # you can read. Skipped, like the 7-Zip cases, when it has not been generated.
 #
+# base_ghg_burba is base_ghg_licor with the Burba surface-heating correction
+# ON, and it is the only fixture anywhere that turns it on with more than one
+# open-path analyser. Every other one runs bu_corr=0, which is why the fault it
+# gates went unseen.
+#
+# Burba et al. (2008) is the LI-7500's OWN body warming the air in its path.
+# OverrideSettings switches the correction off for a site with no LI-7500, but
+# that is site-wide: here an LI-7500A and an LI-7700 sit together, so it stays
+# on, and the generic per-gas WPL was adding the LI-7500's heating to the
+# METHANE flux - air that analyser never touched. EddyPro 6.2.2 gated it per
+# gas, testing the model in its co2 block and never referencing Burba in its
+# ch4 or gas4 blocks at all; generalising to N gases lost that test with the
+# blocks.
+#
+# Only ch4_flux moves between a run with the fix and one without: co2 and h2o
+# are on the LI-7500 and keep their terms, which is the point.
+#
 # base_ghg_campbell is the other half of the extended format: a RENAME rather
 # than a stand-in. The Metek is swapped for a Campbell CSAT3B, which EddyPro
 # spells `csat3b` and EddyFlow spells `csi_csat3b` - the archive states EddyPro's
@@ -200,6 +217,7 @@ base_ghg
 base_ghg_licor
 base_ghg_ext
 base_ghg_campbell
+base_ghg_burba
 base_auto_sa
 base_mw
 base_mw_ref
@@ -236,7 +254,7 @@ for f in $FIXTURES; do
     #> produces nothing, which would read as a code failure - so they are
     #> skipped rather than failed, and said out loud.
     case "$f" in
-        base_ghg|base_ghg_licor|base_ghg_ext|base_ghg_campbell|base_ep_licor)
+        base_ghg|base_ghg_licor|base_ghg_ext|base_ghg_campbell|base_ghg_burba|base_ep_licor)
             if ! command -v 7z >/dev/null 2>&1 \
                     && ! command -v 7za >/dev/null 2>&1; then
                 printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
