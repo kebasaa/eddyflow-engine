@@ -90,10 +90,30 @@ GATES = (
 #> one somebody has looked at and understood; anything NOT here and not gated
 #> comes out as "unlisted", which is the report's way of saying nobody has.
 UNGATED = (
-    #> EddyPro leaves the LI-7500's signal-strength slot NaN and mislabels the
-    #> analyser as an LI-7200; EddyFlow fills it. Everything downstream differs
-    #> BECAUSE we fixed it, so gating it would be gating the bug.
-    ('EddyPro leaves the AGC slot NaN',
+    #> ch4_flux is 10.6 % below EddyPro's and it is OUR BUG, not a fix.
+    #>
+    #> Everything feeding it agrees to the digit - w/ch4_cov, ch4_molar_density,
+    #> ch4_mixing_ratio, ch4_mole_fraction, ch4_var, ch4_time_lag and even
+    #> ch4_scf are all bit-identical - so the difference is entirely in the WPL
+    #> step. EddyPro 6.2.2, the fork base, wrote a methane-specific branch:
+    #>
+    #>   Flux2%ch4 = A * (Flux1%ch4
+    #>                    + B * mu * d(ch4) * E_nowpl / RHO%d
+    #>                    + C * (1 + mu*sigma) * H * d(ch4) / (RhoCp*Ta))
+    #>
+    #> A, B and C are the LI-7700's spectroscopic multipliers. Generalising to
+    #> N gases replaced that branch with one per-gas open-path WPL that applies
+    #> A - upstream, to chi and r, which is why the concentrations still match -
+    #> and drops B and C. Both are still computed and still written to the
+    #> FLUXNET file, and on this fixture they are B = 1.417 and C = 1.322, so
+    #> two WPL terms are being scaled by 1 where they should be scaled by 1.42
+    #> and 1.32.
+    #>
+    #> NOT the AGC/RSSI story this comment first claimed: EddyFlow's own
+    #> INST_LI7700_RSSI is NaN on these archives too, so that explanation was
+    #> wrong. Ungated until it is fixed, because gating it would gate the bug in
+    #> place; see the task raised for it.
+    ('OUR BUG - LI-7700 multipliers B and C are computed and never applied',
      ('ch4_', 'qc_ch4_flux', 'rand_err_ch4', 'none_', 'qc_none_')),
     #> The packed per-variable flag strings: a leading 8 then one digit per
     #> variable. EddyPro always writes its four fixed gas slots, EddyFlow only
