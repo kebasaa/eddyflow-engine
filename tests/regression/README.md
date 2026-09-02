@@ -29,6 +29,54 @@ The run **log** is excluded there, and only the log: a parallel run
 concatenates each worker's own log into the parent's. Everything else must be
 byte-identical.
 
+Whether an **extended `.ghg` still processes in EddyPro**, and whether the two
+engines agree on it:
+
+    bash check_eddypro.sh                        # needs EddyPro installed
+    EDDYPRO_BIN=/path/to/eddypro_rp.exe bash check_eddypro.sh
+    KEEP=1 bash check_eddypro.sh                 # leave both engines' output behind
+
+The whole point of the extended format is that one archive processes in both
+programs. `sweep.sh` covers EddyFlow's half - `base_ghg_ext` and
+`base_ghg_campbell` - and EddyPro's half was covered by nothing: the claims
+made for it, including "189 of 189 columns bit-identical", came from hand-runs
+in a scratch directory. This makes them repeatable.
+
+Not a sweep fixture, for the same reason `check_parallel.sh` is not one: it
+needs a second program, installed at a machine-specific path, and each of its
+runs takes about half a minute. It **skips** rather than fails wherever
+EddyPro, 7-Zip or the generated archives are missing.
+
+Four checks, in order:
+
+0. The archives really carry the extension, **before anything is run**.
+   Without this a mis-generated fixture makes step 1 compare a file with
+   itself and pass while proving nothing - not hypothetical: an `ef_model`
+   negative control written during this work silently tested nothing for
+   exactly that reason, and looked like a clean pass.
+1. **EddyPro on the extended archives is bit-identical to EddyPro on the
+   classic ones** - 184 shared columns, none moving. This is the central claim
+   of the format: added keys plus a stand-in carrying the real geometry cost
+   EddyPro nothing.
+2. The renamed Campbell archive processes in EddyPro, with `master_sonic`
+   naming the **stand-in** - the only spelling EddyPro resolves.
+3. Both engines on the same archives **and the same project**: the generated
+   EddyPro project goes to EddyPro natively and to EddyFlow through the
+   importer. Handing each program its own project instead compares two
+   processing configurations and reports differences of 15 % that say nothing
+   about the archive format.
+
+`check_engines.py` compares by column NAME, since the two programs write
+different columns in different orders. It gates wind and concentrations at the
+last printed digit, the humidity chain at 5e-4 - EddyFlow's refined molecular
+weights, ~0.026 % by its changelog - and VPD at 5e-3, being `es - e` and so
+amplifying that difference about a hundredfold. Methane is reported and never
+gated: EddyPro leaves the LI-7500 signal-strength slot NaN where EddyFlow
+fills it, so gating it would be gating the bug.
+
+Anything in neither list prints under **NOT YET EXPLAINED**, which is the
+report saying nobody has accounted for it. That list is empty today.
+
 Note that `run.sh` on its own passes no `-j`, so the engine takes its default
 of every core - which means a stored reference is itself a *parallel* run.
 Use `RP_EXTRA` to pin it either way.
