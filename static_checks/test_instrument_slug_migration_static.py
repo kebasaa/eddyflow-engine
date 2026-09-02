@@ -132,5 +132,56 @@ class TheGatesDownstreamStayNarrow(unittest.TestCase):
                 "ingestion" % bare)
 
 
+class ColumnsAreMatchedOnTheFilesOwnSpelling(unittest.TestCase):
+    """Canonicalising the instrument does not canonicalise the columns.
+
+    col_<n>_instrument names an instrument by its MODEL STRING, and nothing
+    rewrites it. So the moment CanonicalInstrumentModel changes what the
+    instrument calls itself - which is exactly what it is for - the columns are
+    left pointing at a name the instrument list no longer holds.
+
+    An archive carrying EddyPro's own `csat3b_1` (the only Campbell spelling
+    EddyPro takes) had its instrument turned into `csi_csat3b_1` while all five
+    sonic columns still said `csat3b_1`. No column bound to the sonic, and the
+    run died with "exactly one selected u, v, w and one selected ts or sos are
+    required" - which does not mention instruments at all.
+
+    Instr%ep_label carries the file's own spelling so the columns can still be
+    matched on it, and it must be read RAW - assigning it from %model after
+    canonicalisation makes it a second copy of the canonical name and restores
+    the bug exactly.
+    """
+
+    def setUp(self):
+        self.src = read(READ_MD)
+
+    def test_ep_label_is_read_raw_not_copied_from_model(self):
+        self.assertNotIn("Instr(i)%ep_label = Instr(i)%model", self.src,
+                         "ep_label must hold the FILE's spelling, not the "
+                         "canonicalised one")
+        self.assertIn("Instr(i)%ep_label = ACTags(init_ac_instr "
+                      "+ i*leap_ac_instr + 2)%value", self.src)
+
+    def test_the_column_loop_tries_ep_label_too(self):
+        self.assertIn("Instr(j)%ep_label(1:len_trim(Instr(j)%ep_label))",
+                      self.src)
+
+    def test_the_ep_label_match_is_length_guarded(self):
+        #> index(x, '') is 1, so an unguarded empty label would match the first
+        #> column against the first instrument.
+        self.assertIn("if (len_trim(Instr(j)%ep_label) > 0) then", self.src)
+
+    def test_both_spellings_reach_the_same_offset(self):
+        #> ep_label and %model must read the SAME tag - offset 2 of the
+        #> instrument block - or they describe different instruments.
+        #>
+        #> Four rather than two: a Fortran substring read names its tag once
+        #> for the value and once inside the len_trim that bounds it, so each
+        #> of the two reads contributes two occurrences.
+        self.assertEqual(
+            4, self.src.count("ACTags(init_ac_instr + i*leap_ac_instr + 2)%value"),
+            "the model tag is read once for %model and once for %ep_label")
+
+
 if __name__ == "__main__":
     unittest.main()

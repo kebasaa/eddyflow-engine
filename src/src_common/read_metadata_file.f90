@@ -256,16 +256,27 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
                 (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value)))
 
-            !> The model string exactly as the FILE spells it. col_N_instrument
-            !> refers to an instrument by this string, not by its block number,
-            !> so it has to survive an ef_model override below - otherwise an
-            !> extended file whose columns say generic_open_path_1 would find no
-            !> instrument once the block started calling itself csi_ec150_1.
+            !> The model string exactly as the FILE spells it - taken BEFORE
+            !> canonicalisation, not after. col_N_instrument refers to an
+            !> instrument by this string, not by its block number, and nothing
+            !> canonicalises the columns, so this is the only spelling they can
+            !> ever be matched on.
+            !>
+            !> Two things need it. An ef_model override renames the instrument,
+            !> so an extended file whose columns say generic_open_path_1 would
+            !> otherwise find nothing once the block called itself csi_ec150_1.
+            !> And a file carrying EddyPro's own bare Campbell spelling - the
+            !> only one EddyPro takes - has instr_1_model=csat3b_1 canonicalised
+            !> to csi_csat3b_1 while every column still says csat3b_1: no column
+            !> bound to the sonic at all, and the run died with "exactly one
+            !> selected u, v, w and one selected ts or sos are required".
             !>
             !> ep_label was declared, defaulted and read by define_e2_set for
-            !> exactly this and never once assigned. On a classic file it now
-            !> equals %model, which is what that reader already assumed.
-            Instr(i)%ep_label = Instr(i)%model
+            !> exactly this and never once assigned. On a file needing neither
+            !> - which is every LI-COR archive - it equals %model, which is
+            !> what that reader already assumed.
+            Instr(i)%ep_label = ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
+                (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value))
 
             !> Extended .ghg: instr_<k>_ef_model states the instrument this
             !> REALLY is, where instr_<k>_model states a generic stand-in
