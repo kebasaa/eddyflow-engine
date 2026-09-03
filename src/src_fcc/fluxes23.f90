@@ -355,10 +355,19 @@ subroutine Fluxes23(lEx)
     if (lEx%L /= 0d0 .and. lEx%L /= error) &
         lEx%zL = (lEx%instr(sonic)%height - lEx%disp_height) / lEx%L
 
-    !> scale temperature(T*)
-    !> If condition fails, previous value (from Fluxes0) holds
+    !> scale temperature(T*), see e.g. Foken and Wichura (1996)
+    !>
+    !> The minus is the definition - T* = -(w'T')/u* - not a convention. With
+    !> a downward heat flux w'T' is negative and T* positive; without it this
+    !> line returned the negative of the quantity its own header names, on
+    !> every run that reached FCC, and overwrote the correctly signed value
+    !> RP had written into the essentials record. Both RP sites (Fluxes0_rp,
+    !> Fluxes23_rp) always carried it.
+    !>
+    !> If the condition fails, RP's value from the essentials record holds:
+    !> FCC has no Fluxes0 of its own to fall back on.
     if (Flux3%ustar > 0d0 .and. Flux3%H /= error .and. lEx%RhoCp > 0d0) &
-        lEx%Tstar = Flux3%H / (lEx%RhoCp * Flux3%ustar)
+        lEx%Tstar = - Flux3%H / (lEx%RhoCp * Flux3%ustar)
 
     !> Bowen ration (Bowen, 1926, Phyis Rev)
     if (Flux3%LE /= 0d0 .and. Flux3%LE /= error .and. Flux3%H /= error) then
@@ -610,13 +619,13 @@ contains
                 !> went missing and what it cost.
                 wpl = Flux1%gas(gas)
                 if (E_nowpl /= error .and. lEx%RHO%d > 0d0) &
-                    wpl = wpl + lEx%Mul7700%B * mu * lEx%d(gas) * dens_to_chi &
+                    wpl = wpl + lEx%Mul7700(gas)%B * mu * lEx%d(gas) * dens_to_chi &
                         * E_nowpl / lEx%RHO%d
                 if (Flux3%H /= error .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
                     .and. sigma_gas /= error) &
-                    wpl = wpl + lEx%Mul7700%C * (1d0 + mu * sigma_gas) * Flux3%H &
+                    wpl = wpl + lEx%Mul7700(gas)%C * (1d0 + mu * sigma_gas) * Flux3%H &
                         * lEx%d(gas) * dens_to_chi / (lEx%RhoCp * lEx%Ta)
-                Flux2%gas(gas) = lEx%Mul7700%A * wpl
+                Flux2%gas(gas) = lEx%Mul7700(gas)%A * wpl
             else
                 !> Open path, after e.g. Burba et al. (2008, GCB, eq. 1)
                 wpl = Flux1%gas(gas)

@@ -82,6 +82,12 @@ GATES = (
         'water_vapor_density', 'e', 'es', 'specific_humidity', 'RH', 'Tdew',
         'sonic_temperature', 'air_temperature', 'air_pressure', 'air_density',
         'air_molar_volume', 'air_heat_capacity',
+        #> T* is -H/(RhoCp*u*), so it inherits this tier from H and
+        #> air_heat_capacity by construction. It used to be reported and
+        #> ungated, at 200 %: FCC computed it without the leading minus and
+        #> handed back the negative of EddyPro's number. Gated since that was
+        #> fixed; measured at 3e-6, the last printed digit.
+        'T*',
         #> The random uncertainties and the vertical advection terms are
         #> computed FROM the fluxes above, so they carry the same difference.
         #> Measured on the first run at 2.6e-4 for un_LE, the rest below 1e-5.
@@ -115,12 +121,6 @@ UNGATED = (
     ('boolean - the two programs choose the lag differently',
      ('co2_def_timelag', 'h2o_def_timelag', 'ch4_def_timelag',
       'none_def_timelag')),
-    #> MEASURED: identical to six digits and opposite in sign - EddyPro
-    #> +0.0966893 against EddyFlow -0.0966890 on the same period. That is a
-    #> sign convention, not a disagreement about the physics, and it is not
-    #> about the archive format either way. Recorded here so the report does
-    #> not present it as an unexplained 200 % error every run.
-    ('sign convention differs; magnitudes agree to 6 digits', ('T*',)),
 )
 
 

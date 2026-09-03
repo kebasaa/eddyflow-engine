@@ -41,7 +41,17 @@ HISTORICAL = {
     #: widens the row - which is the whole point of pinning it. A reader who
     #: finds this failing should ask whether the widening was intended, not
     #: reach for the new value.
-    "nMainFields": 278,
+    #:
+    #: 278 until the LI-7700 spectroscopic multipliers became per gas. They
+    #: were three fixed columns holding one analyser's A, B and C, which is
+    #: all a site with a single LI-7700 needs - but the multipliers are built
+    #: from the water EACH analyser is corrected with, so two LI-7700s on
+    #: different hygrometers have different ones and the second overwrote the
+    #: first. Three columns become 3 x nExGas, +9 at four gases, and every gas
+    #: not on an LI-7700 writes the missing-value token. Purely additive: no
+    #: pre-existing value moved, and the gas that has multipliers still
+    #: reports what it reported before.
+    "nMainFields": 287,
     "nNrexFields": 23,
     "nVmFields": 12,
     "nLgdFields": 38,

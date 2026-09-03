@@ -38,6 +38,24 @@ export PATH="/c/Users/jonmuell/mingw64/bin:$PATH"
 OUT="$HERE/out_$WHICH"
 HOME_DIR="$HERE/home"
 
+# One run of a given WHICH at a time, per checkout.
+#
+# out_ref, out_chk, run_<which>.eddy* and home/ are fixed paths keyed only on
+# WHICH, so two concurrent runs delete and overwrite each other's state - and
+# the loser fails with whatever the collision happened to break, which is
+# never the same way twice. Cheap to prevent, expensive to diagnose: a second
+# Claude session, a second terminal, or a check_*.sh running beside a sweep
+# all reach these same paths.
+#
+# mkdir is the lock because it is atomic; a -e test followed by a touch is not.
+LOCKDIR="$HERE/.lock_$WHICH"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "run.sh: another '$WHICH' run is already using $HERE" >&2
+    echo "        if none is, remove $LOCKDIR" >&2
+    exit 3
+fi
+trap 'rmdir "$LOCKDIR" 2>/dev/null' EXIT
+
 rm -rf "$OUT"; mkdir -p "$OUT"
 rm -rf "$HOME_DIR/tmp"; mkdir -p "$HOME_DIR/tmp" "$HOME_DIR/ini"
 

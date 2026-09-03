@@ -207,9 +207,26 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, 'H_CELL_' // trim(FluxnetLayoutTags(j)), separator)
     end do
 
-    csv_row = trim(csv_row) // 'H_BU_BOT,H_BU_TOP,H_BU_SPAR,&
-                &SPEC_CORR_LI7700_A,SPEC_CORR_LI7700_B,SPEC_CORR_LI7700_C,&
-                &'
+    csv_row = trim(csv_row) // 'H_BU_BOT,H_BU_TOP,H_BU_SPAR,'
+
+    !> Per gas, like every other cell and gas block above it. The multipliers
+    !> are built from the water each analyser is corrected with, so two
+    !> LI-7700s on different hygrometers have different ones; three fixed
+    !> columns could only carry the last. Every gas that is not on an LI-7700
+    !> writes the missing-value token here, exactly as the three fixed columns
+    !> did for a project with no LI-7700 at all.
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'SPEC_CORR_LI7700_A_' &
+            // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'SPEC_CORR_LI7700_B_' &
+            // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'SPEC_CORR_LI7700_C_' &
+            // trim(FluxnetLayoutTags(j)), separator)
+    end do
 
     call AddFluxFamily('_SCF')
 

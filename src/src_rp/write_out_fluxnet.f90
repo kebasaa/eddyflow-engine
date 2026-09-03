@@ -534,22 +534,26 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    !> LI-7700 multipliers
+    !> LI-7700 multipliers, one set per gas.
     !>
-    !> Asked of the analyser, not of slot seven. Mul7700 is computed in the
-    !> main loop by scanning every slot for an li7700, so keying the column on
-    !> E2Col(ch4) let the two disagree: a 7700 on any other record produced
-    !> multipliers this suppressed, and a non-7700 methane record on slot seven
-    !> would have emitted multipliers nothing computed.
-    if (GasSlotByInstrModel('li7700') > 0) then
-        call AddFloatDatumToDataline(Mul7700%A, csv_row, EddyFlowProj%err_label)
-            call AddFloatDatumToDataline(Mul7700%B, csv_row, EddyFlowProj%err_label)
-            call AddFloatDatumToDataline(Mul7700%C, csv_row, EddyFlowProj%err_label)
-        else
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
+    !> Asked of each gas's own analyser rather than of a slot. Keyed on
+    !> E2Col(ch4) this once let the column and the computation disagree - a
+    !> 7700 on any other record produced multipliers the column suppressed -
+    !> and asked of the site as a whole it could carry only one 7700's values.
+    !> A gas that is not on an LI-7700 has none, and writes the missing-value
+    !> token.
+    do gas = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline( &
+            Mul7700(FluxnetLayoutSlots(gas))%A, csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline( &
+            Mul7700(FluxnetLayoutSlots(gas))%B, csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline( &
+            Mul7700(FluxnetLayoutSlots(gas))%C, csv_row, EddyFlowProj%err_label)
+    end do
     !> WPL Terms                    ********************************************(Individual: H, LE, Pressure)
     !>!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*
     !> Spectral correction factors
