@@ -78,7 +78,7 @@ subroutine BPCF_LI7550AnalogFilters(measuring_height, displ_height, loc_var_pres
     call SetTransferFunctionsToValue(BPTF, nfreq, 1d0)
 
     !> Analytic co-spectra after Moncrieff et al. (1997, JH)
-    call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
+    call CospectralModel(nf, kf, Cospectrum, zL, nfreq)
 
     !> Analytic low-pass transfer function
     call LI7550_AnalogSignalsTransferFunctions(nf, size(nf), u, ac_frequency, &

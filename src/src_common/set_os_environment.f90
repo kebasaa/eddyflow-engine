@@ -52,6 +52,7 @@ subroutine SetOSEnvironment()
             comm_move         = 'move '
             comm_force_opt    = '/Y '
             comm_dir          = 'dir  /O:D /B '
+            comm_sleep        = 'ping -n 2 127.0.0.1 > nul'
         case('linux')
             slash = '/'
             escape = '\'
@@ -65,6 +66,7 @@ subroutine SetOSEnvironment()
             comm_move         = 'mv '
             comm_force_opt    = '-y '
             comm_dir          = 'ls '
+            comm_sleep        = 'sleep 1'
 !            comm_dir          = 'find -iname '
         case('mac')
             slash = '/'
@@ -79,6 +81,7 @@ subroutine SetOSEnvironment()
             comm_move         = 'mv '
             comm_force_opt    = '-y '
             comm_dir          = 'ls '
+            comm_sleep        = 'sleep 1'
 !            comm_dir          = 'find -iname '
     end select
 end subroutine SetOSEnvironment

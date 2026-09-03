@@ -157,6 +157,8 @@ module m_eddypro_import
     !>
     !> Keep this in step with the readers, which own these numbers:
     !>   cec_*                    write_processing_project_variables.f90:75-81
+    !>   cosp_model               write_processing_project_variables.f90, the
+    !>                            unconditional 'moncrieff_97' above the tag
     !>   automatic_spectra_config read_ini_fcc.f90:334
     !>   rot_pf_assessment_only   read_ini_rp.f90:500
     !>   tlag_assessment_only     read_ini_rp.f90:589
@@ -195,14 +197,14 @@ module m_eddypro_import
     !> pf_sect_* and wdf_sect_* are EddyPro keys in any case, present since
     !> the fork, and are copied through whenever the source states them.
     !***********************************************************************
-    integer, parameter :: nProjectDefaults = 24
+    integer, parameter :: nProjectDefaults = 25
     !> The type spec pads: these section names are parameters of their own
     !> natural lengths, and an array constructor needs them equal.
     character(40), parameter :: defaultSect(nProjectDefaults) = [ &
         character(40) :: &
         sectProject, sectProject, sectProject, sectProject, &
         sectProject, sectProject, sectProject, sectProject, &
-        sectProject, sectProject, &
+        sectProject, sectProject, sectProject, &
         sectSpectral, sectSpectral, &
         sectTilt, &
         sectTimelag, &
@@ -216,6 +218,7 @@ module m_eddypro_import
         'cec_min_valid             ', 'cec_signal_strength       ', &
         'cec_max_gap_fill          ', 'cec_max_stationarity      ', &
         'cec_singular_band         ', 'cec_stationarity_mode     ', &
+        'cosp_model                ', &
         'automatic_spectra_config  ', 'flux_run_mode             ', &
         'rot_pf_assessment_only    ', &
         'tlag_assessment_only      ', &
@@ -229,6 +232,7 @@ module m_eddypro_import
         '0       ', '0.000   ', '20.0    ', '5.0     ', &
         '90.0    ', '70.0    ', '4       ', '25.0    ', &
         '0.200   ', '0       ', &
+        '0       ', &
         '0       ', '0       ', &
         '0       ', &
         '0       ', &
@@ -1428,7 +1432,8 @@ contains
                         write(uout, '(a)') trim(label) // '=' // &
                             trim(CanonicalInstrumentModel( &
                                 trim(adjustl(dataline(separ + 1:len_trim(dataline))))))
-                    else
+                    elseif (.not. WriteUpgradedConversionKey(uout, label, &
+                            dataline, separ, pairs, n)) then
                         write(uout, '(a)') trim(dataline)
                     end if
             end select
@@ -1441,6 +1446,135 @@ contains
         close(uin)
         close(uout)
     end subroutine WriteImportedMetadata
+
+    !***********************************************************************
+    !> Handle the four keys that carry a column's linear conversion, dropping
+    !> the two that are retired and upgrading the two that move.
+    !>
+    !> Returns .true. when it has dealt with the line (written a replacement,
+    !> or deliberately written nothing), .false. to let the caller copy it
+    !> through unchanged - which is what happens for every column that is not
+    !> zero_fullscale, i.e. every column of every file the interface has
+    !> written in years.
+    !>
+    !> min_value/max_value go unconditionally: they exist only to state a
+    !> zero_fullscale input range, and the engine no longer computes with
+    !> them. Where they carried a real range, it is folded into a_value and
+    !> b_value here, by the same algebra WriteEddyFlowMetadataVariables
+    !> applies on read:
+    !>     gain   = (b - a)/(max - min)
+    !>     offset = (a*max - b*min)/(max - min)
+    !>
+    !> An unconvertible range (max == min) is left exactly as it was, keys
+    !> and all. The import's job is to carry a file forward, not to decide
+    !> it is unusable - ColumnValidation already rejects that file, and it
+    !> should reject the imported copy for the same stated reason rather
+    !> than for a different one this rewrite invented.
+    !***********************************************************************
+    logical function WriteUpgradedConversionKey(uout, label, dataline, &
+            separ, pairs, n) result(handled)
+        implicit none
+        !> in/out variables
+        integer, intent(in) :: uout
+        character(*), intent(in) :: label
+        character(*), intent(in) :: dataline
+        integer, intent(in) :: separ
+        type(IniPair), intent(in) :: pairs(:)
+        integer, intent(in) :: n
+        !> local variables
+        character(iniLabelLen) :: lab
+        character(iniLabelLen) :: stem
+        character(iniLabelLen) :: key
+        character(iniValueLen) :: conv
+        integer :: cut
+        real(kind = dbl) :: cmin, cmax, ca, cb
+        character(32) :: numtxt
+
+        handled = .false.
+        lab = trim(adjustl(label))
+        if (index(lab, 'col_') /= 1) return
+
+        !> The conversion key itself: the type is what changes name, so it
+        !> is rewritten here rather than copied. Only when the range is
+        !> convertible - see the note above on why max == min is left whole.
+        cut = len_trim(lab) - len('conversion') + 1
+        if (cut > 1) then
+            if (lab(cut:len_trim(lab)) == 'conversion') then
+                if (trim(adjustl(dataline(separ + 1:len_trim(dataline)))) &
+                        /= 'zero_fullscale') return
+                stem = lab(1:cut - 1)
+                cmin = PairReal(pairs, n, trim(stem) // 'min_value', 0d0)
+                cmax = PairReal(pairs, n, trim(stem) // 'max_value', 0d0)
+                if (cmax == cmin) return
+                write(uout, '(a)') trim(lab) // '=gain_offset'
+                handled = .true.
+                return
+            end if
+        end if
+
+        !> Split col_<N>_<key> on the last underscore of the four keys this
+        !> handles. Each is <something>_value, so the split is the
+        !> underscore before that word - found by taking the last one of the
+        !> whole label and then the last one of what precedes it.
+        cut = index(trim(lab), '_', .true.)
+        if (cut <= 4) return
+        if (trim(lab(cut + 1:)) /= 'value') return
+        cut = index(trim(lab(1:cut - 1)), '_', .true.)
+        if (cut <= 4) return
+
+        stem = lab(1:cut)                       !> 'col_<N>_'
+        key  = lab(cut + 1:len_trim(lab))       !> 'min_value' etc.
+
+        !> The two retired keys go whatever the column's conversion says.
+        !> An imported file is a new file, and new files do not carry them -
+        !> the interface stopped writing them for the same reason. Dropping
+        !> them from a column that was never zero_fullscale loses nothing:
+        !> they had no other meaning, and every such column in every file
+        !> the interface has written states them as a constant zero.
+        if (trim(key) == 'min_value' .or. trim(key) == 'max_value') then
+            handled = .true.
+            return
+        end if
+
+        if (.not. PairValue(pairs, n, trim(stem) // 'conversion', conv)) return
+        if (trim(adjustl(conv)) /= 'zero_fullscale') return
+
+        cmin = PairReal(pairs, n, trim(stem) // 'min_value', 0d0)
+        cmax = PairReal(pairs, n, trim(stem) // 'max_value', 0d0)
+        ca   = PairReal(pairs, n, trim(stem) // 'a_value', 0d0)
+        cb   = PairReal(pairs, n, trim(stem) // 'b_value', 0d0)
+        if (cmax == cmin) return
+
+        select case (trim(key))
+            case ('a_value')
+                write(numtxt, '(f0.6)') (cb - ca) / (cmax - cmin)
+                write(uout, '(a)') trim(lab) // '=' // trim(adjustl(numtxt))
+                handled = .true.
+            case ('b_value')
+                write(numtxt, '(f0.6)') &
+                    (ca * cmax - cb * cmin) / (cmax - cmin)
+                write(uout, '(a)') trim(lab) // '=' // trim(adjustl(numtxt))
+                handled = .true.
+        end select
+    end function WriteUpgradedConversionKey
+
+    !> A real key, or `dflt` when it is absent or unreadable.
+    real(kind = dbl) function PairReal(pairs, n, label, dflt) result(val)
+        implicit none
+        !> in/out variables
+        type(IniPair), intent(in) :: pairs(:)
+        integer, intent(in) :: n
+        character(*), intent(in) :: label
+        real(kind = dbl), intent(in) :: dflt
+        !> local variables
+        character(iniValueLen) :: value
+        integer :: io_status
+
+        val = dflt
+        if (.not. PairValue(pairs, n, label, value)) return
+        read(value, *, iostat = io_status) val
+        if (io_status /= 0) val = dflt
+    end function PairReal
 
     !***********************************************************************
     !> The per-instrument sampling keys EddyFlow added, for every instrument

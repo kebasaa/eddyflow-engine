@@ -73,7 +73,7 @@ subroutine BPCF_OnlyLowFrequencyCorrection(measuring_height, displ_height, loc_v
     kf(:) = nf(:) * dabs((measuring_height - displ_height) / wind_speed)
 
     !> analytical co-spectra after Moncrieff et al. 1997
-    call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
+    call CospectralModel(nf, kf, Cospectrum, zL, nfreq)
 
     !> add analytic high-pass transfer functions
     call AnalyticHighPassTransferFunction(nf, size(nf), w, ac_frequency, avrg_length, &

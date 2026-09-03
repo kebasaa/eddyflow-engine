@@ -418,7 +418,7 @@ class TheHandshake(unittest.TestCase):
                     "cec_max_stationarity", "automatic_spectra_config",
                     "flux_run_mode", "rot_pf_assessment_only",
                     "tlag_assessment_only", "biom_rh_override",
-                    "cec_singular_band",
+                    "cec_singular_band", "cosp_model",
                     "pwb_n_bootstrap", "pwb_block_length_s", "pwb_min_valid_frac",
                     "pwb_hdi_thresh_s", "pwb_dev_thresh_s", "pwb_hdi_prefilter_s",
                     "pwb_smoothing_width", "pwb_random_seed"):
@@ -482,6 +482,7 @@ class TheProjectDefaults(unittest.TestCase):
         "pwb_smoothing_width": "PWBSetup%smoothing_width = 5",
         "pwb_random_seed": "PWBSetup%random_seed = 2024",
         "automatic_spectra_config": "FCCsetup%SA%automatic_config = .false.",
+        "cosp_model": "EddyFlowProj%cosp_model = 'moncrieff_97'",
     }
 
     def written(self):

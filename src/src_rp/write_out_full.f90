@@ -97,6 +97,13 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call WriteDatumInt(PeriodActualRecords, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
 
+    !> Convergence of the iterative correction
+    if (EddyFlowProj%corr_iter_meth) then
+        call WriteDatumFloat(Essentials%corr_iter_dev, field_val, &
+            EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+
     !> Corrected fluxes (Level 3)
     !> Tau
     call WriteDatumFloat(Flux3%tau, field_val, EddyFlowProj%err_label)
@@ -208,6 +215,14 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
             else
                 call AddDatum(csv_row, '0', separator)
             endif
+            !> Flux detection limit, Wienhold et al. (1994). Sits with the
+            !> time lag because it is measured relative to it, and is left in
+            !> covariance units rather than scaled like the three quantities
+            !> above: what it qualifies is the covariance, and scaling it to
+            !> a flux without also carrying the spectral correction factor
+            !> would invite a comparison that does not hold.
+            call WriteDatumFloat(Essentials%detlim(gas), field_val, EddyFlowProj%err_label)
+            call AddDatum(csv_row, field_val, separator)
         end if
     end do
 

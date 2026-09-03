@@ -31,6 +31,13 @@ Program EddyFlowFCC
     integer, external :: CreateDir
     integer :: i
     integer :: gas
+    !> Iterative correction, twinned with eddyflow-rp_main.f90.
+    integer :: corr_pass
+    integer :: corr_passes
+    real(kind = dbl) :: iter_dev
+    real(kind = dbl) :: iter_zL
+    real(kind = dbl) :: prev_gas_flux(GHGNumVar)
+    real(kind = dbl), external :: WorstRelativeChange
     integer :: month
     integer :: nbins
     integer :: open_status
@@ -557,18 +564,54 @@ Program EddyFlowFCC
         end do
         if (.not. allocated(FullFileList)) allocate(FullFileList(1))
 
-        !> Bad pass spectral correction factors
-        call BandPassSpectralCorrections(lEx%instr(sonic)%height, &
-            lEx%disp_height, lEx%var_present, lEx%WS, lEx%Ta, lEx%Flux0%zL, &
-            lEx%ac_freq, nint(lEx%avrg_length), lEx%logger_swver, &
-            lEx%det_meth, nint(lEx%det_timec), .false., AuxInstrument, &
-            size(FullFileList), FullFileList, nrow_full, lEx, FCCsetup)
+        !> Spectral correction and the two flux levels, once or repeatedly.
+        !>
+        !> Twinned with the loop in eddyflow-rp_main.f90 and for the same
+        !> reason: the analytic cospectrum is evaluated at a stability the
+        !> corrected heat flux itself determines. Off by default and a single
+        !> pass then, which is exactly what this block did before.
+        !>
+        !> The stability is threaded through a local rather than read from
+        !> lEx twice. BandPassSpectralCorrections is handed lEx%Flux0%zL - the
+        !> Level-0 value the ex record carries - while Fluxes23 writes
+        !> lEx%zL, so the two are different fields and the feedback would
+        !> otherwise not close. RP has the same shape with one name,
+        !> Ambient%zL, which is why the connection is easy to miss here.
+        iter_dev = error
+        corr_passes = 1
+        if (EddyFlowProj%corr_iter_meth) corr_passes = EddyFlowProj%corr_iter_max
+        iter_zL = lEx%Flux0%zL
+        do corr_pass = 1, corr_passes
+            if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
-        !> Calculate fluxes at Level 1
-        call Fluxes1(lEx)
+            !> Bad pass spectral correction factors
+            call BandPassSpectralCorrections(lEx%instr(sonic)%height, &
+                lEx%disp_height, lEx%var_present, lEx%WS, lEx%Ta, iter_zL, &
+                lEx%ac_freq, nint(lEx%avrg_length), lEx%logger_swver, &
+                lEx%det_meth, nint(lEx%det_timec), .false., AuxInstrument, &
+                size(FullFileList), FullFileList, nrow_full, lEx, FCCsetup)
 
-        !> Calculate fluxes at Level 2 and Level 3
-        call Fluxes23(lEx)
+            !> Calculate fluxes at Level 1
+            call Fluxes1(lEx)
+
+            !> Calculate fluxes at Level 2 and Level 3
+            call Fluxes23(lEx)
+
+            !> Fluxes23 leaves the previous value standing when it cannot
+            !> form a new one, so this is either the refined stability or the
+            !> one the pass started from - never an error code.
+            iter_zL = lEx%zL
+
+            if (corr_pass > 1) then
+                iter_dev = WorstRelativeChange(prev_gas_flux, Flux3%gas)
+                !> A tolerance of zero never fires, which is EddyUH's
+                !> behaviour: it runs every pass and tests nothing.
+                if (EddyFlowProj%corr_iter_tol > 0d0 &
+                    .and. iter_dev /= error &
+                    .and. iter_dev < EddyFlowProj%corr_iter_tol) exit
+            end if
+        end do
+        lEx%corr_iter_dev = iter_dev
 
         !> Apply RP's high-frequency CEC descriptors to FCC's authoritative
         !> corrected totals - one per pairing.
@@ -618,7 +661,11 @@ Program EddyFlowFCC
         DtDiff%u      = nint(lEx%U_ITC)
         DtDiff%w      = nint(lEx%W_ITC)
         DtDiff%ts     = nint(lEx%TS_ITC)
-        call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .false.)
+        !> raw_ok/rf_ok are always false here: FCC never re-derives KID,
+        !> Mahrt's (1998) ratio or the test_rf diagnostics from the ex
+        !> record it reads back, so Essentials does not reflect this
+        !> period for 'vitale_20' - see QualityFlags's own note.
+        call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .false., .false., .false.)
 
         !> Initialize output files
         if (InitializeOuputFiles) then
@@ -630,6 +677,14 @@ Program EddyFlowFCC
         if (EddyFlowProj%out_md .and. .not. lEx%not_enough_data) call WriteOutMetadataFcc(lEx)
         if (EddyFlowProj%out_fluxnet) call WriteOutFluxnetFcc(lEx)
 
+        !> Post-flux despiking (test_pfd) needs the whole run's series, so
+        !> this period only banks its NEE/H/LE; PostProcessFluxDespiking
+        !> below does the actual work once every period has been seen.
+        if (EddyFlowProj%test_pfd .and. .not. lEx%not_enough_data) then
+            call StorePfdCache(lEx%end_date, lEx%end_time, &
+                Flux2%gas(PrimaryCarbonSlot()), Flux2%H, Flux2%LE)
+        end if
+
     end do ex_loop
     close(uex)
     close(uflx)
@@ -637,6 +692,8 @@ Program EddyFlowFCC
     close(uaflx)
     close(umd)
     close(uflxnt)
+
+    if (EddyFlowProj%test_pfd .and. PfdCacheN > 0) call PostProcessFluxDespiking()
 
     write(*,*)
     write(ulog,*)

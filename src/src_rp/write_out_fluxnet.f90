@@ -534,22 +534,26 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    !> LI-7700 multipliers
+    !> LI-7700 multipliers, one set per gas.
     !>
-    !> Asked of the analyser, not of slot seven. Mul7700 is computed in the
-    !> main loop by scanning every slot for an li7700, so keying the column on
-    !> E2Col(ch4) let the two disagree: a 7700 on any other record produced
-    !> multipliers this suppressed, and a non-7700 methane record on slot seven
-    !> would have emitted multipliers nothing computed.
-    if (GasSlotByInstrModel('li7700') > 0) then
-        call AddFloatDatumToDataline(Mul7700%A, csv_row, EddyFlowProj%err_label)
-            call AddFloatDatumToDataline(Mul7700%B, csv_row, EddyFlowProj%err_label)
-            call AddFloatDatumToDataline(Mul7700%C, csv_row, EddyFlowProj%err_label)
-        else
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-        call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
-    end if
+    !> Asked of each gas's own analyser rather than of a slot. Keyed on
+    !> E2Col(ch4) this once let the column and the computation disagree - a
+    !> 7700 on any other record produced multipliers the column suppressed -
+    !> and asked of the site as a whole it could carry only one 7700's values.
+    !> A gas that is not on an LI-7700 has none, and writes the missing-value
+    !> token.
+    do gas = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline( &
+            Mul7700(FluxnetLayoutSlots(gas))%A, csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline( &
+            Mul7700(FluxnetLayoutSlots(gas))%B, csv_row, EddyFlowProj%err_label)
+    end do
+    do gas = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline( &
+            Mul7700(FluxnetLayoutSlots(gas))%C, csv_row, EddyFlowProj%err_label)
+    end do
     !> WPL Terms                    ********************************************(Individual: H, LE, Pressure)
     !>!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*!*
     !> Spectral correction factors
@@ -746,6 +750,12 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddFloatDatumToDataline(Essentials%mahrt98_NR(w_ts), csv_row, EddyFlowProj%err_label)
     do j = 1, nFluxnetLayoutSlots
         call AddFloatDatumToDataline(Essentials%mahrt98_NR(FluxnetLayoutSlots(j)), &
+                                     csv_row, EddyFlowProj%err_label)
+    end do
+    !> Flux detection limit, Wienhold et al. (1994), one per configured gas.
+    !> Error-labelled throughout unless detlim_meth asked for it.
+    do j = 1, nFluxnetLayoutSlots
+        call AddFloatDatumToDataline(Essentials%detlim(FluxnetLayoutSlots(j)), &
                                      csv_row, EddyFlowProj%err_label)
     end do
     !> Foken stats used to calculate flags: the steady-state statistic per
@@ -1149,6 +1159,51 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         end do
 
         if (allocated(bAggrOut)) deallocate(bAggrOut)
+    end if
+
+    !> Extra RFlux-derived raw-signal diagnostics (Test%rf), off by default.
+    !> Written last, and matched by the identical placement in
+    !> init_fluxnet_file_rp.f90, deliberately: this tail is what
+    !> read_ex_record.f90 captures whole as fluxnetChunks%s(6) ("put
+    !> remaining into last chunk") and FCC re-emits verbatim, unlike the
+    !> LGD/KID/ZCD family a few blocks up, whose chunk is sized by a fixed
+    !> field count (nLgdFields) that does not know about this test. Adding
+    !> columns there would silently misalign every field FCC parses after
+    !> them whenever the test is enabled; adding them here cannot, because
+    !> nothing downstream assumes a width for the tail.
+    if (Test%rf) then
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%AL1(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%DDI(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%HF5(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%HF10(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%HD5(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%HD10(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%DIP(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%CCF(var), csv_row, EddyFlowProj%err_label)
+        end do
     end if
 
     !> Replace error codes with user-defined error code

@@ -48,6 +48,7 @@ src/src_rp/deprecated
 # on disk. A check nobody can clone is not a check.
 !/tests/regression/gen_*.py
 !/tests/regression/check_*.py
+!/tests/regression/check_*.sh
 !/tests/regression/migrate_*.py
 # The hand-written spectral assessment files the sa_mode=0 fixtures read. The
 # three that exist were force-added one at a time; a fixture committed without
@@ -57,6 +58,16 @@ src/src_rp/deprecated
 !/tests/regression/*.metadata
 # The EddyPro fixture, tracked by the same pattern rule as its native twin.
 !/tests/regression/base*.eddypro
+# The two genuine LI-COR SmartFlux archives base_ghg_licor reads - the only
+# binary test data in the repo, about 3.5 MB. Committed rather than generated
+# because what they are FOR is the part no generator can synthesise: LI-COR's
+# own embedded metadata, written by the LI-7550 rather than by our interface,
+# and the embedded biomet beside it. base_ghg only looks like it covers that -
+# gen_ghg.py builds it by copying base_site.metadata into a synthesized
+# archive, and it runs use_biom=0. A fixture that needs data nobody else has
+# is a fixture nobody else can run, which is the same reasoning as above.
+!/tests/regression/data_ghg/
+!/tests/regression/data_ghg/*.ghg
 # ...but not what a run leaves behind. run.sh writes run_<which>.eddy* and, for
 # an EddyPro fixture, the pair the engine imports beside it - and one of those
 # is a .metadata, which the line above would otherwise pull straight back in.
@@ -75,6 +86,12 @@ src/src_rp/deprecated
 /data/__pycache__
 /data_test
 
-# gfortran's fallback output; see the note in the GUI repo's .gitignore.
-fort.*
+# fort.* is deliberately NOT ignored. A fort.NN file is gfortran connecting a
+# unit nobody opened, which is always a bug and never something to filter out:
+# ignoring it is how 36 KB of ensemble cospectra sat in this directory for
+# weeks while the run log said they had been dropped. If one appears, find the
+# unguarded write - test_stray_unit_writes_static.py asserts none are here.
 /fluxnet_example
+/RFlux-master
+/dyco-main
+/EddyPro_sample_data

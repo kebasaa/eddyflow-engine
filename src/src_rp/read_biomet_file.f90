@@ -48,13 +48,21 @@ subroutine ReadBiometFile(BiometFile, skip_file)
     character(LongInstringLen) :: dataline
     character(1)  :: sepa
     logical :: skip_row
+    !> scanCsvFile has no explicit interface here (external procedure, no
+    !> module/interface block), so its trailing optional argument cannot be
+    !> omitted safely - without an interface the standard does not let a
+    !> compiler pass "absent" for it, and gfortran instead reads whatever
+    !> was in that argument slot, so present(missing) can come back true
+    !> and the write through it can land anywhere. Passing it explicitly,
+    !> as init_external_biomet.f90's call already does, avoids that.
+    logical :: missing
 
 
     sepa = bFileMetadata%separator
     skip_file = .false.
 
     !> Scan file to retrieve number of rows
-    call scanCsvFile(BiometFile, sepa, 0, nrow, ncol, skip_file)
+    call scanCsvFile(BiometFile, sepa, 0, nrow, ncol, skip_file, missing)
     if (skip_file) return
 
     open(udf, file = BiometFile, status = 'old', iostat = open_status)

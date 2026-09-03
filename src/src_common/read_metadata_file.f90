@@ -84,6 +84,11 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     integer :: NumSkipCol
     integer :: i = 0
     integer :: j = 0
+    !> Legacy zero_fullscale, converted to its gain/offset equivalent below.
+    real(kind = dbl) :: conv_gain
+    real(kind = dbl) :: conv_offset
+    !> Once per run, not once per archive - see where it is used.
+    logical, save :: fmt_ver_said = .false.
     include 'interfaces.inc'
 
 
@@ -91,6 +96,23 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
         Metadata%logger_swver = SwVerFromString(trim(ACTags(1)%value))
     else
         Metadata%logger_swver = errSwVer
+    end if
+
+    !> Extended-.ghg format version, ACTags(25). Absent in every archive
+    !> LI-COR's own software writes, and absent is not an error: the extended
+    !> keys are additive and fall back individually, so nothing here is
+    !> consulted before reading anything else.
+    !>
+    !> Said once per run rather than once per file: this reader runs again for
+    !> every archive in a GHG dataset, and a line per file would bury the log.
+    !> Worth saying at all because an extended file processes silently either
+    !> way - if the run is standing in a generic instrument for a real one,
+    !> that should appear in the log rather than only in the metadata.
+    Metadata%ghg_format_version = trim(adjustl(ACTags(25)%value))
+    if (len_trim(Metadata%ghg_format_version) > 0 .and. .not. fmt_ver_said) then
+        call LogSay('  Extended .ghg metadata, format version ' &
+            // trim(Metadata%ghg_format_version) // '.')
+        fmt_ver_said = .true.
     end if
 
     Metadata%sitename = trim(adjustl(ACTags(9)%value))
@@ -198,9 +220,9 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     Instr = NullInstrument
 
     !> Instruments description
-    leap_ac_instr = 8
+    leap_ac_instr = 9
     leap_an_instr = 15
-    init_ac_instr = 25 - leap_ac_instr
+    init_ac_instr = 26 - leap_ac_instr
     init_an_instr = 10 - leap_an_instr
     NumInstruments = 0
     Instr%firm = 'none'
@@ -233,6 +255,52 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             Instr(i)%model = CanonicalInstrumentModel( &
                 ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
                 (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value)))
+
+            !> The model string exactly as the FILE spells it - taken BEFORE
+            !> canonicalisation, not after. col_N_instrument refers to an
+            !> instrument by this string, not by its block number, and nothing
+            !> canonicalises the columns, so this is the only spelling they can
+            !> ever be matched on.
+            !>
+            !> Two things need it. An ef_model override renames the instrument,
+            !> so an extended file whose columns say generic_open_path_1 would
+            !> otherwise find nothing once the block called itself csi_ec150_1.
+            !> And a file carrying EddyPro's own bare Campbell spelling - the
+            !> only one EddyPro takes - has instr_1_model=csat3b_1 canonicalised
+            !> to csi_csat3b_1 while every column still says csat3b_1: no column
+            !> bound to the sonic at all, and the run died with "exactly one
+            !> selected u, v, w and one selected ts or sos are required".
+            !>
+            !> ep_label was declared, defaulted and read by define_e2_set for
+            !> exactly this and never once assigned. On a file needing neither
+            !> - which is every LI-COR archive - it equals %model, which is
+            !> what that reader already assumed.
+            Instr(i)%ep_label = ACTags(init_ac_instr + i*leap_ac_instr + 2)%value &
+                (1:len_trim(ACTags(init_ac_instr + i*leap_ac_instr + 2)%value))
+
+            !> Extended .ghg: instr_<k>_ef_model states the instrument this
+            !> REALLY is, where instr_<k>_model states a generic stand-in
+            !> chosen so that EddyPro will accept the file. Applied here,
+            !> before the geometry select below, so that select sees the real
+            !> model - a csi_ec150 needs its path lengths read, and would not
+            !> get them if it were still calling itself generic_open_path.
+            !>
+            !> The manufacturer is dropped rather than kept, because the one
+            !> in the file was chosen to match the stand-in: an ec150 declared
+            !> as generic_open_path says other_irga, and its real firm is
+            !> csi_irga. Setting it to 'none' hands it to the derivation
+            !> further down, which reads it off the model.
+            if (ACTagFound(init_ac_instr + i*leap_ac_instr + 8)) then
+                if (len_trim(ACTags(init_ac_instr &
+                        + i*leap_ac_instr + 8)%value) > 0) then
+                    Instr(i)%model = CanonicalInstrumentModel( &
+                        ACTags(init_ac_instr + i*leap_ac_instr + 8)%value &
+                        (1:len_trim(ACTags(init_ac_instr &
+                            + i*leap_ac_instr + 8)%value)))
+                    Instr(i)%firm = 'none'
+                end if
+            end if
+
             Instr(i)%height = dble(ANTags(init_an_instr + i*leap_an_instr)%value)
 
             !> For "generic" instruments, retrieve path lengths, time response,
@@ -402,7 +470,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     Metadata%ac_freq = dble(ANTags(7)%value)
     Metadata%file_length = dble(ANTags(8)%value)
     FileInterpreter%header_rows = nint(ANTags(9)%value)
-    FileInterpreter%data_label = ACTags(89)%value(1:len_trim(ACTags(89)%value))
+    FileInterpreter%data_label = ACTags(98)%value(1:len_trim(ACTags(98)%value))
 
     select case (ACTags(23)%value(1:len_trim(ACTags(23)%value)))
         case('comma')
@@ -421,8 +489,8 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
 
     FileInterpreter%file_with_text = .false.
     leap_ac_col = 7
-    leap_an_col = 9
-    init_ac_col = 90 - leap_ac_col
+    leap_an_col = 11
+    init_ac_col = 99 - leap_ac_col
     init_an_col = 130 - leap_an_col
     LocCol%var = 'none'
     LocCol%label = 'none'
@@ -468,10 +536,26 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
                 (1:len_trim(ACTags(init_ac_col + i*leap_ac_col + 3)%value))
 
             !> Associate instrument information to data colums
+            !> Matched on the file's own spelling as well as the model,
+            !> because an extended .ghg names its stand-in here and its real
+            !> instrument in instr_<k>_ef_model. The two are the same string on
+            !> every classic file, so the second test only ever adds matches
+            !> that the first one would have made anyway.
+            !>
+            !> len_trim guarded: index(x, '') is 1, so an empty label would
+            !> match the first column against the first instrument.
             do j = 1, NumInstruments
-                if (index(LocCol(i)%instr_name, Instr(j)%model(1:len_trim(Instr(j)%model))) /= 0) then
+                if (index(LocCol(i)%instr_name, &
+                        Instr(j)%model(1:len_trim(Instr(j)%model))) /= 0) then
                     LocCol(i)%instr = Instr(j)
                     exit
+                end if
+                if (len_trim(Instr(j)%ep_label) > 0) then
+                    if (index(LocCol(i)%instr_name, &
+                            Instr(j)%ep_label(1:len_trim(Instr(j)%ep_label))) /= 0) then
+                        LocCol(i)%instr = Instr(j)
+                        exit
+                    end if
                 end if
             end do
 
@@ -496,6 +580,16 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             LocCol(i)%max    = dble(ANTags(init_an_col + i*leap_an_col + 1)%value)
             LocCol(i)%a      = dble(ANTags(init_an_col + i*leap_an_col + 2)%value)
             LocCol(i)%b      = dble(ANTags(init_an_col + i*leap_an_col + 3)%value)
+            !> Spectroscopic coefficients, Peltola et al. (2014). Absent means
+            !> zero, which makes the correction the identity - so a metadata
+            !> file written before this key existed declares, correctly, that
+            !> the analyser has no water-broadening term to remove.
+            LocCol(i)%spectro_a = 0d0
+            LocCol(i)%spectro_b = 0d0
+            if (ANTagFound(init_an_col + i*leap_an_col + 9)) &
+                LocCol(i)%spectro_a = dble(ANTags(init_an_col + i*leap_an_col + 9)%value)
+            if (ANTagFound(init_an_col + i*leap_an_col + 10)) &
+                LocCol(i)%spectro_b = dble(ANTags(init_an_col + i*leap_an_col + 10)%value)
             LocCol(i)%def_tl = dble(ANTags(init_an_col + i*leap_an_col + 4)%value)
             LocCol(i)%min_tl = dble(ANTags(init_an_col + i*leap_an_col + 5)%value)
             LocCol(i)%max_tl = dble(ANTags(init_an_col + i*leap_an_col + 6)%value)
@@ -504,6 +598,47 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
             if (LocCol(i)%conversion_type /= 'gain_offset' &
                 .and. LocCol(i)%conversion_type /= 'zero_fullscale') &
                 LocCol(i)%conversion_type = 'none'
+
+            !> zero_fullscale, upgraded here and nowhere else.
+            !>
+            !> It maps the input range [min, max] onto the output range
+            !> [a, b], which LinearConversion used to apply directly as
+            !>     out = ((b - a)/(max - min)) * (in - min) + a
+            !> That expression is gain*in + offset with
+            !>     gain   = (b - a)/(max - min)
+            !>     offset = a - gain*min = (a*max - b*min)/(max - min)
+            !> so converting it here lets the conversion itself be a single
+            !> form everywhere downstream. The interface has not offered
+            !> this type in years and rewrites it on load, so in practice
+            !> only a hand-written or pre-EddyFlow file still declares it.
+            !>
+            !> max == min is a zero-width input range, which the division
+            !> would divide by. It is left as 'zero_fullscale' rather than
+            !> converted, deliberately: ColumnValidation rejects exactly
+            !> that file (passed(15)), and it must go on rejecting it
+            !> rather than start processing an unscalable column because
+            !> this upgrade quietly renamed the type out from under it.
+            !> Nothing computes with the leftover type - LinearConversion
+            !> has no arm for it and applies no scaling - so a run that
+            !> skips validation is no worse off than before.
+            !>
+            !> The a == 0 .and. b == 0 rejection (passed(16)) survives the
+            !> conversion on its own: it makes gain zero, which is what
+            !> the gain_offset arm of the same check already refuses.
+            if (LocCol(i)%conversion_type == 'zero_fullscale' &
+                .and. LocCol(i)%max /= LocCol(i)%min) then
+                conv_gain = (LocCol(i)%b - LocCol(i)%a) &
+                    / (LocCol(i)%max - LocCol(i)%min)
+                conv_offset = (LocCol(i)%a * LocCol(i)%max &
+                    - LocCol(i)%b * LocCol(i)%min) &
+                    / (LocCol(i)%max - LocCol(i)%min)
+                LocCol(i)%a = conv_gain
+                LocCol(i)%b = conv_offset
+                LocCol(i)%conversion_type = 'gain_offset'
+                call LogSay('   Column ' // trim(LocCol(i)%var) &
+                    // ': legacy "zero_fullscale" conversion upgraded to ' &
+                    // 'gain/offset.')
+            end if
         end if
     end do
 end subroutine WriteEddyFlowMetadataVariables

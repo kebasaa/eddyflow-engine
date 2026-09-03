@@ -48,6 +48,9 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
     logical, intent(out) :: bDataFound
     !> Local variable
     integer :: i
+    !> Said once per run, not once per averaging period: the project states
+    !> these column numbers once, so a wrong one is wrong every period.
+    logical, save :: slot_warned = .false.
     integer :: nfl
     integer :: cnt
     integer :: io_status
@@ -175,9 +178,27 @@ subroutine BiometRetrieveExternalData(bFileList, bnFiles, bLastFile, &
         if (printout) call ExceptionHandler(72)
     end if
 
-    !> Associate values to variables, as selected by user
+    !> Associate values to variables, as selected by user.
+    !>
+    !> Bounds-tested for the same reason as the embedded path: biom_ta and
+    !> its siblings are column numbers the project states by hand, and
+    !> nothing has checked them against the file they index. Past the end of
+    !> bAggrEddyFlow a release build reads whatever is there and reports it
+    !> as a temperature. No -2 here, unlike the embedded path, because this
+    !> reader does not carry the timestamp columns in bAggr to begin with.
     do i = bTa, bRg
-        if (bSetup%sel(i) > 0) biomet%val(i) = bAggrEddyFlow(bSetup%sel(i))
+        if (bSetup%sel(i) <= 0) cycle
+        if (bSetup%sel(i) > size(bAggrEddyFlow)) then
+            if (.not. slot_warned) then
+                call LogSay('   Warning> A biomet column selected in the project ' &
+                    // '(biom_ta and its siblings) is outside the range the biomet ' &
+                    // 'file describes, so that variable is not used. Check those ' &
+                    // 'column numbers against this file''s own columns.')
+                slot_warned = .true.
+            end if
+            cycle
+        end if
+        biomet%val(i) = bAggrEddyFlow(bSetup%sel(i))
     end do
     if (printout) write(*,'(a)') '  Done.'
     if (printout) write(ulog,'(a)') '  Done.'

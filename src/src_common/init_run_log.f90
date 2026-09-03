@@ -43,11 +43,21 @@ subroutine InitRunLog()
     character(PathLen) :: LogPath
 
     call Clearstr(LogPath)
-    LogPath = Dir%main_out(1:len_trim(Dir%main_out)) &
-            // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
-            // Log_FilePadding &
-            // Timestamp_FilePadding(1:len_trim(Timestamp_FilePadding)) &
-            // LogExt
+    if (BatchIndex > 0) then
+        !> A worker of a parallel pre-pass logs beside the records it was
+        !> asked for, not into the output directory. It shares its parent's
+        !> start second, so it would otherwise open the parent's own log and
+        !> whichever process closed it last would win; and the output
+        !> directory belongs to the run, not to an internal detail of how the
+        !> pre-pass was computed. The parent folds this file into the run log.
+        LogPath = BatchOutPath(1:len_trim(BatchOutPath)) // LogExt
+    else
+        LogPath = Dir%main_out(1:len_trim(Dir%main_out)) &
+                // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
+                // Log_FilePadding &
+                // Timestamp_FilePadding(1:len_trim(Timestamp_FilePadding)) &
+                // LogExt
+    end if
 
     call LogInit(LogPath(1:len_trim(LogPath)))
 end subroutine InitRunLog

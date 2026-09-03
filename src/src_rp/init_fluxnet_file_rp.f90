@@ -207,9 +207,26 @@ subroutine InitFluxnetFile_rp()
         call AddDatum(csv_row, 'H_CELL_' // trim(FluxnetLayoutTags(j)), separator)
     end do
 
-    csv_row = trim(csv_row) // 'H_BU_BOT,H_BU_TOP,H_BU_SPAR,&
-                &SPEC_CORR_LI7700_A,SPEC_CORR_LI7700_B,SPEC_CORR_LI7700_C,&
-                &'
+    csv_row = trim(csv_row) // 'H_BU_BOT,H_BU_TOP,H_BU_SPAR,'
+
+    !> Per gas, like every other cell and gas block above it. The multipliers
+    !> are built from the water each analyser is corrected with, so two
+    !> LI-7700s on different hygrometers have different ones; three fixed
+    !> columns could only carry the last. Every gas that is not on an LI-7700
+    !> writes the missing-value token here, exactly as the three fixed columns
+    !> did for a project with no LI-7700 at all.
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'SPEC_CORR_LI7700_A_' &
+            // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'SPEC_CORR_LI7700_B_' &
+            // trim(FluxnetLayoutTags(j)), separator)
+    end do
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, 'SPEC_CORR_LI7700_C_' &
+            // trim(FluxnetLayoutTags(j)), separator)
+    end do
 
     call AddFluxFamily('_SCF')
 
@@ -290,6 +307,22 @@ subroutine InitFluxnetFile_rp()
     call AddDatum(csv_row, 'H_NSR', separator)
     do j = 1, nFluxnetLayoutSlots
         call AddDatum(csv_row, trim(FluxnetFluxTag(j)) // '_NSR', separator)
+    end do
+
+    !> Flux detection limit, Wienhold et al. (1994), in covariance units.
+    !>
+    !> One field per configured gas and nothing else - not the variable shape
+    !> LGD/KID/ZCD use. The quantity is the noise floor of a scalar's
+    !> covariance with w, read off the cross-covariance function away from
+    !> its peak; the anemometric variables have no analogue of it here, and
+    !> emitting four error codes to look like the families above would be
+    !> four columns saying nothing.
+    !>
+    !> Parsed rather than copied, unlike the chunk above it: FCC needs the
+    !> value to write its own full output when it follows RP, not merely to
+    !> re-emit the field.
+    do j = 1, nFluxnetLayoutSlots
+        call AddDatum(csv_row, trim(FluxnetLayoutTags(j)) // '_DETLIM', separator)
     end do
 
     !> Foken statistics: the steady-state measure per flux, then the integral
@@ -553,6 +586,23 @@ subroutine InitFluxnetFile_rp()
                 call AddDatum(csv_row, trim(bVars(i)%label), separator)
             end if
         end do
+    end if
+
+    !> Extra RFlux-derived raw-signal diagnostics (Test%rf), off by default.
+    !> Written last, matching write_out_fluxnet.f90 exactly: this tail is what
+    !> read_ex_record.f90 captures whole as fluxnetChunks%s(6) and FCC
+    !> re-emits verbatim, so adding columns here - unlike splicing them into
+    !> the LGD/KID/ZCD family above, whose chunk is a fixed field count -
+    !> cannot misalign anything FCC parses positionally.
+    if (Test%rf) then
+        call AddVariableFamily('_AL1')
+        call AddVariableFamily('_DDI')
+        call AddVariableFamily('_HF5')
+        call AddVariableFamily('_HF10')
+        call AddVariableFamily('_HD5')
+        call AddVariableFamily('_HD10')
+        call AddVariableFamily('_DIP')
+        call AddVariableFamily('_CCF')
     end if
 
     !> The header used to be built with a GS4 placeholder for the fourth gas

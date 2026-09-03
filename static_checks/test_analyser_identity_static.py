@@ -97,15 +97,29 @@ class NoCallerReadsAFixedSlot(unittest.TestCase):
                     "%s reads firmware from a fixed slot; it must ask the "
                     "analyser the column names, through InstrSwVerFor" % path)
 
-    def test_the_methane_analyser_gate_is_not_a_slot(self):
-        """Mul7700 is computed by scanning every slot for an li7700.
+    def test_the_methane_multipliers_are_written_per_gas(self):
+        """No gate at all now: each gas writes its own multipliers.
 
-        Keyed on E2Col(ch4), the writer and that scan could disagree: a 7700
-        on any other record produced multipliers the writer suppressed.
+        This began as a slot problem - keyed on E2Col(ch4), the writer and the
+        scan that computes the multipliers could disagree, and a 7700 on any
+        other record produced multipliers the writer suppressed. Asking
+        GasSlotByInstrModel instead fixed that, but it still asked ONE
+        question of the whole site, and the answer was one set of A/B/C for
+        however many LI-7700s there were.
+
+        Per gas there is nothing left to disagree: the writer emits
+        Mul7700(gas) for each gas in the layout, and a gas with no LI-7700
+        holds the error value, which AddFloatDatumToDataline writes as the
+        missing-value token. A site gate would now be the bug.
         """
         source = code("src/src_rp/write_out_fluxnet.f90")
         self.assertNotIn("E2Col(ch4)%Instr%model", source)
-        self.assertIn("GasSlotByInstrModel('li7700')", source)
+        self.assertNotIn("GasSlotByInstrModel('li7700')", source,
+                         "a single site-wide question cannot answer for two "
+                         "LI-7700s; the writer emits Mul7700(gas) per gas")
+        self.assertIn("Mul7700(FluxnetLayoutSlots(gas))%A", source)
+        self.assertIn("Mul7700(FluxnetLayoutSlots(gas))%B", source)
+        self.assertIn("Mul7700(FluxnetLayoutSlots(gas))%C", source)
 
     def test_each_analyser_column_is_labelled_from_its_own_firmware(self):
         """Each analyser named from its own firmware.

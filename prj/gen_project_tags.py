@@ -97,7 +97,8 @@ RP_GAS_NUMERIC = [
     "sr_lim", "al_min", "al_max", "ds_hf", "ds_sf", "tl_def",
     "to_min_flux", "to_min_lag", "to_max_lag", "pwb_min_lag", "pwb_max_lag",
 ] + [f"drift_dir_{k}" for k in range(7)] \
-  + [f"drift_inv_{k}" for k in range(7)]
+  + [f"drift_inv_{k}" for k in range(7)] \
+  + ["step_lim"]
 RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
 FCC_GAS_NUMERIC = [
     "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",
@@ -164,10 +165,106 @@ INSTR_LACK_ORIGIN = 357
 #: silently repoint all of them.
 FIXED_TAGS = {
     "RP.SNTags": {
-        INSTR_LACK_ORIGIN + k - 1: f"instr_{k}_max_lack"
-        for k in range(1, const("MaxNumInstruments") + 1)
+        **{
+            INSTR_LACK_ORIGIN + k - 1: f"instr_{k}_max_lack"
+            for k in range(1, const("MaxNumInstruments") + 1)
+        },
+        #: Flux detection limit after Wienhold et al. (1994). Three slots out
+        #: of the blank run at 55-68, well below rpGasOriginN, so the per-gas
+        #: records do not move.
+        55: "detlim_meth",
+        56: "detlim_offset_s",
+        57: "detlim_window_s",
+        #: Closed-path spectroscopic correction, Peltola et al. (2014). RP
+        #: only - it acts on the raw series, and FCC never redoes it.
+        58: "spectro_meth",
+        59: "spectro_water",
+        #: Nemitz et al. (2018) conditional lag borrowing: how many detection
+        #: limits the covariance must clear before the gas keeps its own lag.
+        60: "tlag_borrow_snr",
+        #: Consecutive-difference despiking, EddyUH's spi_method 1: the
+        #: largest step a sample may take from the one before it, in the
+        #: variable's own units. Four rather than the two the Vickers test
+        #: uses, because these are absolute limits and a kelvin is not a
+        #: metre per second - sharing one key across u and Ts would be a
+        #: category error rather than a convenience.
+        #: Inclinometer tilt correction, EddyUH_tiltangle.m. The
+        #: sensitivity converts the logged voltage to a sine of
+        #: inclination, and the arm is the lever from the pivot to the
+        #: sonic head, which only the swinging correction uses. Both
+        #: are hard-coded in EddyUH for one mast; here they are stated.
+        117: "tilt_sensor_v_g",
+        118: "tilt_arm_x",
+        119: "tilt_arm_y",
+        120: "tilt_arm_z",
+        121: "tilt_lpf_s",
+        61: "sr_step_u",
+        62: "sr_step_v",
+        63: "sr_step_w",
+        64: "sr_step_ts",
+    },
+    "RP.SCTags": {
+        #: Modifier on covariance maximisation, beside covmax_var (59) and
+        #: covmax_stocdet (60) in meaning if not in index - those are taken,
+        #: so this uses one of the blanks at 79-82.
+        79: "covmax_debaseline",
+        #: Whether an unresolvable lag is taken from a tube-mate at all.
+        80: "tlag_borrow_meth",
+        #: Sonic hardware corrections, both applied to the raw wind
+        #: before any rotation. The inclinometer mode, the Metek
+        #: head-correction mode, and where the three Metek look-up
+        #: tables live - they are Metek GmbH data and are not shipped.
+        31: "tilt_sensor_meth",
+        32: "head_corr_meth",
+        33: "head_corr_dir",
+        #: Which noise floor the covariance is judged against, and who
+        #: it borrows from. 81: 0 the flux detection limit (this
+        #: engine's own), 1 the Lenschow instrument noise (EddyUH's).
+        #: 82: 0 the best-resolved tube-mate, 1 the analyser's carbon
+        #: dioxide, which is what EddyUH hard-codes.
+        81: "tlag_borrow_noise",
+        82: "tlag_borrow_donor",
+        #: Extra raw-signal instrument-malfunction diagnostics (AL1 lag-1
+        #: autocorrelation, DDI discrete/dominant-value test, Qn-scaled
+        #: HF5/HF10/HD5/HD10 spike counts), ported from RFlux (Vitale et al.
+        #: 2020). Opt-in and off by default; slot 12 is free right after the
+        #: test_ns block (3-11).
+        12: "test_rf",
+        #: Storage-flux cleaning (RFlux's cleanFlux() storage branch, Vitale
+        #: et al. 2020): a Tukey boxplot ("far out" fence) outlier test on
+        #: each gas's storage term, binned by time-of-day across the whole
+        #: run, then linear interpolation over interior gaps. RP-only - the
+        #: storage term never reaches FCC's ex record. Opt-in and off by
+        #: default; slot 21 is the one skipped between me_file (20) and
+        #: pf_start_time (22).
+        21: "test_stor_clean",
+    },
+    "EPPrjCTags": {
+        #: Post-flux despiking (RFlux's despiking(variant="v1"), Vitale et
+        #: al. 2020): an STL decomposition of the whole run's NEE/H/LE
+        #: series with a decile-binned Laplace outlier test on the
+        #: residual. Read by FCC alone, but goes in [Project] rather than a
+        #: FluxCorrection_* group because both FCC.SNTags and FCC.SCTags
+        #: are completely full below their record origins - fccGasOriginN
+        #: = 110, fccGasOriginC = 28, every slot below each already
+        #: assigned. 19-20 are the only free EPPrjCTags slots below
+        #: gasRecOriginC (51); one of the two is spent here.
+        19: "test_pfd",
     },
     "EPPrjNTags": {
+        #: Which analytic cospectrum every spectral correction integrates
+        #: against. Read by BOTH applications - RP runs the analytic methods
+        #: itself - so it has to live in [Project], where the blanks left by
+        #: the retired 5.0.0 keys are the only free numeric slots.
+        7: "cosp_model",
+        #: Iterative correction. The spectral correction depends on z/L,
+        #: which depends on the corrected heat flux, which depends on the
+        #: spectral correction. EddyUH closes that loop with four passes;
+        #: this makes the loop optional and its length statable, and adds
+        #: the early exit EddyUH does not have. Read by BOTH applications.
+        8: "corr_iter_meth",
+        9: "corr_iter_max",
+        10: "corr_iter_tol",
         4: "cec_singular_band",
         5: "cec_stationarity_mode",
         6: "cec_min_flux_sigma",

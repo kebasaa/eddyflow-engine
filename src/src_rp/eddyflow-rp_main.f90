@@ -39,7 +39,14 @@ program EddyFlowRP
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
+        RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
+    use m_ghg_prefetch, only: GhgPrefetchCleanup
+    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
+        StartPrepassBatches, WaitPrepassBatches, &
+        WriteTlagBatchDump, MergeTlagBatchDumps, &
+        WritePwbBatchDump, MergePwbBatchDumps, &
+        WritePfBatchDump, MergePfBatchDumps
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -72,6 +79,23 @@ program EddyFlowRP
     integer :: Nmin
     integer :: max_nsmpl
     integer :: pfn
+    !> How the two assessment pre-passes were split across worker processes.
+    !> 1 for a serial run, which is every run that did not ask for workers,
+    !> every run too short to be worth splitting, and every PWB cache pre-pass.
+    integer :: toWorkers
+    integer :: pfWorkers
+    integer :: sliceStart
+    integer :: sliceEnd
+    logical :: toParallel
+    logical :: pfParallel
+    !> Iterative correction: the pass counter, how many passes this project
+    !> asked for, the worst relative change at the last comparison, and the
+    !> previous pass's gas fluxes to compare against.
+    integer :: corr_pass
+    integer :: corr_passes
+    real(kind = dbl) :: iter_dev
+    real(kind = dbl) :: prev_gas_flux(GHGNumVar)
+    real(kind = dbl), external :: WorstRelativeChange
     integer :: err_cnt1
     integer :: sec
     integer :: faulty_col
@@ -353,11 +377,13 @@ program EddyFlowRP
         if (EddyFlowProj%ftype == 'licor_ghg') then
             i = 1
             do while (i <= NumRawFiles)
+                !> The preamble reads one file to learn the columns and
+                !> stops, so there is nothing to fetch ahead.
                 call ReadLicorGhgArchive(RawFileList(i)%path, -1, -1, Col, &
                     BypassCol, .true., .false., .false., &
                     EddyFlowProj%run_mode /= 'md_retrieval', &
                     Raw, size(Raw, 1), size(Raw, 2), skip_period, passed, &
-                    faulty_col, PeriodRecords, FileEndReached, .false.)
+                    faulty_col, PeriodRecords, FileEndReached, .false., '')
                 if (.not. skip_period .and. passed(1)) exit
                 i = i + 1
                 call InformOfMetadataProblem(passed, faulty_col)
@@ -593,6 +619,51 @@ program EddyFlowRP
             DynamicMetadata = ErrDynamicMetadata
             LastMetadataTimestamp = DateType(0, 0, 0, 0, 0)
             toInit = .true.
+
+            !> Every period in the range is read, reduced, and turned into one
+            !> record that depends on no other period's. So the range can be
+            !> cut into slices and each slice run in a copy of this program.
+            !> PlanPrepassBatches decides whether that is worth doing - it
+            !> never is for a worker, which would otherwise spawn workers of
+            !> its own, nor for a range too short to pay for the processes.
+            !> A PWB cache pre-pass may be split too, now. It could not while
+            !> the streaming classifier's verdict reached the output: that
+            !> verdict depends on the last settled detection before a period,
+            !> and a slice starting cold has none. Three things carried it -
+            !> the terminal fallback's lag, the aggregate dataset's membership
+            !> and the donor tally - and each is now taken from the settled
+            !> table, which is built once, by the parent, over every slice.
+            !> What a worker produces is evidence, and evidence does not
+            !> depend on where the walk began.
+            call PlanPrepassBatches(toEndTimestampIndx - toStartTimestampIndx, &
+                .true., toWorkers)
+
+            !> A worker was handed its slice on the command line. Narrowed
+            !> here rather than where the range was computed, so the arrays
+            !> above are still allocated for the whole range and the same
+            !> bounds checks hold in parent and worker alike.
+            if (BatchIndex > 0) then
+                toStartTimestampIndx = BatchSliceStart
+                toEndTimestampIndx = BatchSliceEnd
+                pcount = toStartTimestampIndx - 1
+            end if
+
+            !> The workers go first so they are already reading raw data while
+            !> this process works through the first slice. The parent takes a
+            !> slice rather than waiting: the code after the loop reads state
+            !> the loop establishes, and a parent that had skipped it would
+            !> reach that code with the state unset.
+            toParallel = toWorkers > 1
+            if (toParallel) then
+                call StartPrepassBatches('to', toStartTimestampIndx, &
+                    toEndTimestampIndx, toWorkers)
+                call PrepassSlice(toStartTimestampIndx, toEndTimestampIndx, &
+                    toWorkers, 1, sliceStart, sliceEnd)
+                toStartTimestampIndx = sliceStart
+                toEndTimestampIndx = sliceEnd
+                pcount = toStartTimestampIndx - 1
+            end if
+
             to_periods_loop: do
                 pcount = pcount + 1
 
@@ -777,7 +848,7 @@ program EddyFlowRP
 
                 !> Calculate raw screening flags and despike data if requeste
                 auxTest = TestType(.true., .false., .false., .true., .false., &
-                    .false., .false., .false., .false.)
+                    .false., .false., .false., .false., .false., .false.)
                 call StatisticalScreening(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), auxTest, .false.)
 
@@ -816,6 +887,16 @@ program EddyFlowRP
                 !> Gill WindMaster w-boost
                 if (RPsetup%calib_wboost) &
                     call ApplyGillWmWBoost(E2Set, size(E2Set, 1), size(E2Set, 2))
+
+                !> Metek head correction, the same one the flux loop applies.
+                !> Without it here, a lag or a plane would be worked out from
+                !> a wind the fluxes never see. Its companion, the
+                !> inclinometer correction, cannot follow: it reads its angles
+                !> from the custom columns, and DefineUserSet has not run yet
+                !> at this point in the program. Recorded rather than worked
+                !> around, because moving DefineUserSet is a layout change and
+                !> this correction has no effect on any current dataset.
+                call MetekHeadCorrection(E2Set, size(E2Set, 1), size(E2Set, 2))
 
                 !> Calculate basic stats
                 call BasicStats(E2Set, &
@@ -930,7 +1011,12 @@ program EddyFlowRP
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
                         .or. PwbTimelagN > PwbTimelagOptSize) &
                         error stop 'PWB time-lag optimization dataset is not allocated safely.'
-                    call AddPwbTimelagSummaryDataset(PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
+                    !> Only what the table cannot say - the humidity and
+                    !> which period this is. The lags come from the settled
+                    !> table afterwards, not from the streaming guess that
+                    !> this period has just been given.
+                    call RecordPwbTimelagOptPeriod(PwbTimelagOpt, &
+                        PwbTimelagOptSize, PwbTimelagN)
                 else
                     !> Store values only for aggregate time-lag optimization.
                     ton = ton + 1
@@ -945,6 +1031,36 @@ program EddyFlowRP
             write(ulog, '(a)')
             call LogSay(' Done.')
 
+            !> Now collect what the other slices produced and append them to
+            !> this one, which leaves the dataset in period order - the order
+            !> a single loop over the whole range would have built it in.
+            if (toParallel) then
+                call WaitPrepassBatches('to', toWorkers)
+                if (PwbCacheGenerate) then
+                    call MergePwbBatchDumps('to', toWorkers, PwbTimelagOpt, &
+                        PwbTimelagOptSize, PwbTimelagN)
+                else
+                    call MergeTlagBatchDumps('to', toWorkers, TimelagOpt, &
+                        TimelagOptSize, ton)
+                end if
+            end if
+
+            !> A worker's job ends here: it hands back the records its slice
+            !> produced and stops. The fit itself - OptimizeTimelags, the
+            !> cache post-processing - is done once, by the parent, over every
+            !> slice concatenated, so a worker doing it too would be both
+            !> wasted work and a second answer nobody reads.
+            if (BatchIndex > 0) then
+                if (PwbCacheGenerate) then
+                    call WritePwbBatchDump(PwbTimelagOpt, &
+                        PwbTimelagOptSize, PwbTimelagN)
+                else
+                    call WriteTlagBatchDump(TimelagOpt, TimelagOptSize, ton)
+                end if
+                call LogSay(' Time-lag pre-pass slice finished.')
+                stop ''
+            end if
+
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.    *************************
             !**** NOW STARTS TIME LAG OPT CALCULATIONS *************************
@@ -955,6 +1071,10 @@ program EddyFlowRP
                 !> forwards as well as back. This is what the streaming
                 !> classifier in timelag_handle cannot do.
                 call PostProcessPwbTimelagCache()
+                !> The aggregate dataset is built here, from the finished
+                !> table, rather than accumulated as the walk went.
+                call RebuildPwbTimelagOptFromCache(PwbTimelagOpt, &
+                    PwbTimelagOptSize, PwbTimelagN)
                 call WritePwbTimelagCache()
                 if (PwbTimelagN > 0) then
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
@@ -1087,6 +1207,31 @@ program EddyFlowRP
             day   = 0
             DynamicMetadata = ErrDynamicMetadata
             LastMetadataTimestamp = DateType(0, 0, 0, 0, 0)
+
+            !> Same split as the time-lag pre-pass above, and simpler: a
+            !> planar-fit period contributes three numbers - the mean wind -
+            !> and nothing it computes depends on the period before it, so
+            !> there is no warm-up to read and the concatenation is exact.
+            call PlanPrepassBatches(pfEndTimestampIndx - pfStartTimestampIndx, &
+                .true., pfWorkers)
+
+            if (BatchIndex > 0) then
+                pfStartTimestampIndx = BatchSliceStart
+                pfEndTimestampIndx = BatchSliceEnd
+                pcount = pfStartTimestampIndx - 1
+            end if
+
+            pfParallel = pfWorkers > 1
+            if (pfParallel) then
+                call StartPrepassBatches('pf', pfStartTimestampIndx, &
+                    pfEndTimestampIndx, pfWorkers)
+                call PrepassSlice(pfStartTimestampIndx, pfEndTimestampIndx, &
+                    pfWorkers, 1, sliceStart, sliceEnd)
+                pfStartTimestampIndx = sliceStart
+                pfEndTimestampIndx = sliceEnd
+                pcount = pfStartTimestampIndx - 1
+            end if
+
             pf_periods_loop: do
                 pcount = pcount + 1
 
@@ -1241,7 +1386,7 @@ program EddyFlowRP
 
                 !> Calculate raw screening flags and despike data if requeste
                 auxTest = TestType(.true., .false., .false., .true., .false., &
-                    .false., .false., .false., .false.)
+                    .false., .false., .false., .false., .false., .false.)
                 call StatisticalScreening(E2Set, &
                     size(E2Set, 1), size(E2Set, 2), auxTest, .false.)
 
@@ -1270,6 +1415,16 @@ program EddyFlowRP
                 if (RPsetup%calib_wboost) &
                     call ApplyGillWmWBoost(E2Set, size(E2Set, 1), size(E2Set, 2))
 
+                !> Metek head correction, the same one the flux loop applies.
+                !> Without it here, a lag or a plane would be worked out from
+                !> a wind the fluxes never see. Its companion, the
+                !> inclinometer correction, cannot follow: it reads its angles
+                !> from the custom columns, and DefineUserSet has not run yet
+                !> at this point in the program. Recorded rather than worked
+                !> around, because moving DefineUserSet is a layout change and
+                !> this correction has no effect on any current dataset.
+                call MetekHeadCorrection(E2Set, size(E2Set, 1), size(E2Set, 2))
+
                 !> Calculate basic stats
                 call BasicStats(E2Set, size(E2Set, 1), size(E2Set, 2), &
                     4, .false.)
@@ -1285,6 +1440,19 @@ program EddyFlowRP
             write(*, '(a)')
             write(ulog, '(a)')
             call LogSay(' Done.')
+
+            if (pfParallel) then
+                call WaitPrepassBatches('pf', pfWorkers)
+                call MergePfBatchDumps(pfWorkers, pfWind, size(pfWind, 1), pfn)
+            end if
+
+            !> As above: a worker hands back its slice of the wind means and
+            !> stops. The sector regressions are the parent's job.
+            if (BatchIndex > 0) then
+                call WritePfBatchDump(pfWind, size(pfWind, 1), pfn)
+                call LogSay(' Planar-fit pre-pass slice finished.')
+                stop ''
+            end if
 
             !*******************************************************************
             !**** RAW DATA REDUCTION FINISHES HERE.  ***************************
@@ -2160,6 +2328,25 @@ program EddyFlowRP
                 call DriftCorrection(E2Set, size(E2Set, 1), size(E2Set, 2), &
                     E2Col, size(E2Col), nCalibEvents, tsStart)
 
+            !> ===== 4.2 SONIC HARDWARE CORRECTIONS ===========================
+            !> Both act on the raw wind in the sonic's own frame, before any
+            !> rotation removes the mean tilt - the head correction because
+            !> flow distortion is a property of the direction the wind came
+            !> from relative to the instrument, and the inclinometer because
+            !> it is putting the instrument's own frame right in the first
+            !> place. The head correction goes first: it corrects what the
+            !> transducers measured, and the inclinometer then says where
+            !> those transducers were pointing.
+            call MetekHeadCorrection(E2Set, size(E2Set, 1), size(E2Set, 2))
+            if (NumUserVar > 0 .and. allocated(UserSet)) then
+                call InclinometerTilt(E2Set, size(E2Set, 1), size(E2Set, 2), &
+                    UserSet, size(UserSet, 1), size(UserSet, 2))
+            else if (RPSetup%tilt_sensor_meth /= 'none') then
+                call LogSay('  Inclinometer tilt correction asked for, but &
+                    &the project describes no extra columns to read the &
+                    &angles from - skipped.')
+            end if
+
             !> ===== 5. TILT CORRECTION ========================================
             !> Apply rotations for tilt correction, if requested.
             !> NOTE: rotation is applied BEFORE the WPL mixing-ratio conversion so
@@ -2188,6 +2375,13 @@ program EddyFlowRP
                 pwb_raw_Result = PWBResult
                 pwb_raw_detection_done = .true.
             end if
+
+            !> Remove the spectroscopic effect of water vapour, before the
+            !> conversion below and independently of it: what the analyser
+            !> reported is biased whatever units it reported in, and the bias
+            !> is there whether or not WPL was asked for.
+            call SpectroscopicClosedPath(E2Set, &
+                size(E2Set, 1), size(E2Set, 2), .true.)
 
             !> Convert to mixing ratios (if WPL requested, and if the case)
             if (EddyFlowProj%wpl) &
@@ -2400,8 +2594,12 @@ program EddyFlowRP
             !> inside read past the end of them. Matches the KID call above.
             call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), GHGNumVar)
 
-            !> Cross-correlation R^2 test for repeated values 
-            call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+            !> Cross-correlation R^2 test for repeated values - informational
+            !> only (see cross_corr_test.f90's own header), so gated the
+            !> same as its sibling raw-signal diagnostics rather than
+            !> always spending the two extra CCF passes per variable.
+            if (Test%rf) &
+                call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
 
             !> Calculate Mahrt's random error and Nonstationarity ratio anyway.
             call RU_Mahrt_98(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
@@ -2480,6 +2678,18 @@ program EddyFlowRP
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
 
+            !> Cleared every period, and for every gas.
+            !>
+            !> The loop below only assigns to gases on an LI-7700, so without
+            !> this a gas that is not on one would read whatever the array
+            !> last held - and, with a scalar, so would a period in which the
+            !> loop found nothing at all. Only IsLi7700 gases ever consult it,
+            !> but leaving stale numbers where a reader might look is how the
+            !> next fault gets built.
+            Mul7700(:)%A = error
+            Mul7700(:)%B = error
+            Mul7700(:)%C = error
+
             !> LI-7700 spectroscopic correction. It applies to whichever gas
             !> the LI-7700 measures, which is a question about the analyser -
             !> asked of slot seven, it both missed a 7700 sitting on any other
@@ -2514,12 +2724,12 @@ program EddyFlowRP
                 if (chi_moist == error) cycle
                 call Multipliers7700(Stats%Pr, Ambient%Ta, &
                     chi_moist, &
-                    Mul7700%A, Mul7700%B, Mul7700%C)
+                    Mul7700(j)%A, Mul7700(j)%B, Mul7700(j)%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual
                 !> Uses multiplies A, because this is equal to key.
-                Stats%chi(j) = Stats%chi(j) * Mul7700%A
-                Stats%r(j)   = Stats%r(j)   * Mul7700%A
+                Stats%chi(j) = Stats%chi(j) * Mul7700(j)%A
+                Stats%r(j)   = Stats%r(j)   * Mul7700(j)%A
             end do
 
             !> Calculate LI-7500 surface heating correction if requested
@@ -2541,18 +2751,57 @@ program EddyFlowRP
 !            end if
 
             if (.not. EddyFlowProj%fcc_follows) then
-                !> Low-pass and high-pass spectral correction factors
-                call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                    Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
-                    Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
-                    Metadata%logger_swver, Meth%det, &
-                    RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
+                !> Spectral correction and the two flux levels, once or
+                !> repeatedly.
+                !>
+                !> The three depend on each other in a circle: the analytic
+                !> cospectrum is evaluated at z/L, z/L comes from the
+                !> corrected sensible heat flux, and that flux is what the
+                !> spectral correction produces. One pass leaves them
+                !> disagreeing - the correction was computed at a stability
+                !> the run then went on to revise.
+                !>
+                !> Iterating closes the circle. Nothing here accumulates:
+                !> Fluxes1_rp rebuilds Flux1 from Flux0 and BPCF, and
+                !> Fluxes23_rp rebuilds Flux2 and Flux3 from Flux1, so each
+                !> pass is a fresh correction of the same raw covariances
+                !> rather than a correction of a correction. Fluxes23_rp
+                !> already recomputes Ambient%zL, which is what the next pass
+                !> reads - the feedback path was there, only the repetition
+                !> was missing.
+                !>
+                !> Off by default and a single pass then, which is exactly
+                !> what this block did before.
+                iter_dev = error
+                corr_passes = 1
+                if (EddyFlowProj%corr_iter_meth) &
+                    corr_passes = EddyFlowProj%corr_iter_max
+                do corr_pass = 1, corr_passes
+                    if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
-                !> Calculate fluxes at Level 1
-                call Fluxes1_rp()
+                    !> Low-pass and high-pass spectral correction factors
+                    call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
+                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
+                        Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
+                        Metadata%logger_swver, Meth%det, &
+                        RPsetup%Tconst, corr_pass == 1, E2Col(u:GHGNumVar)%instr, 1)
 
-                !> Calculate fluxes at Level 2 and Level 3
-                call Fluxes23_rp()
+                    !> Calculate fluxes at Level 1
+                    call Fluxes1_rp()
+
+                    !> Calculate fluxes at Level 2 and Level 3
+                    call Fluxes23_rp()
+
+                    if (corr_pass > 1) then
+                        iter_dev = WorstRelativeChange(prev_gas_flux, Flux3%gas)
+                        !> A tolerance of zero never fires, which is EddyUH's
+                        !> behaviour: it runs every pass and tests nothing.
+                        if (EddyFlowProj%corr_iter_tol > 0d0 &
+                            .and. iter_dev /= error &
+                            .and. iter_dev < EddyFlowProj%corr_iter_tol) exit
+                    end if
+                end do
+                Essentials%corr_iter_dev = iter_dev
 
                 !> Footprint estimation
                 foot_model_used = Meth%foot(1:len_trim(Meth%foot))
@@ -2630,6 +2879,7 @@ program EddyFlowRP
             else
                 call Storage(PrevStats, prevAmbient)
             end if
+            if (Test%stor_clean) call StoreStorCache(Stats%date, Stats%time)
             PrevStats = Stats
             prevAmbient = Ambient
             prevBiomet = biomet
@@ -2639,7 +2889,7 @@ program EddyFlowRP
             call DevelopedTurbulenceTest(DtDiff)
 
             !> flagging the file, after Foken et al. (2004, Handbook of Microm.)
-            call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .true.)
+            call QualityFlags(Flux2, StDiff, DtDiff, STFlg, DTFlg, QCFlag, .true., .true., Test%rf)
 
             !> Write details on output files if requested
             if(RPsetup%out_qc_details .and. Meth%qcflag /= 'none') &
@@ -2673,6 +2923,7 @@ program EddyFlowRP
         if (allocated(DiagSet))  deallocate(DiagSet)
         if (allocated(UserSet))  deallocate(UserSet)
     end do periods_loop
+    if (Test%stor_clean .and. StorCacheN > 0) call PostProcessStorClean()
     if (allocated(bf)) deallocate(bf)
     if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
     if (Meth%tlag == 'pwb' .and. PwbCacheDirty) call WritePwbTimelagCache()
@@ -2776,6 +3027,11 @@ program EddyFlowRP
         trim(adjustl(Dir%main_out)) // 'processing' &
         // Timestamp_FilePadding // '.eddyflow')
     end if
+
+    !> Whatever the last prefetch left behind. Desktop mode removes the whole
+    !> temporary directory below and would take it with it; embedded mode
+    !> keeps that directory between runs and would not.
+    call GhgPrefetchCleanup()
 
     !> Delete tmp folder if running in embedded mode
     if(EddyFlowProj%run_env == 'desktop') &

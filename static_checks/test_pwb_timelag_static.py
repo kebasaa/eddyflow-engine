@@ -78,8 +78,11 @@ class PwbTimelagStaticTests(unittest.TestCase):
         #> Versions 1 and 2 carried a pre_wpl/post_wpl stage column for a
         #> choice that no longer exists, and predate the retired speed
         #> settings, so their fingerprint could not match this build anyway.
-        self.assertIn("PWB_TIMELAG_CACHE_VERSION=4", module_source)
-        for stale in (1, 2, 3):
+        #> 4 gained nothing it lacked; 5 appends maxcov_lag_s, the terminal
+        #> fallback's per-period covariance maximum, which a version 4 row
+        #> does not carry and the reader would otherwise run off the end of.
+        self.assertIn("PWB_TIMELAG_CACHE_VERSION=5", module_source)
+        for stale in (1, 2, 3, 4):
             self.assertNotIn("PWB_TIMELAG_CACHE_VERSION=%d" % stale, module_source)
         self.assertIn("fingerprint=", module_source)
         self.assertIn("period_seconds=", module_source)

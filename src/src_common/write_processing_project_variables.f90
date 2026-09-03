@@ -224,6 +224,9 @@ subroutine WriteProcessingProjectVariables()
     !> record now, applied per slot a few dozen lines below with a species
     !> default when it states none. That reaches every gas, not the fourth.
 
+    !> Post-flux despiking (test_pfd), FCC-only, off by default.
+    EddyFlowProj%test_pfd = EPPrjCTags(19)%value(1:1) == '1'
+
     !> biomet measurements info
     select case (EPPrjCTags(17)%value(1:1))
         case ('1')
@@ -281,6 +284,58 @@ subroutine WriteProcessingProjectVariables()
         case ('1')
             EddyFlowProj%lf_meth = 'analytic'
     end select
+
+    !> Which analytic cospectrum the corrections are integrated against.
+    !> A modifier on every analytic method rather than a method of its own -
+    !> Moncrieff, Massman, Horst, Ibrom and Fratini all weight a transfer
+    !> function by this shape, and all of them keep working whichever is
+    !> chosen. Absent means the shape this program has always used, so an
+    !> older project is unaffected.
+    EddyFlowProj%cosp_model = 'moncrieff_97'
+    if (EPPrjNTagFound(7)) then
+        select case (nint(EPPrjNTags(7)%value))
+            case (1)
+                EddyFlowProj%cosp_model = 'kaimal_72'
+            case (2)
+                EddyFlowProj%cosp_model = 'sakai_01'
+            case (3)
+                EddyFlowProj%cosp_model = 'su_03'
+            case (4)
+                EddyFlowProj%cosp_model = 'moraes_08'
+            case (5)
+                EddyFlowProj%cosp_model = 'kristensen_97'
+            case default
+                !> Including 0, and including a value from some later version
+                !> this one does not know. Falling back to the shape every
+                !> correction was written against is the safe direction.
+                EddyFlowProj%cosp_model = 'moncrieff_97'
+        end select
+    end if
+
+    !> Iterative correction, after EddyUH.m:722-903.
+    !>
+    !> Off, and the defaults below are EddyUH's own, so switching it on
+    !> reproduces what EddyUH does rather than something chosen here: four
+    !> passes and no early exit. EddyUH's loop is `while indexITER <= 3` with
+    !> the counter incremented at the top, so it runs four times; its only
+    !> `break` tests the urban footprint's roughness length, requires
+    !> indexITER > 3 - true on the last pass only - and sits in a branch that
+    !> EddyUH_footprint.m:151 makes unreachable. Its covsvar output is a
+    !> reported diagnostic, not a control.
+    EddyFlowProj%corr_iter_meth = .false.
+    EddyFlowProj%corr_iter_max = 4
+    EddyFlowProj%corr_iter_tol = 0d0
+    if (EPPrjNTagFound(8)) &
+        EddyFlowProj%corr_iter_meth = nint(EPPrjNTags(8)%value) == 1
+    if (EPPrjNTagFound(9)) &
+        EddyFlowProj%corr_iter_max = nint(EPPrjNTags(9)%value)
+    if (EPPrjNTagFound(10)) &
+        EddyFlowProj%corr_iter_tol = EPPrjNTags(10)%value
+    !> One pass is the un-iterated case and is what "off" already means, so a
+    !> smaller number is a typed-in mistake rather than a setting. A negative
+    !> tolerance would exit before the first comparison.
+    if (EddyFlowProj%corr_iter_max < 1) EddyFlowProj%corr_iter_max = 4
+    if (EddyFlowProj%corr_iter_tol < 0d0) EddyFlowProj%corr_iter_tol = 0d0
 
     !> Select low-pass spectral correction method.
     select case (EPPrjCTags(23)%value(1:1))
@@ -388,6 +443,8 @@ subroutine WriteProcessingProjectVariables()
         Meth%qcflag = 'foken_03'
         case ('3')
         Meth%qcflag = 'goeckede_06'
+        case ('4')
+        Meth%qcflag = 'vitale_20'
         case default
         Meth%qcflag = 'mauder_foken_04'
     end select
@@ -473,6 +530,18 @@ subroutine WriteProcessingProjectVariables()
             RUsetup%meth = 'mann_lenschow_94'
         case(3)
             RUsetup%meth = 'mahrt_98'
+        case(4)
+            !> Billesbach (2011) random shuffle. Four rather than three
+            !> because three is already Mahrt and the interface maps its
+            !> menu onto these numbers; renumbering would silently change
+            !> the method of every project that states one.
+            RUsetup%meth = 'billesbach_11'
+        case(5)
+            !> Lenschow et al. (2000) instrumental noise, as Mauder et al.
+            !> (2013) apply it. Distinct from mann_lenschow_94 above, which
+            !> is a sampling error and a different paper - the shared name
+            !> is the only thing they have in common.
+            RUsetup%meth = 'lenschow_00'
         case default
             RUsetup%meth = 'none'
     end select

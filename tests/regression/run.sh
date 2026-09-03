@@ -22,11 +22,39 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # to compare a working tree against itself: both ref and chk must come from the
 # same binaries, or the diff reports build differences as regressions.
 BIN="${BIN:-/c/Users/jonmuell/Documents/GitHub/build/eddyflow-engine-win-release/bin}"
+# Extra arguments for RP only. The reason this exists is -j: nothing here
+# passes it, so the engine picks its own default (every core) and the
+# stored reference for base_tlag_par is itself a PARALLEL run. Nothing in
+# the suite compared serial against parallel until this hook, which is how
+# an equivalence claim went ungated. Use it as:
+#     RP_EXTRA="-j 1" BASE=base_tlag_par.eddyflow run.sh ref
+#     RP_EXTRA="-j 0" BASE=base_tlag_par.eddyflow run.sh chk
+# then diff out_ref against out_chk. The run log legitimately differs - the
+# parent concatenates each worker's own log into it - so compare the rest.
+RP_EXTRA="${RP_EXTRA:-}"
 # The engine links the gfortran runtime dynamically and the build does not
 # copy it next to the binaries.
 export PATH="/c/Users/jonmuell/mingw64/bin:$PATH"
 OUT="$HERE/out_$WHICH"
 HOME_DIR="$HERE/home"
+
+# One run of a given WHICH at a time, per checkout.
+#
+# out_ref, out_chk, run_<which>.eddy* and home/ are fixed paths keyed only on
+# WHICH, so two concurrent runs delete and overwrite each other's state - and
+# the loser fails with whatever the collision happened to break, which is
+# never the same way twice. Cheap to prevent, expensive to diagnose: a second
+# Claude session, a second terminal, or a check_*.sh running beside a sweep
+# all reach these same paths.
+#
+# mkdir is the lock because it is atomic; a -e test followed by a touch is not.
+LOCKDIR="$HERE/.lock_$WHICH"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "run.sh: another '$WHICH' run is already using $HERE" >&2
+    echo "        if none is, remove $LOCKDIR" >&2
+    exit 3
+fi
+trap 'rmdir "$LOCKDIR" 2>/dev/null' EXIT
 
 rm -rf "$OUT"; mkdir -p "$OUT"
 rm -rf "$HOME_DIR/tmp"; mkdir -p "$HOME_DIR/tmp" "$HOME_DIR/ini"
@@ -57,7 +85,7 @@ esac
 sed -e "s|^out_path=.*|out_path=$WIN_OUT|" "$HERE/$BASE" > "$PRJ"
 
 echo "== RP =="
-"$BIN/eddyflow_rp.exe" "$(cygpath -w "$PRJ")" -e "$(cygpath -w "$HOME_DIR")/" > "$OUT/_rp.log" 2>&1 \
+"$BIN/eddyflow_rp.exe" "$(cygpath -w "$PRJ")" -e "$(cygpath -w "$HOME_DIR")/" ${RP_EXTRA:-} > "$OUT/_rp.log" 2>&1 \
     || { echo "RP FAILED"; tail -30 "$OUT/_rp.log"; exit 1; }
 
 # From here on, the project is whatever RP actually ran.
@@ -132,7 +160,14 @@ while IFS= read -r f; do
     sed -i -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}/CLOCK/g' "$f"
     sed -i -E 's/[0-9]+:[0-9]{2}:[0-9]{2}\.[0-9]{3}/ELAPSED/g' "$f"
     sed -i -E 's#out_(ref|chk)#OUT#g' "$f"
-    sed -i -E 's#run_(ref|chk)(_ep_imported)?\.eddyflow#run_WHICH.eddyflow#g' "$f"
+    # The generated project files an EddyPro fixture leaves beside itself are
+    # named after the run, so the run log quotes a path that differs between
+    # ref and chk and says nothing about the results. Matching only the
+    # run_<which> token covers every extension it wears - .eddyflow, .eddypro
+    # and the _ep_imported.metadata - where naming .eddyflow alone left
+    # base_ep and base_ep_licor reporting a log difference on every comparison
+    # of an unchanged tree.
+    sed -i -E 's#run_(ref|chk)#run_WHICH#g' "$f"
 done
 
 echo "== $WHICH: $(find . -type f | wc -l) output files =="

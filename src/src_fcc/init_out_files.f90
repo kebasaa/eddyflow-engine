@@ -120,6 +120,15 @@ subroutine InitOutFiles(lEx)
         call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#]', separator)
 
+        !> Convergence of the iterative correction, worst gas of the period.
+        !> Twinned with init_outfiles_rp.f90 - the two full outputs carry the
+        !> same columns in the same order, and a check asserts they do.
+        if (EddyFlowProj%corr_iter_meth) then
+            call AddDatum(header1, 'iterative_correction,', separator)
+            call AddDatum(header2, 'corr_iter_dev', separator)
+            call AddDatum(header3, '[%]', separator)
+        end if
+
         !> Corrected fluxes (Level 3) and quality flags
         !> Tau
         call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)
@@ -222,15 +231,16 @@ subroutine InitOutFiles(lEx)
         do k = 1, n_fo_slots
             gas = fo_slots(k)
             if(.not. fcc_var_present(gas)) cycle
-            call AddDatum(header1, ',,,,', separator)
+            call AddDatum(header1, ',,,,,', separator)
             call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'molar_density,' &
                 // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mole_fraction,' &
                 // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mixing_ratio,' &
                 // e2sg(gas)(1:len_trim(e2sg(gas))) // 'time_lag,' &
-                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag', separator)
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag,' &
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'detlim', separator)
             call AddDatum(header3, &
                 trim(gas_full_dens_label(gas)) // ',' // trim(gas_full_conc_label(gas)) &
-                // ',' // trim(gas_full_mixr_label(gas)) // ',[s],[1=default]', separator)
+                // ',' // trim(gas_full_mixr_label(gas)) // ',[s],[1=default],[cov]', separator)
         end do
         !> In Header 1 there is one comma too much, take it away
         header1 = header1(1:len_trim(header1) - 1)

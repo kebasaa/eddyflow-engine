@@ -43,6 +43,11 @@ subroutine BiometStandardEddyFlowUnits()
     integer :: i
 
 
+    !> Per-channel linear calibration, ahead of the unit conversion below -
+    !> a channel is calibrated in its own raw units before those units are
+    !> converted, not after. See BiometApplyCalibration's own header.
+    call BiometApplyCalibration()
+
     do i = 1, nbVars
         select case(trim(bVars(i)%nature))
             case('TEMPERATURE')
@@ -94,19 +99,24 @@ subroutine BiometStandardEddyFlowUnits()
                         end where
                     case('MMHG', 'TORR')
                         where (bSet(:, i) /= error)
-                            bSet(:, i) = bSet(:, i) * 133.32d0
+                            bSet(:, i) = bSet(:, i) * 133.322368d0
                         end where
                     case('PSI')
                         where (bSet(:, i) /= error)
-                            bSet(:, i) = bSet(:, i) * 6894.6d0
+                            bSet(:, i) = bSet(:, i) * 6894.757d0
                         end where
                     case('BAR')
                         where (bSet(:, i) /= error)
                             bSet(:, i) = bSet(:, i) * 1d5
                         end where
                     case('ATM')
+                        !> The standard atmosphere (101325 Pa exactly, by
+                        !> definition), not the technical atmosphere
+                        !> (98066.5 Pa, 1 kgf/cm^2) the previous constant
+                        !> here actually was - a 3.3% error for any channel
+                        !> stating ATM.
                         where (bSet(:, i) /= error)
-                            bSet(:, i) = bSet(:, i) * 0.980665d5
+                            bSet(:, i) = bSet(:, i) * 101325d0
                         end where
                     case default
                         continue
@@ -205,6 +215,60 @@ subroutine BiometStandardEddyFlowUnits()
         end select
     end do
 end subroutine BiometStandardEddyFlowUnits
+
+!***************************************************************************
+!
+! \brief       Per-channel linear calibration on raw biomet values, ahead
+!              of unit conversion: bSet(:,i) <- bSet(:,i)*gain + offset.
+! \details     Adapted from RFlux's convert_rawdata(), whose per-channel
+!              info_* lists carry the same offset+raw*gain term (plus a
+!              quadratic one this port does not have - see
+!              read_biomet_meta_file.f90's own note on why). Lets a
+!              biomet channel's raw counts or voltages become physical
+!              readings without a pre-processing step outside EddyFlow,
+!              the same way a raw high-frequency channel is calibrated
+!              before EddyFlow ever sees the equivalent gain/offset on
+!              that side.
+!
+!              Reaches biomet imported through ReadBiometMetaFile - biomet
+!              embedded in a .ghg archive (read_licor_ghg_archive.f90),
+!              and, when biom_use_native_header (SCTags(58)) is set to
+!              false, an external CSV file too: InitExternalBiomet then
+!              reads a sidecar .metadata file next to the biomet file,
+!              the same key=value format embedded biomet already uses,
+!              instead of deriving bVars from the file's own two-line
+!              header (RetrieveExtBiometVars). With biom_use_native_header
+!              left at its default (true), external biomet still has no
+!              way to state _gain/_offset, so a channel there is assumed
+!              already in physical units, same as before this existed.
+!
+!              A channel with neither stated (bVars(i)%gain still
+!              nullbVar's error sentinel) is left untouched - biomet is
+!              assumed already in physical units unless the metadata file
+!              says otherwise, so a project that never states
+!              _gain/_offset sees no change at all.
+! \author      Jonathan Muller, ETH Zurich
+! \note
+! \sa          read_biomet_meta_file.f90, RFlux-master/R/convert_rawdata.R
+!***************************************************************************
+subroutine BiometApplyCalibration()
+    use m_rp_global_var
+    implicit none
+    !> local variables
+    integer :: i
+    real(kind = dbl) :: gain, offset
+
+    do i = 1, nbVars
+        if (bVars(i)%gain == error .and. bVars(i)%offset == error) cycle
+        gain = bVars(i)%gain
+        if (gain == error) gain = 1d0
+        offset = bVars(i)%offset
+        if (offset == error) offset = 0d0
+        where (bSet(:, i) /= error)
+            bSet(:, i) = bSet(:, i) * gain + offset
+        end where
+    end do
+end subroutine BiometApplyCalibration
 
 !***************************************************************************
 !

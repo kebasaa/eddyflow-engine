@@ -51,6 +51,9 @@ subroutine ConfigureForExpress
     Meth%qcflag = 'mauder_foken_04'
     Meth%foot = 'kljun_04'
     EddyFlowProj%hf_meth = 'moncrieff_97'
+    !> Express is a fixed configuration, so it states the cospectral
+    !> shape rather than inheriting whatever the project asked for.
+    EddyFlowProj%cosp_model = 'moncrieff_97'
     EddyFlowProj%wpl  = .true.
     RUsetup%meth = 'none'
     RPsetup%bu_corr = 'none'
@@ -58,7 +61,7 @@ subroutine ConfigureForExpress
     RPsetup%filter_sr = .true.
     RPsetup%filter_al = .true.
     RPsetup%calib_cw = .false.
-    RPSetup%despike_vickers97 = .true.
+    RPSetup%despike_meth = 'vickers_97'
     RPsetup%calib_aoa = 'automatic'
 
     !> Raw statistical tests

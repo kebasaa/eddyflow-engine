@@ -13,10 +13,14 @@
 # identical objects give two different .exe files. Compare .o files, or
 # compare behaviour, when checking whether a change is inert.
 #
-# The .mod files gfortran writes land in this directory and are moved to the
-# object directory by the link rule. Both rp and fcc do that move, so a
-# parallel `all` runs it twice; it is idempotent, and the objects each link
-# needs are already built by the time it happens.
+# -J puts the .mod files gfortran writes straight into the object directory.
+# They used to be written here and swept across by the link rule, which left a
+# window: any build that stopped between the first compile and a successful
+# link - a compile error, a link error, Ctrl-C - left them in prj/. clean_all
+# never removed them, and gfortran searches the current directory ahead of -I,
+# so a stale .mod could survive a clean and become the interface every later
+# compile bound against. That is a silent stale-interface build, which is the
+# same failure test_makefile_deps_static.py exists to prevent, by another road.
 
 #Portabilityn
 #ifdef ComSpec
@@ -100,7 +104,17 @@ COMMON_OBJS_f90d1=$(patsubst %.f90, %.o, $(COMMON_SRCS_f90d1))
 
 #CFLAGS = -ffpe-trap=invalid,zero -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
 #CFLAGS = -g -fcheck=all -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
-CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR)
+# -fbounds-check is NOT here. It traps a subscript outside its array, which is
+# a debugging aid and not something a released binary needs: it cannot change
+# any value, only turn a wrong one into a stop. It costs real time on the
+# per-sample loops, so it lives on the `debug` target below instead.
+#
+# Before it was moved, the whole regression sweep was run with it still on and
+# came back 25 passed, 0 failed - so nothing in the shipped paths is relying on
+# it to catch anything. Run `make debug` and the sweep again after any change
+# that indexes raw data, and keep it that way.
+CHECKS = -fbounds-check -fcheck=all -g -fbacktrace
+CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR) -J $(OBJS_DIR)
 
 VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OBJS_DIR)
 RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1))
@@ -111,15 +125,28 @@ $(info $(INFO))
 #Targets
 all : rp fcc
 
+# The same two binaries with the subscript checks compiled back in. Not a
+# separate output directory: it deliberately overwrites bin/, so a debug
+# build cannot be mistaken for a release one sitting beside it. Run
+# `make clean_all` then `make all` to get back to a shipping build.
+#
+# Budget for it: this is about 1.75x slower than release, not the 6-7 % that
+# -fbounds-check alone costs. -fcheck=all is the expensive part - it adds
+# array temporary, pointer and recursion checks on top of the subscripts.
+# Measured on one day of CH-LAE planar fit: release 50 s, -fbounds-check
+# alone 54 s, this target 89 s. So the regression sweep, normally around
+# 50 minutes, takes about 90 against a debug build.
+debug :
+	$(MAKE) clean_all
+	$(MAKE) all CFLAGS="$(CFLAGS) $(CHECKS)"
+
 rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(RP_EXE) $(RP_OBJS)
-	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(FCC_EXE) $(FCC_OBJS)
-	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 # The PWB reference driver. Deliberately NOT in `all`, and deliberately linked
 # against two objects only: it is what proves the pre-whitening chain does not
@@ -137,7 +164,6 @@ pwbref : m_numeric_kinds.o m_pwb_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
 	$(FC) -static -o $(OBJS_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
-	@$(subst DESTINATION, $(OS_OBJS_DIR), $(subst FILE, *.mod, $(MV)))
 
 #Compilation
 ##RP
@@ -157,7 +183,14 @@ $(COMMON_OBJS_f90d1):
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(COMMON_SRC_DIR_f90d1)$(@:.o=.f90) -o $(OBJS_DIR)$@
 
-clean_all : clean_rp clean_fcc
+clean_all : clean_rp clean_fcc clean_stray
+
+# Anything an older build left in this directory. -J stops new ones being
+# written here, but a working tree that predates it still has them, and a
+# stale .mod here outranks the one in the object directory.
+clean_stray :
+	@$(subst FILE, *.mod, $(RM))
+	@$(subst FILE, fort.*, $(RM))
 
 clean_rp :
 	@$(subst FILE, $(OS_OBJS_DIR)*, $(RM))
@@ -232,6 +265,10 @@ biomet_units_conversions.o: \
 blank_missing_values.o: \
 	blank_missing_values.f90 \
 	m_common_global_var.o
+borrow_timelag.o: \
+	borrow_timelag.f90 \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 bpcf_additional_horst_lenschow_09.o: \
 	bpcf_additional_horst_lenschow_09.f90 \
 	m_common_global_var.o
@@ -310,6 +347,9 @@ configure_for_md_retrieval.o: \
 copy_file.o: \
 	copy_file.f90 \
 	m_common_global_var.o
+corr_iteration.o: \
+	corr_iteration.f90 \
+	m_common_global_var.o
 correction_factor_model.o: \
 	correction_factor_model.f90 \
 	interfaces.inc \
@@ -380,6 +420,9 @@ define_vars.o: \
 degraded_covariances.o: \
 	degraded_covariances.f90 \
 	m_rp_global_var.o
+despike_consecutive_diff.o: \
+	despike_consecutive_diff.f90 \
+	m_rp_global_var.o
 despike_user_set.o: \
 	despike_user_set.f90 \
 	m_rp_global_var.o
@@ -388,6 +431,9 @@ detect_master_sonic.o: \
 	m_rp_global_var.o
 developed_turbulence_test.o: \
 	developed_turbulence_test.f90 \
+	m_rp_global_var.o
+dip_test.o: \
+	dip_test.f90 \
 	m_rp_global_var.o
 dir_sub.o: \
 	dir_sub.f90 \
@@ -411,8 +457,10 @@ eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	ghg_prefetch.o \
 	m_cec.o \
 	m_rp_global_var.o \
+	prepass_parallel.o \
 	pwb_timelag_handle.o
 edit_ini_file.o: \
 	edit_ini_file.f90 \
@@ -487,6 +535,9 @@ fix_timelag_opt_dataset.o: \
 fluctuations.o: \
 	fluctuations.f90 \
 	m_common_global_var.o
+flux_detection_limit.o: \
+	flux_detection_limit.f90 \
+	m_rp_global_var.o
 flux_params.o: \
 	flux_params.f90 \
 	interfaces_1.inc \
@@ -523,6 +574,9 @@ gas_slot_resolution.o: \
 generate_t_cell.o: \
 	generate_t_cell.f90 \
 	m_common_global_var.o
+ghg_prefetch.o: \
+	ghg_prefetch.f90 \
+	m_common_global_var.o
 gill_wm_w_boost.o: \
 	gill_wm_w_boost.f90 \
 	interfaces.inc \
@@ -552,6 +606,9 @@ import_slt_edisol.o: \
 import_tob1.o: \
 	import_tob1.f90 \
 	m_common_global_var.o
+inclinometer_tilt.o: \
+	inclinometer_tilt.f90 \
+	m_rp_global_var.o
 infer_aoa_method.o: \
 	infer_aoa_method.f90 \
 	interfaces_1.inc \
@@ -616,6 +673,7 @@ kaimal_models.o: \
 	m_common_global_var.o
 kid.o: \
 	kid.f90 \
+	m_common_global_var.o \
 	m_rp_global_var.o
 longest_gap_duration.o: \
 	longest_gap_duration.f90 \
@@ -637,6 +695,9 @@ m_dates.o: \
 m_eddypro_import.o: \
 	m_eddypro_import.f90 \
 	m_common_global_var.o
+m_flux_despike_core.o: \
+	m_flux_despike_core.f90 \
+	m_numeric_kinds.o
 m_fp2_to_float.o: \
 	m_fp2_to_float.f90 \
 	m_numeric_kinds.o
@@ -664,6 +725,9 @@ m_pwb_core.o: \
 m_rp_global_var.o: \
 	m_rp_global_var.f90 \
 	m_common_global_var.o
+m_storage_clean_core.o: \
+	m_storage_clean_core.f90 \
+	m_numeric_kinds.o
 m_typedef.o: \
 	m_typedef.f90 \
 	m_libdate.o \
@@ -686,6 +750,9 @@ median.o: \
 metadata_file_validation.o: \
 	metadata_file_validation.f90 \
 	m_common_global_var.o
+metek_head_correction.o: \
+	metek_head_correction.f90 \
+	m_rp_global_var.o
 molefractions_and_mixingratios.o: \
 	molefractions_and_mixingratios.f90 \
 	m_rp_global_var.o
@@ -724,6 +791,14 @@ parse_ini_file.o: \
 parse_month_grouping.o: \
 	parse_month_grouping.f90 \
 	m_fx_global_var_mod.o
+period_minutes.o: \
+	period_minutes.f90
+period_ordering.o: \
+	period_ordering.f90
+pfd_handle.o: \
+	pfd_handle.f90 \
+	m_flux_despike_core.o \
+	m_fx_global_var_mod.o
 planar_fit_aux_params.o: \
 	planar_fit_aux_params.f90 \
 	m_common_global_var.o
@@ -741,6 +816,9 @@ potential_radiation.o: \
 	m_common_global_var.o
 power_of_two.o: \
 	power_of_two.f90
+prepass_parallel.o: \
+	prepass_parallel.f90 \
+	m_rp_global_var.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \
@@ -781,6 +859,7 @@ read_ini_rp.o: \
 	m_rp_global_var.o
 read_licor_ghg_archive.o: \
 	read_licor_ghg_archive.f90 \
+	ghg_prefetch.o \
 	m_rp_global_var.o
 read_metadata_file.o: \
 	read_metadata_file.f90 \
@@ -875,6 +954,9 @@ spectral_assessment_diagnostics.o: \
 spectral_density.o: \
 	spectral_density.f90 \
 	m_common_global_var.o
+spectroscopic_closed_path.o: \
+	spectroscopic_closed_path.f90 \
+	m_rp_global_var.o
 stationarity_test.o: \
 	stationarity_test.f90 \
 	m_rp_global_var.o
@@ -884,6 +966,10 @@ statistical_screening.o: \
 stats_operator_no_error.o: \
 	stats_operator_no_error.f90 \
 	m_common_global_var.o
+stor_clean_handle.o: \
+	stor_clean_handle.f90 \
+	m_rp_global_var.o \
+	m_storage_clean_core.o
 storage.o: \
 	storage.f90 \
 	interfaces_1.inc \
@@ -919,6 +1005,9 @@ test_higher_moments.o: \
 	m_rp_global_var.o
 test_non_steady_wind.o: \
 	test_non_steady_wind.f90 \
+	m_rp_global_var.o
+test_rflux_diagnostics.o: \
+	test_rflux_diagnostics.f90 \
 	m_rp_global_var.o
 test_spike_detection_mauder_13.o: \
 	test_spike_detection_mauder_13.f90 \

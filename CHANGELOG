@@ -1,3 +1,1030 @@
+8.1.0 (2026-08-22)
+
+    Engine:
+	- Fix: T* had the wrong sign in every output FCC writes. The scale
+	       temperature is T* = -(w'T')/u* = -H/(rho*cp*u*), and Fluxes23 (FCC)
+	       computed it without the leading minus, so it returned the negative
+	       of the quantity its own header names: EddyPro +0.0966893 against
+	       this engine -0.0966890 on the same period, identical to six digits
+	       and opposite in sign. Both RP sites - Fluxes0_rp, from the
+	       covariance, and Fluxes23_rp, from the final H - always carried the
+	       minus, so RP's own full_output and FLUXNET file were correct
+	       throughout; FCC read RP's correctly signed value out of the
+	       essentials record and then overwrote it.
+	       Two columns move and no others: T* in full_output and TSTAR in the
+	       FLUXNET file, in the FCC-written copies only, each to exactly its
+	       own negative. Nothing consumes the value - the one reader,
+	       DevelopedTurbulenceTest, takes dabs() of it - so no flux, no
+	       correction and no quality flag changes. This is our bug, not a
+	       difference from EddyPro.
+	       check_engines.py listed T* as a known ungated difference on the
+	       reasoning that a sign convention is not a disagreement about the
+	       physics. It was not a convention. The entry is gone and T* is now
+	       gated with H and air_heat_capacity, the two quantities it is built
+	       from; measured at 3e-6 against EddyPro, the last printed digit.
+	- New feature: biom_use_native_header (SCTags(58), default on - unchanged
+	               behaviour) lets external-CSV biomet get its per-channel
+	               description from a sidecar .metadata file instead of the
+	               file's own two-line header, the same key=value format
+	               embedded .ghg biomet already reads via ReadBiometMetaFile.
+	               Closes the gap BiometApplyCalibration's own note flagged:
+	               external biomet had no way to state _gain/_offset because
+	               InitExternalBiomet derived everything from the header
+	               (RetrieveExtBiometVars); routing it through the metadata-
+	               file path when the option is off gives it the same
+	               calibration and channel description embedded biomet has
+	               always had.
+	               InitExternalBiomet now reads the sidecar file once, ahead
+	               of the per-file size loop (so its record count and
+	               bVars/bAggr* allocations are already settled going in),
+	               and each subsequent file's own header lines are skipped
+	               by count rather than parsed for variable names. At the
+	               option's default (on), the header is read exactly as
+	               before - this is a pure addition, not a rewrite of the
+	               existing path.
+	               Regression-swept: 28 fixtures, byte-identical.
+	- New feature: Two sonic hardware corrections on the raw wind, both applied
+               before any rotation and both off by default: tilt_sensor_meth,
+               an inclinometer tilt correction, and head_corr_meth, the Metek
+               USA-1 three-dimensional head correction.
+               A planar fit or a double rotation removes the MEAN tilt over an
+               averaging period. Neither can remove a tilt that changes WITHIN
+               one. An inclinometer logged at the wind's own rate can, sample
+               by sample, and that is what tilt_sensor_meth does - EddyUH's
+               EC_Software_Common/EddyUH_tiltangle.m.
+               The angles arrive as ordinary extra raw columns named theta, phi
+               and psi, read through the same custom-column machinery that
+               already carries the signal-strength channels. No new record
+               family: there is one sonic, so a name is enough to say which
+               instrument an angle belongs to. The columns hold the
+               inclinometer's output VOLTAGE, not an angle; tilt_sensor_v_g
+               says how many volts per g, defaulting to EddyUH's own 4.
+               psi is read and then discarded, because EddyUH overwrites it
+               with zeros and comments "not measured". So this is a two-angle
+               correction with three channels declared.
+               tilt_lpf_s smooths the angle series before it is used; zero, the
+               default, does not. tilt_arm_x/y/z is the lever arm from the
+               pivot to the head, read only by the swinging mode.
+               head_corr_meth applies Metek's wind-tunnel tables for the flow
+               distortion the transducers and their supports cause - three
+               tables of Fourier coefficients over elevation, evaluated at
+               three, six and nine times the azimuth (Functions_Library/
+               METEK_HC.m). Two modes: on raw data, or on data that already
+               carries Metek's online two-dimensional correction, which is
+               undone first with the closed form Metek publishes for it.
+               THE TABLES ARE NOT SHIPPED. phicorr.dat, ucorr.dat and
+               alphacorr.dat are Metek GmbH's measurements, which EddyUH
+               redistributes under the University of Helsinki's own agreement
+               and this program cannot. head_corr_dir names a directory holding
+               your own copy; without all three the correction declines for the
+               whole run and says so, rather than correcting some periods and
+               not others.
+               The head correction runs in all three of RP's raw-data passes,
+               as the angle-of-attack calibration beside it does. The
+               inclinometer correction reaches the flux loop only: the two
+               pre-passes run before DefineUserSet, so the angle columns do not
+               exist yet. A plane is therefore fitted to mean winds this
+               correction has not touched. Second order - it is aimed at
+               variation within a period, not at the mean - but real, and left
+               standing because closing it means moving DefineUserSet, a layout
+               change to the one part of the program where a layout fault is
+               silent.
+               Neither correction affects CH-LAE, which runs a Gill HS with
+               tiltcorr = 0. With the keys absent the output is byte-identical,
+               confirmed on base_n_gas_analytic, base_5gas and base_cec_cos
+               against binaries built from e847a12. Verified instead against
+               hand-computed expectations: unit tables reconstruct the wind
+               exactly, a speed table of 1.1 scales the vector by 1.1, a
+               90-degree azimuth table sends (u,v) to (-v,u), the elevation
+               grid interpolates halfway between two rows, and a 30-degree
+               inclination sends (1,0,0) to (cos30, 0, -sin30).
+	- Note: EddyUH's swinging correction adds a SCALAR to all three wind
+       components, and EddyFlow reproduces that. EddyUH_tiltangle.m:104 writes
+       omega*T*L with omega 1x3, T 3x3 and L = [-1.5 -1.5 -1.5]' 3x1, so the
+       product is one number. The velocity of a point on a rotating body is
+       omega CROSS (T L), a vector with three different components. The units
+       survive - radians per second times metres is metres per second - which
+       is why it is easy to miss.
+       Reproduced as written, because the option exists to reproduce EddyUH's
+       numbers and a silently corrected version would reproduce nothing.
+       tilt_sensor_meth = 1, the position correction alone, is unaffected and
+       is the one to use if EddyUH fidelity is not the goal. No lever arm turns
+       a scalar into a vector.
+	- Note: METEK_HC.m:81 and :90 index one row past the end of a twenty-row
+       table at exactly +45 degrees of elevation - I = fix((phiM+50)/5)+1 gives
+       20 there, and Cf0(I+1) is then Cf0(21). MATLAB raises rather than
+       reading rubbish, so it is a crash and not a silent error, and an
+       elevation of exactly 45.000 degrees is rare enough that it may never
+       have been hit. EddyFlow holds the last row instead.
+	- New feature: The spectral correction and the two flux levels can be repeated
+	               until the stability they assume and the stability they produce
+	               agree: corr_iter_meth, off by default, with corr_iter_max and
+	               corr_iter_tol.
+	               The three depend on each other in a circle. The analytic
+	               cospectrum is evaluated at z/L; z/L comes from the corrected
+	               sensible heat flux; that flux is what the spectral correction
+	               produces. One pass leaves them disagreeing - the correction was
+	               computed at a stability the run then went on to revise.
+	               Nothing compounds. Fluxes1_rp clears Flux1 and rebuilds it from
+	               Flux0 and BPCF; Fluxes23_rp clears Flux2 and Flux3 and rebuilds
+	               them from Flux1. Each pass corrects the same raw covariances
+	               afresh, so what changes between passes is only which z/L the
+	               cospectrum was evaluated at. The reset at the head of each
+	               routine is what makes that true, and a check asserts it - not the
+	               absence of self-reference, which Fluxes23_rp legitimately has
+	               within a single call.
+	               The feedback path was already there: Fluxes23_rp recomputes
+	               Ambient%zL, and the correction reads it. Only the repetition was
+	               missing. FCC needed one more thing - its correction is handed
+	               lEx%Flux0%zL while its Fluxes23 writes lEx%zL, two different
+	               fields, so the loop threads the stability through a local rather
+	               than letting it read the record every time.
+	               corr_iter_dev, in percent, reports how far the gas fluxes moved
+	               between the last two passes - the worst gas of the period. Worst
+	               rather than one column per gas because every gas is corrected at
+	               the same z/L, so what the loop converges is the stability and the
+	               per-gas numbers move together. Written only when the loop runs,
+	               like the random-error columns.
+	               Verified on CH-LAE, 48 periods, on the analytic correction path.
+	               With the loop off the output is byte-identical, confirmed on
+	               base_n_gas_analytic, base_5gas and base_cec_cos. With it on, the
+	               fluxes move by hundredths of a percent - latent heat +0.023 %,
+	               nitrous oxide +0.038 %, carbonyl sulfide -0.022 %, sensible heat
+	               essentially not at all - and the reported convergence has a
+	               median of 0 %, a worst period of 0.35 %, and exactly one period
+	               still moving more than 0.1 % at the fourth pass. A near-neutral
+	               forest day is where this should do least; the difference is
+	               largest in strongly non-neutral conditions, where the correction
+	               factor is most sensitive to z/L.
+	               A 1 % tolerance exits at the second pass and lands within 0.02 %
+	               of the full four, which is the trade it exists to offer.
+	- Doc: This repository said EddyUH iterates "until the flux changes by
+	       <= 1 %", and attributed the loop to EddyUH_Spectralcorr.m. Both
+	       halves were wrong, and the claim is retracted in
+	       docs/eddyuh-comparison.md.
+	       The loop is in EddyUH.m, which calls EddyUH_Spectralcorr.m. And
+	       there is NO convergence test: `while indexITER <= 3` with the
+	       counter incremented at the top runs exactly four times, always.
+	       The only break (EddyUH.m:843) tests the urban footprint's
+	       displacement height and roughness length, requires indexITER > 3
+	       - true on the final pass only, where the loop ends anyway - and
+	       sits in a branch EddyUH_footprint.m:151 makes unreachable.
+	       The 1 % came from covsvar, which EddyUH computes as the
+	       percentage change between the last two passes and writes to its
+	       output. Nothing reads it back.
+	       This matters for the defaults: corr_iter_tol = 0 means "run every
+	       pass", which is what reproduces EddyUH. A tolerance is this
+	       engine's own addition and departs from it.
+	- Fix: The conditional lag borrowing can now use EddyUH's own rules:
+	       tlag_borrow_noise chooses the noise floor a covariance is judged
+	       against, and tlag_borrow_donor chooses who a gas that fails
+	       borrows from. Both DEFAULT to this engine's own choice, so a
+	       project that already had borrowing switched on keeps exactly what
+	       it had - confirmed identical across every time-lag column on the
+	       CH-LAE comparison run.
+	       This corrects a fidelity error in the original port. EddyUH
+	       compares |cov| against 3 x unc3(:,3), the Lenschow instrumental
+	       noise, and borrows specifically from the analyser's carbon
+	       dioxide, hard-coded by variable name at EddyUH_SC_Flux2.m:325-331.
+	       The port compared against the Wienhold detection limit and
+	       borrowed from the best-resolved tube-mate. EddyUH's own inline
+	       comment at that line calls unc3 "the detection limit", which is
+	       how the mistake was made; the two are both noise floors in
+	       covariance units, but one measures the ANALYSER and the other
+	       measures the COVARIANCE.
+	       Only the detection-limit floor needs a second setting switched
+	       on. It is computed elsewhere and read from Essentials, so asking
+	       for it without detlim_meth would divide by a number nothing
+	       produced. The Lenschow floor is measured here from the series in
+	       hand, which means EddyUH's combination can be selected on its
+	       own. The interface draws the same distinction and keeps the floor
+	       control reachable even when the current choice is the unavailable
+	       one, so a user whose detection limit is off can still reach the
+	       control that fixes it.
+	       The carbon-dioxide donor refuses rather than falling back. If
+	       that analyser measures no carbon dioxide, nothing is borrowed:
+	       the point of the rule is a shared tube, and another instrument's
+	       gas shares only a clock. It also still requires the donor to have
+	       cleared the threshold itself - a deliberate departure from
+	       EddyUH, which copies the carbon dioxide lag unconditionally.
+	       Copying a donor that could not resolve its own peak would launder
+	       one bad detection onto every gas on the tube.
+	       LenschowFluxNoise is now a function of its own, called both by
+	       the random-uncertainty arm and from here. One implementation,
+	       because the two must divide by the same number and a drift
+	       between them would surface as a lag population rather than as an
+	       uncertainty column. The extraction is numerically inert: every
+	       rand_err_ column is identical to the previous engine's.
+	       Verified on CH-LAE, 48 periods, with the baseline-subtracted
+	       maximisation on. Under EddyUH's rules carbon dioxide stops
+	       borrowing entirely - 6 of 48 periods down to 0, since it is now
+	       the donor and cannot borrow from itself - nitrous oxide falls
+	       from 8 to 2 and carbonyl sulfide from 18 to 15. Fewer borrows
+	       because the Lenschow floor is the smaller of the two, so more
+	       gases clear three times it: instrument noise alone is less than
+	       the scatter of a whole cross-covariance function, which also
+	       carries the atmosphere.
+	- New feature: Instrumental noise after Lenschow et al. (2000), as Mauder et al.
+	               (2013) apply it: ru_meth = 5, one more choice on the existing
+	               random-uncertainty method. White instrument noise is
+	               uncorrelated between samples, so it lands entirely in the
+	               autocovariance at zero lag and nowhere else. Fit a line through
+	               lags 1 to 5, read it back at zero, and the gap between that line
+	               and the measured lag-zero value is the noise variance; the flux
+	               noise is sqrt(g_noise * var_w / N).
+	               It answers a DIFFERENT QUESTION from the three beside it.
+	               Finkelstein & Sims and Mann & Lenschow give a sampling error -
+	               how much this half hour's covariance would differ from another
+	               draw. Billesbach gives a floor below which a flux cannot be told
+	               from zero. This gives the ANALYSER's own noise, and says nothing
+	               about whether the atmosphere was sampled long enough. They are
+	               not interchangeable and the tooltip says so.
+	               Not the same paper as ru_meth = 2 either. mann_lenschow_94 is a
+	               sampling error from Mann & Lenschow (1994); the shared surname is
+	               all the two have in common, which is exactly why the method here
+	               is named lenschow_00 rather than anything shorter.
+	               It DECLINES a period rather than guessing. If either intercept
+	               comes out non-positive the fitted line already sits at or above
+	               the measured lag-zero value, which is not a small noise estimate -
+	               it is the method failing to apply, and reporting it as a small
+	               number would be worse than reporting nothing. The vertical wind
+	               gates every gas, since a w autocovariance with no noise-like step
+	               breaks the assumption whatever the scalar did.
+	               The five-lag window is in SAMPLES, as EddyUH has it - fixed by
+	               the method rather than derived from the acquisition rate, so it
+	               spans 0.5 s at 10 Hz and half that at 20. Reproduced as it
+	               stands: the number of lags is what the extrapolation is
+	               conditioned on, and deriving it from the rate would be a
+	               different method wearing the same citation.
+	               Verified on CH-LAE, 48 periods, against the other two estimators.
+	               It is the smallest for the strong fluxes - sensible heat 0.21
+	               against Billesbach's 1.72 and Finkelstein & Sims's 23.1 - and
+	               converges on Billesbach for the weak ones: nitrous oxide 0.0685
+	               against 0.0663, carbonyl sulfide 0.0206 against 0.0184. That
+	               convergence is the check that matters. Billesbach's shuffle
+	               destroys every correlation, so for a series whose variance IS
+	               instrument noise it measures the same quantity this does by a
+	               completely different route; the two agreeing to a few percent
+	               where noise dominates, and diverging by a factor of two where
+	               atmospheric variance dominates, is what the physics requires.
+	               It declined 15 of 48 periods for the MIRO channels and 36 to 40
+	               for the LI-7200's, which is the low-noise instrument doing what
+	               the gate exists to catch: a small lag-zero step is easy for a
+	               five-point extrapolation to overshoot. That is the honest answer
+	               for such an analyser, not a defect.
+	               With the method not selected the output is byte-identical -
+	               confirmed on base_n_gas_ru and base_5gas.
+	- New feature: Consecutive-difference despiking, EddyUH's spi_method 1:
+	               despike_vm = 2, beside Vickers & Mahrt and Mauder. If a sample
+	               steps further from the one before it than a stated limit, it is
+	               replaced by its predecessor and counted as a spike. A
+	               rate-of-change limit, NOT a statistical outlier test - nothing
+	               is scaled by a standard deviation and nothing iterates, which
+	               is the whole difference between it and the two beside it.
+	               This is the method the CH-LAE carbonyl sulfide project ran, and
+	               it was missed the first time round: the earlier pass scoped
+	               itself to capabilities EddyFlow lacked entirely and filed this
+	               under "same intent, different implementation", where it sat
+	               without being acted on. It is not the same intent. Until now a
+	               run configured to match that project was despiked by a
+	               different rule than the one that produced the fluxes it was
+	               being compared against.
+	               The limits are ABSOLUTE, in each variable's own unit: four
+	               sonic keys - sr_step_u, sr_step_v, sr_step_w, sr_step_ts -
+	               rather than the two the Vickers sigma multipliers share, and
+	               gas_<i>_step_lim per gas. Sharing one key across u and the
+	               sonic temperature would put a kelvin and a metre per second
+	               behind the same number.
+	               Zero means the column is not despiked, which is the shape
+	               EddyUH's dlim has - a NaN entry there means the same - and the
+	               run log names every column it passed over for that reason. A
+	               method that silently does nothing when nobody filled in its
+	               numbers is worse than one that says so.
+	               Where it differs from EddyUH deliberately: EddyUH replaces a
+	               NaN by its predecessor and counts that as a spike, before any
+	               method runs. This does not. A gap is a gap, the engine has its
+	               own machinery for it, and folding gaps into the spike count
+	               would make the spike percentage - which drives the hard flag -
+	               a measure of two things at once. Comparison resumes from the
+	               next valid pair rather than manufacturing a step across a gap.
+	               The historical values of despike_vm decode exactly as before:
+	               '0' was Vickers and ANYTHING else was Mauder, so the default
+	               arm stays Mauder rather than becoming the nominal default. Only
+	               '2' behaves differently from before, which is what makes an
+	               existing project byte-identical - confirmed on base_5gas,
+	               base_cec_cos and base_n_gas_analytic.
+	               Verified on CH-LAE, 48 periods, with EddyUH's own dlim values
+	               for that project. It removes 23 fewer u spikes, 71 fewer w, 20
+	               fewer sonic temperature and 18 fewer carbon dioxide than Mauder
+	               does, and 624 more on the MIRO's water channel.
+	               Worth knowing, and not obvious until it was run: at those
+	               values the method finds NOTHING in nitrous oxide (80 ppb limit
+	               on a 330 ppb signal), carbonyl sulfide (0.7 ppb on 0.44 ppb),
+	               or either LI-7200 channel. Tightening the nitrous oxide limit
+	               to 0.5 ppb and carbonyl sulfide to 0.02 ppb still finds
+	               nothing; only at 1e-4 do they respond, which is the check that
+	               the per-gas limits reach the routine at all. So EddyUH's own
+	               configuration despiked the sonic and two of six gas channels
+	               and left the rest untouched - including the two species the
+	               project exists for.
+	- Doc: A stability-binned planar fit was NOT added, and the reason is
+	       worth keeping. EddyUH can compute one - planar_fit_coeff.m case
+	       0 - but cannot apply one: EddyUH_coordrot.m selects the bin from
+	       its sixth argument, and all four call sites in the package pass
+	       NaN, including the flux calculation itself. With NaN the search
+	       finds no bin and neither out-of-range branch fires, so the plane
+	       coefficients are never assigned and the next line reads them.
+	       Selecting stability bins there does not change a flux; it stops
+	       with an undefined variable. nobin and WDbin assign
+	       unconditionally and are unaffected.
+	       Nor was it used at this site. The planar-fit file holds a single
+	       nobin plane, w = 0.0845 - 0.3624u + 0.0559v, and the setup then
+	       runs Dim_coordrot = 2 - double rotation - so that plane never
+	       reached a flux either.
+	       And nothing is missing here in any case: EddyUH's nobin is one
+	       plane fitted to everything, which is what this engine computes
+	       for a single wind sector of 360 degrees. read_ini_rp.f90 forces
+	       wsect_end(num_sec) = 360 and WindSector puts every direction in
+	       sector 1 when num_sec is 1.
+	       The obstacle, if it is ever wanted anyway, is architectural.
+	       The rotation runs at eddyflow-rp_main.f90:2171 and Ambient%zL is
+	       first computed in Fluxes0_rp at :2536, so the stability that
+	       would choose the bin does not exist when the bin must be chosen;
+	       the planar-fit assessment pass keeps only the mean wind per
+	       period and never forms a heat flux at all. Both would need a
+	       provisional double-rotated stability computed for the purpose,
+	       which is a design decision with no working precedent to copy.
+	       Written up in docs/eddyuh-comparison.md. Third finding of this
+	       shape, after the analyser crosstalk and the spectral-assessment
+	       cospectral model: the file is there, the mathematics is written
+	       down, and nothing reaches it.
+	- New feature: The analytic cospectrum every spectral correction is integrated
+	               against can now be chosen: cosp_model, defaulting to the
+	               Moncrieff et al. (1997) curve this program has always used.
+	               Kaimal et al. (1972), Sakai et al. (2001), Su et al. (2003),
+	               Moraes et al. (2008) and Kristensen et al. (1997) are the
+	               alternatives.
+	               It is a MODIFIER on whichever correction method is selected, not
+	               a method of its own. Every analytic path - Moncrieff, Massman,
+	               Horst, Ibrom, Fratini and the low-pass-only case - weights a
+	               transfer function by this shape, so it decides how much of the
+	               flux is assumed to sit where the instrument attenuates, and so
+	               how large the correction comes out. On the analytic regression
+	               fixture the six models spread the gas correction factors from
+	               1.0170 to 1.0557 against Moncrieff's 1.0335 - about four
+	               percent of the correction, a few tenths of a percent of the
+	               flux.
+	               Only the SHAPE matters: the factor is IntCO / IntTFCO, a ratio
+	               of two integrals of the same cospectrum, so any constant
+	               multiplying it divides out. That is why Kristensen's 2*pi/z
+	               prefactor is dropped, and why the numerically integrated
+	               normalisation EddyUH applies to it - which depends on hard-coded
+	               indices into whatever frequency vector it is handed - is not
+	               reproduced. Neither could change a correction factor.
+	               The Reynolds stress keeps Moncrieff's momentum cospectrum
+	               whichever option is chosen. Sakai, Su, Moraes and Kristensen are
+	               scalar cospectra with no momentum form, and pairing a chosen
+	               scalar model with an unrelated momentum one for some options and
+	               not others would be worse than not offering the choice. Tau_scf
+	               is identical across all six on the fixture, which is the check
+	               that this holds.
+	               Four of the six have no stability branch at all - a single form
+	               EddyUH applies at any zL, and this does the same. Under stable
+	               stratification the cospectral peak moves to higher frequency, so
+	               a neutral-form model puts too little flux there and will
+	               UNDERSTATE the high-frequency loss. Said in the interface
+	               tooltip as well.
+	               Worth knowing: EddyUH's CMoore, after Moore (1986), is
+	               term-for-term the curve this program calls Moncrieff et al.
+	               (1997) - scalar and momentum both. The two names are one
+	               cospectrum. Kaimal et al. (1972) is a genuinely different curve,
+	               and different again from the column the spectral assessment
+	               output labels kaimal_cosp, which kaimal() in kaimal_models.f90
+	               computes and which is also Moore's.
+	               The formulae are EddyUH's modelcospectra.m, checked against it
+	               literal by literal in the static check. EddyUH uses them for
+	               diagnostic plots, not for its own correction - it corrects
+	               against measured and fitted cospectra - so this is EddyUH's
+	               model library and not EddyUH's method.
+	               With the key absent the output is byte-identical to the previous
+	               engine on base_n_gas_analytic and base_5gas: the dispatcher
+	               calls the Moncrieff routine unconditionally and its select has
+	               no branch for moncrieff_97, so the default cannot be reached
+	               through the selector at all.
+	- New feature: A gas whose cross-covariance cannot be told from noise may take
+	               its time lag from another gas on the same analyser instead of
+	               inventing one of its own: tlag_borrow_meth, off by default. Species
+	               drawn down one tube share a transport delay, so the strongest peak
+	               in the bundle is the best estimate of it. Nemitz et al. (2018) make
+	               this the rule for trace gases measured alongside a well-resolved
+	               one, which is exactly the case here - carbonyl sulfide, nitrous
+	               oxide and carbon dioxide on a single MIRO.
+	               The test is the flux detection limit, so this needs detlim_meth =
+	               wienhold_94 and the engine refuses the combination without it. A gas
+	               whose |covariance| stands at least tlag_borrow_snr detection limits
+	               above the noise - 3 by default, the paper's value - keeps its own
+	               lag and is eligible to donate. One that does not, or whose maximum
+	               landed on an end of the search window where a maximisation goes when
+	               there is no interior peak to find, borrows from the eligible gas on
+	               the same analyser with the highest ratio. The trusted set is
+	               snapshotted before any borrowing, so a borrowed lag can never itself
+	               become a donor, and the outcome does not depend on column order.
+	               Water is never borrowed for or from: its lag is the one every other
+	               gas's water covariance is taken at, and moving it would move the
+	               water term of every WPL correction with it.
+	               A borrowed lag is flagged in <gas>_def_timelag exactly as the
+	               nominal fallback is - it is not a detected lag - and the donor is
+	               named in the run log.
+	               On the test day, with the baseline-subtracted maximisation on, 31 of
+	               the 144 gas-periods borrowed and the within-period spread of the
+	               three MIRO lags fell from 0.75 s to 0.40 s. Carbonyl sulfide clears
+	               three detection limits in only 10 of 48 periods there, which is the
+	               honest measure of how little of its lag was ever its own.
+	- New feature: The time lag may be chosen by the largest departure of the
+	               cross-covariance from the straight line joining the two ends of the
+	               search window, rather than by its largest absolute value:
+	               covmax_debaseline, off by default. A weak flux often sits on a sloping
+	               cross-covariance - from a trend, or from a neighbouring stronger
+	               correlation - and the plain maximum then lands on whichever end the
+	               slope is highest at instead of on the peak; subtracting the chord takes
+	               the slope away and leaves the peak.
+	               A MODIFIER on covariance maximisation, not a method of its own. A sixth
+	               tlag_meth would force a decision in the EddyPro importer, which must
+	               keep mapping EddyPro's tlag_meth=2 onto plain maxcov, and EddyPro has no
+	               such criterion. It changes which lag is selected and nothing about the
+	               covariance reported there.
+	               This is what EddyUH actually runs at this site: EddyUH_SC_Flux.m:281
+	               computes it under the menu entry labelled "standard", with the plain
+	               maximum commented out immediately above. Switching it on moves the lag
+	               populations towards EddyUH's own climatology - carbonyl sulfide from
+	               15.927 to 16.048 s against EddyUH's 16.017, carbon dioxide on the MIRO
+	               from 15.975 to 16.023 against 16.015, and the LI-7200's carbon dioxide
+	               from 0.629 to 0.648 against 0.651 - with comparable scatter. Nitrous
+	               oxide moves slightly the other way. One day against a climatology
+	               computed over a different season, so this is an order-of-magnitude
+	               agreement and not a validation.
+	               Worth knowing: with the baseline removed the two ends of the window
+	               score zero by construction, so the maximum can never land on one - and
+	               maxcov&default falls back to the nominal lag precisely when it does. On
+	               the test day the fallback fired for 9 to 38 periods per gas with the
+	               modifier off and for none with it on. For a weak flux that safety net
+	               is worth replacing rather than simply losing, which is what the
+	               detection-limit-conditional borrowing is for.
+	- Fix: CovMax no longer returns an undefined row lag. RLag is intent(out) and was
+	               assigned only inside the comparison, so a window in which nothing beat
+	               the initial zero - every covariance error-coded, or all of them exactly
+	               zero - returned whatever was on the stack, and the caller then shifted
+	               the series by it. Initialised to the start of the window.
+	- Fix: CovMax no longer lets an error-coded covariance win the maximisation.
+	               CovarianceMatrixNoError returns the error code when a lag leaves no
+	               overlapping valid samples, and the comparison was on the magnitude:
+	               abs(-9999) beats every real covariance in a window, so such a lag was
+	               selected outright. Now skipped. Latent on well-formed data - the
+	               regression is byte-identical - but a gas with a gap over part of its
+	               search window would have had its lag pinned to wherever the gap was.
+	- Doc: The spectroscopic coefficients are stated to be SPECTROSCOPIC ONLY, and the
+	               conversion from EddyUH's is written down. Both packages divide by the
+	               same polynomial, 1 + a*chi_q + b*chi_q^2, with the water in mol/mol -
+	               the formulae are identical - but EddyUH folds the dilution into it:
+	               Functions_Library/dilucorr.m uses a = -1, b = 0 for the pure-dilution
+	               case, so every coefficient in its published table sits on a baseline of
+	               a = -1. EddyFlow corrects the density separately, and more fully, so
+	               its identity is a = b = 0.
+	               A published value entered unconverted therefore counts the dilution
+	               twice, and nothing about the two formulae makes that visible. The
+	               mapping is a_here = a_EddyUH + 1, b_here = b_EddyUH + a_EddyUH + 1, and
+	               the pure-dilution pair maps to (0, 0) exactly, as it must. EddyUH gives
+	               -1.39 for nitrous oxide on an Aerodyne cw-QCL, which is -0.39 here.
+	               Now in the routine's docstring, in both interface tooltips, and in
+	               docs/eddyuh-comparison.md with the whole published table converted.
+	               Pinned by static_checks/test_spectroscopic_static.py, because it is the
+	               kind of note that gets tidied away.
+	- Doc: EddyUH has no analyser-crosstalk correction, and the comparison document no
+	               longer claims one. EddyUH_ctc_CP.m looks like one and is unreachable -
+	               nothing calls it, and it would fail if anything did, multiplying a
+	               scalar water value by a two-element coefficient vector.
+	               crosstalk_coeff_CP.m is a table of SPECTROSCOPIC (a, b) pairs whose only
+	               live callers are the two setup dialogs, seeding set_Gan.crosstalkcoeff -
+	               which EddyUH_spect_CP.m and dilucorr.m then read as their a and b. The
+	               crosstalkflag gates the spectroscopic correction. The name is
+	               historical, and the capability is the one already implemented.
+	- New feature: The spectroscopic effect of water vapour is removed from closed-path
+	               laser analysers, off unless asked for. Water broadens the absorption
+	               lines a laser measures, so what it reports scales as 1 + a*chi_q +
+	               b*chi_q^2 (Peltola et al. 2014) and the correction is a division by
+	               that polynomial. Applied POINT BY POINT after Chen et al. (2010), using
+	               the water the same analyser read at the same sample - the broadening
+	               happens in the cell at that instant, so no time-lag alignment enters.
+	               Two settings in RawProcess_Settings, spectro_meth (0 none, 1 chen_10)
+	               and spectro_water, plus per-column coefficients col_<N>_spectro_a and
+	               col_<N>_spectro_b in the metadata. All default to zero or off, and zero
+	               coefficients make the polynomial one, so a project and a metadata file
+	               written before any of this keep their numbers exactly.
+	               On the series and not on the flux, for three reasons. The mean and the
+	               covariance are corrected together and consistently. The full
+	               nonlinearity is kept rather than a first-order term. And it reaches
+	               gases reported as a mixing ratio - which Level 2 returns early on, so a
+	               flux-level correction placed with the density terms would do NOTHING
+	               for a laser reporting mixing ratios, the common case for carbonyl
+	               sulfide and nitrous oxide and exactly the case this is for.
+	               EddyUH's flux-level form folds the dilution in with the spectroscopy,
+	               because its own WPL runs first and the formula partly undoes it;
+	               substituting one into the other, the dilution cancels exactly and what
+	               is left is the division above. EddyFlow's WPL is a fuller formulation -
+	               it carries cell temperature and pressure terms EddyUH's closed-path WPL
+	               does not - so only the spectroscopic part is taken and the density work
+	               is left where it already is.
+	               With a = -0.30 at this site's humidity the reported mixing ratio moves
+	               0.45 %, which is what 1/(1 - 0.30*0.015) is; the flux moves 0.7 % for
+	               carbonyl sulfide and 1.8 % for carbon dioxide, the difference being the
+	               cross term, which is proportionally larger the smaller the flux.
+	- New feature: The water channel can be corrected against its own reading, as
+	               spectro_water, off by default. This is self-broadening and is NOT part
+	               of the published Peltola et al. result, which derives the effect of
+	               water on another gas's lines. EddyUH corrects it too, with a flux-level
+	               coefficient whose derivation its own source comment says is not
+	               published anywhere; offered here in the same point-by-point form as
+	               every other column, behind its own switch, and labelled as such in the
+	               interface so that nobody acquires it by accident.
+	- New feature: Billesbach (2011) random-shuffle noise floor, selectable as
+	               ru_meth = 4. Reordering a scalar at random destroys every real
+	               correlation with the vertical wind, so whatever covariance survives the
+	               shuffle was produced by noise alone; the mean of twenty such
+	               covariances - EddyUH's count, and the paper's - is a floor below which
+	               a flux cannot be told from zero. Reported through the existing
+	               rand_err_* columns, so nothing about the output layout changes.
+	               This is a NOISE FLOOR and not a sampling error. It answers whether a
+	               flux is resolvable, not how uncertain it is, and is systematically the
+	               smaller of the two: on the test dataset it runs at 6 to 13 per cent of
+	               Finkelstein and Sims for the strong fluxes and 33 to 54 per cent for
+	               nitrous oxide and carbonyl sulfide, which is the point - for a weak
+	               flux the instrument is most of the uncertainty.
+	               Four rather than three because three is already Mahrt (1998), and the
+	               interface maps its menu onto these numbers; renumbering would have
+	               silently changed the method of every project that states one.
+	- Fix: The Billesbach routine has been unreachable and unusable since it was
+	               written. It carried \todo Under development, had no arm in the dispatch,
+	               and had five faults, each of which produces numbers rather than an
+	               error:
+	               (1) Its indexing was transposed. Set is declared Set(N, M) - records
+	               down, variables across - and every other routine in the file indexes it
+	               Set(:, var); this one used Set(w, 1:N), reading row w across N columns
+	               of an array that has about seventy.
+	               (2) It stored its result nowhere. The shuffled covariance went into
+	               Stats%Cov and nothing read it back.
+	               (3) That same line overwrote live state. Stats%Cov is filled by
+	               BasicStats and read fifteen times by Fluxes0_rp a few hundred lines
+	               later, so every flux in the period would have been computed from
+	               shuffled data.
+	               (4) Its shuffle was biased. RandomBetween computed
+	               int((max - min) * x + min), which never returns max; its only caller is
+	               a Fisher-Yates loop where j must be able to equal i, and unable to, the
+	               element at i always moves - drawing from the permutations that leave
+	               nothing in place rather than from all of them.
+	               (5) Its generator was never seeded. InitRandomSeed is also dead code,
+	               so the sequence came from whatever gfortran seeds itself with, which
+	               since GCC 7 is the operating system: the same project over the same
+	               data would have published a different noise floor every run. It is now
+	               seeded once per run from a fixed value, which makes a run reproducible
+	               while still leaving successive periods independent draws.
+	               The routine also shuffles the scalar rather than the wind. Shuffling w
+	               once and reusing it for every gas is cheaper, and is what the old
+	               version did, but it makes every gas's estimate a draw from the same
+	               realisation - they would rise and fall together for no physical reason.
+	- New feature: A flux detection limit after Wienhold et al. (1994), off unless asked
+	               for. The cross-covariance of w with a scalar carries the flux in a peak
+	               near the transport lag and nothing but noise far from it, so the scatter
+	               of the function out there is a noise floor on the covariance: a flux
+	               smaller than it cannot be told from zero. Two windows are placed
+	               symmetrically either side of the lag the run actually used for that gas
+	               and their standard deviations averaged, which is what the paper does.
+	               Reported per gas, in COVARIANCE units, as <gas>_detlim in the full output
+	               and <TAG>_DETLIM in the FLUXNET file. Deliberately not scaled to a flux:
+	               what it qualifies is the covariance, and carrying it through the spectral
+	               correction as if it were a flux would invite a comparison that does not
+	               hold.
+	               Three settings, all in RawProcess_Settings because FCC never recomputes
+	               the limit - it rides the ex record: detlim_meth (0 none, 1 wienhold_94,
+	               default 0), detlim_offset_s (100) and detlim_window_s (50). The two
+	               window settings carry Wienhold's own values so that switching the feature
+	               on reproduces the published method rather than something chosen here; an
+	               offset that does not clear the half-width would measure the peak instead
+	               of the noise under it, and is refused back to the defaults.
+	               Computed inside TimeLagHandle, beside the water covariances, and for the
+	               same reason: it is read off the cross-covariance function, which exists
+	               only while the series are still on their raw alignment. The routine that
+	               follows shifts every column by its own lag, after which the function this
+	               measures is gone. A call from the main program would have returned
+	               plausible numbers that meant nothing.
+	               On the test dataset this is the whole point: COS clears three times its
+	               detection limit in 10 of 48 half-hours and N2O in 16, which is the
+	               ordinary state of affairs for those species at a forest and was not
+	               previously visible from an EddyFlow run at all.
+	- Fix: CovarianceW accepts a negative lag. It ran `do i = 1, nrow - lag` and indexed
+	               col2(i+lag) unguarded, which reads off both ends of the array when the
+	               lag is negative; both callers of the day guarded with `if (lag <= 0)
+	               cycle` and so never met it. The detection limit does - its earlier noise
+	               window sits at a negative lag whenever the offset exceeds the transport
+	               delay, which for a gas at 16 s sampled 100 s before it is -84 s. The
+	               bounds now clamp both ends. A positive lag walks exactly the terms it
+	               always did, so nothing an existing caller asks for has moved.
+	- New feature: -j/--jobs splits the planar-fit and time-lag assessment pre-passes
+	               across worker processes. Both walk every flux averaging period in
+	               their range and append one record that depends on no other period's,
+	               so the range is cut into contiguous slices, each slice runs in a copy
+	               of eddyflow_rp, and the parent concatenates the slices in order and
+	               hands the result to the unchanged fit. Processes rather than threads:
+	               the period loop reaches most of the program's global state, and a
+	               process has its own copy of all of it by construction.
+	               -j 1 is the serial path this program has always taken; -j 0, and the
+	               absent switch, use every core. The parent takes the first slice
+	               itself, so it arrives at the fit with the state the loop establishes -
+	               SortWindBySector reads the north offset out of E2Col, which is filled
+	               when a raw file's metadata is read, and a parent that had skipped the
+	               loop binned every period into a sector rotated by the site's true
+	               offset.
+	               Planar fit and the aggregate time-lag optimiser come out byte-identical
+	               to the serial run: the records are fixed-size derived types with no
+	               allocatable components, written unformatted and read back by the same
+	               binary. On two days of CH-LAE the planar fit went 120 s to 22 s and the
+	               time-lag optimiser 200 s to 57 s, both on eight workers.
+	               The PWB cache pre-pass (tlag_meth=5, to_mode=1) is deliberately NOT
+	               split, and runs exactly as it does today. Its classifier decides a
+	               period partly from the last settled detection before it, and that
+	               chain has no time limit: the streaming classifier sets its flag once
+	               and never clears it.
+	               A lead-in was built and measured before this was settled. It works in
+	               principle - one S1_optimal detection is decided on the period's own
+	               bootstrap interval alone and overwrites the carried lag, origin and
+	               flag outright, so from the first S1 a cold worker and a serial run
+	               are in the same state. It does not work in practice, because the weak
+	               species never settle: over two days of CH-LAE, COS reached no settled
+	               detection in 103 periods and nitrous oxide reached two, so no lead-in
+	               of any length rebuilds their state.
+	               Splitting it anyway left every applied lag identical period for
+	               period, but moved donor attribution on 8 of 726 rows at one seam, and
+	               the aggregate summary resolved from those donor votes moved with it -
+	               two counts by one or two, one median lag by 0.05 s. Not worth having.
+	- Fix: A switch written after the project path on the command line was silently
+	               ignored. The argument loop read a value after every token, so the path
+	               swallowed whatever followed it, and the lowercasing of the path ran on
+	               the loop's own counter and left it past the end of the command line -
+	               which ended the loop there and hid the first problem behind the second.
+	               `eddyflow_rp <project> -e <home>` therefore ran with the default home
+	               directory, not the one asked for. A switch now consumes a value only
+	               when it takes one, and the loop reads to the end of the command line.
+	- Fix: A spectral assessment output file that could not be opened was written
+	               anyway, to a file nobody would look for. All five outputs in
+	               OutputSpectralAssessmentResults did
+	                   open(udf, file = FilePath, iostat = open_status)
+	                   if (open_status /= 0) call ExceptionHandler(64)
+	               and then wrote regardless: ExceptionHandler(64) only logs, and a
+	               write to an unconnected unit does not fail - gfortran connects it
+	               to fort.<udf> in whatever directory the run started in. udf is the
+	               MILLISECOND the run began in, so the name carries no meaning either.
+	               The message it printed, "Some spectral assessment results will not
+	               be written on output file", was false: they were written, in full,
+	               somewhere else. A 36 KB fort.615 of ensemble cospectra and Massman
+	               fits had been sitting in the repository root since 2026-08-21.
+	               The five sites now share OpenSpectralOutputFile, which sinks a
+	               failed open to a scratch unit the caller's close discards. Returning
+	               instead would be wrong - these are five separate files and one
+	               failing to open says nothing about the next.
+	               This is the third time this class has bitten: unit 11 in
+	               edit_ini_file (fixed 2026-08-17), unit 163 in the run log, now udf.
+	               test_stray_unit_writes_static.py now asserts that a failed open
+	               guarded by a NON-FATAL handler cannot fall through into writes - the
+	               fatal set is parsed out of exception_handler.f90 rather than listed,
+	               so a handler that stops today and warns tomorrow comes into scope on
+	               its own. fort.* is no longer in .gitignore: ignoring it is what let
+	               this go unnoticed for weeks.
+	- Change: .mod files are written straight to the object directory (-J), and
+	               -fbounds-check has moved to a new `make debug` target.
+	               The modules used to be written beside the makefile and swept across
+	               by the LINK rule, so any build that stopped in between - a compile
+	               error, a link error, Ctrl-C - left them there. clean_all did not
+	               remove them and gfortran searches the current directory ahead of -I,
+	               so a stale .mod could survive a clean and become the interface every
+	               later compile bound against. A stray m_cec.mod in the repository
+	               root had already made one compile fail with a type mismatch that
+	               read like a source bug.
+	               -fbounds-check cannot change a value, only turn a wrong subscript
+	               into a stop, so a released binary does not need it. Removing it is
+	               worth 6-7 % on the compute-bound passes - the time-lag optimiser
+	               went 197 s to 183 s and the planar fit 108 s to 101 s over two days
+	               of CH-LAE - with byte-identical output, which the flag guarantees
+	               and both were checked to confirm. The whole sweep was run with it
+	               still on first (25 passed) so that nothing was relying on it.
+	- New feature: The compressed LI-COR GHG format has a regression fixture, and
+	               the next archive is decompressed while the current one is being
+	               processed.
+	               Nothing exercised file_type=0 before this. It is the only raw path
+	               that shells out to 7-Zip, and the only one that rewrites
+	               Metadata%ac_freq, NumCol and FileInterpreter per file, because each
+	               archive carries its own metadata - so the one place those globals
+	               move under the period loop had no gate at all. base_ghg is the same
+	               three hours as base_tlag_opt, built by gen_ghg.py, and the standard
+	               it is held to is that its fluxes MATCH that fixture's, because it is
+	               the same data. They do, to the byte.
+	               Measured against it, a GHG file costs about 170 ms more than the
+	               same data as CSV, of which roughly 100 ms is 7-Zip. That part is
+	               time spent waiting on another process, so it is now spent computing
+	               a flux instead: the archive the next period will want is extracted
+	               in the background, and claimed only if the path matches exactly and
+	               the extraction has signalled that it finished. Every other case -
+	               no request, the wrong file, one still running, one that failed, a
+	               directory a killed run left behind - falls through to extracting
+	               synchronously exactly as before, so the worst a prefetch can do is
+	               waste itself. -j 1 turns it off with everything else.
+	               UnZipArchive also lists the extracted files once rather than twice.
+	               Both listings only ever asked what the archive held, and each cost
+	               a shell of its own.
+	               Together these are worth about 2.8 % of a GHG run - 25.8 s to 25.1 s
+	               over the fixture. Less than the 5-6 % first estimated: only the
+	               extraction can be hidden, not the shell calls around it, which still
+	               run in the main process. Output is byte-identical either way, which
+	               was checked rather than assumed.
+	- New feature: test_rf, off by default (RawProcess_Tests, RFlux-master
+	               added to the repo as a reference). Adapted from RFlux's
+	               inst_prob_test() (Vitale et al. 2020, Biogeosciences): lag-1
+	               autocorrelation (AL1), the discrete/dominant-value test (DDI),
+	               and spike counts on the raw series and its first differences
+	               (HF5/HF10/HD5/HD10), scaled by a robust median/MAD estimator
+	               rather than RFlux's Qn. qn_estimator.f90 already carries a Qn
+	               implementation, but it is O(n^2) in both memory and time over
+	               all sample pairs - at 20 Hz over 30 minutes that is ~6.5e8
+	               pairs, well past what a per-period raw-level test can spend -
+	               and it is not called from anywhere in the tree. A true
+	               O(n log n) Qn is a separate follow-up; median/MAD plays the
+	               same role at the cost this test can actually afford, the same
+	               idiom TestSpikeDetectionMauder13 already uses.
+	               KID (kurtosis of increments) already existed unconditionally,
+	               unrelated to this flag - see kid.f90, added in 110bf29.
+	               The new columns are appended at the very end of the FLUXNET
+	               row, after the biomet block, deliberately: that tail is what
+	               read_ex_record.f90 captures whole as fluxnetChunks%s(6) and
+	               FCC re-emits verbatim. The LGD/KID/ZCD family a few columns
+	               earlier is instead sized by a fixed field count
+	               (nLgdFields) that this flag does not touch, so splicing new
+	               columns in there would have silently misaligned every field
+	               FCC parses positionally after them whenever the test is on.
+	               Regression-swept with the flag at its default (off): 28
+	               fixtures, byte-identical.
+	- New feature: test_rf also computes DIP, Hartigan's dip test p-value
+	               (Hartigan & Hartigan 1985; Hartigan 1985, AS 217) for
+	               multimodality in the raw signal - RFlux's dip.test() call,
+	               ported rather than re-derived: dip_test.f90 is a direct
+	               translation of the greatest-convex-minorant/least-concave-
+	               majorant algorithm from RUrlus/diptest's diptst() (itself a
+	               C++ rewrite of R diptest's C code, an f2c translation of the
+	               original AS 217 Fortran), plus that package's default
+	               p-value method - linear interpolation, on sqrt(n)*dip, of
+	               its tabulated critical-value grid, the same table R's own
+	               dip.test() interpolates. Both were validated rather than
+	               trusted: this port's dip statistic and p-value match the
+	               diptest PyPI package to machine precision (~1e-16) across
+	               336 test vectors - 36 targeted (n=1..36000, unimodal,
+	               bimodal, trimodal, constant, heavily-tied) plus a 300-case
+	               randomised fuzz sweep - both run again against the exact
+	               installed file after two identifier collisions with
+	               m_rp_global_var (ns, na, fn - all common enough names that
+	               EddyFlow's global-variable module already owns them) forced
+	               local renames, to confirm the renames introduced nothing.
+	               np.interp's tie-breaking on the critical-value table's
+	               duplicate nodes (common at the table's small-n end, where
+	               several alpha quantiles share one critical value) had to be
+	               reverse-engineered from its actual output rather than read
+	               off its docs, which do not specify it: it resolves to the
+	               LAST matching node, not the first.
+	- Restored: static_checks/test_pwb_reference_static.py's PwbMatchesRflux
+	               suite, dropped in 83eadd7 when dyco was not checked out
+	               beside this repository. dyco-main is checked out inside it
+	               now (as a reference for the separate RFlux gap-analysis
+	               work), at exactly the path the removed test expected, and
+	               m_pwb_core.f90 has not changed since the drop - so the file
+	               was recovered verbatim from git history rather than
+	               rewritten. All eleven tests pass unmodified: the unit-root
+	               branch decision, the AIC order search (exact integers, up to
+	               order 67), the AR coefficients to ten significant digits, the
+	               pre-whitened CCF peak and the raw cross-covariance, on both
+	               of dyco's fixtures, still agree with RFlux v3.2.0's frozen
+	               output. This is the only check in static_checks that would
+	               notice the port computing the wrong thing correctly -
+	               everything else there reads source text.
+	               m_pwb_core.f90's header comment, which had been edited to
+	               say the pin was gone, is reverted to match: comment-only,
+	               no behavioural change.
+	- Fixed: prepass_parallel.f90's header comment claimed the PWB cache
+	               pre-pass "is deliberately NOT split", which stopped being
+	               true when the streaming classifier's cross-period state
+	               (the terminal fallback's lag, the aggregate dataset's
+	               membership, the donor tally) moved into
+	               PostProcessPwbTimelagCache, run once by the parent over the
+	               merged table - the call site in eddyflow-rp_main.f90 already
+	               said so and already passes .true. to PlanPrepassBatches for
+	               this pass. Comment-only, no behavioural change.
+	- New feature: test_pfd, off by default, FCC-only. Ports RFlux's
+	               despiking(variant="v1") (Vitale et al. 2020, Biogeosciences)
+	               to run once, after a run's NEE/H and LE series are complete:
+	               log10(x+1000), an STL decomposition (Cleveland et al. 1990)
+	               with RFlux's own parameters (s.window=7, s.degree=0,
+	               t.window=mfreq*7+1, t.degree=1, outer=20, inner=2, plus a
+	               post-trend "fc" extension), reconstruction back through the
+	               inverse transform, then a decile-binned Laplace-distribution
+	               outlier test (alpha=0.01) on the residual.
+	               m_flux_despike_core.f90 is a from-scratch Fortran port of R's
+	               stlplus package (Ryan Hafen, CRAN) - its loess primitive,
+	               low-pass filter and jump-interpolation - plus RFlux's own
+	               despiking.R on top, ported rather than re-derived for the
+	               same reason dip_test.f90 gives: an independent re-derivation
+	               of a multi-stage iterative algorithm is exactly where a
+	               subtle bug hides from a compiler and from casual review.
+	               Validated against R directly rather than assumed - stlplus
+	               and despiking.R run locally - at every stage: the loess
+	               primitive, the jump-interpolation wrapper, the NA-aware
+	               nearest-neighbour window, one isolated cycle-subseries
+	               smooth, the full inner/outer robustness loop (with and
+	               without missing values, several series lengths and
+	               periods), the fc extension, and finally despiking() end to
+	               end, all matched to machine precision or an exact spike-flag
+	               match across dozens of generated cases.
+	               Follows m_pwb_core.f90's discipline: the module is a pure
+	               function of its arguments, so it could be reference-tested
+	               without linking the rest of the engine.
+	               FCC has no whole-run in-memory cache today - Flux1/Flux2/
+	               Flux3 are scalars, overwritten every period - so pfd_handle.f90
+	               adds one, PfdCache, grown with move_alloc the same way
+	               PwbTimelagCache is on the RP side; StorePfdCache appends one
+	               row per period from ex_loop, and PostProcessFluxDespiking
+	               runs once after the loop closes. Periods per day comes from
+	               the modal spacing between sorted periods, not the first
+	               pair, so one irregular gap cannot mis-set it; a run under 20
+	               periods or under 4 periods/day is skipped rather than fed to
+	               a decomposition stlplus itself would refuse (n.p < 4) or
+	               despiking() itself calls too short (its own stated minimum
+	               is ten days). Output is a new file,
+	               ..._flux_despiking....csv, alongside full_output and
+	               FLUXNET, with NEE/H/LE plus a spike flag and a cleaned value
+	               for each - it does not touch any existing output.
+	               Qn (qn_estimator.f90) moved from src_rp to src_common, and
+	               PeriodMinutes was extracted out of pwb_timelag_handle.f90
+	               into its own file for the same reason: FCC needed both and
+	               previously could link neither.
+	               The ini key lives in the shared [Project] table
+	               (EPPrjCTags(19)), not FCC.SNTags/SCTags: both of those are
+	               completely full below their record origins, which cannot
+	               move.
+	               Regression-swept with the flag at its default (off): 28
+	               fixtures, byte-identical.
+	- New feature: qc_meth's fourth option, 'vitale_20' (Vitale et al. 2020,
+	               Biogeosciences), a two-tier severity flag - 0 (ok), 1
+	               (moderate, RFlux's "ModEr") or 2 (severe, "SevEr") - built
+	               entirely from diagnostics EddyFlow already computes,
+	               regardless of which qc_meth is selected: the ITC deviation
+	               (reusing DTFlg's own grade, since Vitale's 30%/100% cutoffs
+	               land exactly on two of PartialFlagLF's boundaries) and
+	               Mahrt's (1998) nonstationarity ratio, computed
+	               unconditionally by RU_Mahrt_98 alongside random
+	               uncertainty regardless of which method is chosen there -
+	               EddyFlow already had this without knowing it, since
+	               RU_Mahrt_98's own sigma_btw/rand_uncer ratio is exactly
+	               what RFlux calls M98. Two more feed in only when the
+	               corresponding EddyFlow feature is on: KID (kurtosis of
+	               increments, computed unconditionally once enabled - see
+	               kid.f90, 110bf29) and, when test_rf is also on, AL1/DDI/
+	               HF5/HF10/HD5/HD10/DIP.
+	               Deliberately narrower than RFlux's cleanFlux(): its
+	               low-signal-resolution test and its physical-range filter
+	               (hard-coded CO2/H2O/sensible-heat/momentum limits) have no
+	               EddyFlow port, and its wind-sector exclusion is left out
+	               until EddyFlow supports a time-varying sector - genuine
+	               gaps against RFlux, not oversights here.
+	               qc_flags_subs.f90's other three methods take StFlg/DtDiff
+	               only, computed the same way in RP and FCC; this one also
+	               needs Essentials%KID/mahrt98_NR/AL1/DDI/HF5/HF10/HD5/
+	               HD10/DIP, which FCC never re-derives from the ex record it
+	               reads back (it re-emits test_rf's own columns verbatim,
+	               same as the post-flux despiking entry above notes for a
+	               different field). QualityFlags takes two new arguments,
+	               raw_ok and rf_ok, so RP (which just computed all of this)
+	               and FCC (which did not) can each say honestly whether
+	               Essentials reflects the period being flagged - without
+	               that gate, a period run through FCC would read
+	               Essentials's default-initialised zeros as genuine
+	               measurements, misfiring AL1 <= 0.5 as severe on every
+	               period. Under fcc_follows this grade degrades to the ITC
+	               deviation alone for the same reason - and fcc_follows is
+	               set for any project using a spectral-correction method
+	               beyond the two built-in analytic ones (moncrieff_97,
+	               massman_00), which is most real projects, not a rare
+	               corner case as first written here. Properly closing this
+	               needs FCC's ex record to carry those diagnostics the way
+	               it already carries the ITC deviation and the
+	               stationarity percentages - a real follow-up, not
+	               attempted here; stated plainly in VitaleFlag's own
+	               header and the GUI tooltip rather than implied away.
+	               Regression-swept with the option at its default
+	               (mauder_foken_04): 28 fixtures, byte-identical.
+	- New feature: Time-varying invalid wind-sector exclusion (adapted from
+	               RFlux's SA_INVALID_WIND_SECTOR_c*/w* site-metadata
+	               fields), for a project that already has both wdf_apply
+	               and a dynamic metadata file on. Rather than a new file
+	               format, this extends the one dynamic metadata already
+	               reads: six new optional header columns
+	               (wdf_sec1_center/width through wdf_sec3_center/width),
+	               each independently optional the same way every other
+	               dynamic metadata field is. A record that names the first
+	               one replaces the static project sectors outright, up to
+	               three, converted into the start/end degrees
+	               FilterDatasetForWindDirection already expects; a record
+	               that says nothing about wind sectors leaves whatever
+	               regime is already in effect - static, or an earlier
+	               dynamic record - standing, the rule every other dynamic
+	               field already follows. Does not wrap at 0/360, matching
+	               FilterDatasetForWindDirection's own start<wd<end test,
+	               which does not either - a sector crossing due north
+	               needs two entries, the same limitation the static
+	               setting already has.
+	               Only takes effect when RPsetup%apply_wdf is already on:
+	               a dynamic metadata file cannot turn wind-sector exclusion
+	               on for a project that left it off, only change which
+	               sectors an already-enabled filter uses - so a project
+	               with no dynamic metadata file, or one that never uses
+	               these six column names, sees no behavioural change at
+	               all, byte-identical by construction rather than by
+	               having to prove it. No GUI change needed: the dynamic
+	               metadata file is already a plain file-path setting with
+	               no per-column configuration on that side, so extending
+	               its accepted header names is entirely an engine-side
+	               change.
+	               A live spot check surfaced a scare, not a bug: running
+	               it concurrently with an unrelated background regression
+	               sweep on this machine produced a SIGSEGV under -j
+	               (default parallel workers). Rebuilt with `make debug`
+	               (-fbounds-check -fcheck=all) and re-run in isolation -
+	               serial and parallel alike, repeatedly - it did not
+	               recur; the crash was resource contention from running
+	               two heavy multi-process jobs at once, not a fault in
+	               this code. Regression-swept in isolation: 28 fixtures,
+	               byte-identical.
+	- New feature: Per-channel linear calibration (adapted from RFlux's
+	               convert_rawdata(): offset + raw*gain, without its
+	               quadratic term - see below) on biomet variables read
+	               through a metadata file: _gain and _offset, applied in
+	               BiometApplyCalibration ahead of the existing unit
+	               conversion. Not new tags - biometInitEmbedded already
+	               reserved a numeric slot apiece for '_gain' and
+	               '_offset' next to every variable's label/id/instrument/
+	               unit_in, and BiometVarsType/BiometColType already carry
+	               gain/offset fields - but nothing ever read the tags
+	               into those fields or applied them; both were live,
+	               unused code, most likely staged by this feature's
+	               original author for exactly this and never finished.
+	               A channel that states neither is left untouched, so a
+	               project with no metadata file - or one that never
+	               names these two tags - sees no change.
+	               Reaches biomet imported through ReadBiometMetaFile: biomet
+	               embedded in a .ghg archive, and, once biom_use_native_header
+	               routed external biomet through the same metadata-file path
+	               (below), external biomet too.
+	               No quadratic term, unlike RFlux's own: biometInitEmbedded
+	               reserved exactly one numeric slot apiece for gain and
+	               offset, nothing more, so a quadratic coefficient has
+	               nowhere to live without widening that reservation.
+	               Validated three ways: the arithmetic itself (gain-only,
+	               offset-only, both, neither, and error-value preservation)
+	               against hand-computed expectations in an isolated driver;
+	               the full regression suite at the feature's default
+	               (unset): 28 fixtures, byte-identical; and, once 7-Zip was
+	               on PATH for testing (see below), a live embedded-.ghg run
+	               with a hand-built archive (TA raw=50/55/60, gain=2,
+	               offset=100 -> 200/210/220 K, averaging to 210 K in the
+	               biomet output) - which is what surfaced the scanCsvFile
+	               crash fixed below, since no existing fixture had
+	               use_biom=1 against embedded .ghg biomet (base_ghg itself
+	               has use_biom=0).
+	- Bug fix:     A pre-existing, never-previously-exercised SIGSEGV in
+	               embedded-.ghg biomet: ReadBiometFile called scanCsvFile -
+	               an external procedure with no explicit interface visible
+	               at that call site - without its trailing optional
+	               `missing` argument. Omitting an optional dummy argument
+	               is only well-defined when the caller has an explicit
+	               interface for the callee; without one, gfortran passes
+	               whatever was already in that argument slot, and
+	               present(missing) on the other end can come back true
+	               against a bogus address, so the write through it
+	               segfaults. init_external_biomet.f90's call to the same
+	               routine already passed the argument correctly; only the
+	               embedded-.ghg call site omitted it. Confirmed
+	               pre-existing rather than introduced this session by
+	               reproducing it against the unmodified c419a04 build, with
+	               none of this session's changes present. Fixed by passing
+	               `missing` explicitly, matching the external-biomet call
+	               site. Regression-swept: 28 fixtures, byte-identical (the
+	               fixed code path is not on any existing fixture, so this
+	               could only have changed output for embedded-.ghg-biomet
+	               projects, none of which existed in the suite before now).
+
 8.0.0 (2026-08-20)
 
     Engine:

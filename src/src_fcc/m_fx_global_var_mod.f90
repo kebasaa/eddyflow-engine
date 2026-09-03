@@ -106,6 +106,11 @@ module m_fx_global_var
     type(FluxType) :: Flux1
     type(FluxType) :: Flux2
     type(FluxType) :: Flux3
+    !> Whole-run cache for the post-flux despiking pass (test_pfd). Grown
+    !> one entry per period in ex_loop, guarded by EddyFlowProj%test_pfd so
+    !> a run with the feature off never allocates it.
+    type(PfdCacheEntryType), allocatable :: PfdCache(:)
+    integer :: PfdCacheN = 0
     integer :: nCecPairs
     type(CECResolvedPairType) :: CecPairList(MaxNumCecPairs)
     type(CECFluxType) :: CECFlux(MaxNumCecPairs)

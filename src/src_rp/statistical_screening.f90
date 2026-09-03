@@ -50,11 +50,14 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
 
     !> Spike count/removal (sr)
     if (Tests%sr) then
-        if (RPSetup%despike_vickers97) then
-            call TestSpikeDetectionVickers97(Set, nrow, printout)
-        else
-            call TestSpikeDetectionMauder13(Set, nrow, printout)
-        end if
+        select case (trim(adjustl(RPSetup%despike_meth)))
+            case ('vickers_97')
+                call TestSpikeDetectionVickers97(Set, nrow, printout)
+            case ('consecutive_diff')
+                call DespikeConsecutiveDiff(Set, nrow, printout)
+            case default
+                call TestSpikeDetectionMauder13(Set, nrow, printout)
+        end select
     end if
 
     !> Amplitude resolution and dropouts (ar, do)
@@ -74,6 +77,9 @@ subroutine StatisticalScreening(Set, nrow, ncol, Tests, printout)
 
     !> Non-steady horizontal wind speed (ns)
     if (Tests%ns) call TestNonSteadyWind(Set, nrow)
+
+    !> Extra RFlux-derived raw-signal diagnostics (rf)
+    if (Tests%rf) call TestRFluxDiagnostics(Set, nrow, printout)
 
     !> Set flags to 9 for tests not performed
     call TestsNotPerformed()

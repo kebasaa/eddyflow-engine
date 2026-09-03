@@ -32,7 +32,7 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
+subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout, raw_ok, rf_ok)
     use m_common_global_var
     implicit none
     !> in/out variables
@@ -40,6 +40,30 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
     type(QCType), intent(in) :: StDiff
     type(QCType), intent(in) :: DtDiff
     logical, intent(in) :: printout
+    !> Whether Essentials%KID/mahrt98_NR reflect the period being flagged
+    !> right now, and whether Essentials%AL1/DDI/HF5/HF10/HD5/HD10/DIP do
+    !> too - both feed 'vitale_20' only. True from RP's own call, which
+    !> just computed them; false from FCC's call, which never re-derives
+    !> per-sample raw-signal diagnostics from the ex record it reads back
+    !> - it re-emits test_rf's own columns verbatim rather than parsing
+    !> them (see pfd_handle.f90's sibling note on the same record).
+    !> rf_ok additionally needs RP's own Test%rf, a src_rp-only type this
+    !> src_common file cannot reference directly, so the caller resolves
+    !> it instead.
+    !>
+    !> This matters more than "RP's own call vs FCC's own call" suggests:
+    !> whenever EddyFlowProj%fcc_follows is set - which it is for any
+    !> project using a spectral-correction method beyond the two built-in
+    !> analytic ones (moncrieff_97, massman_00), i.e. most real projects -
+    !> RP's own QualityFlags call is the one that gets skipped (the
+    !> `else` branch below sets every flag to `error` and RP does not
+    !> even write full_output in that mode), and FCC's call - raw_ok and
+    !> rf_ok both false, always - is the one whose output the user
+    !> actually sees. So for most projects 'vitale_20' runs as ITC-only
+    !> in practice, not as the wider aggregate the tooltip's first line
+    !> promises; see VitaleFlag's own header.
+    logical, intent(in) :: raw_ok
+    logical, intent(in) :: rf_ok
     type(QCType), intent(out)   :: lQCFlag
     integer, intent(out) :: STFlg(GHGNumVar)
     integer, intent(out) :: DTFlg(GHGNumVar)
@@ -89,6 +113,20 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout)
                 call GoeckedeFlag(STFlg(w_ts),  DTFlg(w), lQCFlag%H)
                 do gas = firstGas, lastGas
                     call GoeckedeFlag(STFlg(gas), DTFlg(w), lQCFlag%gas(gas))
+                end do
+            case ('vitale_20')
+                !> Two-tier severity scheme (Vitale et al. 2020, Biogeosciences),
+                !> from a wider net of tests than the three above: see
+                !> VitaleFlag's own header for what feeds it.
+                !> RFlux's own ITC test (cleanFlux.R) is defined once, on
+                !> itc_w alone, and that same SevEr/ModEr set is reused for
+                !> all four fluxes including TAU - so this passes DTFlg(w),
+                !> not the max(u*,w) DTFlg(u) the other three methods above
+                !> use for their own, unrelated TAU convention.
+                call VitaleFlag(DTFlg(w), (/u, v, w/), raw_ok, rf_ok, lQCFlag%tau)
+                call VitaleFlag(DTFlg(w), (/ts, w, 0/), raw_ok, rf_ok, lQCFlag%H)
+                do gas = firstGas, lastGas
+                    call VitaleFlag(DTFlg(w), (/gas, w, 0/), raw_ok, rf_ok, lQCFlag%gas(gas))
                 end do
         end select
         !> If fluxes are set to error, set to error also the quality flags
@@ -300,3 +338,166 @@ subroutine FokenFlag(STFlg, DTFlg, OAFlag)
 
     if(STFlg == 9                    .or.  DTFlg == 9)                      OAFlag = 9
 end subroutine FokenFlag
+
+!***************************************************************************
+!
+! \brief       Two-tier severity flag (Vitale et al. 2020, Biogeosciences):
+!              0 (ok), 1 (moderate, RFlux's "ModEr") or 2 (severe, "SevEr").
+! \details     Built entirely from diagnostics EddyFlow already computes,
+!              regardless of which quality-flagging method is selected:
+!              - itc_flg is DTFlg(u) for TAU, DTFlg(w) for H and every gas -
+!                the same grade GTK2Flag/FokenFlag/GoeckedeFlag above use.
+!                Vitale et al. (2020)'s own 30%/100% cutoffs happen to land
+!                exactly on two of PartialFlagLF's own grade boundaries
+!                (16-30 and 31-100 split there), so the grade is reused
+!                rather than re-deriving the percentage from scratch.
+!              - Essentials%mahrt98_NR(vars(1)), Mahrt's (1998)
+!                nonstationarity ratio, computed unconditionally by
+!                RU_Mahrt_98 alongside random uncertainty. vars(1) is the
+!                flux's own slot in that array: u for TAU, ts for H, the
+!                gas slot for a gas flux - the same indexing AL1/DDI/KID
+!                use below, since RU_Mahrt_98 fills it the same way.
+!              - Essentials%KID(:), computed unconditionally.
+!              - Essentials%AL1/DDI/HF5/HF10/HD5/HD10/DIP(:), only when
+!                RP's own Test%rf is on (otherwise `error` - RFlux's own
+!                extra raw-signal diagnostic suite this ports).
+!              vars(2:3) are the other raw variables RFlux's own SevEr/
+!              ModEr unions also check for this flux (w always; v as well
+!              for TAU); 0 marks an unused slot.
+!
+!              raw_ok and rf_ok say whether Essentials reflects the period
+!              being flagged right now at all: true from RP, which just
+!              computed it; false from FCC, which never re-derives
+!              per-sample raw-signal diagnostics from the ex record it
+!              reads back (see this argument's own note on QualityFlags).
+!              Without this gate a period run through FCC would read
+!              Essentials's default-initialised (not `error`) zeros as
+!              genuine measurements - AL1 <= 0.5 would misfire as severe
+!              on literally every FCC-computed period.
+!
+!              Deliberately narrower than RFlux's cleanFlux(): its
+!              low-signal-resolution test (LSR) and its physical-range
+!              filter (hard-coded CO2/H2O/sensible-heat/momentum limits)
+!              have no EddyFlow port, and its wind-sector exclusion is left
+!              out until EddyFlow supports a time-varying sector - both
+!              genuine gaps against RFlux, not oversights here.
+!
+!              Essentials%CCF(:) (the CCF-degradation R^2 test,
+!              cross_corr_test.f90) is deliberately NOT read here either,
+!              even though it is computed under the same Test%rf gate as
+!              AL1/DDI/etc.: RFlux's own cleanFlux.R never consumes its
+!              lrt_h/lrt_fc/lrt_le/lrt_tau values in SevEr/ModEr either -
+!              qcStat.R exports them purely as diagnostic columns. Feeding
+!              it into this flag would be inventing a threshold RFlux
+!              itself never defines, not porting one.
+!
+!              Under fcc_follows this grade degrades to the ITC deviation
+!              alone, for the reason raw_ok/rf_ok's own comment on
+!              QualityFlags gives - and fcc_follows is set for any project
+!              using a spectral-correction method beyond the two built-in
+!              analytic ones, which is most real projects, not a rare
+!              corner case. Properly closing this needs FCC's ex record to
+!              carry KID/mahrt98_NR/AL1/DDI/HF5/HF10/HD5/HD10/DIP the way
+!              it already carries the ITC deviation (U_ITC/W_ITC/TS_ITC)
+!              and the stationarity percentages (TAU_SS/H_SS/F_SS) -
+!              a real follow-up, not attempted here.
+! \author      Jonathan Muller, ETH Zurich
+! \note
+! \sa          RFlux-master/R/cleanFlux.R (the SevEr_ind/ModEr_ind unions)
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine VitaleFlag(itc_flg, vars, raw_ok, rf_ok, OAFlag)
+    use m_common_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: itc_flg
+    integer, intent(in) :: vars(3)
+    logical, intent(in) :: raw_ok
+    logical, intent(in) :: rf_ok
+    integer, intent(out) :: OAFlag
+    !> local variables
+    logical :: sev_flag, mod_flag
+    real(kind = dbl) :: hz, scth1, scth2, m98
+    integer :: islot, vslot
+
+    sev_flag = .false.
+    mod_flag = .false.
+
+    if (itc_flg > 0) then
+        sev_flag = sev_flag .or. (itc_flg >= 6)
+        mod_flag = mod_flag .or. (itc_flg >= 3 .and. itc_flg <= 5)
+    end if
+
+    if (raw_ok) then
+        m98 = Essentials%mahrt98_NR(vars(1))
+        if (m98 /= error) then
+            sev_flag = sev_flag .or. (m98 > 3d0)
+            mod_flag = mod_flag .or. (m98 > 2d0 .and. m98 <= 3d0)
+        end if
+    end if
+
+    hz = Metadata%ac_freq
+    scth1 = hz * 60d0 * 30d0 * 0.04d0
+    scth2 = hz * 60d0 * 30d0 * 0.01d0
+
+    do islot = 1, 3
+        vslot = vars(islot)
+        if (vslot <= 0) cycle
+        if (.not. raw_ok) cycle
+
+        if (Essentials%KID(vslot) /= error) then
+            sev_flag = sev_flag .or. (Essentials%KID(vslot) > 50d0)
+            mod_flag = mod_flag .or. (Essentials%KID(vslot) > 30d0 .and. Essentials%KID(vslot) <= 50d0)
+        end if
+
+        if (.not. rf_ok) cycle
+
+        if (Essentials%AL1(vslot) /= error) then
+            sev_flag = sev_flag .or. (Essentials%AL1(vslot) <= 0.5d0)
+            mod_flag = mod_flag .or. (Essentials%AL1(vslot) > 0.5d0 .and. Essentials%AL1(vslot) <= 0.75d0)
+        end if
+        if (Essentials%DDI(vslot) /= error) then
+            sev_flag = sev_flag .or. (Essentials%DDI(vslot) >= hz * 300d0)
+            mod_flag = mod_flag .or. (Essentials%DDI(vslot) >= hz * 150d0 .and. Essentials%DDI(vslot) < hz * 300d0)
+        end if
+        if (Essentials%HF5(vslot) /= error .and. Essentials%HF10(vslot) /= error) then
+            sev_flag = sev_flag .or. (Essentials%HF5(vslot) > scth1 .or. Essentials%HF10(vslot) > scth2)
+            mod_flag = mod_flag .or. (Essentials%HF5(vslot) > scth1 / 2d0 .or. Essentials%HF10(vslot) > scth2 / 2d0)
+        end if
+        if (Essentials%HD5(vslot) /= error .and. Essentials%HD10(vslot) /= error) then
+            sev_flag = sev_flag .or. (Essentials%HD5(vslot) > scth1 .or. Essentials%HD10(vslot) > scth2)
+            mod_flag = mod_flag .or. (Essentials%HD5(vslot) > scth1 / 2d0 .or. Essentials%HD10(vslot) > scth2 / 2d0)
+        end if
+        if (Essentials%DIP(vslot) /= error) then
+            !> DIP is Hartigan's dip-test p-value, in [0,1] - RFlux's own
+            !> thresholds (inst_prob_test.R: sev_thr[11]=0.01,
+            !> mod_thr[11]=0.05) were 0.0 and 0.1 here, so severe could
+            !> never fire (a p-value is never < 0) and moderate fired 5x
+            !> too wide.
+            !>
+            !> RFlux's own SC_TAU_SevEr/SC_TAU_ModEr sets (cleanFlux.R)
+            !> are themselves asymmetric between u and v: SevEr includes
+            !> DIP_U but not DIP_V, ModEr includes DIP_V but not DIP_U -
+            !> W (and, for H/gas fluxes, ts/co2/h2o) get both either way.
+            !> This looks like an RFlux typo rather than a deliberate
+            !> design, but it is what cleanFlux.R actually does, so it is
+            !> ported as-is rather than "corrected" against a guess at
+            !> the intended symmetric version.
+            if (vslot /= v) &
+                sev_flag = sev_flag .or. (Essentials%DIP(vslot) < 0.01d0)
+            if (vslot /= u) &
+                mod_flag = mod_flag .or. (Essentials%DIP(vslot) >= 0.01d0 .and. Essentials%DIP(vslot) <= 0.05d0)
+        end if
+    end do
+
+    if (sev_flag) then
+        OAFlag = 2
+    else if (mod_flag) then
+        OAFlag = 1
+    else
+        OAFlag = 0
+    end if
+end subroutine VitaleFlag

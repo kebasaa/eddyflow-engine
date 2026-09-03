@@ -14,6 +14,73 @@ To run every fixture rather than one, and be told which broke:
 
     bash sweep.sh chk
 
+Whether splitting a pre-pass across worker processes changes the answer:
+
+    bash check_parallel.sh                       # base_tlag_par by default
+    bash check_parallel.sh base_other.eddyflow
+
+That runs the fixture twice through `run.sh`, once `-j 1` and once `-j 0`, and
+diffs the trees. It needs a fixture whose pre-pass window spans enough
+averaging periods for `PlanPrepassBatches` to bother splitting - on a short
+one it would compare two serial runs and pass while testing nothing, so the
+script asserts the parallel run actually split before reporting a pass.
+
+The run **log** is excluded there, and only the log: a parallel run
+concatenates each worker's own log into the parent's. Everything else must be
+byte-identical.
+
+Whether an **extended `.ghg` still processes in EddyPro**, and whether the two
+engines agree on it:
+
+    bash check_eddypro.sh                        # needs EddyPro installed
+    EDDYPRO_BIN=/path/to/eddypro_rp.exe bash check_eddypro.sh
+    KEEP=1 bash check_eddypro.sh                 # leave both engines' output behind
+
+The whole point of the extended format is that one archive processes in both
+programs. `sweep.sh` covers EddyFlow's half - `base_ghg_ext` and
+`base_ghg_campbell` - and EddyPro's half was covered by nothing: the claims
+made for it, including "189 of 189 columns bit-identical", came from hand-runs
+in a scratch directory. This makes them repeatable.
+
+Not a sweep fixture, for the same reason `check_parallel.sh` is not one: it
+needs a second program, installed at a machine-specific path, and each of its
+runs takes about half a minute. It **skips** rather than fails wherever
+EddyPro, 7-Zip or the generated archives are missing.
+
+Four checks, in order:
+
+0. The archives really carry the extension, **before anything is run**.
+   Without this a mis-generated fixture makes step 1 compare a file with
+   itself and pass while proving nothing - not hypothetical: an `ef_model`
+   negative control written during this work silently tested nothing for
+   exactly that reason, and looked like a clean pass.
+1. **EddyPro on the extended archives is bit-identical to EddyPro on the
+   classic ones** - 184 shared columns, none moving. This is the central claim
+   of the format: added keys plus a stand-in carrying the real geometry cost
+   EddyPro nothing.
+2. The renamed Campbell archive processes in EddyPro, with `master_sonic`
+   naming the **stand-in** - the only spelling EddyPro resolves.
+3. Both engines on the same archives **and the same project**: the generated
+   EddyPro project goes to EddyPro natively and to EddyFlow through the
+   importer. Handing each program its own project instead compares two
+   processing configurations and reports differences of 15 % that say nothing
+   about the archive format.
+
+`check_engines.py` compares by column NAME, since the two programs write
+different columns in different orders. It gates wind and concentrations at the
+last printed digit, the humidity chain at 5e-4 - EddyFlow's refined molecular
+weights, ~0.026 % by its changelog - and VPD at 5e-3, being `es - e` and so
+amplifying that difference about a hundredfold. Methane is reported and never
+gated: EddyPro leaves the LI-7500 signal-strength slot NaN where EddyFlow
+fills it, so gating it would be gating the bug.
+
+Anything in neither list prints under **NOT YET EXPLAINED**, which is the
+report saying nobody has accounted for it. That list is empty today.
+
+Note that `run.sh` on its own passes no `-j`, so the engine takes its default
+of every core - which means a stored reference is itself a *parallel* run.
+Use `RP_EXTRA` to pin it either way.
+
 The EddyPro import pair is diffed the same way, and is the one comparison with
 a permitted difference:
 
@@ -71,6 +138,15 @@ that before trusting a difference.
 | `base_n_gas_sa_short.eddyflow` | the same, against `sa_n_gas_short.txt` - an assessment file carrying only the first two blocks, standing in for one written before the range widened. Must fall back to the analytic factors for **every** gas and say so, not correct the missing gases with a cut-off of zero. |
 | `base_n_gas_sa_swapped.eddyflow` | `base_n_gas_sa` with its two CO2 records listed the other way round - the MIRO's and the LI-7200's swap places, columns and all - reading the *same* `sa_n_gas_fitted.txt`. Block names are ordinals over repeats of a species, so with names alone `CO2_1`'s transfer function follows the position and lands on the other analyser; an ordinary re-save in the interface is enough to reorder records. Gate: `co2_1_scf` and `co2_2_scf` must **swap** against `base_n_gas_sa` (1.551 ↔ 2.474). If they stay put, the block followed the column instead of the instrument. Run both with `sa_bin_spectra=SELF` on a machine without the shared binned-cospectra directory - without it the run falls back to Moncrieff and the gate passes vacuously, both sides reading 1.048. |
 | `base_slow*.eddyflow` | the only fixtures with **two acquisition rates**. Built by `gen_slow.py`, which writes a copy of the three hours in which the MIRO's six columns carry `-9999` on nine rows in ten - the shape a 1 Hz instrument writes into a 10 Hz file - and three projects over it. `base_slow_naive` declares nothing: the MIRO's columns are 90 % error against the row grid, over the 40 % global allowance, so `co2_1_flux`, `h2o_1_flux` and `cos_flux` are all `-9999`. That is what the engine did before the per-instrument allowance, reproduced with the current binary. `base_slow_lack` adds `instr_3_max_lack=95` and nothing else, so the columns survive without anything knowing the MIRO is slow - the gate on the project key being read at all. `base_slow` declares `instr_3_ac_freq=1.0` with a deliberately tight `instr_3_max_lack=10`, and must match `base_slow_lack` to the digit: measured against what a 1 Hz instrument owes, the column is complete. `base_slow_integr` is `base_slow` with `instr_3_integrates=1`, and it is the gate on the `w` pairing: only the **cospectra** may move, because the gas's own samples are the same either way. Measured: 32 cospectral bins differ and **not one spectral bin does**. **Data outside the repo**, like every other fixture here; re-run `gen_slow.py` to rebuild it. |
+| `base_ghg.eddyflow` | the same three hours as **LI-COR GHG archives** (`file_type=0`), which had no fixture at all. It is the only path that decompresses - `UnZipArchive` spends five shell invocations and a full extraction per file, and `ReadLicorGhgArchive` a sixth to clean up, about 170 ms all told against the same data as CSV - and the only one that rewrites `Metadata%ac_freq`, `NumCol` and `FileInterpreter` per file, since each archive carries its own metadata. The gate is that it must produce **the same fluxes as `base_tlag_opt`** over the same window, because it is the same data; run both and diff the FLUXNET files with the filename column normalised. Built by `gen_ghg.py`. Needs 7-Zip on PATH, which is what the engine shells out to; `sweep.sh` skips it rather than failing when it is absent. |
+| `base_ghg_licor.eddyflow` | **two genuine LI-COR SmartFlux archives**, committed under `data_ghg/` - the only binary test data in the repo. `base_ghg` does not cover what its name suggests: `gen_ghg.py` synthesises it around a copy of `base_site.metadata` and runs `use_biom=0`, so LI-COR's *own* embedded metadata was read by no test and embedded biomet was exercised by none at all. That is how a missing optional argument in `ReadBiometFile`'s `scanCsvFile` call - undefined behaviour that segfaulted every embedded-biomet run - survived to be found by hand. So this one is `use_pfile=0` and `use_biom=1`: an open-path LI-7500A and LI-7700 on a Metek, two archives so it spans two averaging periods and re-reads the metadata per file. Needs 7-Zip. |
+| `base_ghg_ext.eddyflow` | those same two archives with their embedded metadata rewritten into the **extended `.ghg` format**: the LI-7500A declares itself a `generic_open_path` stand-in carrying real geometry - what an archive describing an analyser EddyPro cannot name has to look like - names its true identity in `instr_2_ef_model`, and repoints every `col_N_instrument` at the stand-in. The gate is an **equality**: every *data* file must be byte-identical to `base_ghg_licor`'s, because `ef_model` puts the same LI-7500A back. Only the run log differs, by the data directory and the one line announcing the format version. The stand-in states the analyser's *true* geometry, so a run that ignored `ef_model` would compute every flux to the digit and differ only in what it calls the analyser - `co2_li7500a_1_mean` against `co2_generic_open_path_1_mean`. Confirmed by stripping `ef_model` back out: four output files move, not one of them by a value. Nothing short of a full diff sees that margin. Built by `gen_ghg_ext.py` into `data_ghg_ext/`, which is generated rather than committed; `sweep.sh` skips it until it exists. |
+| `base_ghg_campbell.eddyflow` | the other half of the extended format: a **rename** rather than a stand-in. The Metek is swapped for a Campbell **CSAT3B**, which EddyPro spells `csat3b` and EddyFlow spells `csi_csat3b`; the archive states EddyPro's spelling - the only one it takes - and names the real one in `instr_1_ef_model`. The LI-COR archives cannot show this on their own, because every instrument in them is spelt the same in both programs, so nothing here reached the canonicalising path at all. What lived behind it: `col_N_instrument` is never canonicalised, so an instrument written `csat3b_1` and canonicalised to `csi_csat3b_1` left all five sonic columns pointing at a name the instrument list no longer held - **no column bound to the sonic**, and the run died with *"exactly one selected u, v, w and one selected ts or sos are required"*, which does not mention instruments. The gate is that it runs at all and that the metadata output names `csi_csat3b_1`. Its project pins `master_sonic=csi_csat3b_1`, the **resolved** name - the third place an instrument name propagates. Built by `gen_ghg_ext.py` into `data_ghg_campbell/`. |
+| `base_ghg_burba.eddyflow` | `base_ghg_licor` with the **Burba surface-heating correction on**, and the only fixture anywhere that enables it with more than one open-path analyser - every other one runs `bu_corr=0`, which is why the fault it gates went unseen. Burba et al. (2008) is the LI-7500's *own* body warming the air in its path; `OverrideSettings` switches the correction off for a site with no LI-7500, but that is site-wide, so with an LI-7500A and an LI-7700 together it stays on and the generic per-gas WPL added the LI-7500's heating to the **methane** flux. EddyPro 6.2.2 gated it per gas - its co2 block tested the model, its ch4 and gas4 blocks never mentioned Burba - and generalising to N gases lost that test along with the blocks. Only `ch4_flux` moves between a fixed and an unfixed run: co2 and h2o are on the LI-7500 and keep their terms. |
+| `base_tlag_par.eddyflow` | `base_tlag_opt` with a **two-day** time-lag optimisation window in place of its three-hour one, and the only fixture whose pre-pass the engine will split across worker processes. Every other fixture's pre-pass covers too few averaging periods to be worth starting a process for, so `-j` had no gate here at all until this was added. The gate is the ordinary one - the run completes and every row matches its header - because the point is that a pre-pass computed in slices and reassembled is indistinguishable from one computed in a single loop. For the stronger claim, run it twice with `-j 1` and `-j 8` and diff `_optimal_timelags_*.txt`: it is byte-identical. Costs about a minute. |
+| `base_pwb_cache.eddyflow` | `base_rec` with `to_mode=1`, which is PWB **cache generation**: walk every averaging period first, then settle every time lag at once from the finished table. 39 fixtures configure PWB and not one of them set `to_mode=1`, so `PostProcessPwbTimelagCache` - the routine that decides every lag, and the S1/S2 / instrument-share / interpolate / back-fill / carry-forward / median ladder inside it - had **no coverage at all**. Three hours is enough to work the ladder: co2 and h2o carry forward, cos borrows across the analyser, and the aggregate summary picks a lender by donor count. Not long enough to split, so it is not a substitute for `check_parallel.sh`. |
+| `base_pwb_prefilt.eddyflow` | `base_pwb_cache` with the HDI pre-filter at **0.10 s**, which discards every detection every gas made and so drives all 21 rows into the terminal arm of `PostProcessPwbTimelagCache` - the one labelled `maxcov_default`. Nothing else in the suite reaches it: on `base_pwb_cache` every gas reports `fallback=0`. It is the case that tells a per-period covariance maximum apart from a carried lag wearing its label - before that was fixed, h2o came back with 18.8 s for three periods running, which a per-period maximum cannot do. |
+| `base_pwb_par.eddyflow` | `base_pwb_cache` over **twelve hours**, which is the only PWB fixture long enough for the engine to split its pre-pass - `PlanPrepassBatches` allows `nPeriods/4` workers, so 24 periods gets 6 and 7 gets none. This is the fixture the PWB half of `check_parallel.sh` is for: run under `-j 1` and `-j 0` it is byte-identical across 85 files, the half-hourly cache included. Getting there took four separate values that were carrying the streaming classifier's verdict into the settled table; the last of them - `donor_gas` on interpolated rows - was invisible until a worker process left a different stale value than the serial walk did. |
 | `base_n_gas_bin.eddyflow` | `base_n_gas` reading the binned (co)spectra it wrote itself - `run.sh` rewrites the `SELF` token between RP and FCC. Every other fixture points `sa_bin_spectra` at a shared directory that predates the N-gas binned format and carries four gases, which makes those runs the **backward**-compatibility case and is why they are right to leave gases 5+ unassessed. This is the **forward** case: N2O, CO2_2, H2O_2 and N2O_2 go from `accepted periods=0` to `1` and from an ensemble count of 0 to 5. |
 | `base_ep.eddypro` | **an EddyPro project**, not an EddyFlow one. The engine imports it on the way in and runs the result, so this is the only fixture where that path runs end to end. Its twin `base_ep_native.eddyflow` describes the same site in this format, and the two must produce **identical output** - that is the whole gate, and it is the same standard `base_rec` is held to. `run.sh` notices the extension and, after RP, switches to the `run_<which>_ep_imported.eddyflow` the engine wrote. |
 | `base_ep.metadata` | the EddyPro metadata beside it, and the reason the anemometer is a **CSAT-3B**. The Campbell keys are the only ones that were renamed (`csat3b` to `csi_csat3b`), and they appear in three places: `instr_1_model`, `col_1..4_instrument` and the project's `master_sonic`. Only the first is canonicalised by the reader, so a Gill fixture would pass whether or not the import rewrote the other two - and a real Campbell site would then lose its anemometer and be reported as a metadata fault with no cause named. |

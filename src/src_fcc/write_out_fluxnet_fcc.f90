@@ -393,10 +393,19 @@ subroutine WriteOutFluxnetFcc(lEx)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    !> LI-7700 multipliers
-    call AddFloatDatumToDataline(lEx%Mul7700%A, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Mul7700%B, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%Mul7700%C, csv_row, EddyFlowProj%err_label)
+    !> LI-7700 multipliers, one set per gas - see the RP twin.
+    do jg = 1, nGasSlots
+        call AddFloatDatumToDataline(lEx%Mul7700(gasSlots(jg))%A, &
+            csv_row, EddyFlowProj%err_label)
+    end do
+    do jg = 1, nGasSlots
+        call AddFloatDatumToDataline(lEx%Mul7700(gasSlots(jg))%B, &
+            csv_row, EddyFlowProj%err_label)
+    end do
+    do jg = 1, nGasSlots
+        call AddFloatDatumToDataline(lEx%Mul7700(gasSlots(jg))%C, &
+            csv_row, EddyFlowProj%err_label)
+    end do
 
     !> Spectral correction factors. The two water entries are LE and ET,
     !> which take the site's water record - not slot six, which holds water
@@ -476,6 +485,14 @@ subroutine WriteOutFluxnetFcc(lEx)
 
     !> Write second string from Chunks
     call AddDatum(csv_row, fluxnetChunks%s(2), separator)
+
+    !> Flux detection limit, one per configured gas. Re-emitted from the
+    !> parsed value rather than arriving inside the chunk above, because FCC
+    !> also writes it into its own full output.
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(lEx%detlim(gas), csv_row, EddyFlowProj%err_label)
+    end do
 
     !> Foken's QC details
     call AddFloatDatumToDataline(lEx%TAU_SS, csv_row, EddyFlowProj%err_label)

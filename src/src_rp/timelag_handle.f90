@@ -55,6 +55,11 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     logical :: cache_found
     logical :: cache_default_used
     logical :: cache_hit(E2NumVar)
+    !> Scratch for the per-period covariance maximum. Only mc_used is kept;
+    !> the other three are what ApplyCovMaxDefaultFallback insists on writing.
+    real(kind = dbl) :: mc_actual, mc_used
+    integer :: mc_row
+    logical :: mc_def
     logical :: donor_ok
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
@@ -160,6 +165,27 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     cycle
                 end if
                 call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
+
+                !> This period's covariance maximum, taken whether or not
+                !> anything here needs it. It is the terminal fallback the
+                !> settled table reaches for when no evidence at all got to
+                !> a period, and it has to be a property of THIS period:
+                !> the arm used to hand back whatever the streaming pass
+                !> had settled on, which depends on where the pass began.
+                !> See step 8 of PostProcessPwbTimelagCache.
+                !>
+                !> Unconditionally, and that costs about 2% of a PWB run -
+                !> measured on base_pwb_prefilt, 44.6 s against 45.5 s, best
+                !> of three interleaved. It could be skipped for a row that
+                !> is S1 and survives the pre-filter, since such a row cannot
+                !> reach step 8, and every term in that test is a property of
+                !> this period alone. It is not, because getting the test
+                !> wrong costs a silent fall back to the carried lag this
+                !> exists to remove, and 2% is not worth that risk.
+                call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, .true., &
+                    def_rl(j), min_rl(j), max_rl(j), &
+                    mc_actual, mc_used, mc_row, mc_def)
+                lPwbResult%maxcov_lag = mc_used
 
                 if (pwb_success .and. .not. lPwbResult%edge_pinned) then
                     if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
@@ -419,6 +445,28 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             call CovarianceW(ColW, ColTC, size(ColTC), &
                 RowLags(j), Stats%tc_cov_tl(j))
         end do
+
+        !> Flux detection limit, Wienhold et al. (1994).
+        !>
+        !> Here, and not from the main program after this routine returns,
+        !> because the noise windows are read off the cross-covariance
+        !> function and that needs the series on their raw alignment. The
+        !> block below shifts Set by each gas's lag, after which the function
+        !> this measures no longer exists.
+        call FluxDetectionLimit(Set, nrow, ncol)
+
+        !> Conditional borrowing, Nemitz et al. (2018). After the detection
+        !> limit, which it tests against, and before the shift below, which
+        !> is what makes a borrowed lag take effect.
+        !>
+        !> The limits it reads were measured at each gas's pre-borrow lag.
+        !> That is not worth recomputing: the windows sit a hundred seconds
+        !> off the peak by default, and moving their centre by the second or
+        !> two a borrow changes it by leaves the scatter out there the same.
+        !> ActTLag is deliberately not passed: it reports what each gas's own
+        !> maximisation found, and borrowing must leave that alone.
+        call BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
+            TLag, DefTlagUsed)
     end if
 
     if (.not. skip_apply) then
@@ -508,15 +556,35 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     integer :: i = 0
     integer :: ii = 0
     integer :: N2
+    integer :: k
+    integer :: nlag
     real(kind = dbl), allocatable :: ShSet(:, :)
     real(kind = dbl), allocatable :: ShPrimes(:, :)
+    real(kind = dbl), allocatable :: CovSeries(:)
     real(kind = dbl) :: CovMat(2,2)
     real(kind = dbl) :: Cov
     real(kind = dbl) :: MaxCov
+    real(kind = dbl) :: score
+    real(kind = dbl) :: baseline
+    logical :: debaseline
 
     Cov = 0.d0
     MaxCov = 0.d0
     TLag = 0.d0
+    !> Assigned unconditionally now. It used to be written only inside the
+    !> comparison below, so a window in which nothing beat the initial zero -
+    !> every covariance error-coded, or all of them exactly zero - returned an
+    !> undefined row lag that the caller then shifted the series by.
+    RLag = lagmin
+
+    !> Pass one: the cross-covariance across the window, kept.
+    !>
+    !> It used to be a running argmax over a scalar, which is all the plain
+    !> maximum needs. The baseline-subtracted criterion needs both ends of the
+    !> function present at once to draw the chord between them, and by the
+    !> time the far end has been computed the near one is long gone.
+    nlag = lagmax - lagmin + 1
+    allocate(CovSeries(nlag))
     do i = lagmin, lagmax
         N2 = nrow - abs(i)
         allocate(ShSet(N2, 2))
@@ -548,16 +616,49 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
 
         call CovarianceMatrixNoError(ShPrimes, size(ShPrimes, 1), size(ShPrimes, 2), CovMat, error)
         Cov = CovMat(1, 2)
+        CovSeries(i - lagmin + 1) = Cov
 
-        !> Max cov and actual time lag
-        if (abs(Cov) > MaxCov) then
-            MaxCov = abs(Cov)
-            TLag = dble(i) / Metadata%ac_freq
-            RLag = i
-        end if
         deallocate(ShSet)
         deallocate(ShPrimes)
     end do
+
+    !> Whether the chord can be drawn at all. Both ends have to exist, and
+    !> two points make a line through themselves and nothing else, so a
+    !> window of fewer than three lags has no interior to measure against.
+    debaseline = RPSetup%covmax_debaseline .and. nlag >= 3
+    if (debaseline) debaseline = CovSeries(1) /= error .and. CovSeries(nlag) /= error
+
+    !> Pass two: pick the lag.
+    do k = 1, nlag
+        !> An error-coded covariance is no covariance. It used to be compared
+        !> like any other, and since the code is -9999 its magnitude beat
+        !> every real covariance in the window - a lag at which the two series
+        !> shared no valid sample won the maximisation outright.
+        if (CovSeries(k) == error) cycle
+
+        if (debaseline) then
+            !> Departure from the straight line joining the two ends of the
+            !> window. A weak flux often sits on a sloping cross-covariance -
+            !> from a trend, from a neighbouring stronger correlation - and
+            !> the plain maximum then lands on whichever end the slope is
+            !> highest at rather than on the peak. Subtracting the chord
+            !> leaves the peak and takes the slope away.
+            baseline = CovSeries(1) &
+                + (CovSeries(nlag) - CovSeries(1)) * dble(k - 1) / dble(nlag - 1)
+            score = dabs(CovSeries(k) - baseline)
+        else
+            score = dabs(CovSeries(k))
+        end if
+
+        !> Strictly greater, so the earliest lag wins a tie, as before.
+        if (score > MaxCov) then
+            MaxCov = score
+            TLag = dble(lagmin + k - 1) / Metadata%ac_freq
+            RLag = lagmin + k - 1
+        end if
+    end do
+
+    deallocate(CovSeries)
 end subroutine CovMax
 
 
@@ -592,7 +693,17 @@ subroutine CovarianceW(col1, col2, nrow, lag, cov)
     sum2 = 0d0
     Cov = 0d0
     N2 = 0
-    do i = 1, nrow - lag
+    !> Either sign of lag. This used to run `do i = 1, nrow - lag` and index
+    !> col2(i+lag) unguarded, which reads past both ends of the array for a
+    !> negative lag; both callers of the day guarded with `if (lag <= 0)
+    !> cycle` and so never met it. The detection limit does: its noise
+    !> windows sit either side of the gas's own lag, and the earlier one is
+    !> routinely negative - a gas at 16 s sampled 100 s before it is at -84 s.
+    !> The offsets are picked so that i and i+lag are both in range for every
+    !> term, which for a negative lag means starting at 1-lag rather than 1.
+    !> A positive lag walks the same terms in the same order as before, so
+    !> nothing an existing caller asks for has moved.
+    do i = max(1, 1 - lag), min(nrow, nrow - lag)
         if (col1(i) /= error .and. col2(i+lag) /= error) then
             N2 = N2 + 1
             Cov = Cov + col1(i) * col2(i+lag)

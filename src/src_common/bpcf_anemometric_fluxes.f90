@@ -92,7 +92,7 @@ subroutine BPCF_AnemometricFluxes(measuring_height, displ_height, loc_var_presen
     end if
 
     !> analytical cospectra after Moncrieff et al. (1997, JH)
-    call CospectraMoncrieff97(nf, kf, Cospectrum, zL, nfreq)
+    call CospectralModel(nf, kf, Cospectrum, zL, nfreq)
 
     if (EddyFlowProj%hf_meth /= 'none') then
         !> Analytical low-pass transfer function

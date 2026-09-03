@@ -100,7 +100,7 @@ subroutine Fluxes23(lEx)
                     !> if analyzer is /= LI-7500
                     Flux2%E = (1d0 + mu * lEx%sigma) * Flux1%E &
                             + (1d0 + mu * lEx%sigma) &
-                            * (Flux1%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar) &
+                            * (Flux1%H + BurbaHeatFor(wsl)) &
                             * lEx%RHO%w / (lEx%RhoCp * lEx%Ta)
             else
                 Flux2%E = error
@@ -227,7 +227,7 @@ subroutine Fluxes23(lEx)
             .and. Flux1%H /= error .and. lEx%sigma /= error) then
             Flux3%E = (1d0 + mu * lEx%sigma) * Flux1%E &
                 + (1d0 + mu * lEx%sigma) &
-                * (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar)&
+                * (Flux3%H + BurbaHeatFor(wsl))&
                 * lEx%RHO%w / (lEx%RhoCp * lEx%Ta)
         else
             Flux3%E = Flux2%E
@@ -355,10 +355,19 @@ subroutine Fluxes23(lEx)
     if (lEx%L /= 0d0 .and. lEx%L /= error) &
         lEx%zL = (lEx%instr(sonic)%height - lEx%disp_height) / lEx%L
 
-    !> scale temperature(T*)
-    !> If condition fails, previous value (from Fluxes0) holds
+    !> scale temperature(T*), see e.g. Foken and Wichura (1996)
+    !>
+    !> The minus is the definition - T* = -(w'T')/u* - not a convention. With
+    !> a downward heat flux w'T' is negative and T* positive; without it this
+    !> line returned the negative of the quantity its own header names, on
+    !> every run that reached FCC, and overwrote the correctly signed value
+    !> RP had written into the essentials record. Both RP sites (Fluxes0_rp,
+    !> Fluxes23_rp) always carried it.
+    !>
+    !> If the condition fails, RP's value from the essentials record holds:
+    !> FCC has no Fluxes0 of its own to fall back on.
     if (Flux3%ustar > 0d0 .and. Flux3%H /= error .and. lEx%RhoCp > 0d0) &
-        lEx%Tstar = Flux3%H / (lEx%RhoCp * Flux3%ustar)
+        lEx%Tstar = - Flux3%H / (lEx%RhoCp * Flux3%ustar)
 
     !> Bowen ration (Bowen, 1926, Phyis Rev)
     if (Flux3%LE /= 0d0 .and. Flux3%LE /= error .and. Flux3%H /= error) then
@@ -502,6 +511,25 @@ contains
     end subroutine PerHygrometerFluxes
 
     !***********************************************************************
+    !> The instrument-body heating terms, for the gas being corrected.
+    !>
+    !> Burba et al. (2008) is the LI-7500's own body warming the air in its
+    !> path, so it belongs only to a gas that analyser measures.
+    !> OverrideSettings switches the correction off for a site with no LI-7500,
+    !> but that is site-wide: with an LI-7500 and an LI-7700 side by side it
+    !> stays on, and the generic per-gas WPL was adding the LI-7500's heating
+    !> to the methane flux. See the RP twin.
+    real(kind = dbl) function BurbaHeatFor(gas)
+        implicit none
+        integer, intent(in) :: gas
+
+        if (index(lEx%gas_instr(gas)%model, 'li7500') /= 0) then
+            BurbaHeatFor = lEx%Burba%h_top + lEx%Burba%h_bot + lEx%Burba%h_spar
+        else
+            BurbaHeatFor = 0d0
+        end if
+    end function BurbaHeatFor
+
     !> Level 2 flux of one gas: the WPL / density correction.
     !>
     !> Mirrors Level2GasFlux in src_rp/fluxes23_rp.f90, reading from the ex
@@ -523,6 +551,7 @@ contains
         real(kind = dbl), intent(in) :: sigma_gas
         real(kind = dbl), intent(in) :: rhow_gas
         real(kind = dbl) :: wpl
+        real(kind = dbl) :: dens_to_chi
 
         if (Flux1%gas(gas) == error) then
             Flux2%gas(gas) = error
@@ -572,15 +601,42 @@ contains
             end if
             Flux2%gas(gas) = wpl
         else
-            !> Open path, after e.g. Burba et al. (2008, GCB, eq. 1)
-            wpl = Flux1%gas(gas)
-            if (Flux3%E /= error .and. lEx%RHO%d > 0d0 .and. sigma_gas /= error) &
-                wpl = wpl + mu * Flux3%E * lEx%d(gas) * 1d3 &
-                    / ((1d0 + mu * sigma_gas) * lEx%RHO%d)
-            if (Flux3%H /= error .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) &
-                wpl = wpl + (Flux3%H + lEx%Burba%h_top + lEx%Burba%h_bot &
-                    + lEx%Burba%h_spar) * lEx%d(gas) * 1d3 / (lEx%RhoCp * lEx%Ta)
-            Flux2%gas(gas) = wpl
+            !> Both terms want chi/Va and reach it from the molar density, and
+            !> the factor that recovers it differs by species: a trace gas has
+            !> d = chi/Va * 1d-3 and water d = chi/Va. A bare 1d3 here is the
+            !> trace-gas case, and a SECOND hygrometer comes through this arm
+            !> as a trace gas - so its open-path WPL term was a thousandfold
+            !> too large. The RP twin was fixed for this; this one was not.
+            if (GasSlotIsWater(gas)) then
+                dens_to_chi = 1d0
+            else
+                dens_to_chi = 1d3
+            end if
+
+            if (IsLi7700(lEx%gas_instr(gas)%model)) then
+                !> Webb et al. (1980) scaled by the LI-7700's own
+                !> spectroscopic multipliers - see the RP twin for why B and C
+                !> went missing and what it cost.
+                wpl = Flux1%gas(gas)
+                if (E_nowpl /= error .and. lEx%RHO%d > 0d0) &
+                    wpl = wpl + lEx%Mul7700(gas)%B * mu * lEx%d(gas) * dens_to_chi &
+                        * E_nowpl / lEx%RHO%d
+                if (Flux3%H /= error .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
+                    .and. sigma_gas /= error) &
+                    wpl = wpl + lEx%Mul7700(gas)%C * (1d0 + mu * sigma_gas) * Flux3%H &
+                        * lEx%d(gas) * dens_to_chi / (lEx%RhoCp * lEx%Ta)
+                Flux2%gas(gas) = lEx%Mul7700(gas)%A * wpl
+            else
+                !> Open path, after e.g. Burba et al. (2008, GCB, eq. 1)
+                wpl = Flux1%gas(gas)
+                if (Flux3%E /= error .and. lEx%RHO%d > 0d0 .and. sigma_gas /= error) &
+                    wpl = wpl + mu * Flux3%E * lEx%d(gas) * dens_to_chi &
+                        / ((1d0 + mu * sigma_gas) * lEx%RHO%d)
+                if (Flux3%H /= error .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0) &
+                    wpl = wpl + (Flux3%H + BurbaHeatFor(gas)) &
+                        * lEx%d(gas) * dens_to_chi / (lEx%RhoCp * lEx%Ta)
+                Flux2%gas(gas) = wpl
+            end if
         end if
 
         if (.not. lEx%var_present(gas)) Flux2%gas(gas) = error

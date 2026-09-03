@@ -1556,6 +1556,61 @@ end subroutine AutoCecPairs
 !              pairing across two analysers is a real answer with a real caveat
 !              rather than an error.
 !***************************************************************************
+!
+! \brief       The carbon dioxide record on the same analyser as this gas,
+!              or 0 if that analyser measures none.
+! \author      Jonathan Muller
+! \note        Deliberately NOT the shape of CecWaterOnAnalyserOf below, which
+!              falls back to the designated hygrometer when its own analyser
+!              has no water. There is nothing to fall back to here: the point
+!              of borrowing a time lag from carbon dioxide is that the two
+!              gases travelled down the SAME tube and share a transport delay.
+!              Another instrument's carbon dioxide shares nothing with this
+!              gas but a clock, and taking its lag would be worse than taking
+!              the nominal default. Zero means "no such gas", and the caller
+!              must treat that as "cannot borrow".
+! \sa          CecWaterOnAnalyserOf, SameAnalyser
+!***************************************************************************
+integer function CarbonOnAnalyserOf(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+
+    integer :: gas
+    integer :: rec
+    integer :: own
+    character(32) :: analyser
+    character(32) :: other
+    character(32) :: species
+
+    CarbonOnAnalyserOf = 0
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+
+    own = gas_slot - firstGas + 1
+    if (own < 1 .or. own > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    analyser = EddyFlowProj%gas(own)%instr
+    call lowercase(analyser)
+    !> An unnamed analyser cannot be matched against, and matching every
+    !> unnamed one to every other would pair gases that share nothing.
+    if (len_trim(analyser) == 0) return
+    if (trim(analyser) == 'none' .or. trim(analyser) == 'other') return
+
+    do gas = firstGas, lastGas
+        rec = gas - firstGas + 1
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (EddyFlowProj%gas(rec)%col <= 0) cycle
+        species = EddyFlowProj%gas(rec)%var
+        call uppercase(species)
+        if (trim(adjustl(species)) /= 'CO2') cycle
+        other = EddyFlowProj%gas(rec)%instr
+        call lowercase(other)
+        if (trim(other) /= trim(analyser)) cycle
+        CarbonOnAnalyserOf = gas
+        return
+    end do
+end function CarbonOnAnalyserOf
+
+!***************************************************************************
 integer function CecWaterOnAnalyserOf(gas_slot)
     use m_common_global_var
     implicit none

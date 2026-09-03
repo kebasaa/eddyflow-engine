@@ -34,7 +34,7 @@
 ! \todo
 !***************************************************************************
 subroutine UnZipArchive(ZipFile, MetaExt, DataExt, MetaFile, DataFile, &
-    BiometFile, BiometMetaFile, skip_file)
+    BiometFile, BiometMetaFile, skip_file, WorkDir, prefetched)
     use m_common_global_var
     implicit none
     !> in/out variables
@@ -46,8 +46,15 @@ subroutine UnZipArchive(ZipFile, MetaExt, DataExt, MetaFile, DataFile, &
     character(*), intent(out) :: BiometFile
     character(*), intent(out) :: BiometMetaFile
     logical, intent(out) :: skip_file
+    !> The directory to work in, and whether the archive is already extracted
+    !> there. Both are required rather than optional because this is an
+    !> external procedure with no explicit interface, and an optional argument
+    !> without one is not something the standard defines - gfortran infers the
+    !> interface from whichever call it compiles first and rejects the other.
+    character(*), intent(in) :: WorkDir
+    logical, intent(in) :: prefetched
     !> local variables
-    integer :: i
+
     integer :: io_status
     integer :: del_status
     integer :: unzip_status
@@ -61,6 +68,10 @@ subroutine UnZipArchive(ZipFile, MetaExt, DataExt, MetaFile, DataFile, &
     call clearstr(DataFile)
     call clearstr(BiometFile)
     call clearstr(BiometMetaFile)
+
+    !> Already extracted by something else: skip the deleting and 7-Zip and
+    !> go straight to reading back what is there.
+    if (prefetched) go to 100
 
     !> Delete residual files in tmp folder
     comm = trim(comm_del) // ' "' // trim(adjustl(TmpDir)) &
@@ -85,65 +96,57 @@ subroutine UnZipArchive(ZipFile, MetaExt, DataExt, MetaFile, DataFile, &
     end if
     call clearstr(comm)
 
-    !> Metadata files
+    !> Everything below reads back what is now in WorkDir, and is the same
+    !> whether this routine extracted it or something else did.
+100 continue
+
+    !> One listing of everything the archive held, rather than one per
+    !> extension. Both were only ever asking "what is in here", and each cost a
+    !> shell of its own - about 50 ms, against the 100 ms the extraction itself
+    !> takes. Classifying the names here instead is free.
     comm = trim(adjustl(comm_dir)) // ' "' &
-        // trim(adjustl(TmpDir)) // '"*.' &
-        // trim(adjustl(MetaExt))  // &
-        ' > "' // trim(adjustl(TmpDir)) // 'meta_flist.tmp" ' &
+        // trim(adjustl(WorkDir)) // '"*.*' &
+        // ' > "' // trim(adjustl(WorkDir)) // 'arch_flist.tmp" ' &
         // comm_err_redirect
     dir_status = system(comm)
 
-    open(udf, file = trim(adjustl(TmpDir)) // 'meta_flist.tmp', &
-        iostat = io_status)
     MetaFile = 'none'
+    DataFile = 'none'
     BiometMetaFile = 'none'
+    BiometFile = 'none'
+
+    open(udf, file = trim(adjustl(WorkDir)) // 'arch_flist.tmp', &
+        iostat = io_status)
     if (io_status == 0) then
-        do i = 1, 2
+        do
             read(udf, '(a256)', iostat = io_status) dataline
-            if(io_status == 0) then
-                if (index(dataline, '-biomet.metadata') /= 0) then
-                    BiometMetaFile = dataline(1:len_trim(dataline))
-                    call StripFileName(BiometMetaFile)
-                else
-                    MetaFile = dataline(1:len_trim(dataline))
-                    call StripFileName(MetaFile)
-                end if
+            if (io_status /= 0) exit
+            if (len_trim(dataline) == 0) cycle
+            !> The listing names itself, and the ready flag a prefetch leaves.
+            if (index(dataline, '.tmp') /= 0) cycle
+            if (index(dataline, 'ready.flag') /= 0) cycle
+
+            if (index(dataline, '-biomet.' // trim(adjustl(MetaExt))) /= 0) then
+                BiometMetaFile = dataline(1:len_trim(dataline))
+                call StripFileName(BiometMetaFile)
+            else if (index(dataline, '-biomet.' // trim(adjustl(DataExt))) /= 0) then
+                BiometFile = dataline(1:len_trim(dataline))
+                call StripFileName(BiometFile)
+            else if (index(dataline, '.' // trim(adjustl(MetaExt))) /= 0) then
+                MetaFile = dataline(1:len_trim(dataline))
+                call StripFileName(MetaFile)
+            else if (index(dataline, '.' // trim(adjustl(DataExt))) /= 0) then
+                DataFile = dataline(1:len_trim(dataline))
+                call StripFileName(DataFile)
             end if
         end do
     end if
     close(udf, status = 'delete')
+
     TmpString = MetaFile
     call basename(TmpString, MetaFile, slash)
     TmpString = BiometMetaFile
     call basename(TmpString, BiometMetaFile, slash)
-
-    !> Raw data file
-    comm = trim(adjustl(comm_dir)) // ' "' &
-        // trim(adjustl(TmpDir)) // '"*.' &
-        // trim(adjustl(DataExt))  // &
-        ' > "' // trim(adjustl(TmpDir)) // 'data_flist.tmp" ' &
-        // comm_err_redirect
-    dir_status = system(comm)
-
-    open(udf, file = trim(adjustl(TmpDir)) // 'data_flist.tmp', &
-        iostat = io_status)
-    DataFile = 'none'
-    BiometFile = 'none'
-    if (io_status == 0) then
-        do i = 1, 2
-            read(udf, '(a128)', iostat = io_status) dataline
-            if(io_status == 0) then
-                if (index(dataline, '-biomet.data') /= 0) then
-                    BiometFile = dataline(1:len_trim(dataline))
-                    call StripFileName(BiometFile)
-                else
-                    DataFile = dataline(1:len_trim(dataline))
-                    call StripFileName(DataFile)
-                end if
-            end if
-        end do
-    end if
-    close(udf, status = 'delete')
     TmpString = DataFile
     call basename(TmpString, DataFile, slash)
     TmpString = BiometFile

@@ -31,6 +31,29 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[1] / "src" / "src_common" / "m_common_global_var.f90"
 
 NUM_COLS = 200
+
+# --------------------------------------------------------------------------
+# Keys EddyFlow adds beyond what LI-COR's own software writes - the extended
+# .ghg format, documented in eddyflow-documentation as "Extended GHG Files".
+#
+# APPENDED to the end of their block, never inserted, so every existing offset
+# in read_metadata_file.f90 keeps its value and only the stride grows. That is
+# the whole reason these are declared here rather than hand-placed: a key
+# written into the middle of a block silently repoints every read after it.
+#
+# Deduplicated against what the file already has, so re-running the generator
+# after the keys have landed is a no-op rather than adding them twice.
+# --------------------------------------------------------------------------
+
+#: Declares the archive as extended. EddyPro cannot act on it - unknown keys
+#: are ignored, so this is for EddyFlow's own reasoning and for a human
+#: reading the file, not a compatibility gate.
+EXTRA_AC_HEADER = ["ghg_format_version"]
+
+#: The instrument's TRUE model, where instr_<k>_model states a generic
+#: stand-in that EddyPro will accept. EddyFlow prefers this and re-derives the
+#: manufacturer from it.
+EXTRA_AC_INSTR = ["ef_model"]
 TAG_RE = re.compile(r"(A[NC]Tags)\((\d+)\)%Label\s*/\s*'([^']*)'\s*/")
 
 # Markers delimiting the two generated regions. The generator rewrites strictly
@@ -88,7 +111,13 @@ def build(n_instr, tables):
     # not hard-code how many header tags there are.
     an_instr = suffixes(an, "instr_1_")
     an_col = suffixes(an, "col_1_")
-    ac_instr = suffixes(ac, "instr_1_")
+    #: What the FILE currently holds, kept separate from the extended list
+    #: below: cur_instr is worked out by counting keys per instrument block,
+    #: and counting against the extended length would find no complete block
+    #: on the run that first adds a key - which would take the whole
+    #: instrument region for `ac_middle` and duplicate it.
+    file_ac_instr = suffixes(ac, "instr_1_")
+    ac_instr = file_ac_instr + [s for s in EXTRA_AC_INSTR if s not in file_ac_instr]
     ac_col = suffixes(ac, "col_1_")
 
     first_an_instr = min(i for i, l in an.items() if l.startswith("instr_1_"))
@@ -105,14 +134,15 @@ def build(n_instr, tables):
         for l in ac.values() if re.match(r"instr_(\d+)_", l)
     })
     full = [k for k in instr_nums
-            if sum(1 for l in ac.values() if l.startswith(f"instr_{k}_")) == len(ac_instr)]
+            if sum(1 for l in ac.values() if l.startswith(f"instr_{k}_")) == len(file_ac_instr)]
     cur_instr = max(full) if full else 0
 
     an_header = [an[i] for i in range(1, first_an_instr)]
     ac_header = [ac[i] for i in range(1, first_ac_instr)]
+    ac_header += [l for l in EXTRA_AC_HEADER if l not in ac_header]
     # Whatever sits between the instrument block and the column block (today
     # just 'data_label'); kept so its position stays correct after widening.
-    old_ac_instr_end = first_ac_instr + cur_instr * len(ac_instr)
+    old_ac_instr_end = first_ac_instr + cur_instr * len(file_ac_instr)
     ac_middle = [ac[i] for i in range(old_ac_instr_end, first_ac_col)]
 
     an_entries, idx = [], 1
@@ -150,9 +180,14 @@ def build(n_instr, tables):
         "nan": nan, "nac": nac,
         "an_instr_leap": len(an_instr), "ac_instr_leap": len(ac_instr),
         "an_col_leap": len(an_col), "ac_col_leap": len(ac_col),
-        "an_instr_origin": first_an_instr, "ac_instr_origin": first_ac_instr,
+        #: Origins of what was just EMITTED, not of what was parsed. Those
+        #: differ the moment a header key is added: first_ac_instr still
+        #: describes the old file, and read_metadata_file.f90 would be told a
+        #: stride origin one short of the table it is about to read.
+        "an_instr_origin": len(an_header) + 1,
+        "ac_instr_origin": len(ac_header) + 1,
         "an_col_origin": an_col_origin, "ac_col_origin": ac_col_origin,
-        "ac_middle_origin": first_ac_instr + n_instr * len(ac_instr),
+        "ac_middle_origin": len(ac_header) + 1 + n_instr * len(ac_instr),
         "sentinel_idx": sentinel_idx,
     }
 

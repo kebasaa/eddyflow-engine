@@ -49,7 +49,6 @@ subroutine OutputSpectralAssessmentResults(nbins)
     integer :: cls
     integer :: gas
     integer :: month
-    integer :: open_status
     integer :: mkdir_status
     real(kind = dbl), external :: func
     real(kind = dbl), external :: kaimal
@@ -159,8 +158,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // SA_FilePadding  &
                 // Timestamp_FilePadding // TxtExt
             FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
-            open(udf, file = FilePath, iostat = open_status)
-            if (open_status /= 0) call ExceptionHandler(64)
+            call OpenSpectralOutputFile(FilePath)
 
             write(udf,'(a)') 'Transfer_function_parameters_(TFP)_for_&
                 &IIR-shaped_filter_(see_Ibrom_et_al._2007_AFM).'
@@ -384,8 +382,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                 // H2OAvrg_FilePadding // Timestamp_FilePadding // CsvExt
             FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
-            open(udf, file = FilePath, iostat = open_status)
-            if (open_status /= 0) call ExceptionHandler(64)
+            call OpenSpectralOutputFile(FilePath)
 
             write(udf,'(a)') 'Binned_average_and_predicted_H2O_spectra_sorted_by_RH-class.'
             write(udf,'(a)') ',RH=0.1,,,,RH=0.2,,,,RH=0.3,,,,RH=0.4,,,,RH=0.5,,,,RH=0.6&
@@ -490,8 +487,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
                 Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // PASGAS_Avrg_FilePadding  &
                     // Timestamp_FilePadding // CsvExt
                 FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
-                open(udf, file = FilePath, iostat = open_status)
-                if (open_status /= 0) call ExceptionHandler(64)
+                call OpenSpectralOutputFile(FilePath)
                 write(udf,'(a)') 'Binned_average_and_predicted_spectra_for_passive_gases'
                 !> Add number of spectra per class
                 dataline = ''
@@ -608,8 +604,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             Filename = trim(adjustl(EddyFlowProj%id)) &
                 // Cosp_FilePadding // Timestamp_FilePadding // CsvExt
             FilePath = trim(adjustl(SpecDir)) // trim(adjustl(Filename))
-            open(udf, file = FilePath, iostat = open_status)
-            if (open_status /= 0) call ExceptionHandler(64)
+            call OpenSpectralOutputFile(FilePath)
 
             write(udf,'(a)') 'Binned_average_cospectra_sorted_by_time_of_day.'
             write(udf,'(a)') ',00:00-02:59,,,,,03:00-5:59,,,,,06:00-08:59&
@@ -705,8 +700,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             // Timestamp_FilePadding // CsvExt
         FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
 
-        open(udf, file = FilePath, iostat = open_status)
-        if (open_status /= 0) call ExceptionHandler(64)
+        call OpenSpectralOutputFile(FilePath)
 
         write(udf,'(a)') 'Ensemble_cospectra,fitted_Massman_cospectra_and_Kaimal_cospectra.'
         write(udf,'(a)') 'Massman_model:'
@@ -877,6 +871,36 @@ end subroutine OutputSpectralAssessmentResults
 ! \deprecated
 ! \test
 ! \todo
+!***************************************************************************
+!
+! \brief       Open a spectral-assessment output file, and make sure a failure
+!              cannot end up somewhere nobody will look.
+! \note        Every caller follows this with a long run of unguarded writes.
+!              A write to an unconnected unit does not fail: gfortran connects
+!              it to fort.<udf> in the working directory and puts the whole
+!              file there. udf is the millisecond the run started in, so the
+!              name carries no meaning either - that is how 36 KB of ensemble
+!              cospectra came to sit in the repository root while the log said
+!              they had been dropped.
+!
+!              A scratch unit takes the writes instead and the caller's close
+!              discards them, which makes Error(64) true. Returning from the
+!              caller would be wrong: these are five separate output files and
+!              one of them failing to open says nothing about the next.
+!***************************************************************************
+subroutine OpenSpectralOutputFile(FilePath)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: FilePath
+    integer :: open_status
+
+    open(udf, file = FilePath, iostat = open_status)
+    if (open_status == 0) return
+
+    call ExceptionHandler(64)
+    open(udf, status = 'scratch')
+end subroutine OpenSpectralOutputFile
+
 !***************************************************************************
 subroutine GetFnIndex(LocSpec, nrow, ncol, goodj, pick)
     use m_fx_global_var

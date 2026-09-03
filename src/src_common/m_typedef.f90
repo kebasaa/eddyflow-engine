@@ -167,6 +167,12 @@ module m_typedef
 
     integer, parameter :: MaxGasClasses = 12
     integer, parameter :: toMaxH2OClass = 20
+    !> How many time-lag determinations an RH class needs before its lag is
+    !> fitted rather than interpolated from its neighbours. Shared, because
+    !> the report states this number in words and used to state 30 while the
+    !> optimiser used 15 - a discrepancy nobody could see while the count
+    !> column beside it printed uninitialised memory.
+    integer, parameter :: toMinH2OClassN = 15
     integer, parameter :: MaxNumWSect = 36
     integer, parameter :: MaxNumWdfSectors = 16
 
@@ -531,6 +537,15 @@ module m_typedef
         real(kind = dbl) :: max
         real(kind = dbl) :: a
         real(kind = dbl) :: b
+        !> Spectroscopic coefficients after Peltola et al. (2014), describing
+        !> how water vapour broadens this column's absorption lines:
+        !> the analyser's sensitivity scales as 1 + spectro_a*chi_q +
+        !> spectro_b*chi_q^2. Both zero - the default, and what every file
+        !> written before the key existed says - makes the correction the
+        !> identity. Distinct from a and b above, which are the linear
+        !> calibration gain and offset.
+        real(kind = dbl) :: spectro_a
+        real(kind = dbl) :: spectro_b
         real(kind = dbl) :: def_tl
         real(kind = dbl) :: min_tl
         real(kind = dbl) :: max_tl
@@ -662,6 +677,12 @@ module m_typedef
         real(kind = dbl) :: ac_freq
         real(kind = dbl) :: file_length
         character(256) :: sitename
+        !> The extended-.ghg format version this file declares, empty for a
+        !> classic LI-COR archive. Recorded rather than acted on: the extended
+        !> keys are additive and each one falls back on its own, so nothing
+        !> needs to branch on the version to read the file correctly. It is
+        !> here so a run can SAY what it was handed.
+        character(16) :: ghg_format_version
         type(ColType) :: E2Col(E2NumVar)
     end type MetadataType
 
@@ -675,6 +696,13 @@ module m_typedef
         real(kind = dbl) :: canopy_height
         real(kind = dbl) :: d
         real(kind = dbl) :: z0
+        !> Time-varying invalid wind-sector exclusion (adapted from RFlux's
+        !> SA_INVALID_WIND_SECTOR_c*/w* site-metadata fields), up to three
+        !> sectors as center/width degrees. `error` in wdf_center(1) means
+        !> "this record does not touch wind-sector exclusion" - the static
+        !> project setting stands; see ExtractUsableMetadataFromDynamic.
+        real(kind = dbl) :: wdf_center(3)
+        real(kind = dbl) :: wdf_width(3)
         type(InstrumentType) :: Instr(E2NumVar)
     end type DynMDType
 
@@ -774,6 +802,22 @@ module m_typedef
         character(32) :: master_sonic
         character(32) :: lf_meth
         character(32) :: hf_meth
+        !> The analytic cospectrum every spectral correction is
+        !> integrated against. 'moncrieff_97' is the shape this program
+        !> has always used and the only one an unstated project gets.
+        character(32) :: cosp_model
+        !> Iterative correction. The spectral correction is computed at a
+        !> stability that the corrected heat flux itself determines, so the
+        !> two can be brought into agreement by repetition. Off by default:
+        !> a single pass is what this program has always done.
+        !>
+        !> corr_iter_tol is a percentage, and ZERO means "run every pass",
+        !> which is EddyUH's behaviour - it has no early exit at all. A
+        !> positive value stops as soon as every flux moves by less than
+        !> that much, which EddyUH does not offer.
+        logical :: corr_iter_meth
+        integer :: corr_iter_max
+        real(kind = dbl) :: corr_iter_tol
         character(32) :: err_label
         character(32) :: run_mode
         character(32) :: run_env
@@ -801,6 +845,11 @@ module m_typedef
         logical :: hf_meth_in_situ
         logical :: hf_correct_ghg_ba
         logical :: hf_correct_ghg_zoh
+        !> Post-flux despiking (RFlux's despiking(variant="v1")) on the
+        !> whole run's NEE/H/LE series, after FCC has written full_output.
+        !> Off by default. FCC-only, but [Project]-scoped: see
+        !> gen_project_tags.py's FIXED_TAGS comment on "test_pfd" for why.
+        logical :: test_pfd
         !> Master switch only. Which fluxes a given pairing partitions is the
         !> pairing's own business - a single project-wide 'water only' says
         !> nothing useful once there is more than one analyser.
@@ -1145,11 +1194,42 @@ module m_typedef
         real(kind = dbl) :: degH(NumDegH + 1)
         real(kind = dbl) :: used_timelag(E2NumVar)
         real(kind = dbl) :: actual_timelag(E2NumVar)
+        !> Flux detection limit, in covariance units, one per gas. Wienhold
+        !> et al. (1994), computed beside the water covariances in
+        !> TimeLagHandle while the series are still on their raw alignment.
+        real(kind = dbl) :: detlim(E2NumVar)
+        !> How far the gas fluxes moved between the last two passes of the
+        !> iterative correction, in percent, worst gas of the period. The
+        !> error code when the loop ran once - which is what "off" means -
+        !> or when nothing comparable was produced.
+        real(kind = dbl) :: corr_iter_dev
         real(kind = dbl) :: AGC72
         real(kind = dbl) :: AGC75
         real(kind = dbl) :: RSSI77
         real(kind = dbl) :: LGD(GHGNumVar)
         real(kind = dbl) :: KID(GHGNumVar)
+        !> Extra raw-signal diagnostics ported from RFlux (Vitale et al.
+        !> 2020), gated by Test%rf: lag-1 autocorrelation, the
+        !> discrete/dominant-value test, and Qn-scaled spike counts on the
+        !> raw series (HF5/HF10) and on its first differences (HD5/HD10).
+        real(kind = dbl) :: AL1(GHGNumVar)
+        real(kind = dbl) :: DDI(GHGNumVar)
+        real(kind = dbl) :: HF5(GHGNumVar)
+        real(kind = dbl) :: HF10(GHGNumVar)
+        real(kind = dbl) :: HD5(GHGNumVar)
+        real(kind = dbl) :: HD10(GHGNumVar)
+        !> Hartigan's dip test p-value (Hartigan & Hartigan 1985) on the
+        !> fluctuations - low values flag multimodality in the raw signal.
+        real(kind = dbl) :: DIP(GHGNumVar)
+        !> R^2 of a through-origin regression of the CCF(w, this variable)
+        !> against its own de-flatlined counterpart - degradation in a
+        !> covariance driven by repeated/flat-lined raw values (Vitale et
+        !> al. 2020). Indexed by the variable paired with w, so CCF(w)
+        !> itself is always `error` - there is no self-pair. -1 means too
+        !> much of the wider column was flat-lined to trust the
+        !> de-flatlined CCF at all; 1 means neither column had any
+        !> flat-lining to begin with.
+        real(kind = dbl) :: CCF(GHGNumVar)
         real(kind = dbl) :: CorrDiff(GHGNumVar, GHGNumVar)
         real(kind = dbl) :: mahrt98_NR(GHGNumVar)
         real(kind = dbl) :: rand_uncer(E2NumVar)
@@ -1388,7 +1468,19 @@ module m_typedef
         logical :: tlag_assessment_only
         logical :: pf_subtract_b0
         logical :: recurse
-        logical :: despike_vickers97
+        !> External biomet only. True (the only behaviour before this
+        !> existed): variables come from the biomet file's own two-line
+        !> header (RetrieveExtBiometVars). False: a sidecar .metadata file
+        !> next to the biomet file - same key=value format embedded
+        !> biomet already reads via ReadBiometMetaFile, so a channel can
+        !> state _gain/_offset the two-line header has no room for. See
+        !> InitExternalBiomet's own note on why this stayed unread until
+        !> now.
+        logical :: biom_use_native_header
+        !> Which despiking method runs: 'vickers_97', 'mauder_13' or
+        !> 'consecutive_diff'. Was a logical naming only the first, which
+        !> could not describe a third choice.
+        character(32) :: despike_meth
         logical :: out_biomet
         logical :: out_qc_details
         logical :: out_bin_sp
@@ -1399,6 +1491,68 @@ module m_typedef
         logical :: out_st(7)
         logical :: out_raw(7)
         logical :: covmax_stocdet
+        !> Choose the lag by the largest departure of the cross-covariance
+        !> from the straight line joining the two ends of the search window,
+        !> rather than by its largest absolute value. A modifier on covariance
+        !> maximisation, not a method of its own: it changes which lag is
+        !> picked and nothing about the covariance reported there.
+        logical :: covmax_debaseline
+        !> Nemitz et al. (2018): a gas whose covariance at its own detected
+        !> lag does not clear tlag_borrow_snr times its detection limit, or
+        !> whose lag sits on an end of the search window, takes the lag of a
+        !> gas that shares its analyser instead. Needs detlim_meth on, since
+        !> there is nothing to compare against otherwise.
+        logical :: tlag_borrow_meth
+        real(kind = dbl) :: tlag_borrow_snr
+        !> Which noise floor the covariance is judged against, and who a gas
+        !> that fails borrows from. Both default to this engine's own choice
+        !> rather than EddyUH's: 'detlim' is the flux detection limit, which
+        !> measures what the covariance does with no flux in it, against
+        !> 'lenschow_00', which measures the analyser; and 'best_resolved'
+        !> ranks the tube-mates, against 'carbon_dioxide', which is the gas
+        !> EddyUH hard-codes.
+        character(32) :: tlag_borrow_noise
+        character(32) :: tlag_borrow_donor
+        !> Flux detection limit after Wienhold et al. (1994): the standard
+        !> deviation of the cross-covariance function measured away from the
+        !> peak, where there is no flux signal, taken as the noise floor of
+        !> the covariance. 'none' or 'wienhold_94'; the offset places the
+        !> noise windows either side of the gas's own lag and the width sets
+        !> how much of the function each one averages, both in seconds.
+        character(32) :: detlim_meth
+        real(kind = dbl) :: detlim_offset_s
+        real(kind = dbl) :: detlim_window_s
+        !> Closed-path spectroscopic correction: 'none' or 'chen_10', the
+        !> point-by-point form. spectro_water additionally corrects each
+        !> hygrometer against its own reading, which is self-broadening and
+        !> is not part of the published Peltola result - see the routine.
+        character(32) :: spectro_meth
+        logical :: spectro_water
+        !> Inclinometer tilt correction, EddyUH_tiltangle.m: rotate the wind
+        !> by inclination angles measured alongside it, sample by sample.
+        !> 'none', 'position' or 'position_swing' - the second adds the
+        !> velocity of the sonic head as the mast swings, which needs the
+        !> lever arm from the pivot to the head.
+        !>
+        !> The sensitivity converts the logged voltage to sin(angle) and the
+        !> arm is in metres. EddyUH hard-codes 4 V/g and -1.5 m on each axis
+        !> for one particular mast; those are the defaults here, but they are
+        !> properties of somebody's hardware and have to be stated.
+        character(32) :: tilt_sensor_meth
+        real(kind = dbl) :: tilt_sensor_v_g
+        real(kind = dbl) :: tilt_arm(3)
+        !> Low-pass time constant for the angle channels, in seconds. Zero
+        !> leaves them unfiltered.
+        real(kind = dbl) :: tilt_lpf_s
+        !> Metek USA-1 3-D flow distortion, METEK_HC.m. 'none', 'raw' when no
+        !> online correction was applied, or 'undo_2d' when the logger already
+        !> applied Metek's 2-D correction and it has to be removed first.
+        !>
+        !> The look-up tables are Metek GmbH data and are NOT shipped with
+        !> this program; head_corr_dir names the directory holding
+        !> phicorr.dat, ucorr.dat and alphacorr.dat.
+        character(32) :: head_corr_meth
+        character(PathLen) :: head_corr_dir
     end type RPsetupType
 
     type :: PrType
@@ -1543,6 +1697,18 @@ module m_typedef
         !> follow the slot rather than the species name.
         real(kind = dbl) :: lim_gas(GHGNumVar)
         real(kind = dbl) :: hf_lim
+        !> Consecutive-difference despiking, EddyUH's spi_method 1: the
+        !> largest step a sample may take from the one before it, in the
+        !> variable's OWN units - metres per second for the wind, kelvin for
+        !> the sonic temperature, the gas's own concentration unit for a gas.
+        !> Not a sigma multiplier: nothing here is scaled by a standard
+        !> deviation, which is the whole difference between this method and
+        !> the two above it.
+        real(kind = dbl) :: step_u
+        real(kind = dbl) :: step_v
+        real(kind = dbl) :: step_w
+        real(kind = dbl) :: step_ts
+        real(kind = dbl) :: step_gas(GHGNumVar)
     end type SRType
 
     type :: StationType
@@ -1619,6 +1785,13 @@ module m_typedef
         logical :: tl
         logical :: aa
         logical :: ns
+        !> Extra RFlux-derived raw-signal diagnostics (AL1, DDI, Qn-scaled
+        !> HF5/HF10/HD5/HD10). Off by default; see Essentials%AL1 and kin.
+        logical :: rf
+        !> Storage-flux cleaning (RFlux's cleanFlux() storage branch): a
+        !> whole-run Tukey boxplot outlier test plus interpolation on each
+        !> gas's storage term. Off by default; see StorCleanHandle.
+        logical :: stor_clean
     end type TestType
 
     type :: TimeLagType
@@ -1727,6 +1900,18 @@ module m_typedef
         !> was detected here, the elapsed distance where it was carried,
         !> interpolated or filled backward.
         real(kind = dbl) :: carry_hours
+        !> This period's covariance maximum, computed whether or not anything
+        !> needs it. It is what the settled table hands back for a period no
+        !> evidence ever reached - the terminal arm of
+        !> PostProcessPwbTimelagCache, which labels itself 'maxcov_default'.
+        !>
+        !> That arm used to hand back whatever the streaming pass had settled
+        !> on, which for a gas the rule rejected everywhere IS the covariance
+        !> maximum - but for a gas the streaming pass settled and the HDI
+        !> pre-filter later discarded, it is a carried lag wearing the maxcov
+        !> label. Held per period so the answer is a property of the period
+        !> and not of where the pass began.
+        real(kind = dbl) :: maxcov_lag
         !> The deterministic pre-whitening diagnostics. tlag_pw is the peak of
         !> the unsmoothed full-data pre-whitened CCF (R: tl_pww) and corr_pw
         !> its value there (R: cor_pww); cv_99 is R's Bartlett 99% band, so a
@@ -1752,6 +1937,17 @@ module m_typedef
         logical :: default_used
         type(PWBResultType) :: result
     end type PWBTimelagCacheEntryType
+
+    !> One period's worth of what the post-flux despiking pass (test_pfd)
+    !> needs, accumulated across the whole FCC run and consumed once, after
+    !> the per-period loop, by PostProcessFluxDespiking.
+    type :: PfdCacheEntryType
+        character(10) :: date
+        character(5) :: time
+        real(kind = dbl) :: nee
+        real(kind = dbl) :: h
+        real(kind = dbl) :: le
+    end type PfdCacheEntryType
 
     type :: TLType
         !> Nominal time lag per gas, indexed by gas slot.
@@ -1953,13 +2149,26 @@ module m_typedef
         real(kind = dbl) :: rand_uncer(E2NumVar)
         real(kind = dbl) :: rand_uncer_LE
         real(kind = dbl) :: rand_uncer_ET
+        !> Flux detection limit, Wienhold et al. (1994), in covariance units.
+        !> Read from the ex record so FCC can carry it into its own outputs.
+        real(kind = dbl) :: detlim(E2NumVar)
+        !> Convergence of the iterative correction, worst gas, in percent.
+        !> FCC recomputes this for itself rather than carrying RP's: the two
+        !> run their own loops over their own corrections, so RP's number
+        !> would describe a different calculation.
+        real(kind = dbl) :: corr_iter_dev
         logical :: not_enough_data
         logical :: daytime
         logical :: var_present(GHGNumVar)
         logical :: def_tlag(GHGNumVar)
         type(StorType) :: Stor
         type(RhoType) :: RHO
-        type(Mul7700Type) :: Mul7700
+        !> Per gas, not one for the site. The multipliers are built from the
+        !> water THIS analyser is corrected with, so two LI-7700s paired with
+        !> different hygrometers have different ones - and a single value
+        !> meant the second overwrote the first, leaving every 7700 flux
+        !> corrected with whichever came last.
+        type(Mul7700Type) :: Mul7700(GHGNumVar)
         type(BurbaType) :: Burba
         type(DegTType) :: degT
         type(InstrumentType) :: instr(ExNumInstruments)
@@ -2033,6 +2242,20 @@ contains
 
         CanonicalInstrumentModel = trim(base) // model(model_len - 1:model_len)
     end function CanonicalInstrumentModel
+
+    !> The LI-7700 alone, because it alone carries spectroscopic multipliers.
+    !>
+    !> Its open-path WPL is Webb et al. (1980) scaled by the A, B and C of the
+    !> LI-7700 manual, where every other open-path analyser uses the plain
+    !> Burba et al. (2008) form. Asked by name rather than by path type for
+    !> that reason: open-path is not the distinction that matters here.
+    logical function IsLi7700(model)
+        implicit none
+        !> in/out variables
+        character(*), intent(in) :: model
+
+        IsLi7700 = InstrumentModelBase(model) == 'li7700'
+    end function IsLi7700
 
     logical function IsOpenPathIrgaModel(model)
         implicit none

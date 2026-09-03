@@ -245,6 +245,17 @@ subroutine InitOutFiles_rp()
         call AddDatum(header2,'filename,date,time,DOY,daytime,file_records,used_records', separator)
         call AddDatum(header3,',[yyyy-mm-dd],[HH:MM],[ddd.ddd],[1=daytime],[#],[#]', separator)
 
+        !> Convergence of the iterative correction, worst gas of the period.
+        !>
+        !> Written only when the loop runs, like the random-error columns
+        !> below: a project that does not iterate has no such number, and a
+        !> column of -9999 in every file would say nothing.
+        if (EddyFlowProj%corr_iter_meth) then
+            call AddDatum(header1, 'iterative_correction,', separator)
+            call AddDatum(header2, 'corr_iter_dev', separator)
+            call AddDatum(header3, '[%]', separator)
+        end if
+
         !> Corrected fluxes (Level 3) and quality flags
         !> Tau
         call AddDatum(header1, 'corrected_fluxes_and_quality_flags,', separator)
@@ -326,19 +337,20 @@ subroutine InitOutFiles_rp()
         call AddDatum(header1,'gas_densities_concentrations_and_timelags', separator)
         do k = 1, n_fo_slots
             gas = fo_slots(k)
-            if(OutVarPresent(gas)) call AddDatum(header1, ',,,,', separator)
+            if(OutVarPresent(gas)) call AddDatum(header1, ',,,,,', separator)
             if(OutVarPresent(gas)) call AddDatum(header2, e2sg(gas)(1:len_trim(e2sg(gas))) // 'molar_density,' &
                 // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mole_fraction,' &
                 // e2sg(gas)(1:len_trim(e2sg(gas))) // 'mixing_ratio,' &
                 // e2sg(gas)(1:len_trim(e2sg(gas))) // 'time_lag,' &
-                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag', separator)
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'def_timelag,' &
+                // e2sg(gas)(1:len_trim(e2sg(gas))) // 'detlim', separator)
             !> Trimmed, unlike the fourth slot's arm this replaces: those
             !> labels are character(32) and were concatenated unpadded,
             !> so the units row carried trailing blanks inside three of
             !> its fields. Every gas now spells them the same way.
             if(OutVarPresent(gas)) call AddDatum(header3, &
                 trim(gas_dens_label(gas)) // ',' // trim(gas_conc_label(gas)) &
-                // ',' // trim(gas_mixr_label(gas)) // ',[s],[1=default]', separator)
+                // ',' // trim(gas_mixr_label(gas)) // ',[s],[1=default],[cov]', separator)
         end do
         !> In Header 1 there is one comma too much, take it away
         header1 = header1(1:len_trim(header1) - 1)

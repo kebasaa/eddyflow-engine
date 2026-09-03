@@ -112,6 +112,12 @@ module m_index_parameters
     integer, parameter :: master_sonic_hpath_length         = 17
     integer, parameter :: master_sonic_vpath_length         = 18
     integer, parameter :: master_sonic_tau                  = 19
+    integer, parameter :: wdf_sec1_center                   = 20
+    integer, parameter :: wdf_sec1_width                    = 21
+    integer, parameter :: wdf_sec2_center                   = 22
+    integer, parameter :: wdf_sec2_width                    = 23
+    integer, parameter :: wdf_sec3_center                   = 24
+    integer, parameter :: wdf_sec3_width                    = 25
 
     !> Fifty-six per-analyser indices used to follow - fourteen each for co2,
     !> h2o, ch4 and the fourth gas, running to gas4_irga_tau = 75. Not one of

@@ -160,9 +160,27 @@ subroutine WriteVariablesRP()
     Test%tl = SCTags(9)%value(1:1) == '1'
     Test%aa = SCTags(10)%value(1:1) == '1'
     Test%ns = SCTags(11)%value(1:1) == '1'
+    Test%rf = SCTags(12)%value(1:1) == '1'
+    Test%stor_clean = SCTags(21)%value(1:1) == '1'
 
-    !> method of spike removal
-    RPSetup%despike_vickers97 = SCTags(90)%value(1:1) == '0'
+    !> Method of spike removal.
+    !>
+    !> The two historical values are preserved exactly: '0' is Vickers &
+    !> Mahrt and ANYTHING ELSE was Mauder, so the default arm stays Mauder
+    !> rather than becoming the nominal default. Only the new '2' behaves
+    !> differently from before, which is what makes an existing project
+    !> byte-identical.
+    select case (SCTags(90)%value(1:1))
+        case ('0')
+            RPSetup%despike_meth = 'vickers_97'
+        case ('2')
+            !> EddyUH's spi_method 1: a rate-of-change limit, not a
+            !> statistical outlier test. Nothing about it is scaled by a
+            !> standard deviation, so it neither needs nor uses sr%lim_*.
+            RPSetup%despike_meth = 'consecutive_diff'
+        case default
+            RPSetup%despike_meth = 'mauder_13'
+    end select
 
     !> Spike removal test
     sr%num_spk = idint(SNTags(1)%value)
@@ -185,6 +203,72 @@ subroutine WriteVariablesRP()
             sr%lim_gas(firstGas + i - 1) = &
                 SNTags(rpGasOriginN + (i - 1) * rpGasLeapN)%value
     end do
+
+    !> Consecutive-difference step limits, in each variable's own units.
+    !>
+    !> Zero is "not stated", and a column without a positive limit is left
+    !> alone by that method - the same shape as EddyUH's dlim, where a NaN
+    !> entry means the variable is not despiked. Guarded reads: an absent
+    !> numeric tag leaves whatever the previous parse left in the saved
+    !> array, so the literals below are what an older project gets.
+    sr%step_u = 0d0
+    sr%step_v = 0d0
+    sr%step_w = 0d0
+    sr%step_ts = 0d0
+    if (SNTagFound(61)) sr%step_u  = SNTags(61)%value
+    if (SNTagFound(62)) sr%step_v  = SNTags(62)%value
+    if (SNTagFound(63)) sr%step_w  = SNTags(63)%value
+    if (SNTagFound(64)) sr%step_ts = SNTags(64)%value
+    sr%step_gas = 0d0
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 25)) &
+            sr%step_gas(firstGas + i - 1) = &
+                SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 25)%value
+    end do
+
+    !> Sonic hardware corrections, both applied to the raw wind before any
+    !> rotation. Off unless asked for, and the numbers below are EddyUH's own
+    !> so that switching one on reproduces EddyUH rather than something
+    !> invented here.
+    RPSetup%tilt_sensor_meth = 'none'
+    if (SCTagFound(31)) then
+        select case (SCTags(31)%value(1:1))
+            case ('1')
+                RPSetup%tilt_sensor_meth = 'position'
+            case ('2')
+                RPSetup%tilt_sensor_meth = 'position_swing'
+            case default
+                RPSetup%tilt_sensor_meth = 'none'
+        end select
+    end if
+    !> 4 V/g and -1.5 m on each axis: EddyUH_tiltangle.m:38 and :40, where
+    !> they are literals rather than settings.
+    RPSetup%tilt_sensor_v_g = 4d0
+    RPSetup%tilt_arm = -1.5d0
+    RPSetup%tilt_lpf_s = 0d0
+    if (SNTagFound(117)) RPSetup%tilt_sensor_v_g = SNTags(117)%value
+    if (SNTagFound(118)) RPSetup%tilt_arm(1) = SNTags(118)%value
+    if (SNTagFound(119)) RPSetup%tilt_arm(2) = SNTags(119)%value
+    if (SNTagFound(120)) RPSetup%tilt_arm(3) = SNTags(120)%value
+    if (SNTagFound(121)) RPSetup%tilt_lpf_s = SNTags(121)%value
+    !> A sensitivity of zero would divide the whole series by nothing, and a
+    !> negative filter length is not a length.
+    if (RPSetup%tilt_sensor_v_g <= 0d0) RPSetup%tilt_sensor_v_g = 4d0
+    if (RPSetup%tilt_lpf_s < 0d0) RPSetup%tilt_lpf_s = 0d0
+
+    RPSetup%head_corr_meth = 'none'
+    if (SCTagFound(32)) then
+        select case (SCTags(32)%value(1:1))
+            case ('1')
+                RPSetup%head_corr_meth = 'raw'
+            case ('2')
+                RPSetup%head_corr_meth = 'undo_2d'
+            case default
+                RPSetup%head_corr_meth = 'none'
+        end select
+    end if
+    RPSetup%head_corr_dir = ''
+    if (SCTagFound(33)) RPSetup%head_corr_dir = SCTags(33)%value
 
     !> Dropout test
     do%extlim_dw = SNTags(7)%value
@@ -816,6 +900,74 @@ subroutine WriteVariablesRP()
         RPSetup%covmax_var = w
     end select
     RPSetup%covmax_stocdet = SCTags(60)%value(1:1) == '1'
+    !> Baseline-subtracted lag selection. Guarded, unlike the two above:
+    !> those are old keys that every project states, this one is new and an
+    !> absent tag must mean off rather than whatever the shared character
+    !> array happens to hold.
+    RPSetup%covmax_debaseline = SCTagFound(79) .and. SCTags(79)%value(1:1) == '1'
+
+    !> Conditional lag borrowing, Nemitz et al. (2018). Three times the
+    !> detection limit is the paper's threshold and EddyUH's.
+    RPSetup%tlag_borrow_meth = SCTagFound(80) .and. SCTags(80)%value(1:1) == '1'
+    RPSetup%tlag_borrow_snr = 3d0
+    if (SNTagFound(60)) RPSetup%tlag_borrow_snr = SNTags(60)%value
+    !> A non-positive multiplier would make every gas borrow, which is not a
+    !> setting anyone means; it is a typed-in zero.
+    if (RPSetup%tlag_borrow_snr <= 0d0) RPSetup%tlag_borrow_snr = 3d0
+    !> Which noise floor, and which donor. Both default to this engine's own
+    !> choice, so an existing project that switched borrowing on keeps the
+    !> behaviour it had; '1' on either selects EddyUH's.
+    RPSetup%tlag_borrow_noise = 'detlim'
+    if (SCTagFound(81) .and. SCTags(81)%value(1:1) == '1') &
+        RPSetup%tlag_borrow_noise = 'lenschow_00'
+    RPSetup%tlag_borrow_donor = 'best_resolved'
+    if (SCTagFound(82) .and. SCTags(82)%value(1:1) == '1') &
+        RPSetup%tlag_borrow_donor = 'carbon_dioxide'
+
+    !> Flux detection limit, Wienhold et al. (1994).
+    !>
+    !> Off unless asked for, and the two window settings carry Wienhold's own
+    !> values so that switching it on reproduces the published method rather
+    !> than something chosen here. Guarded reads throughout: an absent numeric
+    !> tag leaves whatever the previous parse left in the saved array, so the
+    !> literal defaults below are what an older project gets.
+    RPSetup%detlim_meth = 'none'
+    RPSetup%detlim_offset_s = 100d0
+    RPSetup%detlim_window_s = 50d0
+    if (SNTagFound(55)) then
+        select case (nint(SNTags(55)%value))
+            case (1)
+                RPSetup%detlim_meth = 'wienhold_94'
+            case default
+                RPSetup%detlim_meth = 'none'
+        end select
+    end if
+    if (SNTagFound(56)) RPSetup%detlim_offset_s = SNTags(56)%value
+    if (SNTagFound(57)) RPSetup%detlim_window_s = SNTags(57)%value
+    !> A window that reaches the peak measures the flux, not the noise under
+    !> it, so the offset must clear the half-width. Both must be positive for
+    !> the windows to exist at all.
+    if (RPSetup%detlim_offset_s <= 0d0 .or. RPSetup%detlim_window_s <= 0d0 &
+        .or. RPSetup%detlim_window_s >= RPSetup%detlim_offset_s) then
+        RPSetup%detlim_offset_s = 100d0
+        RPSetup%detlim_window_s = 50d0
+    end if
+
+    !> Closed-path spectroscopic correction, Peltola et al. (2014), applied
+    !> point by point after Chen et al. (2010). Off unless asked for, and off
+    !> for the water channel within that, because correcting a hygrometer
+    !> against its own reading is not part of the published result.
+    RPSetup%spectro_meth = 'none'
+    RPSetup%spectro_water = .false.
+    if (SNTagFound(58)) then
+        select case (nint(SNTags(58)%value))
+            case (1)
+                RPSetup%spectro_meth = 'chen_10'
+            case default
+                RPSetup%spectro_meth = 'none'
+        end select
+    end if
+    if (SNTagFound(59)) RPSetup%spectro_water = nint(SNTags(59)%value) == 1
 
     !> Biomet measurements
     select case (SCTags(61)%value(1:len_trim(SCTags(61)%value)))
@@ -832,6 +984,12 @@ subroutine WriteVariablesRP()
     end select
     bFileMetadata%tstamp_ref = SCTags(62)%value(1: len_trim(SCTags(62)%value))
     bFileMetadata%nhead = nint(SNTags(192)%value)
+    !> External biomet only; embedded biomet always reads through
+    !> ReadBiometMetaFile regardless. Default true (the only behaviour
+    !> before this was read) unless the project states '0' explicitly -
+    !> an absent key, true of every project written before this existed,
+    !> leaves SCTags(58)%value blank, which is not '0'.
+    RPsetup%biom_use_native_header = SCTags(58)%value(1:1) /= '0'
 
     !> Wheter to filter for spikes and abolute limits
     RPsetup%filter_sr = SCTags(63)%value(1:1) == '1'
