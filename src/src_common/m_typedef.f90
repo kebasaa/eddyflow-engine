@@ -2163,7 +2163,12 @@ module m_typedef
         logical :: def_tlag(GHGNumVar)
         type(StorType) :: Stor
         type(RhoType) :: RHO
-        type(Mul7700Type) :: Mul7700
+        !> Per gas, not one for the site. The multipliers are built from the
+        !> water THIS analyser is corrected with, so two LI-7700s paired with
+        !> different hygrometers have different ones - and a single value
+        !> meant the second overwrote the first, leaving every 7700 flux
+        !> corrected with whichever came last.
+        type(Mul7700Type) :: Mul7700(GHGNumVar)
         type(BurbaType) :: Burba
         type(DegTType) :: degT
         type(InstrumentType) :: instr(ExNumInstruments)

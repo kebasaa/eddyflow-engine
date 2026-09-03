@@ -678,13 +678,13 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
             !> around 1.42 and 1.32 there, so two terms were scaled by one.
             wpl = Flux1%gas(gas)
             if (E_nowpl /= error .and. RHO%d > 0d0) &
-                wpl = wpl + Mul7700%B * mu * Stats%d(gas) * dens_to_chi &
+                wpl = wpl + Mul7700(gas)%B * mu * Stats%d(gas) * dens_to_chi &
                     * E_nowpl / RHO%d
             if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 &
                 .and. Ambient%Ta > 0d0 .and. sigma_gas /= error) &
-                wpl = wpl + Mul7700%C * (1d0 + mu * sigma_gas) * Flux3%H &
+                wpl = wpl + Mul7700(gas)%C * (1d0 + mu * sigma_gas) * Flux3%H &
                     * Stats%d(gas) * dens_to_chi / (Ambient%RhoCp * Ambient%Ta)
-            Flux2%gas(gas) = Mul7700%A * wpl
+            Flux2%gas(gas) = Mul7700(gas)%A * wpl
         else
             wpl = Flux1%gas(gas)
             if (Flux3%E /= error .and. RHO%d > 0d0 .and. sigma_gas /= error) &

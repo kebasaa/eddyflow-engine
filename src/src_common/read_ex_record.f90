@@ -287,7 +287,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + (nExGas - nExWater)       &  !< cell E per gas except hygrometers
         + nExGas                    &  !< cell Hi per gas
         + 3                         &  !< Burba terms
-        + 3                         &  !< LI-7700 multipliers
+        + 3 * nExGas                &  !< LI-7700 multipliers, per gas
         + 4 + nExGas                &  !< skipped: spectral correction factors
         + 1 + 9                     &  !< degraded T covariance and its 9 lags
         + nExVar                       !< spike counts
@@ -348,7 +348,9 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         e_gas_buf(1 : max(nExGas - nExWater, 0)), &
         (lEx%Flux0%Hi_gas(exSlots(jx)), jx = 1, nExSlots), &
         lEx%Burba%h_bot, lEx%Burba%h_top, lEx%Burba%h_spar, &
-        lEx%Mul7700%A, lEx%Mul7700%B, lEx%Mul7700%C, &
+        (lEx%Mul7700(exSlots(jx))%A, jx = 1, nExSlots), &
+        (lEx%Mul7700(exSlots(jx))%B, jx = 1, nExSlots), &
+        (lEx%Mul7700(exSlots(jx))%C, jx = 1, nExSlots), &
         aux(1 : 4 + n_layout_gas), & !< Skip SCFs
         lEx%degT%cov, lEx%degT%dcov(1:9), &
         lEx%spikes(u:ts), (lEx%spikes(exSlots(jx)), jx = 1, nExSlots)

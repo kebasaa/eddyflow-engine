@@ -62,10 +62,6 @@ program EddyFlowRP
     integer :: NumberOfPeriods
     integer :: i
     integer :: j
-    !> Said once per run, not once per averaging period: the instrument set is
-    !> stated once, so a second LI-7700 is a second LI-7700 for the whole run.
-    integer :: n7700
-    logical, save :: mul7700_warned = .false.
     !> The hygrometer a gas is corrected with, from its own record.
     integer :: msl
     !> Mole fraction of the water a gas names, from whichever source.
@@ -2682,32 +2678,17 @@ program EddyFlowRP
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
 
-            !> One LI-7700 only.
+            !> Cleared every period, and for every gas.
             !>
-            !> Mul7700 is a single value, and the Ex record carries a single
-            !> set of A/B/C, so FCC could not hold more than one either. The
-            !> loop below overwrites it per gas, which means a second LI-7700
-            !> would leave the LAST one's multipliers behind for every 7700
-            !> flux to use. That was harmless while only chi and r were
-            !> scaled - each inside the loop, with its own value - but the
-            !> open-path WPL now reads it after the loop has finished.
-            !>
-            !> Said once per run rather than silently producing one analyser's
-            !> spectroscopy on another's flux.
-            if (.not. mul7700_warned) then
-                n7700 = 0
-                do j = firstGas, lastGas
-                    if (IsLi7700(E2Col(j)%Instr%model)) n7700 = n7700 + 1
-                end do
-                if (n7700 > 1) then
-                    call LogSay('   Warning> More than one LI-7700 is ' &
-                        // 'configured. Their spectroscopic multipliers are ' &
-                        // 'held in one place, so every LI-7700 flux is ' &
-                        // 'corrected with the last one''s. Fluxes from the ' &
-                        // 'others will be slightly wrong.')
-                end if
-                mul7700_warned = .true.
-            end if
+            !> The loop below only assigns to gases on an LI-7700, so without
+            !> this a gas that is not on one would read whatever the array
+            !> last held - and, with a scalar, so would a period in which the
+            !> loop found nothing at all. Only IsLi7700 gases ever consult it,
+            !> but leaving stale numbers where a reader might look is how the
+            !> next fault gets built.
+            Mul7700(:)%A = error
+            Mul7700(:)%B = error
+            Mul7700(:)%C = error
 
             !> LI-7700 spectroscopic correction. It applies to whichever gas
             !> the LI-7700 measures, which is a question about the analyser -
@@ -2743,12 +2724,12 @@ program EddyFlowRP
                 if (chi_moist == error) cycle
                 call Multipliers7700(Stats%Pr, Ambient%Ta, &
                     chi_moist, &
-                    Mul7700%A, Mul7700%B, Mul7700%C)
+                    Mul7700(j)%A, Mul7700(j)%B, Mul7700(j)%C)
                 !> Modify mole fraction and mixing ratio to account for
                 !> key(T,P), Eq. 6.13 of LI-7700 manual
                 !> Uses multiplies A, because this is equal to key.
-                Stats%chi(j) = Stats%chi(j) * Mul7700%A
-                Stats%r(j)   = Stats%r(j)   * Mul7700%A
+                Stats%chi(j) = Stats%chi(j) * Mul7700(j)%A
+                Stats%r(j)   = Stats%r(j)   * Mul7700(j)%A
             end do
 
             !> Calculate LI-7500 surface heating correction if requested

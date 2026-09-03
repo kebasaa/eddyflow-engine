@@ -233,6 +233,27 @@ base_ep_native
 
 [ -n "$NAMED" ] && FIXTURES="$NAMED"
 
+# Run against a SNAPSHOT of the binaries, not the live build tree.
+#
+# The sweep launches $BIN/eddyflow_rp.exe once per fixture over several
+# minutes. A rebuild during that window - another session, another
+# terminal - swaps the executable underneath it, and the fixture that
+# starts mid-link fails with nothing useful in its log. The reverse of
+# that collision is easy to see, and was seen here: a running engine
+# holds the exe and the link dies with "cannot open output file ...
+# Permission denied".
+#
+# Copying costs a second and makes the run reproducible - the whole
+# sweep is one build, whatever anyone else does to the tree meanwhile.
+SNAP="$(mktemp -d)"
+trap 'rm -rf "$SNAP"' EXIT
+if ! cp -r "$BIN"/. "$SNAP"/ 2>/dev/null; then
+    echo "sweep.sh: cannot snapshot $BIN" >&2; exit 2
+fi
+echo "binaries: $BIN"
+echo "snapshot: $SNAP"
+echo
+
 pass=0
 fail=0
 failed=""
@@ -280,11 +301,21 @@ for f in $FIXTURES; do
     #> Log outside the output directory: run.sh clears that directory as its
     #> first act, so a redirect into it has nowhere to land.
     log="${TMPDIR:-/tmp}/sweep_$f.log"
-    if ! BIN="$BIN" BASE="$fixture" bash "$HERE/run.sh" "$WHICH" \
+    if ! BIN="$SNAP" BASE="$fixture" bash "$HERE/run.sh" "$WHICH" \
             > "$log" 2>&1; then
-        printf '%-22s FAIL  (run.sh exited non-zero)\n' "$f"
-        tail -3 "$HERE/out_$WHICH/_fcc.log" 2>/dev/null \
-            || tail -3 "$log"
+        rc=$?
+        #> Keep the failing log under a name a retry cannot overwrite.
+        #> The per-fixture log is reused every run, so re-running a
+        #> fixture to see whether it was a flake DESTROYS the only
+        #> record of the flake - which is what happened to the two seen
+        #> here, leaving nothing to diagnose but a guess.
+        kept="$log.failed"
+        cp "$log" "$kept" 2>/dev/null
+        printf '%-22s FAIL  (run.sh exit %s)\n' "$f" "$rc"
+        echo "   evidence kept in $kept"
+        tail -5 "$HERE/out_$WHICH/_fcc.log" 2>/dev/null \
+            || tail -5 "$HERE/out_$WHICH/_rp.log" 2>/dev/null \
+            || tail -5 "$log"
         fail=$((fail + 1)); failed="$failed $f"
         continue
     fi

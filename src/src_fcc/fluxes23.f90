@@ -610,13 +610,13 @@ contains
                 !> went missing and what it cost.
                 wpl = Flux1%gas(gas)
                 if (E_nowpl /= error .and. lEx%RHO%d > 0d0) &
-                    wpl = wpl + lEx%Mul7700%B * mu * lEx%d(gas) * dens_to_chi &
+                    wpl = wpl + lEx%Mul7700(gas)%B * mu * lEx%d(gas) * dens_to_chi &
                         * E_nowpl / lEx%RHO%d
                 if (Flux3%H /= error .and. lEx%RhoCp > 0d0 .and. lEx%Ta > 0d0 &
                     .and. sigma_gas /= error) &
-                    wpl = wpl + lEx%Mul7700%C * (1d0 + mu * sigma_gas) * Flux3%H &
+                    wpl = wpl + lEx%Mul7700(gas)%C * (1d0 + mu * sigma_gas) * Flux3%H &
                         * lEx%d(gas) * dens_to_chi / (lEx%RhoCp * lEx%Ta)
-                Flux2%gas(gas) = lEx%Mul7700%A * wpl
+                Flux2%gas(gas) = lEx%Mul7700(gas)%A * wpl
             else
                 !> Open path, after e.g. Burba et al. (2008, GCB, eq. 1)
                 wpl = Flux1%gas(gas)

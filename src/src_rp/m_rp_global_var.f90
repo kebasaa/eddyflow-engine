@@ -223,7 +223,8 @@ module m_rp_global_var
     type (BurbaType):: Burba
     type (BurbaParType) :: BurbaPar
     type (StorType) :: Stor
-    type (Mul7700Type)   :: Mul7700
+    !> One per gas - see the ExType twin for why.
+    type (Mul7700Type)   :: Mul7700(GHGNumVar)
 
     !> Embedded biomet data variables
     logical, allocatable :: BiometCTagFound(:)
