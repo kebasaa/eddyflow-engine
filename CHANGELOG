@@ -1,6 +1,27 @@
 8.1.0 (2026-08-22)
 
     Engine:
+	- Fix: T* had the wrong sign in every output FCC writes. The scale
+	       temperature is T* = -(w'T')/u* = -H/(rho*cp*u*), and Fluxes23 (FCC)
+	       computed it without the leading minus, so it returned the negative
+	       of the quantity its own header names: EddyPro +0.0966893 against
+	       this engine -0.0966890 on the same period, identical to six digits
+	       and opposite in sign. Both RP sites - Fluxes0_rp, from the
+	       covariance, and Fluxes23_rp, from the final H - always carried the
+	       minus, so RP's own full_output and FLUXNET file were correct
+	       throughout; FCC read RP's correctly signed value out of the
+	       essentials record and then overwrote it.
+	       Two columns move and no others: T* in full_output and TSTAR in the
+	       FLUXNET file, in the FCC-written copies only, each to exactly its
+	       own negative. Nothing consumes the value - the one reader,
+	       DevelopedTurbulenceTest, takes dabs() of it - so no flux, no
+	       correction and no quality flag changes. This is our bug, not a
+	       difference from EddyPro.
+	       check_engines.py listed T* as a known ungated difference on the
+	       reasoning that a sign convention is not a disagreement about the
+	       physics. It was not a convention. The entry is gone and T* is now
+	       gated with H and air_heat_capacity, the two quantities it is built
+	       from; measured at 3e-6 against EddyPro, the last printed digit.
 	- New feature: biom_use_native_header (SCTags(58), default on - unchanged
 	               behaviour) lets external-CSV biomet get its per-channel
 	               description from a sidecar .metadata file instead of the
