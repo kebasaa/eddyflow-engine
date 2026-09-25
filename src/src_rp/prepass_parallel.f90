@@ -439,6 +439,7 @@ contains
             // ' -j 1' &
             // ' --batch ' // trim(batchArg) &
             // ' --batch-out "' // trim(BatchDumpPath(kind, k)) // '"' &
+            // ' --batch-tmp "' // trim(NoTrailingSlash(TmpDir)) // '"' &
             // ' "' // trim(PrjPath) // '"'
 
         open(newunit = u, file = trim(childPath), status = 'replace', &
@@ -817,5 +818,23 @@ contains
             close(u)
         end do
     end subroutine MergePfBatchDumps
+
+    !***************************************************************************
+    !> \brief A directory without its trailing separator.
+    !>
+    !> For a quoted command-line argument on Windows: a backslash right before
+    !> the closing quote escapes it, and the argument would run on into the
+    !> next one.
+    !***************************************************************************
+    character(PathLen) function NoTrailingSlash(dir)
+        character(*), intent(in) :: dir
+        integer :: n
+
+        NoTrailingSlash = adjustl(dir)
+        n = len_trim(NoTrailingSlash)
+        if (n > 1) then
+            if (NoTrailingSlash(n:n) == slash) NoTrailingSlash(n:n) = ' '
+        end if
+    end function NoTrailingSlash
 
 end module m_prepass_parallel

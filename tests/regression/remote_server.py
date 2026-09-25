@@ -31,6 +31,8 @@ Failures, to test that the engine survives them:
     --page N        Dropbox entries per page, to exercise paging (default 1000)
     --lifetime S    stop serving after S seconds (default 1800), so a server
                     left behind by a killed test cannot outlive it for long
+    --log FILE      append the path of every file served whole, one per line,
+                    so a test can check that nothing was downloaded twice
 
 Usage:
     remote_server.py --root DIR --port-file FILE [--port 0] [...]
@@ -52,6 +54,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 TOKEN = "TESTTOKEN"
 KEY = "fixturekey"
 RLKEY = "fixturerlkey"
+log_lock = threading.Lock()
 
 
 def item_id(rel):
@@ -113,6 +116,9 @@ def make_handler(tree, opts):
             if not p.is_file():
                 return self.not_found()
             self.send(200, p.read_bytes(), "application/octet-stream")
+            if opts.log:
+                with log_lock, open(opts.log, "a", encoding="utf-8") as f:
+                    f.write(rel + "\n")
 
         # --- Google Drive -------------------------------------------------
         def gdrive_listing(self, rel):
@@ -204,6 +210,7 @@ def main():
     ap.add_argument("--missing", action="append", default=[])
     ap.add_argument("--page", type=int, default=1000)
     ap.add_argument("--lifetime", type=float, default=1800)
+    ap.add_argument("--log", default="")
     opts = ap.parse_args()
 
     tree = Tree(opts.root)

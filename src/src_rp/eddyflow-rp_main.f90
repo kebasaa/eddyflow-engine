@@ -42,7 +42,7 @@ program EddyFlowRP
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     use m_ghg_prefetch, only: GhgPrefetchCleanup
-    use m_remote_source, only: RemoteAdoptOrder, RemoteCleanup
+    use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
@@ -1832,6 +1832,11 @@ program EddyFlowRP
     InitOutVarPresence = .true.
     DynamicMetadata = ErrDynamicMetadata
     InitGasCalRefCol = GasCalRefCol
+
+    !> Raw files from a shared link that the survey and the pre-passes
+    !> downloaded are kept for this pass; from here on each is deleted once
+    !> this pass is behind it
+    call RemoteBeginMainPass()
 
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol

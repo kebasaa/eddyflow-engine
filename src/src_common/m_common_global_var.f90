@@ -120,6 +120,11 @@ module m_common_global_var
     integer :: BatchSliceEnd = 0
     character(2) :: BatchKind = ''
     character(PathLen) :: BatchOutPath = ''
+    !> The parent's temporary directory, handed to a worker so that raw files
+    !> from a shared link are downloaded once, into the parent's, for the
+    !> pre-pass and the main pass both. A worker's own directory is named
+    !> after its own start time, so it cannot be derived from it.
+    character(PathLen) :: BatchTmpDir = ''
 
     character(19), parameter :: PrjFile   = 'processing.eddyflow'
     character(6), parameter :: licor_appdata = '.licor'

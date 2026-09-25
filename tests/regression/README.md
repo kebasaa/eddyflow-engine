@@ -675,8 +675,21 @@ folder, and `EDDYFLOW_REMOTE_BASE` points the engine at it.
 BIN=<engine bin> bash check_remote.sh base_ghg_mixed.eddyflow gdrive
 BIN=<engine bin> NEST=1 EXTRACT_META=1 bash check_remote.sh base_ghg_mixed.eddyflow dropbox --page 1
 BIN=<engine bin> bash check_remote.sh base_ghg_mixed.eddyflow gdrive --missing <file> --html <file>
+BIN=<engine bin> DEDUPE=1 bash check_remote.sh base_ghg_mixed.eddyflow gdrive
+BIN=<engine bin> RP_EXTRA="-j 4" EXTEND=24 bash check_remote.sh <fixture with tlag_meth=4> dropbox
 BIN=<engine bin> bash check_remote_fcc.sh base_ghg_mixed.eddyflow
 ```
+
+Every file must cross the network once per run, however many passes read it:
+the server logs each file it sends whole, and `check_remote.sh` fails on any
+sent twice. That is what holds the acquisition-frequency survey and the
+planar-fit, time-lag and drift pre-passes to reusing their downloads in the
+main pass, pre-pass workers to downloading into their parent's folder (passed
+to them as `--batch-tmp`; their own is named after their own start time), and
+a file named by two settings to one transfer. `EXTEND=N` makes N consecutive
+half-hours from the fixture's archives with the subsets off, enough for a
+pre-pass to be split over workers (four periods each); `DEDUPE=1` also names
+the shared folder as `head_corr_dir`, which is downloaded whole at startup.
 
 `check_remote.sh` runs the fixture twice through `run.sh`, from disk and from
 links, and requires every output but the run log and the project copy to be

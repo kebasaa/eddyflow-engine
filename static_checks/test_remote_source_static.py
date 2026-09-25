@@ -102,6 +102,51 @@ class OutputFolderIsRefusedFirst(unittest.TestCase):
                 self.assertIn(f"case({n})", c)
 
 
+class EachFileIsDownloadedOnce(unittest.TestCase):
+    """The survey and the planar fit, time lag and drift pre-passes read raw
+    files the main pass reads again, so nothing may be deleted before the main
+    pass; pre-pass workers download into their parent's directory; and a URL
+    already downloaded is copied, not fetched again."""
+
+    def test_main_pass_is_announced_right_before_the_periods_loop(self):
+        c = code("src_rp/eddyflow-rp_main.f90")
+        begin = c.index("call RemoteBeginMainPass()")
+        self.assertLess(begin, c.index("\n    periods_loop: do"))
+        for prepass in ("to_periods_loop: do", "pf_periods_loop: do", "drift_loop: do"):
+            with self.subTest(prepass=prepass):
+                self.assertLess(c.index(prepass), begin)
+
+    def test_nothing_is_evicted_before_the_main_pass(self):
+        c = code("src_common/remote_source.f90")
+        body = c[c.index("subroutine Evict(e)"):c.index("end subroutine Evict")]
+        self.assertIn("if (.not. MainPass) return", body)
+
+    def test_workers_share_the_parents_directory(self):
+        # A worker's own temporary directory is named after its own start
+        # time, so the parent's cannot be derived from it: it is passed.
+        c = code("src_common/remote_source.f90")
+        self.assertIn("StagingDir = trim(SharedTmpDir()) // 'remote' // slash", c)
+        self.assertIn("SharedTmpDir = adjustl(BatchTmpDir)", c)
+        init = code("src_common/init_env.f90")
+        self.assertIn("case('--batch-tmp')", init)
+        # Without this the path is not read as the switch's value at all
+        switches = init[init.index("logical function SwitchTakesValue"):]
+        self.assertIn("'--batch-tmp'", switches[:switches.index("end function")])
+        launcher = code("src_rp/prepass_parallel.f90")
+        self.assertIn("' --batch-tmp \"' // trim(NoTrailingSlash(TmpDir)) // '\"'", launcher)
+        # before the project path, like every other switch
+        self.assertLess(launcher.index("--batch-tmp"), launcher.index("trim(PrjPath) // '\"'"))
+        cleanup = c[c.index("subroutine RemoteCleanup"):c.index("end subroutine RemoteCleanup")]
+        self.assertIn("BatchIndex == 0", cleanup)
+
+    def test_a_url_is_downloaded_once(self):
+        c = code("src_common/remote_source.f90")
+        body = c[c.index("logical function Download"):c.index("end function Download")]
+        self.assertLess(body.index("have = Known(url)"), body.index("Curl("))
+        self.assertLess(body.index("TryLock(dest)"), body.index("Curl("))
+        self.assertIn("call Remember(url, dest)", body)
+
+
 class OnlyTheModuleRunsCurl(unittest.TestCase):
     def test_no_curl_elsewhere(self):
         pattern = re.compile(r"['\"]curl(\.exe)?\b", re.IGNORECASE)

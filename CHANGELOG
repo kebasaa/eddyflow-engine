@@ -97,12 +97,17 @@
 	               Raw data are not downloaded wholesale. The shared folder is
 	               listed once at startup, and each file is downloaded when it
 	               is read, with the next two fetched in the background while
-	               it is processed; the least recently used are deleted once
-	               more than five are on disk. A project with a planar-fit,
-	               time-lag or acquisition-frequency pass reads the files it
-	               needs twice, and so downloads them twice. Files, and the
-	               folders read whole (biomet, cospectra, head correction), are
-	               downloaded once, at startup. Nothing is kept after the run.
+	               it is processed. Every file is downloaded once per run: what
+	               the acquisition-frequency survey and the planar-fit, time-lag
+	               and drift pre-passes download is kept for the main pass,
+	               which deletes each file once it is two files past it, and
+	               pre-pass workers download into one shared folder, one file
+	               each. Disk use during the pre-passes is therefore the files
+	               they cover. A file that two settings name, or that a setting
+	               and the raw folder both contain, is downloaded once and
+	               copied locally. Single files, and the folders read whole
+	               (biomet, cospectra, head correction), are downloaded at
+	               startup. Nothing is kept after the run.
 	               A raw file that cannot be downloaded - three attempts, and a
 	               web page where data was expected counts as a failure - is
 	               skipped with the new Warning(121), and a summary line closes

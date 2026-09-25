@@ -12,6 +12,18 @@
 # Every output file except the run log and the copy of the project must be
 # identical; those two legitimately differ, since they name the link.
 #
+# Every raw file must cross the network once, however many passes read it: the
+# server logs each file it serves whole, and a file served twice fails the
+# check. EXTEND=N replaces the data with N consecutive half-hours, copies of
+# the fixture's own archives under new names (the engine places a file by its
+# name), with the processing and time-lag subsets switched off - enough periods
+# for `RP_EXTRA="-j 4"` to split a pre-pass over workers, which need four
+# periods each.
+#
+# DEDUPE=1 also names the shared folder as head_corr_dir, which the engine
+# downloads whole at startup and these fixtures otherwise leave unused. Every
+# raw file is then named by two settings and must still be transferred once.
+#
 # NEST=1 moves the files into two subfolders, for the recursive listing.
 # EXTRACT_META=1 takes the .metadata out of the first GHG archive and uses it
 # as the alternative metadata file (use_pfile=1), for a remote proj_file.
@@ -35,6 +47,22 @@ rm -rf "$TMP"; mkdir -p "$TMP/data"
 value() { grep -m1 "^$1=" "$HERE/$BASE" | cut -d= -f2- | tr -d '\r'; }
 DATA="$(value data_path)"
 cp -r "$(cygpath -u "$DATA")"/. "$TMP/data/"
+EXTRA_SED=()
+if [ "${EXTEND:-0}" -gt 0 ]; then
+    mapfile -t templates < <(find "$TMP/data" -maxdepth 1 -name '*.ghg' | sort)
+    [ "${#templates[@]}" -gt 0 ] || { echo "EXTEND needs .ghg files"; exit 2; }
+    day="$(basename "${templates[0]}" | cut -c1-10)"
+    suffix="$(basename "${templates[0]}" | cut -d_ -f2-)"
+    mkdir -p "$TMP/extended"
+    for i in $(seq 0 $((EXTEND - 1))); do
+        name="$(printf '%sT%02d%02d00_%s' "$day" $((i / 2)) $(((i % 2) * 30)) "$suffix")"
+        cp "${templates[$((i % ${#templates[@]}))]}" "$TMP/extended/$name"
+    done
+    rm -f "$TMP"/data/*.ghg
+    mv "$TMP"/extended/*.ghg "$TMP/data/"
+    EXTRA_SED=(-e "s|^pr_subset=.*|pr_subset=0|" -e "s|^to_subset=.*|to_subset=0|"
+               -e "s|^pf_subset=.*|pf_subset=0|")
+fi
 if [ "${NEST:-0}" = "1" ]; then
     mkdir -p "$TMP/data/a" "$TMP/data/b/c"
     i=0
@@ -57,7 +85,8 @@ fi
 WDATA="$(cygpath -m "$TMP/data")"
 
 "$PY" "$HERE/remote_server.py" --root "$(cygpath -w "$TMP/data")" \
-    --port-file "$(cygpath -w "$TMP/port")" --lifetime 900 "$@" &
+    --port-file "$(cygpath -w "$TMP/port")" --lifetime 1800 \
+    --log "$(cygpath -w "$TMP/served.log")" "$@" &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true' EXIT
 for _ in $(seq 50); do [ -s "$TMP/port" ] && break; sleep 0.2; done
@@ -73,11 +102,15 @@ esac
 
 # sed replacement text: & and | are special
 esc() { printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'; }
-sed -e "s|^data_path=.*|data_path=$WDATA|" \
+sed -e "s|^data_path=.*|data_path=$WDATA|" "${EXTRA_SED[@]}" \
     ${META:+-e "s|^proj_file=.*|proj_file=$WDATA/meta/$META|" -e "s|^use_pfile=.*|use_pfile=1|"} \
     "$HERE/$BASE" > "$HERE/remote_ref.eddyflow"
+CHK_SED=()
+if [ "${DEDUPE:-0}" = "1" ]; then
+    CHK_SED=(-e "/^data_path=/a head_corr_dir=\"$(esc "$ROOT_LINK")\"")
+fi
 # Quoted, as the interface's QSettings writes any value containing = ; or ,
-sed -e "s|^data_path=.*|data_path=\"$(esc "$ROOT_LINK")\"|" \
+sed -e "s|^data_path=.*|data_path=\"$(esc "$ROOT_LINK")\"|" "${EXTRA_SED[@]}" "${CHK_SED[@]}" \
     ${META:+-e "s|^proj_file=.*|proj_file=\"$(esc "$META_LINK")#path=meta/$META\"|" -e "s|^use_pfile=.*|use_pfile=1|"} \
     "$HERE/$BASE" > "$HERE/remote_chk.eddyflow"
 
@@ -95,6 +128,18 @@ if diff -r -q -x '*.log' -x '*.eddyflow' "$HERE/out_ref" "$HERE/out_chk"; then
 else
     echo "DIFFERENT"
     STATUS=1
+fi
+served="$(sort "$TMP/served.log" 2>/dev/null | uniq -c)"
+twice="$(printf '%s\n' "$served" | awk '$1 > 1' | sed '/^$/d')"
+echo "downloads: $(printf '%s\n' "$served" | sed '/^$/d' | wc -l) files, $(cat "$TMP/served.log" 2>/dev/null | wc -l) transfers"
+if [ -n "$twice" ]; then
+    echo "DOWNLOADED MORE THAN ONCE:"; printf '%s\n' "$twice"
+    STATUS=1
+else
+    echo "each file downloaded once"
+fi
+if grep -h "Warning(121)" "$HERE"/out_chk/*_log*_rp.log >/dev/null 2>&1 && [ "$#" -eq 0 ]; then
+    echo "Warning(121) without an injected failure"; STATUS=1
 fi
 echo "-- run log lines only in chk --"
 diff <(cat "$HERE"/out_ref/*_log*_rp.log 2>/dev/null) \

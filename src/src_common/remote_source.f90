@@ -40,13 +40,19 @@
 !              is handed to FileListByExt in place of the `dir` it would have
 !              run, so name matching, timestamps and ordering are exactly those
 !              of a local folder. A file is downloaded when a reader asks for
-!              it (RemoteEnsure), the next few are fetched in the background
-!              while it is processed, and the least recently used are deleted
-!              once more than a handful are on disk.
+!              it (RemoteEnsure), and the next few are fetched in the
+!              background while it is processed.
 !
-!              Eviction never touches the file being read nor the ones fetched
-!              ahead of it, because a period may span two files and because the
-!              GHG prefetch extracts the next archive while this one is read.
+!              Every file crosses the network once per run. The acquisition
+!              frequency survey and the planar fit, time lag and drift
+!              pre-passes read files the main pass reads again, so until the
+!              main pass starts nothing is deleted; the main pass reads in time
+!              order and deletes each file once it is two files behind, since a
+!              period can start in the file before. Pre-pass workers download
+!              into their parent's directory, taking a lock per file so two of
+!              them never fetch the same one. And a URL downloaded before - a
+!              file that two settings name, or a setting and the raw listing -
+!              is copied locally rather than fetched again.
 !
 !              How each provider is listed, as found by probing it:
 !               - Google Drive: https://drive.google.com/embeddedfolderview?id=
@@ -80,7 +86,7 @@ module m_remote_source
     public :: RemoteResolveInputs, RemoteFetchFile, RemoteFetchFolder
     public :: RemoteOwnsDir, RemoteWriteFileList
     public :: RemoteEnsure, RemoteIsLocal, RemoteSizeOf
-    public :: RemoteAdoptOrder, RemoteCleanup
+    public :: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
 
     type :: RemoteEntry
         !> Full local path the file has, or will have, under the staging dir
@@ -119,10 +125,17 @@ module m_remote_source
     integer, allocatable :: ByPos(:)
     integer :: Clock = 0
     integer :: NumFailed = 0
-    !> Raw entries currently on disk - a handful, so eviction need not walk
-    !> the whole listing for every file read
-    integer, allocatable :: OnDisk(:)
-    integer :: NumOnDisk = 0
+    !> Set when the main pass starts; before it nothing is deleted
+    logical :: MainPass = .false.
+    !> Processing positions up to here have been deleted by the main pass
+    integer :: EvictedUpTo = 0
+
+    !> Every file downloaded in this run, by the URL it came from, so a file
+    !> two settings name - or a setting and the raw listing - crosses the
+    !> network once and is copied locally the second time
+    character(PathLen), allocatable :: DoneUrl(:)
+    character(PathLen), allocatable :: DonePath(:)
+    integer :: NumDone = 0
 
     !> How many files are fetched ahead of the one being read
     integer :: Ahead = 2
@@ -235,7 +248,7 @@ contains
             Recurse = RawRecurse
             if (PrefetchAhead >= 0) Ahead = PrefetchAhead
             DataLink = Unmangle(DataPath)
-            StagingDir = trim(adjustl(TmpDir)) // 'remote' // slash
+            StagingDir = trim(SharedTmpDir()) // 'remote' // slash
             call MakeDir(StagingDir)
             DataPath = StagingDir
             call LogSay(' Raw files are read from a shared link:')
@@ -298,6 +311,11 @@ contains
     !> once, as Warning(121), and left missing: the reader then fails to open
     !> it and skips the file as it would any unreadable one.
     !>
+    !> Each file is downloaded once per run. Before the main pass nothing is
+    !> deleted, since the survey and the planar fit, time lag and drift
+    !> pre-passes read files the main pass reads again; the main pass reads
+    !> in time order and deletes each file once it is behind (Evict).
+    !>
     !> FetchAhead starts the files that come next in processing order. The
     !> acquisition frequency survey reads files out of order and says no.
     !***************************************************************************
@@ -306,6 +324,7 @@ contains
         logical, intent(in) :: FetchAhead
         integer :: e
         integer :: p
+        logical :: ex
 
         if (.not. Active) return
         e = Lookup(path)
@@ -315,6 +334,19 @@ contains
         Raw(e)%used = Clock
 
         if (Raw(e)%state == stFetching) call AwaitBackground(e)
+        !> Already there: a pre-pass worker downloaded it into the shared
+        !> directory, or this process did before and kept it
+        if (Raw(e)%state == stAbsent) then
+            inquire(file = trim(Raw(e)%local), exist = ex)
+            if (ex) then
+                if (LooksLikeHtml(Raw(e)%local)) then
+                    call DeleteFile(Raw(e)%local)
+                else
+                    call MarkLocal(e)
+                    call Remember(Raw(e)%url, Raw(e)%local)
+                end if
+            end if
+        end if
         if (Raw(e)%state == stAbsent) then
             if (Download(Raw(e)%url, Raw(e)%local)) then
                 call MarkLocal(e)
@@ -407,7 +439,27 @@ contains
     end subroutine RemoteAdoptOrder
 
     !***************************************************************************
+    !> \brief The main pass starts: from here on, files behind it are deleted.
+    !***************************************************************************
+    subroutine RemoteBeginMainPass()
+        integer :: k
+        character(16) :: count_str
+
+        if (.not. Active) return
+        MainPass = .true.
+        EvictedUpTo = 0
+        k = count(Raw(1:NumRaw)%state == stLocal)
+        if (k == 0) return
+        write(count_str, '(i0)') k
+        call LogSay(' ' // trim(count_str) // ' raw file(s) downloaded for the&
+            & preparatory passes are used again, not downloaded again.')
+    end subroutine RemoteBeginMainPass
+
+    !***************************************************************************
     !> \brief Delete everything downloaded, at the end of a run.
+    !>
+    !> A pre-pass worker leaves the raw files alone: they are in its parent's
+    !> directory, and the parent's main pass is about to read them.
     !***************************************************************************
     subroutine RemoteCleanup()
         character(16) :: count_str
@@ -418,7 +470,7 @@ contains
                 // ' raw file(s) could not be downloaded from the shared link;&
                 & their periods were skipped. See above for which.')
         end if
-        if (len_trim(StagingDir) > 0) &
+        if (len_trim(StagingDir) > 0 .and. BatchIndex == 0) &
             call system(trim(comm_rmdir) // ' "' // trim(StagingDir) // '"' &
                 // comm_err_redirect)
         call system(trim(comm_rmdir) // ' "' // trim(adjustl(TmpDir)) &
@@ -779,53 +831,113 @@ contains
     !***************************************************************************
     !> \brief Download url to dest, waiting for it. False if it failed.
     !>
-    !> Written to dest.part and renamed, so dest never exists half written. A
-    !> page of HTML where data was expected - a quota, permission or sign-in
+    !> Written to a .part file and renamed, so dest never exists half written.
+    !> A page of HTML where data was expected - a quota, permission or sign-in
     !> page - counts as a failure, since curl sees HTTP 200 for those.
+    !>
+    !> A URL downloaded before in this run is copied from where it went, not
+    !> downloaded again. The .part name carries the process, because pre-pass
+    !> workers download into one shared directory; whichever finishes second
+    !> finds dest there and keeps it.
     !***************************************************************************
     logical function Download(url, dest)
         character(*), intent(in) :: url
         character(*), intent(in) :: dest
         character(PathLen) :: part
+        character(PathLen) :: have
         integer :: attempt
         integer :: rename_status
+        logical :: ex
 
         Download = .false.
         call MakeDir(DirName(dest))
-        part = trim(dest) // '.part'
+
+        have = Known(url)
+        if (len_trim(have) > 0) then
+            if (trim(have) == trim(dest)) then
+                Download = .true.
+                return
+            end if
+            if (CopyLocal(have, dest)) then
+                Download = .true.
+                return
+            end if
+        end if
+
+        !> Another process of this run downloading it: wait for it
+        do
+            inquire(file = trim(dest), exist = ex)
+            if (ex) then
+                call Remember(url, dest)
+                Download = .true.
+                return
+            end if
+            if (TryLock(dest)) exit
+            if (.not. AwaitOther(dest)) cycle
+        end do
+
+        part = trim(dest) // '.part' // trim(ProcTag())
         do attempt = 1, 3
             call DeleteFile(part)
             if (.not. Curl('-o "' // trim(part) // '" "' // trim(url) // '"')) cycle
             if (LooksLikeHtml(part)) cycle
-            call DeleteFile(dest)
-            rename_status = RenameFile(part, dest)
-            if (rename_status == 0) then
-                Download = .true.
-                return
+            inquire(file = trim(dest), exist = ex)
+            if (ex) then
+                call DeleteFile(part)
+            else
+                rename_status = RenameFile(part, dest)
+                inquire(file = trim(dest), exist = ex)
+                if (rename_status /= 0 .and. .not. ex) cycle
+                call DeleteFile(part)
             end if
+            call Remember(url, dest)
+            call DeleteFile(trim(dest) // '.lock')
+            Download = .true.
+            return
         end do
         call DeleteFile(part)
+        call DeleteFile(trim(dest) // '.lock')
     end function Download
 
     !***************************************************************************
     !> \brief Start downloading raw entry e without waiting for it.
     !>
-    !> The launcher writes dest.failed when curl fails and otherwise renames
-    !> dest.part to dest, so dest appearing means the download is complete.
+    !> The launcher writes a .failed flag when curl fails and otherwise renames
+    !> its .part file to dest - unless another process got there first - so
+    !> dest appearing means the download is complete.
     !***************************************************************************
     subroutine StartBackground(e)
         integer, intent(in) :: e
         character(PathLen) :: script
         character(PathLen) :: part
         character(PathLen) :: failed
+        character(PathLen) :: dest
         character(16) :: tag
         integer :: u
         integer :: io_status
+        logical :: ex
 
         if (Raw(e)%state /= stAbsent) return
-        call MakeDir(DirName(Raw(e)%local))
-        part = trim(Raw(e)%local) // '.part'
-        failed = trim(Raw(e)%local) // '.failed'
+        dest = Raw(e)%local
+        inquire(file = trim(dest), exist = ex)
+        if (ex) then
+            call MarkLocal(e)
+            return
+        end if
+        !> Downloaded before for another setting: a local copy, now
+        if (len_trim(Known(Raw(e)%url)) > 0) then
+            call MakeDir(DirName(dest))
+            if (Download(Raw(e)%url, dest)) call MarkLocal(e)
+            return
+        end if
+        call MakeDir(DirName(dest))
+        !> Another process of this run is downloading it; AwaitBackground waits
+        if (.not. TryLock(dest)) then
+            Raw(e)%state = stFetching
+            return
+        end if
+        part = trim(dest) // '.part' // trim(ProcTag())
+        failed = trim(dest) // '.failed' // trim(ProcTag())
         call DeleteFile(part)
         call DeleteFile(failed)
 
@@ -844,16 +956,23 @@ contains
             write(u, '(a)') trim(CurlLine('-o "' // trim(part) // '" "' &
                 // trim(Percents(Raw(e)%url)) // '"'))
             write(u, '(a)') 'if errorlevel 1 (echo failed> "' // trim(failed) &
-                // '") else (move /y "' // trim(part) // '" "' &
-                // trim(Raw(e)%local) // '" >nul 2>nul)'
+                // '") else if exist "' // trim(dest) // '" (del /q "' &
+                // trim(part) // '") else (move /y "' // trim(part) // '" "' &
+                // trim(dest) // '" >nul 2>nul)'
+            write(u, '(a)') 'del /q "' // trim(dest) // '.lock" >nul 2>nul'
             !> The launcher removes itself; one is written per file
             write(u, '(a)') '(goto) 2>nul & del "%~f0"'
         else
             write(u, '(a)') '#!/bin/sh'
-            write(u, '(a)') trim(CurlLine('-o "' // trim(part) // '" ''' &
-                // trim(Raw(e)%url) // '''')) // ' && mv -f "' // trim(part) &
-                // '" "' // trim(Raw(e)%local) // '" || echo failed > "' &
-                // trim(failed) // '"'
+            write(u, '(a)') 'if ' // trim(CurlLine('-o "' // trim(part) // '" ''' &
+                // trim(Raw(e)%url) // '''')) // '; then'
+            write(u, '(a)') '  if [ -e "' // trim(dest) // '" ]; then rm -f "' &
+                // trim(part) // '"; else mv -f "' // trim(part) // '" "' &
+                // trim(dest) // '"; fi'
+            write(u, '(a)') 'else'
+            write(u, '(a)') '  echo failed > "' // trim(failed) // '"'
+            write(u, '(a)') 'fi'
+            write(u, '(a)') 'rm -f "' // trim(dest) // '.lock"'
             write(u, '(a)') 'rm -f "$0"'
         end if
         close(u)
@@ -876,87 +995,206 @@ contains
         integer :: waited
         logical :: done
         logical :: failed
+        logical :: locked
+        character(PathLen) :: flag
 
+        flag = trim(Raw(e)%local) // '.failed' // trim(ProcTag())
         waited = 0
         do
             inquire(file = trim(Raw(e)%local), exist = done)
-            inquire(file = trim(Raw(e)%local) // '.failed', exist = failed)
-            if (done .or. failed .or. waited >= MaxWait) exit
+            inquire(file = trim(flag), exist = failed)
+            inquire(file = trim(Raw(e)%local) // '.lock', exist = locked)
+            if (done .or. failed .or. .not. locked .or. waited >= MaxWait) exit
             call sleep(1)
             waited = waited + 1
         end do
 
         call MarkGone(e)
-        call DeleteFile(trim(Raw(e)%local) // '.failed')
+        call DeleteFile(flag)
         if (done) then
             if (LooksLikeHtml(Raw(e)%local)) then
                 call DeleteFile(Raw(e)%local)
-                call MarkGone(e)
             else
                 call MarkLocal(e)
+                call Remember(Raw(e)%url, Raw(e)%local)
             end if
         end if
     end subroutine AwaitBackground
 
     !***************************************************************************
-    !> \brief Delete the least recently used raw files beyond the budget.
+    !> \brief Delete the raw files the main pass has left behind.
     !>
-    !> Never the one just asked for, nor those fetched ahead of it.
+    !> Nothing before the main pass: what the survey and the pre-passes
+    !> downloaded is read again there, and deleting it would mean downloading
+    !> it twice. The main pass reads in time order, so a file two positions
+    !> behind the one being read will not be read again; two, not one,
+    !> because a period can start in the file before. Files a pre-pass worker
+    !> downloaded are on disk without this process knowing, so the file
+    !> system is asked rather than the entry's state.
     !***************************************************************************
     subroutine Evict(e)
         integer, intent(in) :: e
-        integer :: k
+        integer :: p
         integer :: i
-        integer :: victim
+        logical :: ex
 
-        do while (NumOnDisk > Ahead + 3)
-            victim = 0
-            do k = 1, NumOnDisk
-                i = OnDisk(k)
-                if (i == e) cycle
-                if (Raw(i)%pos > Raw(e)%pos .and. &
-                    Raw(i)%pos <= Raw(e)%pos + Ahead) cycle
-                if (victim == 0) then
-                    victim = i
-                else if (Raw(i)%used < Raw(victim)%used) then
-                    victim = i
-                end if
-            end do
-            if (victim == 0) exit
-            call DeleteFile(Raw(victim)%local)
-            call MarkGone(victim)
+        if (.not. MainPass) return
+        do p = EvictedUpTo + 1, Raw(e)%pos - 2
+            i = ByPos(p)
+            if (Raw(i)%state /= stFetching) then
+                inquire(file = trim(Raw(i)%local), exist = ex)
+                if (ex) call DeleteFile(Raw(i)%local)
+                if (Raw(i)%state == stLocal) call MarkGone(i)
+                call Forget(Raw(i)%local)
+            end if
+            EvictedUpTo = p
         end do
     end subroutine Evict
+
+    !> The per-process part of a temporary name: pre-pass workers share the
+    !> raw file directory with their parent
+    character(8) function ProcTag()
+        ProcTag = ''
+        if (BatchIndex > 0) write(ProcTag, '(a,i2.2)') '_b', BatchIndex
+    end function ProcTag
+
+    !> The parent's temporary directory, also from inside a pre-pass worker,
+    !> which is told it with --batch-tmp
+    character(PathLen) function SharedTmpDir()
+        integer :: n
+
+        SharedTmpDir = adjustl(TmpDir)
+        if (BatchIndex == 0 .or. len_trim(BatchTmpDir) == 0) return
+        SharedTmpDir = adjustl(BatchTmpDir)
+        n = len_trim(SharedTmpDir)
+        if (SharedTmpDir(n:n) /= slash) SharedTmpDir(n + 1:n + 1) = slash
+    end function SharedTmpDir
+
+    !> Where this run downloaded url to, if it did and the file is still there
+    character(PathLen) function Known(url)
+        character(*), intent(in) :: url
+        integer :: k
+        logical :: ex
+
+        Known = ''
+        do k = 1, NumDone
+            if (trim(DoneUrl(k)) /= trim(url)) cycle
+            inquire(file = trim(DonePath(k)), exist = ex)
+            if (ex) Known = DonePath(k)
+            return
+        end do
+    end function Known
+
+    subroutine Remember(url, path)
+        character(*), intent(in) :: url
+        character(*), intent(in) :: path
+        character(PathLen), allocatable :: grown(:)
+        integer :: k
+
+        do k = 1, NumDone
+            if (trim(DoneUrl(k)) /= trim(url)) cycle
+            if (len_trim(Known(url)) == 0) DonePath(k) = path
+            return
+        end do
+        if (.not. allocated(DoneUrl)) allocate(DoneUrl(64), DonePath(64))
+        if (NumDone >= size(DoneUrl)) then
+            allocate(grown(2 * size(DoneUrl)))
+            grown(1:NumDone) = DoneUrl(1:NumDone)
+            call move_alloc(grown, DoneUrl)
+            allocate(grown(2 * size(DonePath)))
+            grown(1:NumDone) = DonePath(1:NumDone)
+            call move_alloc(grown, DonePath)
+        end if
+        NumDone = NumDone + 1
+        DoneUrl(NumDone) = url
+        DonePath(NumDone) = path
+    end subroutine Remember
+
+    !> Take the right to download dest: creating the lock file fails if it
+    !> exists, and that test and the creation are one step for the OS
+    logical function TryLock(dest)
+        character(*), intent(in) :: dest
+        integer :: u
+        integer :: io_status
+
+        open(newunit = u, file = trim(dest) // '.lock', status = 'new', &
+            action = 'write', iostat = io_status)
+        TryLock = io_status == 0
+        if (TryLock) close(u)
+    end function TryLock
+
+    !> Wait while another process holds the lock on dest. True if dest came;
+    !> false if the lock went without it, or was held too long, and then the
+    !> lock is cleared so the caller can take it
+    logical function AwaitOther(dest)
+        character(*), intent(in) :: dest
+        integer :: waited
+        logical :: ex
+        logical :: locked
+
+        waited = 0
+        do
+            inquire(file = trim(dest), exist = ex)
+            inquire(file = trim(dest) // '.lock', exist = locked)
+            if (ex .or. .not. locked) exit
+            if (waited >= MaxWait) then
+                call DeleteFile(trim(dest) // '.lock')
+                exit
+            end if
+            call sleep(1)
+            waited = waited + 1
+        end do
+        AwaitOther = ex
+    end function AwaitOther
+
+    !> A deleted raw file is no source for a copy any more
+    subroutine Forget(path)
+        character(*), intent(in) :: path
+        integer :: k
+
+        do k = 1, NumDone
+            if (trim(DonePath(k)) == trim(path)) DonePath(k) = ''
+        end do
+    end subroutine Forget
+
+    !> Copy a file byte for byte, through a .part file like a download
+    logical function CopyLocal(from, to)
+        character(*), intent(in) :: from
+        character(*), intent(in) :: to
+        character(:), allocatable :: bytes
+        character(PathLen) :: part
+        integer :: u
+        integer :: io_status
+        logical :: ok
+
+        CopyLocal = .false.
+        call ReadWhole(from, bytes, ok)
+        if (.not. ok) return
+        part = trim(to) // '.part' // trim(ProcTag())
+        open(newunit = u, file = trim(part), access = 'stream', &
+            form = 'unformatted', status = 'replace', action = 'write', &
+            iostat = io_status)
+        if (io_status /= 0) return
+        write(u, iostat = io_status) bytes
+        close(u)
+        if (io_status /= 0) return
+        call DeleteFile(to)
+        CopyLocal = RenameFile(part, to) == 0
+        if (.not. CopyLocal) call DeleteFile(part)
+    end function CopyLocal
 
     !> Entry e is on disk
     subroutine MarkLocal(e)
         integer, intent(in) :: e
-        integer, allocatable :: grown(:)
 
-        if (Raw(e)%state == stLocal) return
         Raw(e)%state = stLocal
-        if (.not. allocated(OnDisk)) allocate(OnDisk(16))
-        if (NumOnDisk >= size(OnDisk)) then
-            allocate(grown(2 * size(OnDisk)))
-            grown(1:NumOnDisk) = OnDisk(1:NumOnDisk)
-            call move_alloc(grown, OnDisk)
-        end if
-        NumOnDisk = NumOnDisk + 1
-        OnDisk(NumOnDisk) = e
     end subroutine MarkLocal
 
     !> Entry e is not on disk (any more)
     subroutine MarkGone(e)
         integer, intent(in) :: e
-        integer :: k
 
         Raw(e)%state = stAbsent
-        do k = 1, NumOnDisk
-            if (OnDisk(k) /= e) cycle
-            OnDisk(k) = OnDisk(NumOnDisk)
-            NumOnDisk = NumOnDisk - 1
-            exit
-        end do
     end subroutine MarkGone
 
     !***************************************************************************
