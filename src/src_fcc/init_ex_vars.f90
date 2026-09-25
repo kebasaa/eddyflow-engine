@@ -165,6 +165,20 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
         if (ValidRecord) &
             call DateTimeToDateType(lEx%end_date, lEX%end_time, EndTimestamp)
 
+        !> The highest rate of any record, not the first one's: a project can
+        !> switch rates part way, and RP grids the binned spectra up to the
+        !> highest, so the Nyquist the fits stop at has to be that one too.
+        !> Likewise each analyser's own. A single-rate project reads the same
+        !> value from every record and ends where the first one put it.
+        if (ValidRecord .and. InitializationPerformed) then
+            if (lEx%ac_freq > FCCMetadata%ac_freq) &
+                FCCMetadata%ac_freq = lEx%ac_freq
+            do gas = firstGas, lastGas
+                if (lEx%gas_instr(gas)%ac_freq > FCCMetadata%GasAcFreq(gas)) &
+                    FCCMetadata%GasAcFreq(gas) = lEx%gas_instr(gas)%ac_freq
+            end do
+        end if
+
         !> Initializations
         if (ValidRecord .and. .not. InitializationPerformed) then
 

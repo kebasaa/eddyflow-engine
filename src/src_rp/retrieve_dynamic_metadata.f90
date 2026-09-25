@@ -505,6 +505,7 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
     integer :: gas2
     integer :: sec
     logical :: instr_updated(GHGNumVar)
+    logical, save :: WarnedGhgFileProps = .false.
 
 
     !> Coordinates
@@ -530,10 +531,27 @@ subroutine ExtractUsableMetadataFromDynamic(LocCol, ncol)
             Metadata%z0 = DynamicMetadata%z0
 
             !> File props
-    if (DynamicMetadata%ac_freq > 0d0) &
-        Metadata%ac_freq = DynamicMetadata%ac_freq
-    if (DynamicMetadata%file_length > 0d0) &
-        Metadata%file_length = DynamicMetadata%file_length
+    !> Not over GHG files read with their own metadata: each of those states
+    !> the rate and duration it was actually recorded at, and the period was
+    !> imported at exactly that rate. Overriding it here would make every
+    !> sample-count downstream disagree with the data.
+    if (EddyFlowProj%ftype == 'licor_ghg' .and. .not. EddyFlowProj%use_extmd_file) then
+        if (.not. WarnedGhgFileProps) then
+            if ((DynamicMetadata%ac_freq > 0d0 .and. &
+                abs(DynamicMetadata%ac_freq - Metadata%ac_freq) > 1d-6) .or. &
+                (DynamicMetadata%file_length > 0d0 .and. &
+                abs(DynamicMetadata%file_length - Metadata%file_length) > 1d-6)) then
+                call LogSay('')
+                call ExceptionHandler(118)
+                WarnedGhgFileProps = .true.
+            end if
+        end if
+    else
+        if (DynamicMetadata%ac_freq > 0d0) &
+            Metadata%ac_freq = DynamicMetadata%ac_freq
+        if (DynamicMetadata%file_length > 0d0) &
+            Metadata%file_length = DynamicMetadata%file_length
+    end if
 
     !> Sonic
     if (DynamicMetadata%instr(u)%model /= 'none') &

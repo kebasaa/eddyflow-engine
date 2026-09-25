@@ -137,6 +137,13 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 #
 # Built by gen_ghg_ext.py into data_ghg_campbell/, same as base_ghg_ext.
 #
+# base_ghg_mixed, base_ghg_mixed_60 and base_ghg_mixed_instr are the same two
+# archives stretched to six half-hours, part of them decimated to 5 Hz, or with
+# the LI-7700 declaring 1 Hz from 02:30 on. They are the only fixtures whose
+# files are not all at one rate: each period has to be read at its own files'
+# rate, and one whose files disagree skipped with Warning(116). Built by
+# gen_ghg_mixed.py into data_ghg_mixed/ and data_ghg_mixed_instr/.
+#
 # base_ep_licor is the same two archives handed over as an EDDYPRO project, so
 # run.sh routes it through the importer the way base_ep does. base_ep is the
 # only other importer fixture and it is run_mode=0 (advanced), file_type=1
@@ -218,6 +225,9 @@ base_ghg_licor
 base_ghg_ext
 base_ghg_campbell
 base_ghg_burba
+base_ghg_mixed
+base_ghg_mixed_60
+base_ghg_mixed_instr
 base_auto_sa
 base_mw
 base_mw_ref
@@ -275,7 +285,7 @@ for f in $FIXTURES; do
     #> produces nothing, which would read as a code failure - so they are
     #> skipped rather than failed, and said out loud.
     case "$f" in
-        base_ghg|base_ghg_licor|base_ghg_ext|base_ghg_campbell|base_ghg_burba|base_ep_licor)
+        base_ghg|base_ghg_licor|base_ghg_ext|base_ghg_campbell|base_ghg_burba|base_ep_licor|base_ghg_mixed*)
             if ! command -v 7z >/dev/null 2>&1 \
                     && ! command -v 7za >/dev/null 2>&1; then
                 printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue
@@ -289,13 +299,16 @@ for f in $FIXTURES; do
     #> means the generator has not been run - a missing input rather than a
     #> broken engine, which is why these skip rather than fail.
     case "$f" in
-        base_ghg_ext)      gen_dir=data_ghg_ext ;;
-        base_ghg_campbell) gen_dir=data_ghg_campbell ;;
+        base_ghg_ext)      gen_dir=data_ghg_ext;      gen=gen_ghg_ext.py ;;
+        base_ghg_campbell) gen_dir=data_ghg_campbell; gen=gen_ghg_ext.py ;;
+        base_ghg_mixed|base_ghg_mixed_60)
+                           gen_dir=data_ghg_mixed;    gen=gen_ghg_mixed.py ;;
+        base_ghg_mixed_instr)
+                           gen_dir=data_ghg_mixed_instr; gen=gen_ghg_mixed.py ;;
         *)                 gen_dir= ;;
     esac
     if [ -n "$gen_dir" ] && [ ! -d "$HERE/$gen_dir" ]; then
-        printf '%-22s SKIP  (run gen_ghg_ext.py first)
-' "$f"; continue
+        printf '%-22s SKIP  (run %s first)\n' "$f" "$gen"; continue
     fi
     rm -rf "$HERE/out_$WHICH"
     #> Log outside the output directory: run.sh clears that directory as its

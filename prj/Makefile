@@ -981,6 +981,9 @@ string_sub.o: \
 subtract_high_freq_noise.o: \
 	subtract_high_freq_noise.f90 \
 	m_fx_global_var_mod.o
+survey_ghg_ac_freq.o: \
+	survey_ghg_ac_freq.f90 \
+	m_rp_global_var.o
 tag_run_mode.o: \
 	tag_run_mode.f90 \
 	m_common_global_var.o

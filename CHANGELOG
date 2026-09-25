@@ -1,3 +1,39 @@
+8.1.1 (2026-09-25)
+
+    Engine:
+	- Fix: A project whose GHG files change acquisition frequency part way -
+	       10 Hz for a season, then 20 Hz - lost every period after the change.
+	       RP sized its period buffer and the record limits once, from the
+	       first file, so after a change up in rate only the first half of
+	       each period fitted: the first faster period was read as 9000 of its
+	       18000 records, and every period after it was dropped with
+	       Warning(58). The time-lag, planar-fit and drift pre-passes never
+	       recomputed the limits at all and used the half that fitted without
+	       a word.
+	       Each archive's own rate is now checked before its data is read.
+	       When a period's first file is at a new rate, the period is read
+	       again at that rate; a period whose files disagree - on the file
+	       rate, or on the rate an instrument in use states for itself - is
+	       skipped with the new Warning(116), and the next period starts with
+	       the file where the rate changed. Nothing is resampled.
+	- New feature: When the raw files are not all at one rate, the log opens
+	               with each rate and the time it starts, e.g.
+	                  5.000 Hz from 2021-08-21 01:00
+	                 10.000 Hz from 2021-08-21 02:30
+	               found by reading the rate of the first, the last, 20 evenly
+	               spaced files and those where the file size steps, then
+	               halving between any two that disagree until the change is
+	               pinned to the file. A project at one rate prints nothing new.
+	               The binned-spectra grid is built up to the highest rate's
+	               Nyquist frequency; Warning(117) reports a faster rate the
+	               survey missed.
+	- Fix: FCC took the Nyquist limit of the RH fit from the first record's rate
+	       only; it now takes the highest of any record.
+	- Fix: Dynamic metadata no longer overrides the acquisition frequency or
+	       file duration a GHG file states about itself when the embedded
+	       metadata is used, since the data was read at the file's own rate.
+	       Warning(118) says so once.
+
 8.1.0 (2026-08-22)
 
     Engine:

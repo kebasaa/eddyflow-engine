@@ -35,7 +35,7 @@
 subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
     LocBypassCol, MetaIsNeeded, BiometIsNeeded, DataIsNeeded, ValidateMetadata, &
     fRaw, nrow, ncol, skip_file, passed, faulty_col, N, FileEndReached, printout, &
-    NextZipFile)
+    NextZipFile, ExpectedAcFreq, rate_mismatch)
 
     use m_rp_global_var
     use m_ghg_prefetch
@@ -64,6 +64,13 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
     type(ColType), intent(inout) :: LocCol(MaxNumCol)
     type(ColType), intent(inout) :: LocBypassCol(MaxNumCol)
     logical, intent(out) :: FileEndReached
+    !> The acquisition frequency the caller's buffers are sized for. When the
+    !> archive's own metadata states another, its data is not imported and
+    !> rate_mismatch says so; Metadata%ac_freq is then the archive's rate.
+    !> Zero or negative means "take whatever the archive says", as the
+    !> preamble and the metadata retriever do.
+    real(kind = dbl), intent(in) :: ExpectedAcFreq
+    logical, intent(out) :: rate_mismatch
     !> local variables
     integer :: del_status
     character(PathLen) :: MetaFile
@@ -77,6 +84,7 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
 
 
     skip_file = .false.
+    rate_mismatch = .false.
     passed = .true.
 
     !> Unzip archive, unless something already did it for this one. A claim
@@ -133,6 +141,24 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
         if (skip_file) then
             call GhgPrefetchRelease()
             return
+        end if
+
+        !> A file at another rate than the period it would go into cannot be
+        !> read into it: its record window and the buffer were both sized at
+        !> the other rate. Say so before any data is read, and let the caller
+        !> decide whether to resize and come back or to give up the period.
+        if (ExpectedAcFreq > 0d0 .and. DataIsNeeded) then
+            if (abs(Metadata%ac_freq - ExpectedAcFreq) > 1d-6 * ExpectedAcFreq) then
+                rate_mismatch = .true.
+                comm = (trim(comm_del) // ' ' // trim(adjustl(DataFile)) // ' ' &
+                    // trim(adjustl(MetaFile)) // ' ' &
+                    // trim(adjustl(BiometFile)) // ' ' &
+                    // trim(adjustl(BiometMetaFile)) &
+                    // ' *.status ' // comm_err_redirect)
+                del_status = system(trim(comm))
+                call GhgPrefetchRelease()
+                return
+            end if
         end if
         if (DataIsNeeded) then
 

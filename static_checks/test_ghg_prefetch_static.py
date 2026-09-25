@@ -167,9 +167,11 @@ class TheNewArgumentsAreRequired(unittest.TestCase):
         self.assertNotIn(", optional", decl)
 
     def test_the_preamble_says_it_has_no_next(self):
-        """It reads one file to learn the columns and stops."""
+        """It reads one file to learn the columns and stops. The next
+        archive is followed by the expected rate, -1d0 here since the preamble
+        is what learns the rate."""
         i = MAIN.index("call ReadLicorGhgArchive(RawFileList(i)%path")
-        self.assertIn("'')", MAIN[i:i + 500])
+        self.assertRegex(MAIN[i:i + 500], r"\.false\., '', &\s*-1d0, ")
 
     def test_the_period_loop_names_the_next_file(self):
         i = IMPORT.index("call ReadLicorGhgArchive(")
