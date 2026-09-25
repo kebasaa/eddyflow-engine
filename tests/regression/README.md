@@ -662,3 +662,29 @@ throw-away and are not kept.
   any of its rates, so there was nothing for the rate to change.
 - The runs used a looser spectral-assessment selection than the site project
   (flux thresholds 0, Foken filter off, sa_min_smpl 10), the same for all.
+
+## Inputs from a shared link
+
+Any input may be a Google Drive or Dropbox folder or file shared with "anyone
+with the link" (`src/src_common/remote_source.f90`). Two scripts hold that to
+giving exactly what the same files give from disk, without the network:
+`remote_server.py` answers the requests the real providers answer, over a local
+folder, and `EDDYFLOW_REMOTE_BASE` points the engine at it.
+
+```
+BIN=<engine bin> bash check_remote.sh base_ghg_mixed.eddyflow gdrive
+BIN=<engine bin> NEST=1 EXTRACT_META=1 bash check_remote.sh base_ghg_mixed.eddyflow dropbox --page 1
+BIN=<engine bin> bash check_remote.sh base_ghg_mixed.eddyflow gdrive --missing <file> --html <file>
+BIN=<engine bin> bash check_remote_fcc.sh base_ghg_mixed.eddyflow
+```
+
+`check_remote.sh` runs the fixture twice through `run.sh`, from disk and from
+links, and requires every output but the run log and the project copy to be
+identical. `NEST=1` spreads the files over subfolders, `EXTRACT_META=1` serves
+the alternative metadata file from the link too, and `--page 1` makes the
+Dropbox listing page through its entries one at a time. With `--missing` or
+`--html` the outputs differ by design; the run must finish and name the files
+in Warning(121). `check_remote_fcc.sh` does the same for FCC's `ex_file` and
+cospectra folders. The links are written in quotes, as the interface's
+QSettings writes any value containing `=`.
+

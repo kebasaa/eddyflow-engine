@@ -86,6 +86,42 @@
 	       file duration a GHG file states about itself when the embedded
 	       metadata is used, since the data was read at the file's own rate.
 	       Warning(118) says so once.
+	- New feature: Inputs can be read from a Google Drive or Dropbox folder
+	               shared with "anyone with the link". No login or API key is
+	               needed; curl, which ships with Windows 10 and later, macOS
+	               and Linux, does the downloading.
+	               Every input setting may hold such a link: data_path,
+	               proj_file, dyn_metadata_file, biom_file, biom_dir, pf_file,
+	               to_file, head_corr_dir, and in FCC ex_file, sa_file,
+	               sa_bin_spectra and sa_full_spectra.
+	               Raw data are not downloaded wholesale. The shared folder is
+	               listed once at startup, and each file is downloaded when it
+	               is read, with the next two fetched in the background while
+	               it is processed; the least recently used are deleted once
+	               more than five are on disk. A project with a planar-fit,
+	               time-lag or acquisition-frequency pass reads the files it
+	               needs twice, and so downloads them twice. Files, and the
+	               folders read whole (biomet, cospectra, head correction), are
+	               downloaded once, at startup. Nothing is kept after the run.
+	               A raw file that cannot be downloaded - three attempts, and a
+	               web page where data was expected counts as a failure - is
+	               skipped with the new Warning(121), and a summary line closes
+	               the run. Any other input that cannot be read stops the run
+	               with the new Fatal error(120).
+	               Dropbox is listed through the request its own folder page
+	               makes, which is not a published API; should Dropbox change
+	               it, the listing fails with Fatal error(120) naming it rather
+	               than processing part of a folder.
+	- New feature: The output folder must be local; a link there stops the
+	               run before anything is downloaded, with the new Fatal
+	               error(122).
+	- Tested: tests/regression/check_remote.sh runs a fixture from disk and
+	          again from a local stand-in for Google Drive or Dropbox
+	          (remote_server.py), with nested folders, a remote metadata file,
+	          Dropbox paging and a time-lag pre-pass; every output is
+	          byte-identical. check_remote_fcc.sh does the same for FCC's
+	          inputs. With one file answering 404 and one an HTML page, the run
+	          finishes and names both.
 
 8.1.0 (2026-08-22)
 

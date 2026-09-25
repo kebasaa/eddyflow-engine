@@ -42,6 +42,7 @@ program EddyFlowRP
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     use m_ghg_prefetch, only: GhgPrefetchCleanup
+    use m_remote_source, only: RemoteAdoptOrder, RemoteCleanup
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
@@ -473,6 +474,8 @@ program EddyFlowRP
     !> order RawFileList, also in chronological order
     call FilesInChronologicalOrder(RawFileList, size(RawFileList), &
         tsDatasetStart, tsDatasetEnd, '')
+    !> Raw files from a shared link are fetched ahead in this order
+    call RemoteAdoptOrder(RawFileList, size(RawFileList))
 
     !> Adjust Start/End timestamps to define the boundaries of the
     !> RawTimeSeries. Retrieve the beginning time of first file
@@ -3034,6 +3037,8 @@ program EddyFlowRP
     !> temporary directory below and would take it with it; embedded mode
     !> keeps that directory between runs and would not.
     call GhgPrefetchCleanup()
+    !> Likewise the raw files downloaded from a shared link
+    call RemoteCleanup()
 
     !> Delete tmp folder if running in embedded mode
     if(EddyFlowProj%run_env == 'desktop') &
