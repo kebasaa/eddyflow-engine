@@ -58,6 +58,7 @@
 !***************************************************************************
 module m_ghg_prefetch
     use m_common_global_var
+    use m_remote_source, only: RemoteIsLocal
     implicit none
     private
 
@@ -129,6 +130,8 @@ contains
         if (len_trim(Pending) /= 0) return
         !> -j 1 is the switch for "start nothing alongside this".
         if (NumJobs == 1) return
+        !> An archive from a shared link may still be downloading
+        if (.not. RemoteIsLocal(ZipFile)) return
 
         dir = GhgPrefetchDir()
         if (OS == 'win') then

@@ -576,5 +576,25 @@ subroutine ExceptionHandler(error_code)
             call LogSayList('  Fatal error(112)> writable folder and run it from there.')
             call LogSayList('  Fatal error(112)> Program execution aborted.')
             stop 1
+        case(120)
+            call LogSayList('  Fatal error(120)> An input given as a shared Google Drive or Dropbox')
+            call LogSayList('  Fatal error(120)> link, named above, could not be read. The link must')
+            call LogSayList('  Fatal error(120)> be shared with "anyone with the link", and this')
+            call LogSayList('  Fatal error(120)> computer must be able to reach the provider.')
+            call LogSayList('  Fatal error(120)> Program execution aborted.')
+            stop 1
+        case(121)
+            call LogSayList(' Warning(121)> The raw file named above is read from a shared link')
+            call LogSayList(' Warning(121)> and could not be downloaded, after three attempts.')
+            call LogSayList(' Warning(121)> It is treated as missing, so the period it belongs to')
+            call LogSayList(' Warning(121)> is skipped or processed from the files that remain.')
+        case(122)
+            call LogSayList('  Fatal error(122)> Output locations must be local folders; EddyFlow')
+            call LogSayList('  Fatal error(122)> cannot write to a shared drive. Inputs - raw data,')
+            call LogSayList('  Fatal error(122)> metadata, biomet, planar fit, time lag and spectral')
+            call LogSayList('  Fatal error(122)> assessment files, cospectra folders - can be read')
+            call LogSayList('  Fatal error(122)> from a shared link; the output folder cannot.')
+            call LogSayList('  Fatal error(122)> Program execution aborted.')
+            stop 1
     end select
 end subroutine ExceptionHandler

@@ -39,6 +39,7 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
 
     use m_rp_global_var
     use m_ghg_prefetch
+    use m_remote_source, only: RemoteEnsure
     implicit none
     !> in/out variables
     integer, intent(in) :: FirstRecord
@@ -91,6 +92,8 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
     !> is granted only for this exact archive and only once the extraction
     !> has signalled that it finished, so failing to get one costs nothing
     !> but the ordinary extraction.
+    !> A raw file from a shared link is downloaded now, if it is not yet
+    call RemoteEnsure(ZipFile, .true.)
     call GhgPrefetchClaim(ZipFile, prefetched)
     if (prefetched) then
         SrcDir = GhgPrefetchDir()

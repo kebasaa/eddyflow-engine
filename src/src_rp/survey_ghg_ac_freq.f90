@@ -62,6 +62,7 @@
 !***************************************************************************
 subroutine SurveyGhgAcFreq(FileList, nfiles, fmax)
     use m_rp_global_var
+    use m_remote_source, only: RemoteSizeOf
     implicit none
     !> in/out variables
     integer, intent(in) :: nfiles
@@ -106,8 +107,11 @@ subroutine SurveyGhgAcFreq(FileList, nfiles, fmax)
 
     !> File sizes, and the size steps between neighbours. Only the larger file
     !> of a step is worth a read, since only the highest rate is wanted.
+    !> From a shared link, the size is the listed one (Dropbox lists it,
+    !> Google does not, and then there are no size steps to follow)
     do i = 1, nfiles
-        inquire(file = FileList(i)%path, size = fsize(i))
+        fsize(i) = RemoteSizeOf(FileList(i)%path)
+        if (fsize(i) < 0) inquire(file = FileList(i)%path, size = fsize(i))
     end do
     do i = 2, nfiles
         if (fsize(i) <= 0 .or. fsize(i - 1) <= 0) cycle
@@ -267,6 +271,7 @@ end subroutine SurveyGhgAcFreq
 !***************************************************************************
 subroutine PeekGhgAcFreq(GhgFile, freq, ok)
     use m_rp_global_var
+    use m_remote_source, only: RemoteEnsure
     implicit none
     !> in/out variables
     type(FileListType), intent(in) :: GhgFile
@@ -289,6 +294,8 @@ subroutine PeekGhgAcFreq(GhgFile, freq, ok)
     !> Not *.metadata: UnZipArchive lists TmpDir and would take it for an
     !> archive's own if one were ever left behind
     MetaFile = trim(adjustl(TmpDir)) // 'ac_freq_peek.tmp'
+    !> Out of processing order, so nothing is fetched ahead of it
+    call RemoteEnsure(GhgFile%path, .false.)
     comm = trim(comm_7zip) // ' e -so "' // trim(GhgFile%path) &
         // '" "*.metadata" "-x!*-biomet.metadata" > "' // trim(MetaFile) // '"' &
         // comm_err_redirect

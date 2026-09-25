@@ -26,6 +26,7 @@
 Program EddyFlowFCC
     use m_fx_global_var
     use m_cec
+    use m_remote_source, only: RemoteCleanup
     implicit none
 
     integer, external :: CreateDir
@@ -708,6 +709,9 @@ Program EddyFlowFCC
     else
         call RenameTmpFilesCommon()
     end if
+
+    !> Whatever was downloaded from a shared link
+    call RemoteCleanup()
 
     !> Delete tmp folder if running in embedded mode
     if(EddyFlowProj%run_env == 'desktop') &
