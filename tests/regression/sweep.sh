@@ -228,6 +228,7 @@ base_ghg_burba
 base_ghg_mixed
 base_ghg_mixed_60
 base_ghg_mixed_instr
+base_ghg_mixed_sa
 base_auto_sa
 base_mw
 base_mw_ref
@@ -301,7 +302,7 @@ for f in $FIXTURES; do
     case "$f" in
         base_ghg_ext)      gen_dir=data_ghg_ext;      gen=gen_ghg_ext.py ;;
         base_ghg_campbell) gen_dir=data_ghg_campbell; gen=gen_ghg_ext.py ;;
-        base_ghg_mixed|base_ghg_mixed_60)
+        base_ghg_mixed|base_ghg_mixed_60|base_ghg_mixed_sa)
                            gen_dir=data_ghg_mixed;    gen=gen_ghg_mixed.py ;;
         base_ghg_mixed_instr)
                            gen_dir=data_ghg_mixed_instr; gen=gen_ghg_mixed.py ;;

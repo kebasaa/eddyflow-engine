@@ -36,6 +36,7 @@
 subroutine FitRh2Fco()
     use m_fx_global_var
     use m_levenberg_marquardt
+    use m_sa_rates, only: GasNyquist
     implicit none
 
     !> Local variables
@@ -97,9 +98,14 @@ subroutine FitRh2Fco()
     !> have measured - by exactly the ratio of the two rates. An ex record
     !> written before the analyser block carried a rate leaves GasAcFreq at the
     !> error code, and then the station's rate is the best answer there is.
+    !>
+    !> At the rate being assessed: with more than one acquisition frequency in
+    !> the project each is assessed in its own pass, and the hygrometer's rate
+    !> in that pass is the one its spectra were sampled at.
     nyquist = FCCMetadata%ac_freq / 2d0
     if (FCCMetadata%GasAcFreq(wsl) > 0d0) &
         nyquist = min(FCCMetadata%GasAcFreq(wsl), FCCMetadata%ac_freq) / 2d0
+    if (GasNyquist(wsl) > 0d0) nyquist = GasNyquist(wsl)
     where (RegPar(wsl, RH10:RH90)%fc > nyquist .or. &
         RegPar(wsl, RH10:RH90)%fc < 0d0) &
         RegPar(wsl, RH10:RH90)%fc = error
@@ -125,10 +131,18 @@ subroutine FitRh2Fco()
                 cnt2 = cnt2 + 1
             end if
         end do
-        mean_fc = mean_fc / cnt2
-        RegPar(wsl, dum)%e1 = 1d-15
-        RegPar(wsl, dum)%e2 = 1d-15
-        RegPar(wsl, dum)%e3 = dlog(mean_fc)
+        !> No RH class fitted: nothing to average. This divided 0 by 0 and put
+        !> log(NaN) into the file and the correction alike.
+        if (cnt2 > 0) then
+            mean_fc = mean_fc / cnt2
+            RegPar(wsl, dum)%e1 = 1d-15
+            RegPar(wsl, dum)%e2 = 1d-15
+            RegPar(wsl, dum)%e3 = dlog(mean_fc)
+        else
+            RegPar(wsl, dum)%e1 = error
+            RegPar(wsl, dum)%e2 = error
+            RegPar(wsl, dum)%e3 = error
+        end if
     else
         !> Fit exponential model by least squares minimization
         write(*, '(a)', advance = 'no') ' Fitting in-situ assessment of &

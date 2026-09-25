@@ -35,6 +35,7 @@
 !***************************************************************************
 subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords, FirstValidRecord)
     use m_fx_global_var
+    use m_sa_rates
     implicit none
     !> In/out variables
     integer, intent(out) :: NumRecords
@@ -165,20 +166,6 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
         if (ValidRecord) &
             call DateTimeToDateType(lEx%end_date, lEX%end_time, EndTimestamp)
 
-        !> The highest rate of any record, not the first one's: a project can
-        !> switch rates part way, and RP grids the binned spectra up to the
-        !> highest, so the Nyquist the fits stop at has to be that one too.
-        !> Likewise each analyser's own. A single-rate project reads the same
-        !> value from every record and ends where the first one put it.
-        if (ValidRecord .and. InitializationPerformed) then
-            if (lEx%ac_freq > FCCMetadata%ac_freq) &
-                FCCMetadata%ac_freq = lEx%ac_freq
-            do gas = firstGas, lastGas
-                if (lEx%gas_instr(gas)%ac_freq > FCCMetadata%GasAcFreq(gas)) &
-                    FCCMetadata%GasAcFreq(gas) = lEx%gas_instr(gas)%ac_freq
-            end do
-        end if
-
         !> Initializations
         if (ValidRecord .and. .not. InitializationPerformed) then
 
@@ -254,11 +241,28 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
             do gas = firstGas, lastGas
                 FCCMetadata%GasPathType(gas) = &
                     lEx%gas_instr(gas)%path_type
-                !> And each analyser's own rate, for the checks that must not
-                !> apply the station's Nyquist to a slower instrument.
-                FCCMetadata%GasAcFreq(gas) = &
-                    lEx%gas_instr(gas)%ac_freq
             end do
+        end if
+
+        !> Rates, over every valid record. This sat in the block above and so
+        !> ran on every record anyway - its gate is never closed, since
+        !> FCCMetadata%ru is never set true - but only for as long as nothing
+        !> fixes that. Here it does not depend on it.
+        !>
+        !> The highest file rate and each analyser's highest own rate, not the
+        !> first record's and the last one's: RP grids the binned spectra up
+        !> to the highest rate. A single-rate project reads the same value
+        !> from every record and ends where the first one put it.
+        !> Then the record's arrangement of rates, for the assessment per
+        !> acquisition frequency.
+        if (ValidRecord) then
+            if (lEx%ac_freq > FCCMetadata%ac_freq) &
+                FCCMetadata%ac_freq = lEx%ac_freq
+            do gas = firstGas, lastGas
+                if (lEx%gas_instr(gas)%ac_freq > FCCMetadata%GasAcFreq(gas)) &
+                    FCCMetadata%GasAcFreq(gas) = lEx%gas_instr(gas)%ac_freq
+            end do
+            call RegisterRecordRates(lEx)
         end if
 
         if (all(fcc_var_present) .and. Diag7200%present .and. Diag7500%present .and. Diag7700%present .and. &
@@ -267,6 +271,7 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
         end if
     end do
     close(udf)
+    call FinaliseRateConfigs()
 
     !> Adjust start timestamp so that Start/End define the whole period
     !> From beginning of first period to end of last period

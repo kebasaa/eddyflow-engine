@@ -131,5 +131,85 @@ class TheSpectraGridCoversTheHighestRate(unittest.TestCase):
         self.assertIn("if (lEx%ac_freq > FCCMetadata%ac_freq) &", FCC_INIT)
 
 
+FCC_MAIN = read("src/src_fcc/eddyflow-fcc_main.f90")
+SA_RATES = read("src/src_fcc/sa_rates.f90")
+SA_WRITER = read("src/src_fcc/output_spectral_assessment_results.f90")
+SA_READER = read("src/src_fcc/read_spectral_assessment_file.f90")
+FRATINI = read("src/src_common/bpcf_fratini_12.f90")
+FULL_COSP = read("src/src_common/bpcf_read_full_cos_wt.f90")
+TF_FIT = read("src/src_fcc/fit_tf_models.f90")
+IBROM = read("src/src_fcc/correction_factor_model.f90")
+
+
+class TheSpectralAssessmentIsPerRate(unittest.TestCase):
+    """Each gas is assessed separately at each of its acquisition rates and
+    each period corrected with its own rate's result. A single-rate project
+    must not take any of the new paths."""
+
+    def test_rates_are_collected_from_every_record(self):
+        """The block that took the highest rate was gated on a flag that is
+        never set, so it never ran."""
+        self.assertNotIn("if (ValidRecord .and. InitializationPerformed) then", FCC_INIT)
+        self.assertIn("call RegisterRecordRates(lEx)", FCC_INIT)
+        self.assertIn("call FinaliseRateConfigs()", FCC_INIT)
+
+    def test_the_passes_run_only_for_more_than_one_rate(self):
+        self.assertIn("MultiRateSA = nRateConfigs > 1", SA_RATES)
+        self.assertIn("if (MultiRateSA .and. allocated(ConfigBinSpec)) then", FCC_MAIN)
+        self.assertIn("call CorrectionFactorModel(AuxFile%ex, NumExRecords, -1d0)", FCC_MAIN,
+                      "the single-rate path fits Ibrom's model on every record, as before")
+
+    def test_each_period_loads_its_own_rate(self):
+        self.assertIn("call LoadAssessment(lEx)", FCC_MAIN)
+        i = FCC_MAIN.index("call LoadAssessment(lEx)")
+        self.assertIn("MultiRateSA", FCC_MAIN[i - 200:i])
+
+    def test_a_gas_never_borrows_another_gas(self):
+        body = SA_RATES[SA_RATES.index("subroutine ResolveAssessmentFallbacks"):]
+        body = body[:body.index("end subroutine ResolveAssessmentFallbacks")]
+        self.assertIn("SlotUsable(gas, j)", body)
+        self.assertNotIn("SlotUsable(g2", body)
+
+    def test_every_gas_is_checked_against_its_own_nyquist(self):
+        self.assertIn("if (abs(IIRPar(2)) > GasNyquist(gas)) IIRPar(1:2) = error", TF_FIT)
+
+    def test_ibrom_is_fitted_per_file_rate(self):
+        self.assertIn("FileRateFilter", IBROM)
+        self.assertIn("do j = 1, Nt + 3", IBROM,
+                      "the despiking must not reach the rate column")
+
+
+class OneAssessmentFileWithRateColumns(unittest.TestCase):
+    def test_the_single_rate_file_is_untouched(self):
+        """Only WriteMultiRateAssessment writes rates= and extra columns."""
+        single = SA_WRITER[:SA_WRITER.index("subroutine WriteMultiRateAssessment")]
+        self.assertNotIn("RatesToken", single.split("call WriteMultiRateAssessment()")[1]
+                         .split("contains")[0])
+        self.assertIn("else if (MultiRateSA) then", SA_WRITER)
+
+    def test_rates_are_written_only_for_a_gas_with_more_than_one(self):
+        self.assertIn("if (nGasRates(g) > 1) RatesToken = '   rates=' // trim(RateList(g))",
+                      SA_WRITER)
+
+    def test_the_reader_keeps_every_column_for_a_multi_rate_project(self):
+        self.assertIn("if (slot > 0 .and. MultiRateSA) &", SA_READER)
+        self.assertIn("call StoreMonthBlock(slot, monthFnR, monthfcR, file_rates, n_file_rates)",
+                      SA_READER)
+        self.assertIn("call ResolveAssessmentFallbacks()", SA_READER)
+
+
+class FratiniIsSizedPerPeriod(unittest.TestCase):
+    def test_each_period_reads_its_own_length(self):
+        self.assertIn("call FullCospectraLength(LocFileList(indx)%path, nrow)", FRATINI)
+        self.assertIn("allocate(fullCospectra(nrow))", FRATINI)
+        self.assertNotIn("type(SpectraSetType) :: fullCospectra(nfreq)", FRATINI)
+
+    def test_the_length_probe_closes_its_unit(self):
+        """Left open, the first correction re-opened the same file on the
+        same unit, found itself at its end, and died on the first read."""
+        body = FULL_COSP[FULL_COSP.index("subroutine FullCospectraLength"):]
+        self.assertGreaterEqual(body.count("close(udf)"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

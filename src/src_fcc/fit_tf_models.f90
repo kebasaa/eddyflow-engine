@@ -36,6 +36,7 @@
 subroutine FitTFModels(nbins, printout)
     use m_fx_global_var
     use m_levenberg_marquardt
+    use m_sa_rates, only: GasNyquist
     implicit none
 
 
@@ -154,6 +155,17 @@ subroutine FitTFModels(nbins, printout)
                         IIRPar(1:2) = error
                     end if
                     deallocate(fvec, fjac)
+                    !> A cut-off above this gas's own Nyquist frequency is not
+                    !> something its spectra could have shown - there is no
+                    !> data above that frequency - so it is not a fit. Checked
+                    !> for every gas at its own rate; only water's RH fit
+                    !> checked this before, and against the station's rate.
+                    !> The magnitude: the model has fc only squared, so the fit
+                    !> lands on either sign, and a cut-off of -250 Hz is one of
+                    !> 250 Hz - no attenuation the data could show.
+                    if (IIRPar(2) /= error .and. GasNyquist(gas) > 0d0) then
+                        if (abs(IIRPar(2)) > GasNyquist(gas)) IIRPar(1:2) = error
+                    end if
                 end if
                 !> Store regression params
                 RegPar(gas, cls)%Fn = IIRPar(1)

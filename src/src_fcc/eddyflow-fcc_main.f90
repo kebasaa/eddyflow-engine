@@ -26,6 +26,7 @@
 Program EddyFlowFCC
     use m_fx_global_var
     use m_cec
+    use m_sa_rates
     implicit none
 
     integer, external :: CreateDir
@@ -34,6 +35,13 @@ Program EddyFlowFCC
     !> Iterative correction, twinned with eddyflow-rp_main.f90.
     integer :: corr_pass
     integer :: corr_passes
+    !> The spectral assessment per acquisition rate: pass, file-rate slot,
+    !> and which file rates already have their Ibrom model
+    integer :: c
+    integer :: kf
+    logical :: ibrom_done(MaxRateSlots)
+    logical :: ibrom_now
+    character(256) :: pass_label
     real(kind = dbl) :: iter_dev
     real(kind = dbl) :: iter_zL
     real(kind = dbl) :: prev_gas_flux(GHGNumVar)
@@ -224,6 +232,11 @@ Program EddyFlowFCC
     !****************************************************************
     !****************************************************************
 
+    !> The raw files are not all at one acquisition frequency: say so, and
+    !> that the assessment is done per rate, before any of it happens
+    if (MultiRateSA .and. (FCCsetup%do_spectral_assessment &
+        .or. FCCsetup%SA%in_situ)) call WarnMultiRateAssessment()
+
     !> If spectral analysis must be performed or co-spectral
     !> outputs are requested, start loop on cospectra files
     if (FCCsetup%pass_thru_spectral_assessment) then
@@ -388,6 +401,12 @@ Program EddyFlowFCC
                 allocate(dMeanBinSpec(nbins, MaxGasClasses))
                 MeanBinSpec = NullMeanSpec
                 dMeanBinSpec = NullMeanSpec
+                !> One set of sums per arrangement of acquisition rates, when
+                !> the project has more than one
+                if (MultiRateSA) then
+                    allocate(ConfigBinSpec(nbins, MaxGasClasses, nRateConfigs))
+                    ConfigBinSpec = NullMeanSpec
+                end if
             end if
             if (.not. allocated(MeanBinCosp)) then
                 allocate(MeanBinCosp(nbins, MaxGasClasses))
@@ -444,6 +463,69 @@ Program EddyFlowFCC
 
         end if
 
+        if (MultiRateSA .and. allocated(ConfigBinSpec)) then
+            !> The files are not all at one acquisition frequency: one pass
+            !> per arrangement of rates, each on its own periods' spectra, so
+            !> that every gas is assessed at each of its own rates - noise
+            !> floor, transfer function and Nyquist check alike. Fastest last,
+            !> so what is left standing after the loop - the ensemble, the
+            !> denoised spectra, the fits - is the fastest configuration's,
+            !> which the unsuffixed averaged-spectra files describe.
+            ibrom_done = .false.
+            do c = nRateConfigs, 1, -1
+                SAPassConfig = c
+                call LogSay('')
+                pass_label = ConfigSuffix(c)
+                call LogSay(' Spectral assessment for periods at ' &
+                    // trim(pass_label(2:)) // ':')
+                call LoadConfigEnsemble(c, nbins)
+                call NormalizeMeanSpectraCospectra(nbins)
+                call AvailableMeanSpectraCospectra(nbins)
+                call FitTFModels(nbins, FCCsetup%do_spectral_assessment)
+                if (FCCsetup%do_spectral_assessment) then
+                    call FitRh2Fco()
+                    !> Ibrom's model comes from w'T' and so depends on the
+                    !> file rate alone: once per file rate, not per pass
+                    kf = FileRateSlot(ConfigFileRate(c))
+                    ibrom_now = .false.
+                    if (kf > 0) then
+                        if (.not. ibrom_done(kf)) then
+                            call CorrectionFactorModel(AuxFile%ex, NumExRecords, &
+                                ConfigFileRate(c))
+                            ibrom_done(kf) = .true.
+                            ibrom_now = .true.
+                        end if
+                    end if
+                    call SaveAssessment(c, nbins, ibrom_now)
+                end if
+                !> This configuration's averaged spectra, under a suffix
+                !> naming its rates; the fastest's keep today's names and are
+                !> written with the assessment file below
+                if (c > 1) call WriteRatePassSpectra(c, nbins)
+            end do
+            SAOutTxt = .true.
+            SAOutSuffix = ''
+            SAPassConfig = 1
+
+            if (FCCsetup%do_spectral_assessment) then
+                call ResolveAssessmentFallbacks()
+                !> The globals as the fastest configuration left them, bar
+                !> Ibrom's, which the last pass need not have fitted
+                kf = FileRateSlot(ConfigFileRate(1))
+                if (kf > 0) then
+                    UnPar = UnParR(:, kf)
+                    StPar = StParR(:, kf)
+                end if
+            else
+                if (FCCsetup%SA%in_situ) call ReadSpectralAssessmentFile()
+            end if
+
+            call ReportSpectralAssessmentDiagnostics(skip_spectra)
+            call OutputSpectralAssessmentResults(nbins)
+            write(*,'(a)')
+            write(ulog,'(a)')
+        else
+
         !> Normalize sums for obtaining mean spectra
         call NormalizeMeanSpectraCospectra(nbins)
 
@@ -463,7 +545,7 @@ Program EddyFlowFCC
 
             !> If necessary, calculate spectral correction factor models
             !> as from Ibrom et al. (2007)
-            call CorrectionFactorModel(AuxFile%ex, NumExRecords)
+            call CorrectionFactorModel(AuxFile%ex, NumExRecords, -1d0)
         else
             !> If an in-situ method was chosen, and spectral
             !> assessment file is available, read file
@@ -476,6 +558,7 @@ Program EddyFlowFCC
         call OutputSpectralAssessmentResults(nbins)
         write(*,'(a)')
         write(ulog,'(a)')
+        end if
 
 
     else
@@ -583,6 +666,11 @@ Program EddyFlowFCC
         iter_zL = lEx%Flux0%zL
         do corr_pass = 1, corr_passes
             if (corr_pass > 1) prev_gas_flux = Flux3%gas
+
+            !> This period's own rate's spectral assessment, when the project
+            !> has more than one rate
+            if (MultiRateSA .and. FCCsetup%SA%in_situ .and. corr_pass == 1) &
+                call LoadAssessment(lEx)
 
             !> Bad pass spectral correction factors
             call BandPassSpectralCorrections(lEx%instr(sonic)%height, &
@@ -735,6 +823,25 @@ Program EddyFlowFCC
     stop ''
 
 contains
+
+!***************************************************************************
+!
+! \brief       One rate configuration's averaged spectra, in its own pass of
+!              the assessment per acquisition rate.
+! \author      Jonathan Muller
+! \note        Under a suffix naming its rates. The assessment file itself is
+!              written once, after all passes, with a column set per rate.
+!***************************************************************************
+subroutine WriteRatePassSpectra(cfg, nb)
+    integer, intent(in) :: cfg
+    integer, intent(in) :: nb
+
+    SAOutTxt = .false.
+    SAOutSuffix = ConfigSuffix(cfg)
+    call OutputSpectralAssessmentResults(nb)
+    SAOutTxt = .true.
+    SAOutSuffix = ''
+end subroutine WriteRatePassSpectra
 
 !***************************************************************************
 !

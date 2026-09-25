@@ -34,6 +34,7 @@
 !***************************************************************************
 subroutine SpectraSortingAndAveraging(lEx, BinSpec, nrow, nbins)
     use m_fx_global_var
+    use m_sa_rates
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow
@@ -45,10 +46,15 @@ subroutine SpectraSortingAndAveraging(lEx, BinSpec, nrow, nbins)
     integer :: i
     integer :: gas
     integer :: month
+    integer :: c
     logical, external :: GasSlotIsWater
 
 
     call char2int(lEx%end_date(6:7), month, 2)
+    !> The period's arrangement of rates, when there is more than one: its
+    !> spectra are also summed per configuration, for the assessment per rate
+    c = 0
+    if (MultiRateSA) c = RateConfigOf(lEx)
     !> Water is sorted by relative humidity and everything else by month,
     !> because water's tube attenuation drifts with humidity. That is a
     !> property of the species: keyed on the h2o slot, a second hygrometer was
@@ -88,6 +94,13 @@ subroutine SpectraSortingAndAveraging(lEx, BinSpec, nrow, nbins)
                     MeanBinSpec(i, sort)%fn(gas)   = MeanBinSpec(i, sort)%fn(gas)   + BinSpec(i)%fn
                     MeanBinSpec(i, sort)%of(gas)   = MeanBinSpec(i, sort)%of(gas)   + BinSpec(i)%of(gas)
                     MeanBinSpec(i, sort)%ts(gas)   = MeanBinSpec(i, sort)%ts(gas)   + BinSpec(i)%of(ts)
+                    if (c > 0) then
+                        ConfigBinSpec(i, sort, c)%cnt(gas)  = ConfigBinSpec(i, sort, c)%cnt(gas)  + 1
+                        ConfigBinSpec(i, sort, c)%fnum(gas) = ConfigBinSpec(i, sort, c)%fnum(gas) + BinSpec(i)%fnum
+                        ConfigBinSpec(i, sort, c)%fn(gas)   = ConfigBinSpec(i, sort, c)%fn(gas)   + BinSpec(i)%fn
+                        ConfigBinSpec(i, sort, c)%of(gas)   = ConfigBinSpec(i, sort, c)%of(gas)   + BinSpec(i)%of(gas)
+                        ConfigBinSpec(i, sort, c)%ts(gas)   = ConfigBinSpec(i, sort, c)%ts(gas)   + BinSpec(i)%of(ts)
+                    end if
                 end if
             end do
         end if

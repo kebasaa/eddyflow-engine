@@ -69,10 +69,18 @@ MIXED_INSTR = [
     ("020000", "033000", False, True),
 ]
 
+#: fixture: (data directory, averaging interval, extra project keys)
+#:
+#: base_ghg_mixed_sa lowers sa_min_smpl to 2 so that the six periods - three
+#: per rate - are enough for a spectral assessment at each rate. The fits are
+#: statistically meaningless; what the fixture exercises is the machinery: one
+#: assessment pass per rate, one assessment file with a column set per rate,
+#: and every period corrected with its own rate's result.
 FIXTURES = {
-    "base_ghg_mixed": ("data_ghg_mixed", 30),
-    "base_ghg_mixed_60": ("data_ghg_mixed", 60),
-    "base_ghg_mixed_instr": ("data_ghg_mixed_instr", 60),
+    "base_ghg_mixed": ("data_ghg_mixed", 30, {}),
+    "base_ghg_mixed_60": ("data_ghg_mixed", 60, {}),
+    "base_ghg_mixed_instr": ("data_ghg_mixed_instr", 60, {}),
+    "base_ghg_mixed_sa": ("data_ghg_mixed", 30, {"sa_min_smpl": "2"}),
 }
 
 HEADER_ROWS = 8
@@ -143,13 +151,16 @@ def build(name, plan, z):
         print(f"  {name}/{target.name}" + (f"  ({', '.join(tags)})" if tags else ""))
 
 
-def write_fixture(fixture, data_dir, avrg_len):
+def write_fixture(fixture, data_dir, avrg_len, extra):
     text = BASE.read_text(encoding="utf-8", errors="replace")
     data_path = (HERE / data_dir).as_posix()
     text, n = re.subn(r"(?m)^data_path=.*$", "data_path=" + data_path, text)
     assert n == 1
     text, n = re.subn(r"(?m)^avrg_len=.*$", f"avrg_len={avrg_len}", text)
     assert n == 1
+    for key, value in extra.items():
+        text, n = re.subn(r"(?m)^%s=.*$" % re.escape(key), f"{key}={value}", text)
+        assert n == 1, key
     (HERE / (fixture + ".eddyflow")).write_text(text, encoding="utf-8")
     print(f"  {fixture}.eddyflow  ({data_dir}, {avrg_len}-min periods)")
 
@@ -160,8 +171,8 @@ def main():
         sys.exit(f"missing {BASE}")
     build("data_ghg_mixed", MIXED, z)
     build("data_ghg_mixed_instr", MIXED_INSTR, z)
-    for fixture, (data_dir, avrg_len) in FIXTURES.items():
-        write_fixture(fixture, data_dir, avrg_len)
+    for fixture, (data_dir, avrg_len, extra) in FIXTURES.items():
+        write_fixture(fixture, data_dir, avrg_len, extra)
 
 
 if __name__ == "__main__":

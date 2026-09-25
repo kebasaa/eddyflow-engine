@@ -34,6 +34,7 @@
 !***************************************************************************
 subroutine OutputSpectralAssessmentResults(nbins)
     use m_fx_global_var
+    use m_sa_rates
     implicit none
     !> in/out variables
     integer, intent(in) :: nbins
@@ -143,9 +144,16 @@ subroutine OutputSpectralAssessmentResults(nbins)
     end do
 
     !> SPECTRAL ASSESSMENT
+    !> Written once, after every rate has been assessed: during the passes of
+    !> an assessment per acquisition rate, SAOutTxt is off and only that
+    !> configuration's averaged spectra are written.
     if (FCCsetup%do_spectral_assessment) then
 
-        if (n_fitted == 0) then
+        if (.not. SAOutTxt) then
+            !> A rate's pass: its averaged spectra only, below
+        else if (MultiRateSA) then
+            call WriteMultiRateAssessment()
+        else if (n_fitted == 0) then
             call ExceptionHandler(76)
         else
             !> Some gases fitted and some not: the file is written and covers
@@ -380,7 +388,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
         else
             !> Initialize file
             Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
-                // H2OAvrg_FilePadding // Timestamp_FilePadding // CsvExt
+                // H2OAvrg_FilePadding // Timestamp_FilePadding &
+                // trim(SAOutSuffix) // CsvExt
             FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
             call OpenSpectralOutputFile(FilePath)
 
@@ -485,7 +494,7 @@ subroutine OutputSpectralAssessmentResults(nbins)
             if (goodj > 0 .and. goodj < MaxGasClasses &
                 .and. pick >= u .and. pick <= lastGas) then
                 Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // PASGAS_Avrg_FilePadding  &
-                    // Timestamp_FilePadding // CsvExt
+                    // Timestamp_FilePadding // trim(SAOutSuffix) // CsvExt
                 FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
                 call OpenSpectralOutputFile(FilePath)
                 write(udf,'(a)') 'Binned_average_and_predicted_spectra_for_passive_gases'
@@ -587,7 +596,9 @@ subroutine OutputSpectralAssessmentResults(nbins)
     end if
 
     !> ENSEMBLE AVERAGED COSPECTRA
-    if (EddyFlowProj%out_avrg_cosp) then
+    !> One shared ensemble, not one per acquisition rate - so written once,
+    !> not in each rate's pass.
+    if (EddyFlowProj%out_avrg_cosp .and. SAOutTxt) then
 
         !> =====================================================================
         !> Ensemble cospectra by time of day
@@ -859,6 +870,246 @@ subroutine OutputSpectralAssessmentResults(nbins)
     end if
     call LogSay(' Done.')
 
+contains
+
+    !***************************************************************************
+    !> The assessment file of a project whose raw files are not all at one
+    !> acquisition frequency. Today's format, line for line, with two
+    !> additions and only for a gas that has more than one rate:
+    !>  - a `rates=` token on its block header, fastest first;
+    !>  - one value set per rate on each row, in that order, after the `=`.
+    !> Water's standalone exponential and the Ibrom model follow suit, the
+    !> first through tokens on its label row (its number row is compared
+    !> strictly by the GUI and keeps the fastest rate's three), the second
+    !> through a `rates=` token and one c1 c2 pair per file rate.
+    !> A build that knows none of this reads the first set on each row - the
+    !> fastest rate's - and ignores the tokens.
+    !***************************************************************************
+    subroutine WriteMultiRateAssessment()
+        character(21), parameter :: MonthLabel(12) = (/ &
+            'January            = ', 'February           = ', &
+            'March              = ', 'April              = ', &
+            'May                = ', 'June               = ', &
+            'July               = ', 'August             = ', &
+            'September          = ', 'October            = ', &
+            'November           = ', 'December           = ' /)
+        integer :: n, kk, mm, cc, jj, primary_ok
+        real(kind = dbl) :: vals(2 * MaxRateSlots)
+        integer :: cnts(MaxRateSlots)
+        character(64) :: rowfmt
+        character(1024) :: token_line
+
+        !> Fitted or not, per gas across its rates - the same question the
+        !> single-rate file asks, of every slot
+        n_fitted = 0
+        n_unfitted = 0
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (.not. fcc_var_present(gas)) cycle
+            if (any([(SlotUsable(gas, kk), kk = 1, max(nGasRates(gas), 1))])) then
+                n_fitted = n_fitted + 1
+            else
+                n_unfitted = n_unfitted + 1
+            end if
+        end do
+        if (n_fitted == 0) then
+            call ExceptionHandler(76)
+            return
+        end if
+        if (n_unfitted > 0) call ExceptionHandler(110)
+        call LogSay(' Writing spectral assessment results on file.. ')
+
+        Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // SA_FilePadding  &
+            // Timestamp_FilePadding // TxtExt
+        FilePath = SpecDir(1:len_trim(SpecDir)) // Filename(1:len_trim(Filename))
+        call OpenSpectralOutputFile(FilePath)
+
+        write(udf,'(a)') 'Transfer_function_parameters_(TFP)_for_&
+            &IIR-shaped_filter_(see_Ibrom_et_al._2007_AFM).'
+        write(udf,'(a)') 'fc:_IIR_cut-off_frequency'
+        write(udf,'(a)') 'Fn:_normalization_parameter'
+        write(udf,'(a)') 'Water_vapour_TFP_are_calculated_for_9_RH_classes.'
+        write(udf,'(a)') 'Other_gases_TFP_are_calculated_on_a_monthly_base.'
+        write(udf,'(a)') '-----------------------------------------------------&
+            &-----------------------------'
+
+        !> The primary hygrometer's RH table
+        primary_ok = 0
+        if (wsl >= firstGas .and. wsl <= lastGas) primary_ok = 1
+        call SpectralBlockStamp(wsl, sa_stamp)
+        write(udf,'(a)') 'Water vapour TFP              Fn          fc    &
+            &numerosity' // trim(sa_stamp) // trim(RatesToken(wsl))
+        n = SlotsOf(wsl)
+        write(rowfmt, '(a, i0, a)') '(a, ', n, '(2(f11.5,1x), i13, :, 1x))'
+        do cls = RH10, RH90
+            write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
+                10 * cls - 5, ' - ', 10 * cls + 5, '% = '
+            do kk = 1, n
+                vals(2 * kk - 1) = SlotFn(wsl, cls, kk)
+                vals(2 * kk) = SlotFc(wsl, cls, kk)
+                cnts(kk) = 0
+                if (primary_ok == 1) cnts(kk) = SlotCnt(wsl, cls, kk)
+            end do
+            write(udf, rowfmt) rh_label, (vals(2 * kk - 1), vals(2 * kk), &
+                cnts(kk), kk = 1, n)
+        end do
+        write(udf,'(a)') ''
+
+        !> One block per configured gas but water
+        do gas = firstGas, lastGas
+            if (GasSlotIsWater(gas)) cycle
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            sa_name = sa_tags(gas)
+            call uppercase(sa_name)
+            call SpectralBlockStamp(gas, sa_stamp)
+            write(udf,'(a)') trim(sa_name) // '            TFP            &
+                &Fn          fc   groups=' // trim(MonthGroupingText(gas)) &
+                // trim(sa_stamp) // trim(RatesToken(gas))
+            n = SlotsOf(gas)
+            write(rowfmt, '(a, i0, a)') '(a, ', 2 * n, '(f11.5,1x))'
+            do mm = JAN, DEC
+                cc = FCCsetup%SA%class(gas, mm)
+                do kk = 1, n
+                    if (cc /= 0) then
+                        vals(2 * kk - 1) = SlotFn(gas, cc, kk)
+                        vals(2 * kk) = SlotFc(gas, cc, kk)
+                    else
+                        vals(2 * kk - 1) = error
+                        vals(2 * kk) = error
+                    end if
+                end do
+                write(udf, rowfmt) MonthLabel(mm), (vals(jj), jj = 1, 2 * n)
+            end do
+            write(udf, *)
+        end do
+
+        !> Every hygrometer past the primary, with its own exponential
+        do gas = firstGas, lastGas
+            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+            if (.not. GasSlotIsWater(gas)) cycle
+            if (gas == wsl) cycle
+            sa_name = sa_tags(gas)
+            call uppercase(sa_name)
+            call SpectralBlockStamp(gas, sa_stamp)
+            n = SlotsOf(gas)
+            write(sa_exp, '(a, 3(g0.6, a))') '   exp=', &
+                SlotE(gas, 1, 1), ',', SlotE(gas, 1, 2), ',', SlotE(gas, 1, 3), ''
+            write(udf,'(a)') trim(sa_name) // '            TFP           &
+                &   Fn          fc    numerosity' // trim(sa_stamp) &
+                // trim(sa_exp) // trim(ExpByRateToken(gas)) // trim(RatesToken(gas))
+            write(rowfmt, '(a, i0, a)') '(a, ', n, '(2(f11.5,1x), i13, :, 1x))'
+            do cls = RH10, RH90
+                write(rh_label, '(a, i3, a, i2, a)') 'RH class ', &
+                    10 * cls - 5, ' - ', 10 * cls + 5, '% = '
+                do kk = 1, n
+                    vals(2 * kk - 1) = SlotFn(gas, cls, kk)
+                    vals(2 * kk) = SlotFc(gas, cls, kk)
+                    cnts(kk) = SlotCnt(gas, cls, kk)
+                end do
+                write(udf, rowfmt) rh_label, (vals(2 * kk - 1), vals(2 * kk), &
+                    cnts(kk), kk = 1, n)
+            end do
+            write(udf,'(a)') ''
+        end do
+
+        !> The primary's exponential: the fastest rate's on the number row,
+        !> every rate's in the tokens on the label row above it
+        write(udf,'(a)') 'RH/fc_exponential_fit_parameters_for_water_vapour&
+            &_spectral_corrections'
+        write(udf,'(a)') '-----------------------------------'
+        token_line = '         exp1         exp2         exp3'
+        if (primary_ok == 1) then
+            if (SlotsOf(wsl) > 1) token_line = trim(token_line) &
+                // trim(RatesToken(wsl)) // trim(ExpByRateToken(wsl))
+            write(udf,'(a)') trim(token_line)
+            write(udf,'(3(f13.6))') SlotE(wsl, 1, 1), SlotE(wsl, 1, 2), SlotE(wsl, 1, 3)
+        else
+            write(udf,'(a)') trim(token_line)
+            write(udf,'(3(f13.6))') RegPar(dum, dum)%e1, &
+                RegPar(dum, dum)%e2, RegPar(dum, dum)%e3
+        end if
+        write(udf,'(a)') ''
+        write(udf,'(a)') ''
+
+        !> Ibrom et al. (2007): one c1 c2 pair per file rate
+        write(udf, '(a)') 'High-pass_correction_factor_model_parameters'
+        write(udf, '(a)') 'Model: CF = [c1 * u / (c2 + f_co) + 1] after_&
+            &Ibrom_et_al_(2007_AFM)'
+        write(udf, '(a)') '---------------------------------------------&
+            &----------------------'
+        token_line = '                   c1          c2'
+        if (nFileRates > 1) token_line = trim(token_line) &
+            // '   rates=' // trim(FileRateList())
+        write(udf, '(a)') trim(token_line)
+        n = max(nFileRates, 1)
+        write(rowfmt, '(a, i0, a)') '(a, ', 2 * n, '(f11.7,1x))'
+        write(udf, rowfmt) 'unstable = ', (UnParR(1, kk), UnParR(2, kk), kk = 1, n)
+        write(udf, rowfmt) 'stable   = ', (StParR(1, kk), StParR(2, kk), kk = 1, n)
+        close(udf)
+    end subroutine WriteMultiRateAssessment
+
+    integer function SlotsOf(g)
+        integer, intent(in) :: g
+        SlotsOf = 1
+        if (g >= firstGas .and. g <= lastGas) SlotsOf = max(nGasRates(g), 1)
+    end function SlotsOf
+
+    real(kind = dbl) function SlotFn(g, cl, k)
+        integer, intent(in) :: g, cl, k
+        SlotFn = error
+        if (g < firstGas .or. g > lastGas) return
+        if (cl < 1 .or. cl > MaxGasClasses) return
+        SlotFn = RegParR(g, cl, k)%Fn
+    end function SlotFn
+
+    real(kind = dbl) function SlotFc(g, cl, k)
+        integer, intent(in) :: g, cl, k
+        SlotFc = error
+        if (g < firstGas .or. g > lastGas) return
+        if (cl < 1 .or. cl > MaxGasClasses) return
+        SlotFc = RegParR(g, cl, k)%fc
+    end function SlotFc
+
+    !> A hygrometer's RH exponential coefficient e (1..3) at slot k
+    real(kind = dbl) function SlotE(g, k, e)
+        integer, intent(in) :: g, k, e
+        SlotE = error
+        if (g < firstGas .or. g > lastGas) return
+        select case (e)
+            case (1)
+                SlotE = RegParR(g, dum, k)%e1
+            case (2)
+                SlotE = RegParR(g, dum, k)%e2
+            case (3)
+                SlotE = RegParR(g, dum, k)%e3
+        end select
+    end function SlotE
+
+    character(200) function RatesToken(g)
+        integer, intent(in) :: g
+        RatesToken = ''
+        if (g < firstGas .or. g > lastGas) return
+        if (nGasRates(g) > 1) RatesToken = '   rates=' // trim(RateList(g))
+    end function RatesToken
+
+    !> `exp_by_rate=a,b,c/a,b,c`, one triple per rate, for a hygrometer with
+    !> more than one
+    character(1024) function ExpByRateToken(g)
+        integer, intent(in) :: g
+        integer :: k
+        character(128) :: triple
+
+        ExpByRateToken = ''
+        if (g < firstGas .or. g > lastGas) return
+        if (nGasRates(g) < 2) return
+        ExpByRateToken = '   exp_by_rate='
+        do k = 1, nGasRates(g)
+            write(triple, '(3(g0.6, a))') SlotE(g, k, 1), ',', SlotE(g, k, 2), ',', &
+                SlotE(g, k, 3), ''
+            if (k > 1) ExpByRateToken = trim(ExpByRateToken) // '/'
+            ExpByRateToken = trim(ExpByRateToken) // trim(triple)
+        end do
+    end function ExpByRateToken
 end subroutine OutputSpectralAssessmentResults
 
 !***************************************************************************

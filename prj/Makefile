@@ -452,7 +452,8 @@ eddyflow-fcc_main.o: \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_cec.o \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	interfaces.inc \
@@ -516,13 +517,15 @@ fit_rh_to_cutoff.o: \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_fx_global_var_mod.o \
-	m_levenberg_marquardt.o
+	m_levenberg_marquardt.o \
+	sa_rates.o
 fit_tf_models.o: \
 	fit_tf_models.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_fx_global_var_mod.o \
-	m_levenberg_marquardt.o
+	m_levenberg_marquardt.o \
+	sa_rates.o
 fix_dataset_for_spectra.o: \
 	fix_dataset_for_spectra.f90 \
 	m_rp_global_var.o
@@ -633,7 +636,8 @@ init_env.o: \
 init_ex_vars.o: \
 	init_ex_vars.f90 \
 	interfaces_1.inc \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 init_external_biomet.o: \
 	init_external_biomet.f90 \
 	m_rp_global_var.o
@@ -772,7 +776,8 @@ out_raw_data.o: \
 output_spectral_assessment_results.o: \
 	output_spectral_assessment_results.f90 \
 	interfaces_1.inc \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 override_master_sonic_related_settings.o: \
 	override_master_sonic_related_settings.f90 \
 	m_rp_global_var.o
@@ -872,7 +877,8 @@ read_planar_fit_file.o: \
 	m_rp_global_var.o
 read_spectral_assessment_file.o: \
 	read_spectral_assessment_file.f90 \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 read_timelag_opt_file.o: \
 	read_timelag_opt_file.f90 \
 	m_rp_global_var.o \
@@ -916,6 +922,9 @@ rffti.o: \
 ridders_diff.o: \
 	ridders_diff.f90 \
 	m_common_global_var.o
+sa_rates.o: \
+	sa_rates.f90 \
+	m_fx_global_var_mod.o
 set_licor_diagnostics.o: \
 	set_licor_diagnostics.f90 \
 	m_rp_global_var.o
@@ -938,7 +947,8 @@ sort_wind_by_sector.o: \
 	m_rp_global_var.o
 spectra_sorting_and_averaging.o: \
 	spectra_sorting_and_averaging.f90 \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 spectral_analysis.o: \
 	spectral_analysis.f90 \
 	interfaces.inc \

@@ -27,8 +27,61 @@
 	               The binned-spectra grid is built up to the highest rate's
 	               Nyquist frequency; Warning(117) reports a faster rate the
 	               survey missed.
-	- Fix: FCC took the Nyquist limit of the RH fit from the first record's rate
-	       only; it now takes the highest of any record.
+	- New feature: The spectral assessment is done per acquisition rate. When a
+	               gas is not at one rate throughout - the files changed rate,
+	               or its analyser did while the file's stayed, like a QCLS going
+	               from 1 to 0.33 Hz in a 20 Hz file - its ensemble spectra,
+	               noise floor, transfer-function fit and Nyquist check are done
+	               separately for each of its rates, each only up to that rate's
+	               own Nyquist frequency, and every period is corrected with the
+	               result for its own rate. A gas whose rate never changed is
+	               fitted once from all its periods. A rate with no usable result
+	               takes the gas's next faster one, which is listed; a gas never
+	               borrows another gas's result. The Ibrom et al. (2007)
+	               correction-factor model, which comes from w'T', is fitted per
+	               file rate. Warning(119) lists each gas's rates.
+	               The assessment file stays one file: a gas with more than one
+	               rate gets a rates= token on its block and one value set per
+	               rate on each row. The GUI's validator accepts it unchanged, a
+	               build that predates it reads the first - fastest - set, and a
+	               project at one rate writes exactly the format it always did.
+	               Read back with sa_mode=0, each rate's columns are applied to
+	               that rate's periods; a file with one set applies it to all.
+	- Fix: Every gas's fitted cut-off is checked against its own Nyquist
+	       frequency and rejected above it, where the data could not have shown
+	       it. Only water's RH fit was checked before, against the station's rate.
+	       The check is on the magnitude: the IIR model has fc only squared, so
+	       the fit lands on either sign, and a gas with no attenuation it can
+	       resolve comes out at fc = -250 Hz - which was accepted, and applied
+	       as an in-situ correction of about 1. Such a gas now falls back to the
+	       analytic method, like any other unfitted one; this changes the
+	       result of a project, single-rate or not, only where that happened.
+	       Measured on the Yatir 2019 QCLS (COS, CO2, CO, N2O at 1, 0.5 and
+	       0.33 Hz in a 20 Hz file): no rate of it gives a resolvable cut-off,
+	       so its assessment is analytic at every rate, while the LI-7000 beside
+	       it fits fc = 0.9986 Hz identically in every run. The same half-hours
+	       corrected with a 0.33 Hz or a 1 Hz assessment differed by 0.00 %
+	       (Horst 97) and at most 0.1 % (Fratini 12, before this fix) - there
+	       was no resolved cut-off for the rate to change.
+	- Fix: Fratini et al. (2012) sized every period's full cospectrum from the
+	       first full-cospectra file of the run. A shorter period - a slower
+	       rate, or simply a gap - integrated the unread tail of the array, and a
+	       longer one was cut at the first file's Nyquist frequency. Each period
+	       is now sized from its own file. The routine that measured that length
+	       also never closed its unit, so the first correction that re-opened
+	       the same file found itself at its end and stopped the run.
+	- Fix: FCC's highest acquisition rate over all records - and each
+	       analyser's - was meant to set the Nyquist limit of the RH fit, but sat
+	       behind a flag that is never set and so never ran; the first record's
+	       rate stood. It now runs on every record.
+	- Fix: One period above 10 Hz switched the block-averaging correction off
+	       for every period after it, 10 Hz ones included; each period now
+	       starts from the project's setting. (No effect yet: the correction is
+	       hard-wired off.)
+	- Fix: A high-frequency noise fit with fewer than two points above its
+	       start frequency divided by zero, and an open-path hygrometer with no
+	       fitted RH class wrote log(NaN) as its RH exponential. Both are now
+	       skipped and marked unfitted.
 	- Fix: Dynamic metadata no longer overrides the acquisition frequency or
 	       file duration a GHG file states about itself when the embedded
 	       metadata is used, since the data was read at the file's own rate.
