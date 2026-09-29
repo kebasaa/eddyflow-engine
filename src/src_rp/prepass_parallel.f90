@@ -65,6 +65,8 @@
 !***************************************************************************
 module m_prepass_parallel
     use m_rp_global_var
+    use m_ghg_prefetch, only: GhgPrefetchCleanup
+    use m_remote_source, only: RemoteCleanup
     implicit none
     private
 
@@ -74,6 +76,7 @@ module m_prepass_parallel
     public :: WriteTlagBatchDump, MergeTlagBatchDumps
     public :: WritePwbBatchDump, MergePwbBatchDumps
     public :: WritePfBatchDump, MergePfBatchDumps
+    public :: FinishBatchWorker
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
@@ -836,5 +839,28 @@ contains
             if (NoTrailingSlash(n:n) == slash) NoTrailingSlash(n:n) = ' '
         end if
     end function NoTrailingSlash
+
+    !***************************************************************************
+    !> \brief Tidy up after a worker's slice, before it stops.
+    !>
+    !> A worker stops as soon as its records are written, so it never reaches
+    !> the cleanup at the end of a run and its temporary directory - extracted
+    !> archives, file lists, shared-link scratch - was left behind, one per
+    !> worker per pre-pass. Everything the parent needs from it, the records
+    !> and the worker's log, is beside --batch-out in the parent's directory,
+    !> not in this one.
+    !>
+    !> Only in desktop mode, like the parent's own: in embedded mode every
+    !> process shares one temporary directory, and it is the parent's.
+    !***************************************************************************
+    subroutine FinishBatchWorker()
+        integer :: rmdir_status
+
+        call GhgPrefetchCleanup()
+        call RemoteCleanup()
+        if (EddyFlowProj%run_env == 'desktop') &
+            rmdir_status = system(trim(comm_rmdir) // ' "' &
+                // trim(adjustl(TmpDir)) // '"' // comm_err_redirect)
+    end subroutine FinishBatchWorker
 
 end module m_prepass_parallel

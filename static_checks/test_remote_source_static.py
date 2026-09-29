@@ -147,6 +147,34 @@ class EachFileIsDownloadedOnce(unittest.TestCase):
         self.assertIn("call Remember(url, dest)", body)
 
 
+class WorkersLeaveNothingBehind(unittest.TestCase):
+    """A pre-pass worker stops as soon as its records are written, so it never
+    reached the end-of-run cleanup and its temporary directory stayed, one
+    per worker per pre-pass. Every worker exit tidies up first; and background
+    downloads are waited for before any directory goes, since cmd reads a
+    batch file as it runs and a deleted launcher leaves its lock behind."""
+
+    def test_every_worker_exit_cleans_up_first(self):
+        c = code("src_rp/eddyflow-rp_main.f90")
+        exits = [m.start() for m in re.finditer(r"pre-pass slice finished\.'\)", c)]
+        self.assertEqual(len(exits), 2)
+        for at in exits:
+            tail = c[at:c.index("stop ''", at)]
+            self.assertIn("call FinishBatchWorker()", tail)
+
+    def test_the_worker_removes_its_own_directory_in_desktop_mode(self):
+        c = code("src_rp/prepass_parallel.f90")
+        body = c[c.index("subroutine FinishBatchWorker"):c.index("end subroutine FinishBatchWorker")]
+        self.assertIn("call RemoteCleanup()", body)
+        self.assertIn("EddyFlowProj%run_env == 'desktop'", body)
+        self.assertIn("trim(comm_rmdir)", body)
+
+    def test_background_downloads_are_waited_for(self):
+        c = code("src_common/remote_source.f90")
+        body = c[c.index("subroutine RemoteCleanup"):c.index("end subroutine RemoteCleanup")]
+        self.assertLess(body.index("call AwaitBackground(e)"), body.index("comm_rmdir"))
+
+
 class OnlyTheModuleRunsCurl(unittest.TestCase):
     def test_no_curl_elsewhere(self):
         pattern = re.compile(r"['\"]curl(\.exe)?\b", re.IGNORECASE)

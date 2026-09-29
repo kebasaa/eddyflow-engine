@@ -463,6 +463,18 @@ contains
     !***************************************************************************
     subroutine RemoteCleanup()
         character(16) :: count_str
+        integer :: e
+
+        !> Background downloads still running are waited for first. Their
+        !> launcher scripts live in TmpDir, which is about to go, and cmd reads
+        !> a batch file as it runs it: deleted mid-run, it would never rename
+        !> its download nor release the lock, and whoever next needs the file
+        !> would wait on that lock until MaxWait.
+        if (Listed) then
+            do e = 1, NumRaw
+                if (Raw(e)%state == stFetching) call AwaitBackground(e)
+            end do
+        end if
 
         if (NumFailed > 0) then
             write(count_str, '(i0)') NumFailed

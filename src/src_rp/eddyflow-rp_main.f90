@@ -43,7 +43,7 @@ program EddyFlowRP
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
-    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
+    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, FinishBatchWorker, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
@@ -1071,6 +1071,7 @@ program EddyFlowRP
                     call WriteTlagBatchDump(TimelagOpt, TimelagOptSize, ton)
                 end if
                 call LogSay(' Time-lag pre-pass slice finished.')
+                call FinishBatchWorker()
                 stop ''
             end if
 
@@ -1458,6 +1459,7 @@ program EddyFlowRP
             if (BatchIndex > 0) then
                 call WritePfBatchDump(pfWind, size(pfWind, 1), pfn)
                 call LogSay(' Planar-fit pre-pass slice finished.')
+                call FinishBatchWorker()
                 stop ''
             end if
 

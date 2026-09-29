@@ -829,7 +829,9 @@ power_of_two.o: \
 	power_of_two.f90
 prepass_parallel.o: \
 	prepass_parallel.f90 \
-	m_rp_global_var.o
+	ghg_prefetch.o \
+	m_rp_global_var.o \
+	remote_source.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \
