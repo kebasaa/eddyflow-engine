@@ -35,9 +35,16 @@ Three variants, each with its own data folder and project:
                           interval, with the instrument declared integrating
                           (base_slow_integr.metadata), so w is paired the same
                           way.
+  base_slow_drift_white   COS pure white noise at its samples, nothing to do
+                          with w. Not a lag test: its spectrum must be flat up
+                          to the decimated Nyquist. Read at a fixed phase, a
+                          drifting column's rebuilt samples are mostly
+                          interpolated blends of two real ones, and the
+                          spectrum falls off towards Nyquist; read at the real
+                          rows it does not.
 
 The gate is the COS time lag the run reports per period: 3.35 +/- 0.05 s
-(check_slow_lag.sh).
+(check_slow_lag.sh), and for the white variant a flat COS spectrum.
 
 Usage:  python gen_slow_drift.py
 
@@ -75,7 +82,9 @@ VARIANTS = {
     "base_slow_drift": ("smooth", "base_slow.eddyflow", "base_slow.metadata"),
     "base_slow_drift_sharp": ("sharp", "base_slow.eddyflow", "base_slow.metadata"),
     "base_slow_drift_integr": ("integr", "base_slow_integr.eddyflow", "base_slow_integr.metadata"),
+    "base_slow_drift_white": ("white", "base_slow.eddyflow", "base_slow.metadata"),
 }
+WHITE_SD = 0.05     # ppb
 
 
 def ini_value(text, key):
@@ -161,6 +170,7 @@ def main():
             samples.append(int(round(t)))
         t += PERIOD_ROWS
     noise = {r: rng.gauss(0, COS_NOISE) for r in samples}
+    rng_white = random.Random(SEED + 1)
     stride = int(round(PERIOD_ROWS))
 
     for name, (kind, project, meta) in VARIANTS.items():
@@ -170,6 +180,9 @@ def main():
         sample_set = set(samples)
         cos = {}
         for r in samples:
+            if kind == "white":
+                cos[r] = COS_MEAN + rng_white.gauss(0, WHITE_SD)
+                continue
             if kind == "integr":
                 lo = max(0, r - stride + 1)
                 v = sum(at(base, k - LAG_ROWS) for k in range(lo, r + 1)) / (r + 1 - lo)

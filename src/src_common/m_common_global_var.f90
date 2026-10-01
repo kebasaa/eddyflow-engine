@@ -482,18 +482,9 @@ module m_common_global_var
     type(ColType) :: Col(MaxNumCol)
     type(ColType) :: E2Col(E2NumVar)
     type(ColType) :: SpecCol(E2NumVar)
-    !> Where a slower column's real samples sit, and where the spectral window
-    !> starts, both needed to rebuild that column's spectrum on its own grid.
-    !>
-    !> SpecPhase is the offset of the first non-error sample within the
-    !> column's own sampling interval, measured in E2Primes rows and recorded
-    !> before FixDatasetForSpectra interpolates the gaps away - after that
-    !> there is nothing left to measure it from. SpecRowOffset is the row of
-    !> E2Primes the spectral set starts at, so the two can be combined.
-    !>
-    !> Sampling an interpolated column at the wrong phase does not fail, it
-    !> quietly attenuates: every sample becomes a linear blend of two real ones.
-    integer :: SpecPhase(E2NumVar) = 0
+    !> The row of E2Primes the spectral set starts at. A slower column's real
+    !> samples are recorded in E2Primes rows (SpecSamples, RP-side), and this
+    !> is what carries them across the trim to the spectral set.
     integer :: SpecRowOffset = 0
     !> Whether the "this gas has no absolute limits" warning has been said.
     !> TestAbsoluteLimits runs once per averaging period, and the condition is a

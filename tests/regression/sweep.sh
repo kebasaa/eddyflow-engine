@@ -146,7 +146,8 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 #
 # base_slow_drift, _sharp and _integr carry a slow analyser on a DRIFTING
 # 0.987 Hz grid whose COS is made from w delayed by exactly 3.35 s. The sweep
-# only checks they complete; check_slow_lag.sh checks the lag. Built by
+# only checks they complete; check_slow_lag.sh checks the lag. _white makes
+# that COS white noise, whose rebuilt spectrum must be flat. Built by
 # gen_slow_drift.py into data_slow_drift_*/.
 #
 # base_ep_licor is the same two archives handed over as an EDDYPRO project, so
@@ -244,6 +245,7 @@ base_slow_integr
 base_slow_drift
 base_slow_drift_sharp
 base_slow_drift_integr
+base_slow_drift_white
 base_n_gas_sa_partial
 base_ep
 base_ep_licor
@@ -319,6 +321,8 @@ for f in $FIXTURES; do
                            gen_dir=data_slow_drift_sharp; gen=gen_slow_drift.py ;;
         base_slow_drift_integr)
                            gen_dir=data_slow_drift_integr; gen=gen_slow_drift.py ;;
+        base_slow_drift_white)
+                           gen_dir=data_slow_drift_white; gen=gen_slow_drift.py ;;
         *)                 gen_dir= ;;
     esac
     if [ -n "$gen_dir" ] && [ ! -d "$HERE/$gen_dir" ]; then

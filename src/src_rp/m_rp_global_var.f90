@@ -180,6 +180,29 @@ module m_rp_global_var
     !> The table holds PwbTimelagCacheN rows; it is allocated with room for
     !> more, so appending a row does not copy the whole table. Read it as
     !> PwbTimelagCache(1:PwbTimelagCacheN), never whole.
+    !> Where each slower column's real samples are, in E2Primes rows, with a
+    !> slot for each one its instrument missed - SlowColumnSampleRows, recorded
+    !> by FixDatasetForSpectra before it interpolates the evidence away, read
+    !> by SlowColumnSpectra. n = 0 for a column at the file's own rate.
+    !>
+    !> Rows rather than one phase per column, because the phase need not be
+    !> fixed: the Yatir laser runs at 0.987 Hz against the 20 Hz rows, so its
+    !> samples pass through every row position in a half-hour, and reading
+    !> such a column at a fixed phase reads interpolated blends of two real
+    !> samples - which quietly attenuates what the rebuild exists to measure.
+    type :: SpecSampleRowsType
+        integer, allocatable :: r(:)
+        integer :: n = 0
+    end type SpecSampleRowsType
+    type(SpecSampleRowsType) :: SpecSamples(E2NumVar)
+    !> How many rows each column was moved up by when FixDatasetForSpectra
+    !> interpolated its gaps: ReplaceGapWithLinearInterpolation removes a
+    !> column's leading error rows by shifting the rest of it up. A slower
+    !> column nearly always opens with a few empty rows before its first
+    !> sample, so in the interpolated set its sample k sits SpecLead rows
+    !> above where SpecSamples recorded it - and w, which opens with none,
+    !> does not move.
+    integer :: SpecLead(E2NumVar) = 0
     type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
     integer :: PwbTimelagCacheN = 0
     !> Whether the rows are in nondecreasing period order, and the period of

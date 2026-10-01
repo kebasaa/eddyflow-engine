@@ -145,10 +145,14 @@ class PerInstrumentLackStaticTests(unittest.TestCase):
             "a column at the file's own rate must be left alone, or every "
             "existing project moves"
         )
-        assert "modulo(SpecPhase(j) - SpecRowOffset, stride)" in fn, (
-            "sampling at the wrong phase reads interpolated blends of two "
-            "real samples and quietly attenuates what this exists to measure"
+        assert "row = SpecSamples(j)%r(k) - SpecRowOffset" in fn, (
+            "sampling anywhere but the column's real rows reads interpolated "
+            "blends of two real samples and quietly attenuates what this "
+            "exists to measure"
         )
+        #> The decimated rate is the measured spacing, not the nominal rate:
+        #> at Yatir 20.27 rows, and the nominal 20 would stretch the axis.
+        assert "freq = Metadata%ac_freq * dble(nd - 1) / dble(srow(nd) - srow(1))" in fn
         #> The normalisation has to come from the decimated series: the
         #> full-rate variance belongs to a different signal.
         assert "dspec / var_gas" in fn and "dcosp / cov_wgas" in fn
@@ -164,28 +168,53 @@ class PerInstrumentLackStaticTests(unittest.TestCase):
         )
 
     def test_the_decimation_fabricates_no_sample(self):
-        """The series is counted from the phase so the last sample lands on or
+        """Only sample rows inside the set are taken, so the last lands on or
         before row N. Clamping instead repeated the last row - a made-up
         sample, in the one routine whose purpose is to use only real ones."""
         fn = read("src/src_rp/spectral_analysis.f90")
         fn = fn[fn.index("subroutine SlowColumnSpectra"):]
         fn = fn[:fn.index("end subroutine SlowColumnSpectra")]
-        assert "nd = (N - phase) / stride" in fn
+        assert "if (row - SpecLead(j) < 1 .or. row - SpecLead(w) < 1 .or. row > N) cycle" in fn
         assert "if (row > N) row = N" not in fn, (
             "the clamp is back, and with it a duplicated sample"
         )
 
-    def test_the_sample_offset_is_the_commonest_not_the_first(self):
-        """A column whose first sample is missing - an ordinary gap at the
-        start of a period - reported phase zero, and then every rebuilt sample
-        read an interpolated blend rather than a measurement."""
+    def test_the_samples_are_the_real_rows_not_a_phase(self):
+        """One phase per column - the commonest offset in its first intervals
+        - described a column on a fixed grid exactly, and on such a column the
+        real rows are exactly the phase rows. But a drifting instrument passes
+        through every row position in a half-hour (the Yatir laser, 0.987 Hz
+        against 20 Hz rows), and there no phase is right for long. So the rows
+        themselves are recorded, before the interpolation erases them."""
         body = read("src/src_rp/fix_dataset_for_spectra.f90")
-        assert "PhaseIntervals" in body, (
-            "the phase is taken from a single interval again"
+        assert "call SlowColumnSampleRows(Set(1:nrow, j), nrow, stride, error," in body
+        assert "SpecSamples(j)%r = rows(1:nslot)" in body
+        assert "SpecPhase" not in body
+        assert (body.index("call SlowColumnSampleRows(")
+                < body.index("call ReplaceGapWithLinearInterpolation(")), (
+            "the rows must be read before the gaps are interpolated away"
         )
-        assert "maxloc(tally(0:stride - 1), dim = 1) - 1" in body, (
-            "the offset must be the commonest over many intervals"
+
+    def test_the_interpolation_shift_is_undone_for_the_gas_not_for_w(self):
+        """ReplaceGapWithLinearInterpolation removes a column's leading error
+        rows by shifting it up. A slow column nearly always opens with a few
+        empty rows, so its samples sit that many rows above where they were
+        recorded, and w does not move. Read both at the recorded row, as the
+        fixed-phase reading did, and the gas is an interpolated blend paired
+        with w up to an interval out of step: white noise sampled at 0.987 Hz
+        came out with 0.36 of its low-frequency power near Nyquist. Read at
+        the shifted row, 0.99."""
+        fix = read("src/src_rp/fix_dataset_for_spectra.f90")
+        assert "if (i <= nrow) SpecLead(j) = i - 1" in fix
+        assert (fix.index("SpecLead(j) = i - 1")
+                < fix.index("call ReplaceGapWithLinearInterpolation(")), (
+            "the shift must be measured before the interpolation applies it"
         )
+        fn = read("src/src_rp/spectral_analysis.f90")
+        fn = fn[fn.index("subroutine SlowColumnSpectra"):]
+        fn = fn[:fn.index("end subroutine SlowColumnSpectra")]
+        assert "raw_gas(i) = Set(srow(i) - SpecLead(j), j)" in fn
+        assert "row = srow(i) - SpecLead(w)" in fn
 
     def test_the_rebuild_is_normalised_once(self):
         """NormalizeCoSpectra divides by the full-rate statistics. A column
