@@ -33,6 +33,7 @@ ifeq ($(OS), Windows_NT)
 	FCC_EXE = eddyflow_fcc.exe
 	PWBREF_EXE = pwb_reference.exe
 	CCFCHECK_EXE = ccf_bitexact.exe
+	COVMAXCHECK_EXE = covmax_bitexact.exe
 	OS_DIR = win
 	#> Which src_os/ directory supplies m_process_os: the one module
 	#> that needs a different source per operating system.
@@ -49,6 +50,7 @@ else
 	FCC_EXE = eddyflow_fcc
 	PWBREF_EXE = pwb_reference
 	CCFCHECK_EXE = ccf_bitexact
+	COVMAXCHECK_EXE = covmax_bitexact
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
@@ -190,6 +192,13 @@ ccfcheck : m_numeric_kinds.o m_pwb_core.o
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)ccf_bitexact_main.f90 -o $(OBJS_DIR)ccf_bitexact_main.o
 	$(FC) -static -o $(OBJS_DIR)$(CCFCHECK_EXE) $(OBJS_DIR)ccf_bitexact_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
 
+# The covariance-maximisation bit-exactness check, built like ccfcheck: the
+# old per-lag path frozen, compared on raw bits with the shipped module.
+# static_checks/test_covmax_series_static.py runs it.
+covmaxcheck : m_numeric_kinds.o m_covmax_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)covmax_bitexact_main.f90 -o $(OBJS_DIR)covmax_bitexact_main.o
+	$(FC) -static -o $(OBJS_DIR)$(COVMAXCHECK_EXE) $(OBJS_DIR)covmax_bitexact_main.o $(OBJS_DIR)m_covmax_core.o $(OBJS_DIR)m_numeric_kinds.o
 
 #Compilation
 ##RP
@@ -731,6 +740,9 @@ m_common_global_var.o: \
 	m_log.o \
 	m_methane_tables.o \
 	m_typedef.o
+m_covmax_core.o: \
+	m_covmax_core.f90 \
+	m_numeric_kinds.o
 m_dates.o: \
 	m_dates.f90
 m_eddypro_import.o: \
@@ -1091,6 +1103,7 @@ timelag_handle.o: \
 	timelag_handle.f90 \
 	interfaces_1.inc \
 	m_common_global_var.o \
+	m_covmax_core.o \
 	m_rp_global_var.o \
 	pwb_timelag_handle.o
 timestamp.o: \

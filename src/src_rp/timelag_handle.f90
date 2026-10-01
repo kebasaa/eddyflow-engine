@@ -543,6 +543,7 @@ end subroutine ApplyCovMaxDefaultFallback
 !*******************************************************************************
 subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     use m_rp_global_var
+    use m_covmax_core, only: CrossCovarianceSeries
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow
@@ -585,42 +586,51 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     !> time the far end has been computed the near one is long gone.
     nlag = lagmax - lagmin + 1
     allocate(CovSeries(nlag))
-    do i = lagmin, lagmax
-        N2 = nrow - abs(i)
-        allocate(ShSet(N2, 2))
-        allocate(ShPrimes(N2, 2))
+    !> Without stochastic detrending, the cross-covariance at every lag in one
+    !> call - no shifted copies, no 2x2 matrix of which one entry was read.
+    !> Bitwise the same values: see m_covmax_core. With detrending each shifted
+    !> window is detrended on its own, so the copies are real work and the loop
+    !> below stays exactly as it was.
+    if (.not. RPSetup%covmax_stocdet) then
+        call CrossCovarianceSeries(Col1, Col2, nrow, lagmin, lagmax, error, CovSeries)
+    else
+        do i = lagmin, lagmax
+            N2 = nrow - abs(i)
+            allocate(ShSet(N2, 2))
+            allocate(ShPrimes(N2, 2))
 
-        !> Align the two timeseries at the current time-lag 
-        do ii = 1, N2
-            if (i < 0) then
-                ShSet(ii, 1) = Col1(ii - i)
-                ShSet(ii, 2) = Col2(ii)
+            !> Align the two timeseries at the current time-lag 
+            do ii = 1, N2
+                if (i < 0) then
+                    ShSet(ii, 1) = Col1(ii - i)
+                    ShSet(ii, 2) = Col2(ii)
+                else
+                    ShSet(ii, 1) = Col1(ii)
+                    ShSet(ii, 2) = Col2(ii + i)
+                end if
+            end do
+
+
+            !> Linear detrending
+            ! call VariableLinearDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
+            ! call VariableLinearDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
+            if (RPSetup%covmax_stocdet) then
+                !> Stochastic detrending
+                call VariableStochasticDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
+                call VariableStochasticDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
             else
-                ShSet(ii, 1) = Col1(ii)
-                ShSet(ii, 2) = Col2(ii + i)
+                !> Block average
+                ShPrimes = ShSet
             end if
+
+            call CovarianceMatrixNoError(ShPrimes, size(ShPrimes, 1), size(ShPrimes, 2), CovMat, error)
+            Cov = CovMat(1, 2)
+            CovSeries(i - lagmin + 1) = Cov
+
+            deallocate(ShSet)
+            deallocate(ShPrimes)
         end do
-
-
-        !> Linear detrending
-        ! call VariableLinearDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
-        ! call VariableLinearDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
-        if (RPSetup%covmax_stocdet) then
-            !> Stochastic detrending
-            call VariableStochasticDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
-            call VariableStochasticDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
-        else
-            !> Block average
-            ShPrimes = ShSet
-        end if
-
-        call CovarianceMatrixNoError(ShPrimes, size(ShPrimes, 1), size(ShPrimes, 2), CovMat, error)
-        Cov = CovMat(1, 2)
-        CovSeries(i - lagmin + 1) = Cov
-
-        deallocate(ShSet)
-        deallocate(ShPrimes)
-    end do
+    end if
 
     !> Whether the chord can be drawn at all. Both ends have to exist, and
     !> two points make a line through themselves and nothing else, so a
