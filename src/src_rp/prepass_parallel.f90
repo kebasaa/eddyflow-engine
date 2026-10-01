@@ -72,6 +72,7 @@ module m_prepass_parallel
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteCleanup
     use m_process_os, only: ProcessSelfId, ParentGone
+    use m_pwb_timelag, only: AppendPwbCacheRows
     implicit none
     private
 
@@ -941,9 +942,8 @@ contains
     !> come out exactly as a single loop would have left them, and periods
     !> sharing a timestamp keep their gas order.
     !>
-    !> The cache grows once per piece rather than once per row. Storing a row
-    !> at a time reallocates and copies the whole table each time, which is
-    !> quadratic and is what StorePwbTimelagCacheAt does for the serial walk.
+    !> The rows go through AppendPwbCacheRows, the one way rows are added,
+    !> so the table's capacity and its order flag stay true to its contents.
     !***************************************************************************
     subroutine MergePwbBatchDumps(kind, nChunks, dataset, nmax, nOpt)
         character(*), intent(in) :: kind
@@ -955,7 +955,7 @@ contains
         integer :: nrec, idx, idxCount
         character(20) :: magic
         character(2) :: dumpKind
-        type(PWBTimelagCacheEntryType), allocatable :: rows(:), grown(:)
+        type(PWBTimelagCacheEntryType), allocatable :: rows(:)
         type(TimeLagOptType), allocatable :: slice(:)
         character(10), allocatable :: sdate(:)
         character(5), allocatable :: stime(:)
@@ -979,12 +979,7 @@ contains
             if (nrec > 0) then
                 allocate(rows(nrec))
                 read(u) rows
-                allocate(grown(PwbTimelagCacheN + nrec))
-                if (PwbTimelagCacheN > 0) &
-                    grown(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
-                grown(PwbTimelagCacheN + 1:PwbTimelagCacheN + nrec) = rows
-                call move_alloc(grown, PwbTimelagCache)
-                PwbTimelagCacheN = PwbTimelagCacheN + nrec
+                call AppendPwbCacheRows(rows, nrec)
                 deallocate(rows)
             end if
 

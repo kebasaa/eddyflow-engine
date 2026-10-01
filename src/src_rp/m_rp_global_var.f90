@@ -177,8 +177,20 @@ module m_rp_global_var
     integer :: PwbSummaryEvidence(E2NumVar) = 0
     character(10) :: PwbPeriodDate = ''
     character(5) :: PwbPeriodTime = ''
+    !> The table holds PwbTimelagCacheN rows; it is allocated with room for
+    !> more, so appending a row does not copy the whole table. Read it as
+    !> PwbTimelagCache(1:PwbTimelagCacheN), never whole.
     type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
     integer :: PwbTimelagCacheN = 0
+    !> Whether the rows are in nondecreasing period order, and the period of
+    !> the last one, in minutes. While they are, a period's rows are found by
+    !> bisection rather than by a scan from row 1 - and it is the same row:
+    !> see LocatePwbRow.
+    logical :: PwbCacheInTimeOrder = .true.
+    integer(8) :: PwbCacheLastMinutes = 0
+    !> Each row's period in minutes, beside the table and the same size, so
+    !> bisecting does not parse a date string at every step.
+    integer(8), allocatable :: PwbCacheMinutes(:)
 
     !> Which averaging period each row of the aggregate time-lag dataset came
     !> from. The dataset has no time axis of its own, so the correspondence is

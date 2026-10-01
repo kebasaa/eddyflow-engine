@@ -104,11 +104,12 @@ class TheParentDoesTheSettling(unittest.TestCase):
         the post-pass reproduce a single loop."""
         self.assertIn("do k = 2, nChunks", PAR)
 
-    def test_the_cache_grows_once_per_slice(self):
-        """StorePwbTimelagCacheAt reallocates and copies the whole table for
-        every row, which is quadratic; the merge must not inherit that."""
-        self.assertIn("allocate(grown(PwbTimelagCacheN + nrec))", PAR)
-        self.assertIn("call move_alloc(grown, PwbTimelagCache)", PAR)
+    def test_the_merge_adds_rows_the_one_way_rows_are_added(self):
+        """Through AppendPwbCacheRows, so the table's spare capacity and its
+        period-order flag stay true to its contents - see
+        test_pwb_table_static."""
+        self.assertIn("call AppendPwbCacheRows(rows, nrec)", PAR)
+        self.assertNotIn("move_alloc(grown, PwbTimelagCache)", PAR)
 
 
 class AnOlderDumpIsRefusedRatherThanMisread(unittest.TestCase):

@@ -34,6 +34,7 @@ ifeq ($(OS), Windows_NT)
 	PWBREF_EXE = pwb_reference.exe
 	CCFCHECK_EXE = ccf_bitexact.exe
 	COVMAXCHECK_EXE = covmax_bitexact.exe
+	PWBTABLECHECK_EXE = pwb_table_check.exe
 	OS_DIR = win
 	#> Which src_os/ directory supplies m_process_os: the one module
 	#> that needs a different source per operating system.
@@ -51,6 +52,7 @@ else
 	PWBREF_EXE = pwb_reference
 	CCFCHECK_EXE = ccf_bitexact
 	COVMAXCHECK_EXE = covmax_bitexact
+	PWBTABLECHECK_EXE = pwb_table_check
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
@@ -199,6 +201,14 @@ covmaxcheck : m_numeric_kinds.o m_covmax_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)covmax_bitexact_main.f90 -o $(OBJS_DIR)covmax_bitexact_main.o
 	$(FC) -static -o $(OBJS_DIR)$(COVMAXCHECK_EXE) $(OBJS_DIR)covmax_bitexact_main.o $(OBJS_DIR)m_covmax_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The PWB table check: store a year of rows through the shipped routines and
+# confirm every lookup returns the row a scan from row 1 would. Unlike the
+# two above it needs the engine's own state, so it links every RP object but
+# the main program. static_checks/test_pwb_table_static.py runs it.
+pwbtablecheck : rp
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_table_check_main.f90 -o $(OBJS_DIR)pwb_table_check_main.o
+	$(FC) -static -o $(OBJS_DIR)$(PWBTABLECHECK_EXE) $(OBJS_DIR)pwb_table_check_main.o $(filter-out $(OBJS_DIR)eddyflow-rp_main.o,$(RP_OBJS))
 
 #Compilation
 ##RP
@@ -877,6 +887,7 @@ prepass_parallel.o: \
 	ghg_prefetch.o \
 	m_process_os.o \
 	m_rp_global_var.o \
+	pwb_timelag_handle.o \
 	remote_source.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \

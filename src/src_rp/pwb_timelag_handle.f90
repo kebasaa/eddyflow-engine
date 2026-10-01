@@ -40,7 +40,7 @@ module m_pwb_timelag
     public :: CountPwbDiagnostic, SameAnalyser
     public :: InitPwbTimelagCache, ReadPwbTimelagCache, WritePwbTimelagCache
     public :: LookupPwbTimelagCache, StorePwbTimelagCache, SetPwbPeriodTimestamp
-    public :: PostProcessPwbTimelagCache
+    public :: PostProcessPwbTimelagCache, AppendPwbCacheRows
     public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     public :: RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache
 
@@ -292,7 +292,10 @@ end subroutine ResolvePwbAggregateSummary
 
 subroutine InitPwbTimelagCache()
     if (allocated(PwbTimelagCache)) deallocate(PwbTimelagCache)
+    if (allocated(PwbCacheMinutes)) deallocate(PwbCacheMinutes)
     PwbTimelagCacheN = 0
+    PwbCacheInTimeOrder = .true.
+    PwbCacheLastMinutes = 0
     PwbCacheLoaded = .false.
     PwbCacheDirty = .false.
 end subroutine InitPwbTimelagCache
@@ -343,18 +346,16 @@ subroutine StorePwbTimelagCache(gas, actual_lag, used_lag, row_lag, default_used
         call LogSay(' Fatal> PWB time-lag file cannot use an empty or invalid period timestamp.')
         error stop 'Invalid PWB period timestamp.'
     end if
-    do i = 1, PwbTimelagCacheN
-        if (PwbTimelagCache(i)%date == PwbPeriodDate .and. PwbTimelagCache(i)%time == PwbPeriodTime &
-            .and. PwbTimelagCache(i)%gas == gas) then
-            PwbTimelagCache(i)%actual_lag = actual_lag
-            PwbTimelagCache(i)%used_lag = used_lag
-            PwbTimelagCache(i)%row_lag = row_lag
-            PwbTimelagCache(i)%default_used = default_used
-            PwbTimelagCache(i)%result = res
-            PwbCacheDirty = .true.
-            return
-        end if
-    end do
+    i = LocatePwbRow(PwbPeriodDate, PwbPeriodTime, gas)
+    if (i > 0) then
+        PwbTimelagCache(i)%actual_lag = actual_lag
+        PwbTimelagCache(i)%used_lag = used_lag
+        PwbTimelagCache(i)%row_lag = row_lag
+        PwbTimelagCache(i)%default_used = default_used
+        PwbTimelagCache(i)%result = res
+        PwbCacheDirty = .true.
+        return
+    end if
 
     call StorePwbTimelagCacheAt(PwbPeriodDate, PwbPeriodTime, gas, actual_lag, &
         used_lag, row_lag, default_used, res)
@@ -380,19 +381,137 @@ subroutine LookupPwbTimelagCache(gas, found, actual_lag, used_lag, row_lag, defa
         call LogSay(' Fatal> PWB time-lag file cannot use an empty or invalid period timestamp.')
         error stop 'Invalid PWB period timestamp.'
     end if
-    do i = 1, PwbTimelagCacheN
-        if (PwbTimelagCache(i)%date == PwbPeriodDate .and. PwbTimelagCache(i)%time == PwbPeriodTime &
+    i = LocatePwbRow(PwbPeriodDate, PwbPeriodTime, gas)
+    if (i > 0) then
+        found = .true.
+        actual_lag = PwbTimelagCache(i)%actual_lag
+        used_lag = PwbTimelagCache(i)%used_lag
+        row_lag = PwbTimelagCache(i)%row_lag
+        default_used = PwbTimelagCache(i)%default_used
+        res = PwbTimelagCache(i)%result
+    end if
+end subroutine LookupPwbTimelagCache
+
+!***************************************************************************
+!> The first row for (date, time, gas), or 0 if there is none.
+!>
+!> "First" as a scan from row 1 would find it, which is what both callers
+!> did: every gas of every period of a run looked itself up that way, so a
+!> run as a whole was quadratic in its length - about 2e9 comparisons for
+!> one Yatir season, and the store did the same scan before every append.
+!>
+!> While the rows are in nondecreasing period order this bisects instead.
+!> Rows with the same date and time strings have the same minutes, so in an
+!> ordered table they all lie in the one block of rows sharing the key's
+!> minutes; the first match in that block is the first match in the table.
+!> That holds with duplicate keys too, so nothing here has to assume there
+!> are none. A table out of order - which nothing in the engine builds, but a
+!> hand-edited file could - is scanned as before.
+!***************************************************************************
+integer function LocatePwbRow(date, time, gas)
+    character(*), intent(in) :: date, time
+    integer, intent(in) :: gas
+    integer(8), external :: PeriodMinutes
+    integer(8) :: key
+    integer :: lo, hi, mid, i
+
+    LocatePwbRow = 0
+    if (PwbTimelagCacheN <= 0) return
+
+    if (.not. PwbCacheInTimeOrder) then
+        do i = 1, PwbTimelagCacheN
+            if (PwbTimelagCache(i)%date == date .and. PwbTimelagCache(i)%time == time &
+                .and. PwbTimelagCache(i)%gas == gas) then
+                LocatePwbRow = i
+                return
+            end if
+        end do
+        return
+    end if
+
+    !> The first row whose period is not before the key's.
+    key = PeriodMinutes(date, time)
+    lo = 1
+    hi = PwbTimelagCacheN + 1
+    do while (lo < hi)
+        mid = (lo + hi) / 2
+        if (PwbCacheMinutes(mid) < key) then
+            lo = mid + 1
+        else
+            hi = mid
+        end if
+    end do
+
+    do i = lo, PwbTimelagCacheN
+        if (PwbCacheMinutes(i) /= key) exit
+        if (PwbTimelagCache(i)%date == date .and. PwbTimelagCache(i)%time == time &
             .and. PwbTimelagCache(i)%gas == gas) then
-            found = .true.
-            actual_lag = PwbTimelagCache(i)%actual_lag
-            used_lag = PwbTimelagCache(i)%used_lag
-            row_lag = PwbTimelagCache(i)%row_lag
-            default_used = PwbTimelagCache(i)%default_used
-            res = PwbTimelagCache(i)%result
+            LocatePwbRow = i
             return
         end if
     end do
-end subroutine LookupPwbTimelagCache
+end function LocatePwbRow
+
+!***************************************************************************
+!> Room for at least n rows, keeping the first PwbTimelagCacheN.
+!>
+!> Growing by doubling, so appending N rows one at a time copies about 2N
+!> rows in all rather than N^2/2. The table used to be reallocated to exactly
+!> one more row for every row stored - for one Yatir season some 2e9 row
+!> copies, and loading a cache file back went the same way.
+!***************************************************************************
+subroutine EnsurePwbCacheCapacity(n)
+    integer, intent(in) :: n
+    integer :: capacity
+    type(PWBTimelagCacheEntryType), allocatable :: grown(:)
+    integer(8), allocatable :: grown_min(:)
+
+    if (allocated(PwbTimelagCache)) then
+        if (size(PwbTimelagCache) >= n) return
+        capacity = max(n, 2 * size(PwbTimelagCache))
+    else
+        capacity = max(n, 64)
+    end if
+    allocate(grown(capacity), grown_min(capacity))
+    if (PwbTimelagCacheN > 0) then
+        grown(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
+        grown_min(1:PwbTimelagCacheN) = PwbCacheMinutes(1:PwbTimelagCacheN)
+    end if
+    call move_alloc(grown, PwbTimelagCache)
+    call move_alloc(grown_min, PwbCacheMinutes)
+end subroutine EnsurePwbCacheCapacity
+
+!***************************************************************************
+!> Keep the order flag and the minutes column true to the rows after row i
+!> was appended. Every append goes through here; no row's key changes after.
+!***************************************************************************
+subroutine NotePwbRowAppended(i)
+    integer, intent(in) :: i
+    integer(8), external :: PeriodMinutes
+    integer(8) :: m
+
+    m = PeriodMinutes(PwbTimelagCache(i)%date, PwbTimelagCache(i)%time)
+    PwbCacheMinutes(i) = m
+    if (i > 1 .and. m < PwbCacheLastMinutes) PwbCacheInTimeOrder = .false.
+    PwbCacheLastMinutes = m
+end subroutine NotePwbRowAppended
+
+!***************************************************************************
+!> Append n rows at once, in order - a worker's piece of the table.
+!***************************************************************************
+subroutine AppendPwbCacheRows(rows, n)
+    integer, intent(in) :: n
+    type(PWBTimelagCacheEntryType), intent(in) :: rows(n)
+    integer :: k
+
+    if (n <= 0) return
+    call EnsurePwbCacheCapacity(PwbTimelagCacheN + n)
+    do k = 1, n
+        PwbTimelagCacheN = PwbTimelagCacheN + 1
+        PwbTimelagCache(PwbTimelagCacheN) = rows(k)
+        call NotePwbRowAppended(PwbTimelagCacheN)
+    end do
+end subroutine AppendPwbCacheRows
 
 !***************************************************************************
 !> Fingerprint the settings a cached time-lag depends on.
@@ -583,20 +702,20 @@ subroutine StorePwbTimelagCacheAt(date, time, gas, actual_lag, used_lag, row_lag
     real(kind = dbl), intent(in) :: actual_lag, used_lag
     logical, intent(in) :: default_used
     type(PWBResultType), intent(in) :: res
-    type(PWBTimelagCacheEntryType), allocatable :: tmp(:)
+    integer :: i
 
-    allocate(tmp(PwbTimelagCacheN + 1))
-    if (PwbTimelagCacheN > 0) tmp(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
-    tmp(PwbTimelagCacheN + 1)%date = date
-    tmp(PwbTimelagCacheN + 1)%time = time
-    tmp(PwbTimelagCacheN + 1)%gas = gas
-    tmp(PwbTimelagCacheN + 1)%actual_lag = actual_lag
-    tmp(PwbTimelagCacheN + 1)%used_lag = used_lag
-    tmp(PwbTimelagCacheN + 1)%row_lag = row_lag
-    tmp(PwbTimelagCacheN + 1)%default_used = default_used
-    tmp(PwbTimelagCacheN + 1)%result = res
-    call move_alloc(tmp, PwbTimelagCache)
-    PwbTimelagCacheN = PwbTimelagCacheN + 1
+    call EnsurePwbCacheCapacity(PwbTimelagCacheN + 1)
+    i = PwbTimelagCacheN + 1
+    PwbTimelagCache(i)%date = date
+    PwbTimelagCache(i)%time = time
+    PwbTimelagCache(i)%gas = gas
+    PwbTimelagCache(i)%actual_lag = actual_lag
+    PwbTimelagCache(i)%used_lag = used_lag
+    PwbTimelagCache(i)%row_lag = row_lag
+    PwbTimelagCache(i)%default_used = default_used
+    PwbTimelagCache(i)%result = res
+    PwbTimelagCacheN = i
+    call NotePwbRowAppended(i)
 end subroutine StorePwbTimelagCacheAt
 
 subroutine WritePwbTimelagCache()
