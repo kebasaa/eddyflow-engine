@@ -24,10 +24,15 @@ What it builds, from 36 hours of CH-LAE starting 2025-06-01 00:00:
       base_gappy_tlag   time-lag optimisation and the planar fit - both
                         pre-passes, so both splits run over the holes - over
                         the whole 36 hours, processing only the last three.
-      base_gappy_pwb    PWB cache generation, processing the whole 36 hours:
-                        a PWB cache covers the processing range, not the
-                        pre-pass one, so with three hours processed it would
-                        pre-pass six periods and never split.
+      base_gappy_pwb    PWB cache generation, processing from the first file
+                        (03:00) to the end: a PWB cache covers the processing
+                        range, not the pre-pass one, so with three hours
+                        processed it would pre-pass six periods and never
+                        split. It starts at the first file rather than in the
+                        leading hole because a main pass whose first periods
+                        have no file writes their FLUXNET rows to a stray
+                        fort.132 (a known fault, tracked separately), which
+                        the stray-file static check then fails on.
 
 The gate is check_parallel.sh on each, at several -j: the split runs must be
 byte-identical to -j 1.
@@ -63,10 +68,11 @@ HOLES = [
 #: its last 3 hours.
 PREPASS = (datetime(2025, 6, 1, 0, 0), datetime(2025, 6, 2, 12, 0))
 PROCESS = (datetime(2025, 6, 2, 9, 0), datetime(2025, 6, 2, 12, 0))
+FROM_FIRST_FILE = (datetime(2025, 6, 1, 3, 0), datetime(2025, 6, 2, 12, 0))
 
 VARIANTS = {
     "base_gappy_tlag": ("base_tlag_par.eddyflow", {"rot_meth": "3"}, PROCESS),
-    "base_gappy_pwb": ("base_pwb_par.eddyflow", {}, PREPASS),
+    "base_gappy_pwb": ("base_pwb_par.eddyflow", {}, FROM_FIRST_FILE),
 }
 
 
