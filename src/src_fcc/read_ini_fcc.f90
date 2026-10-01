@@ -79,6 +79,8 @@ end subroutine ReadIniFCC
 !***************************************************************************
 subroutine WriteVariablesFCC()
     use m_fx_global_var
+    use m_remote_source, only: RemoteRefuseOutput, RemoteFetchFile, &
+        RemoteFetchFolder
     implicit none
     !> local variables
     integer :: gas
@@ -163,6 +165,15 @@ subroutine WriteVariablesFCC()
         AuxFile%sa = SCTags(20)%value(1:len_trim(SCTags(20)%value))
         if (len_trim(AuxFile%sa) == 0) AuxFile%sa = 'none'
     end if
+
+    !> The output folder must be local. The rest are only read here, and may
+    !> be shared Google Drive or Dropbox links, typically to the results of an
+    !> earlier run: they are downloaded now, before anything checks for them.
+    call RemoteRefuseOutput('out_path', Dir%main_out)
+    call RemoteFetchFile('ex_file', AuxFile%ex)
+    call RemoteFetchFile('sa_file', AuxFile%sa)
+    call RemoteFetchFolder('sa_bin_spectra', Dir%binned, '.csv', .false.)
+    call RemoteFetchFolder('sa_full_spectra', Dir%full, '.csv', .false.)
 
     !> Check existence of full cospectra directory if necessary
     if (EddyFlowProj%hf_meth == 'fratini_12') then

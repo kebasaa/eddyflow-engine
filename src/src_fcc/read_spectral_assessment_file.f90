@@ -35,6 +35,7 @@
 !***************************************************************************
 subroutine ReadSpectralAssessmentFile()
     use m_fx_global_var
+    use m_sa_rates
     implicit none
     logical, external :: GasSlotIsWater
     logical, external :: GasHasSpectralFit
@@ -62,6 +63,17 @@ subroutine ReadSpectralAssessmentFile()
     real(kind = dbl) :: skipFn, skipfc
     !> One block's rows as they sit in the file: indexed by MONTH.
     real(kind = dbl) :: monthFn(12), monthfc(12)
+    !> The assessment per acquisition rate: a block's `rates=` list, and its
+    !> month rows per file column
+    real(kind = dbl) :: file_rates(MaxRateSlots)
+    integer :: n_file_rates
+    real(kind = dbl) :: monthFnR(12, MaxRateSlots), monthfcR(12, MaxRateSlots)
+    real(kind = dbl) :: row_vals(2 * MaxRateSlots)
+    integer :: n_row_vals
+    integer :: jcol
+    character(ShortInstringLen) :: label_line
+    character(ShortInstringLen) :: unstable_line
+    logical :: single_column(GHGNumVar)
     character(64) :: sa_tags(GHGNumVar)
     character(64) :: blockname
     character(ShortInstringLen) :: dataline
@@ -108,11 +120,23 @@ subroutine ReadSpectralAssessmentFile()
         water_slot = SlotFromSpectralStamp(water_header)
         if (water_slot < firstGas) water_slot = wsl
         if (.not. GasSlotIsWater(water_slot)) water_slot = wsl
+        !> A project at more than one acquisition rate keeps every column of
+        !> the file, per gas and rate; the globals keep the first, as always
+        single_column = .false.
+        if (MultiRateSA) then
+            SlotFilled = .false.
+            FileSlotFilled = .false.
+            call ParseRatesToken(water_header, file_rates, n_file_rates)
+            if (water_slot >= firstGas .and. n_file_rates == 0) &
+                single_column(water_slot) = .true.
+        end if
         do cls = RH10, RH90
             read(udf, '(a)') dataline
             dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
             read(dataline, *)  RegPar(water_slot, cls)%Fn, &
                 RegPar(water_slot, cls)%fc
+            if (MultiRateSA) &
+                call StoreRHRow(water_slot, cls, dataline, file_rates, n_file_rates)
         end do
 
         !> One block per configured gas but water, matching what
@@ -218,6 +242,13 @@ subroutine ReadSpectralAssessmentFile()
                 end do
             end if
 
+            !> The block's rates, for a project at more than one
+            if (MultiRateSA) then
+                label_line = dataline
+                call ParseRatesToken(label_line, file_rates, n_file_rates)
+                if (slot > 0 .and. n_file_rates == 0) single_column(slot) = .true.
+            end if
+
             !> A hygrometer's block carries nine RH classes, a gas's
             !> twelve months. The header says which: `numerosity` is
             !> the count column only the RH tables have, and it has
@@ -242,6 +273,9 @@ subroutine ReadSpectralAssessmentFile()
                             RegPar(slot, dum)%e3 = error
                         end if
                     end if
+                    if (MultiRateSA) call StoreExp(slot, label_line, &
+                        RegPar(slot, dum)%e1, RegPar(slot, dum)%e2, &
+                        RegPar(slot, dum)%e3, file_rates, n_file_rates)
                 end if
                 do cls = RH10, RH90
                     read(udf, '(a)', iostat = read_status) dataline
@@ -250,6 +284,8 @@ subroutine ReadSpectralAssessmentFile()
                     if (slot > 0) then
                         read(dataline, *, iostat = read_status) &
                             RegPar(slot, cls)%Fn, RegPar(slot, cls)%fc
+                        if (MultiRateSA .and. read_status == 0) &
+                            call StoreRHRow(slot, cls, dataline, file_rates, n_file_rates)
                     else
                         read(dataline, *, iostat = read_status) skipFn, skipfc
                     end if
@@ -265,6 +301,8 @@ subroutine ReadSpectralAssessmentFile()
             !> is right only for a single all-months group.
             monthFn = error
             monthfc = error
+            monthFnR = error
+            monthfcR = error
             do cls = JAN, DEC
                 read(udf, '(a)', iostat = read_status) dataline
                 if (read_status /= 0) exit
@@ -272,6 +310,15 @@ subroutine ReadSpectralAssessmentFile()
                 if (slot > 0) then
                     read(dataline, *, iostat = read_status) &
                         monthFn(cls), monthfc(cls)
+                    !> Every column, for the assessment per rate
+                    if (MultiRateSA .and. read_status == 0) then
+                        call ParseNumbers(dataline, row_vals, size(row_vals), n_row_vals)
+                        do jcol = 1, MaxRateSlots
+                            if (2 * jcol > n_row_vals) exit
+                            monthFnR(cls, jcol) = row_vals(2 * jcol - 1)
+                            monthfcR(cls, jcol) = row_vals(2 * jcol)
+                        end do
+                    end if
                 else
                     !> A gas this project does not carry. Consume the block so
                     !> the file stays aligned rather than skipping it.
@@ -280,6 +327,8 @@ subroutine ReadSpectralAssessmentFile()
                 if (read_status /= 0) exit
             end do
             if (read_status /= 0) exit
+            if (slot > 0 .and. MultiRateSA) &
+                call StoreMonthBlock(slot, monthFnR, monthfcR, file_rates, n_file_rates)
             if (slot > 0) call MonthlyRegParToClasses(slot, monthFn, monthfc)
         end do
 
@@ -319,25 +368,48 @@ subroutine ReadSpectralAssessmentFile()
         end do
         if (n_fitted > 0 .and. n_fitted < n_configured) call ExceptionHandler(110)
 
-        !> skip 4 lines
-        do i = 1, 4
+        !> skip 4 lines - the last of them the exp1 exp2 exp3 label, kept:
+        !> for a project at more than one rate it carries each rate's
+        do i = 1, 3
             read(udf, *)
         end do
+        read(udf, '(a)') label_line
 
         !> Read parameters of exponential fit fc vs. RH
         read(udf, *) RegPar(dum, dum)%e1, RegPar(dum, dum)%e2, RegPar(dum, dum)%e3
+        if (MultiRateSA) then
+            call ParseRatesToken(label_line, file_rates, n_file_rates)
+            call StoreExp(water_slot, label_line, RegPar(dum, dum)%e1, &
+                RegPar(dum, dum)%e2, RegPar(dum, dum)%e3, file_rates, n_file_rates)
+        end if
 
-        !> skip 6 lines
-        do i = 1, 6
+        !> skip 6 lines - again keeping the last, the c1 c2 label
+        do i = 1, 5
             read(udf, *)
         end do
+        read(udf, '(a)') label_line
         !> Read parameters of Ibrom's model for spectral correction factor
         read(udf, '(a)') dataline
         dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
         read(dataline, *)  UnPar(1), UnPar(2)
+        unstable_line = dataline
         read(udf, '(a)') dataline
         dataline = dataline(index(dataline, '=') + 1: len_trim(dataline))
         read(dataline, *)  StPar(1), StPar(2)
+        if (MultiRateSA) then
+            call ParseRatesToken(label_line, file_rates, n_file_rates)
+            call StoreIbromRows(unstable_line, dataline, file_rates, n_file_rates)
+            !> Which rates each gas has an assessment for, then which one each
+            !> of its rates is corrected with
+            do gas = firstGas, lastGas
+                if (.not. ConfiguredGas(gas)) cycle
+                if (nGasRates(gas) > 1 .and. single_column(gas)) &
+                    call LogSay('  ' // trim(sa_tags(gas)) // ' is at ' &
+                        // trim(RateList(gas)) // ' Hz; the file holds one' &
+                        // ' assessment for all its rates.')
+            end do
+            call ResolveAssessmentFallbacks()
+        end if
         close(udf)
         call LogSay(' Done.')
     else

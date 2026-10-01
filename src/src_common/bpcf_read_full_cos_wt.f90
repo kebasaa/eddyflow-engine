@@ -220,6 +220,7 @@ subroutine FullCospectraLength(Filepath, N)
         read(udf, *, iostat = io_status)
         if (io_status /= 0) then
             N = nint(error)
+            close(udf)
             return
         end if
     end do
@@ -231,4 +232,10 @@ subroutine FullCospectraLength(Filepath, N)
         if (io_status < 0) exit
         N = N + 1
     end do
+    !> Closed, which it never was. Asked once per run, of the first file, that
+    !> left the unit parked at the end of that file - and the correction of
+    !> the first period, re-opening the same file on the same unit, found
+    !> itself still there and died on its first read. Asked per period now,
+    !> it would do so every time.
+    close(udf)
 end subroutine FullCospectraLength

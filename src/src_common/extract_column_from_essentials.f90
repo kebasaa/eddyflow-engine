@@ -73,6 +73,10 @@ subroutine ExtractColumnFromEssentials(ExFilename, NumExRecords, column, array, 
                     array(cnt, Nt + 1) = lEx%degT%cov
                     array(cnt, Nt + 2) = lEx%WS
                     array(cnt, Nt + 3) = lEx%zL
+                    !> The record's file rate, for a caller that asks for it:
+                    !> the correction-factor model is fitted per rate when a
+                    !> project's files are not all at one.
+                    if (ncol >= Nt + 4) array(cnt, Nt + 4) = lEx%ac_freq
                 end if
             end do
             NumActRecords = cnt

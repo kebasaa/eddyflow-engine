@@ -49,6 +49,9 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     integer, intent(in) :: detrending_time_constant
     character(2), intent(in) :: detrending_method
     integer, intent(in) :: nfull
+    !> The first full-cospectra file's length. No longer used for sizing -
+    !> each period is sized from its own file below - but kept, because the
+    !> explicit interface of this routine names it.
     integer, intent(in) :: nfreq
     !> Optional input arguments
     type(ExType), optional, intent(in) :: lEx
@@ -59,7 +62,13 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     integer :: indx
     logical :: wanted(GHGNumVar)
     logical :: skip
-    type(SpectraSetType) :: fullCospectra(nfreq)
+    !> This period's own full cospectrum, as many rows as its own file has.
+    !> It was sized from the first file of the run, so a shorter period - a
+    !> slower acquisition rate, or just a gap - left the tail of the array
+    !> unread and integrated whatever memory held, and a longer one was cut
+    !> at the first file's Nyquist frequency.
+    type(SpectraSetType), allocatable :: fullCospectra(:)
+    integer :: nrow
     type(BPTFType), allocatable   :: BPTF(:)
     type(BPTFType), allocatable   :: hBPTF(:)
     real(kind = dbl), allocatable :: nf(:)
@@ -102,30 +111,38 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
 !    wanted(firstGas:lastGas) = loc_var_present(co2:w_gas4)
     wanted(firstGas:lastGas) = .false.
 
-    !> Read full co-spectrum of H from file
-    if (indx /= nint(error)) &
-        call ImportFullCospectra(LocFileList(indx), fullCospectra, nfreq, wanted, skip)
+    !> Read full co-spectrum of H from file, sized from the file itself.
+    !> skip starts true: with no file for this period it was tested unset.
+    skip = .true.
+    nrow = 0
+    if (indx /= nint(error)) then
+        call FullCospectraLength(LocFileList(indx)%path, nrow)
+        if (nrow > 1) then
+            allocate(fullCospectra(nrow))
+            call ImportFullCospectra(LocFileList(indx), fullCospectra, nrow, wanted, skip)
+        end if
+    end if
 
     if (.not. skip) then
-        if (.not. allocated(nf)) allocate(nf(nfreq))
-        if (.not. allocated(BPTF)) allocate(BPTF(nfreq))
-        if (.not. allocated(hBPTF)) allocate(hBPTF(nfreq))
-        nf(1:nfreq) = fullCospectra(1:nfreq)%fn
+        if (.not. allocated(nf)) allocate(nf(nrow))
+        if (.not. allocated(BPTF)) allocate(BPTF(nrow))
+        if (.not. allocated(hBPTF)) allocate(hBPTF(nrow))
+        nf(1:nrow) = fullCospectra(1:nrow)%fn
 
         !> Initialize all transfer functions to 1
-        call SetTransferFunctionsToValue(BPTF,  nfreq, 1d0)
-        call SetTransferFunctionsToValue(hBPTF, nfreq, 1d0)
+        call SetTransferFunctionsToValue(BPTF,  nrow, 1d0)
+        call SetTransferFunctionsToValue(hBPTF, nrow, 1d0)
 
         !> File-specific cut-off frequencies
         call RetrieveLPTFpars(lEx, 'iir', LocSetup)
 
         !> In-situ low-pass transfer function
-        call ExperimentalLPTF('iir', nf, nfreq, BPTF)
+        call ExperimentalLPTF('iir', nf, nrow, BPTF)
 
         !> Combined TF (actually only low-pass insitu)
         do gas = firstGas, lastGas
             if (loc_var_present(gas)) &
-                call BandPassTransferFunction(BPTF, w, gas, gas, nfreq)
+                call BandPassTransferFunction(BPTF, w, gas, gas, nrow)
         end do
 
         !> Calculate TF to apply to cospectrum of H before using it as a model:
@@ -138,7 +155,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
             call AnalyticLowPassTransferFunction(nf, size(nf), ts, LocInstr, &
                 loc_var_present, wind_speed, t_air, hBPTF)
             !> reset to 1 analytic transfer functions that are substituted by in-situ ones
-            do i = 1, nfreq
+            do i = 1, nrow
                 hBPTF(i)%LP%t      = 1d0
                 hBPTF(i)%LP%wirga  = 1d0
                 hBPTF(i)%LP%sver   = 1d0
@@ -157,13 +174,13 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
                 ac_frequency, loc_var_present, hBPTF)
             !> reset to 1 BA and ZOH low-pass transfer functions if the case
             if (.not. EddyFlowProj%hf_correct_ghg_ba) then
-                do i = 1, nfreq
+                do i = 1, nrow
                     hBPTF(i)%LP%ba_sonic = 1d0
                     hBPTF(i)%LP%ba_irga = 1d0  !< Redundant, but does not harm
                 end do
             end if
             if (.not. EddyFlowProj%hf_correct_ghg_zoh) then
-                do i = 1, nfreq
+                do i = 1, nrow
                     hBPTF(i)%LP%zoh_sonic = 1d0
                 end do
             end if
@@ -178,11 +195,11 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         end if
 
         !> Combine high-pass TF and sonic-related TF
-        if (loc_var_present(ts))  call BandPassTransferFunction(hBPTF, w, ts,  w_ts,  nfreq)
+        if (loc_var_present(ts))  call BandPassTransferFunction(hBPTF, w, ts,  w_ts,  nrow)
 
         !> Apply to measured H co-spectrum to reconstruct a "more theoretical" model co-spectrum
-        where (fullCospectra(1:nfreq)%of(w_ts) /= error .and. hBPTF(1:nfreq)%BP(w_ts) /= error)
-            fullCospectra(1:nfreq)%of(w_ts) = fullCospectra(1:nfreq)%of(w_ts) / hBPTF(1:nfreq)%BP(w_ts)
+        where (fullCospectra(1:nrow)%of(w_ts) /= error .and. hBPTF(1:nrow)%BP(w_ts) /= error)
+            fullCospectra(1:nrow)%of(w_ts) = fullCospectra(1:nrow)%of(w_ts) / hBPTF(1:nrow)%BP(w_ts)
         end where
 
         !> Calculate correction factors after Fratini et al. (2012, AFM)
@@ -198,7 +215,7 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         !> direct method then never runs, silently.
         do gas = firstGas, lastGas
             if (loc_var_present(gas)) &
-                call SpectralCorrectionFactors(fullCospectra%of(w_ts), gas, nf, nfreq, BPTF)
+                call SpectralCorrectionFactors(fullCospectra%of(w_ts), gas, nf, nrow, BPTF)
         end do
 
         !> Calculate correction factors after revision of Laubach and Fratini, unpublished

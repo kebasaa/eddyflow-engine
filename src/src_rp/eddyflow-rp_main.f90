@@ -42,7 +42,8 @@ program EddyFlowRP
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     use m_ghg_prefetch, only: GhgPrefetchCleanup
-    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, &
+    use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
+    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, FinishBatchWorker, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
@@ -141,6 +142,8 @@ program EddyFlowRP
     real(kind = dbl) :: pfVec(3)
     real(kind = dbl) :: pfVec2d(2)
     real(kind = dbl) :: PFb2d(2, MaxNumWSect) = 0.d0
+    !> Highest acquisition frequency among the raw files, for the spectra grid
+    real(kind = dbl) :: SurveyAcFreq
 
     real(kind = dbl), allocatable :: bf(:)
     real(kind = sgl), allocatable :: Raw(:, :)
@@ -187,6 +190,8 @@ program EddyFlowRP
     logical :: FakeGoPlanarFit(1)
     logical :: PwbCacheRecognized
     logical :: PwbCacheValid
+    logical :: RateMismatch
+    logical :: WarnedBinGrid = .false.
 
     logical, allocatable :: GoPlanarFit(:)
 
@@ -383,7 +388,8 @@ program EddyFlowRP
                     BypassCol, .true., .false., .false., &
                     EddyFlowProj%run_mode /= 'md_retrieval', &
                     Raw, size(Raw, 1), size(Raw, 2), skip_period, passed, &
-                    faulty_col, PeriodRecords, FileEndReached, .false., '')
+                    faulty_col, PeriodRecords, FileEndReached, .false., '', &
+                    -1d0, RateMismatch)
                 if (.not. skip_period .and. passed(1)) exit
                 i = i + 1
                 call InformOfMetadataProblem(passed, faulty_col)
@@ -419,8 +425,7 @@ program EddyFlowRP
     !> Some convenient variables
     DatafileDateStep = DateType(0, 0, 0, 0, nint(Metadata%file_length))
     DateStep         = DateType(0, 0, 0, 0, RPsetup%avrg_len)
-    MaxNumFileRecords   = nint(Metadata%file_length * 60d0 * Metadata%ac_freq)
-    MaxPeriodNumRecords = nint(RPsetup%avrg_len     * 60d0 * Metadata%ac_freq)
+    call SetPeriodRate(Metadata%ac_freq)
 
     !> Remember bypass columns (or columns detected
     !> from reading a sample GHG file)
@@ -469,6 +474,8 @@ program EddyFlowRP
     !> order RawFileList, also in chronological order
     call FilesInChronologicalOrder(RawFileList, size(RawFileList), &
         tsDatasetStart, tsDatasetEnd, '')
+    !> Raw files from a shared link are fetched ahead in this order
+    call RemoteAdoptOrder(RawFileList, size(RawFileList))
 
     !> Adjust Start/End timestamps to define the boundaries of the
     !> RawTimeSeries. Retrieve the beginning time of first file
@@ -503,9 +510,20 @@ program EddyFlowRP
     !> to f_max = AcFreq/2 (= Nyquist frequency) Hz
     !> It is defined a priori, constant for each data period regardless
     !> of the actual length of the averaging periods
+    !> GHG files carry their own rate, and a project may switch rates part
+    !> way. The grid is built for the highest, so no period's spectra are
+    !> cut short; slower periods leave the top bins empty.
+    !> A pre-pass worker computes no spectra and skips the survey.
+    SurveyAcFreq = Metadata%ac_freq
+    if (EddyFlowProj%run_mode /=  'md_retrieval' &
+        .and. EddyFlowProj%ftype == 'licor_ghg' &
+        .and. .not. EddyFlowProj%use_extmd_file &
+        .and. BatchIndex == 0) &
+        call SurveyGhgAcFreq(RawFileList, size(RawFileList), SurveyAcFreq)
+    BinGridAcFreq = max(SurveyAcFreq, Metadata%ac_freq)
     if (EddyFlowProj%run_mode /=  'md_retrieval') &
         call BinnedFrequencyVector(bf, Meth%spec%nbins, &
-            RPsetup%avrg_len, Metadata%ac_freq)
+            RPsetup%avrg_len, BinGridAcFreq)
 
     !> Allocate array containing all potential data:
     !> rows: all rows potentially needed for current period
@@ -726,13 +744,8 @@ program EddyFlowRP
                 !> also read biomet data. On entrance, NextRawFileIndx contains
                 !> the index of the file to start the current period with
                 !> On exit, LatestRawFileIndx contains index of latest file used
-                call ImportCurrentPeriod(tsStart, tsEnd, &
-                    RawFileList, NumRawFiles, NextRawFileIndx, BypassCol, &
-                    MaxNumFileRecords, MetaIsNeeded, &
-                    EddyFlowProj%biomet_data == 'embedded', .false., &
-                    Raw, size(Raw, 1), size(Raw, 2), PeriodRecords, &
-                    EmbBiometDataExist, skip_period, LatestRawFileIndx, Col, &
-                    .false.)
+                call ImportPeriod(EddyFlowProj%biomet_data == 'embedded', &
+                    .false., .false.)
 
                 if (skip_period) cycle to_periods_loop
 
@@ -1058,6 +1071,7 @@ program EddyFlowRP
                     call WriteTlagBatchDump(TimelagOpt, TimelagOptSize, ton)
                 end if
                 call LogSay(' Time-lag pre-pass slice finished.')
+                call FinishBatchWorker()
                 stop ''
             end if
 
@@ -1296,13 +1310,7 @@ program EddyFlowRP
                 !> to start the current period with.
                 !> On exit, LatestRawFileIndx contains the index of
                 !> the latest file used
-                call ImportCurrentPeriod(tsStart, tsEnd, &
-                    RawFileList, NumRawFiles, NextRawFileIndx, BypassCol,  &
-                    MaxNumFileRecords, MetaIsNeeded, &
-                    .false., .false., &
-                    Raw, size(Raw, 1), size(Raw, 2), PeriodRecords, &
-                    EmbBiometDataExist, skip_period, LatestRawFileIndx, Col, &
-                    .false.)
+                call ImportPeriod(.false., .false., .false.)
                 if (skip_period) cycle pf_periods_loop
 
                 !> Period skip control with message
@@ -1451,6 +1459,7 @@ program EddyFlowRP
             if (BatchIndex > 0) then
                 call WritePfBatchDump(pfWind, size(pfWind, 1), pfn)
                 call LogSay(' Planar-fit pre-pass slice finished.')
+                call FinishBatchWorker()
                 stop ''
             end if
 
@@ -1731,12 +1740,8 @@ program EddyFlowRP
             !> the index of the file to start the current period with
             !> On exit, LatestRawFileIndx contains the index of the
             !> latest file used
-            call ImportCurrentPeriod(tsStart, tsEnd, &
-                RawFileList, NumRawFiles, NextRawFileIndx, BypassCol, &
-                MaxNumFileRecords, MetaIsNeeded, &
-                EddyFlowProj%biomet_data == 'embedded', .false., Raw, &
-                size(Raw, 1), size(Raw, 2), PeriodRecords, EmbBiometDataExist, &
-                skip_period, LatestRawFileIndx, Col, .false.)
+            call ImportPeriod(EddyFlowProj%biomet_data == 'embedded', &
+                .false., .false.)
 
             !> Period skip control
             if (skip_period) cycle drift_loop
@@ -1829,6 +1834,11 @@ program EddyFlowRP
     InitOutVarPresence = .true.
     DynamicMetadata = ErrDynamicMetadata
     InitGasCalRefCol = GasCalRefCol
+
+    !> Raw files from a shared link that the survey and the pre-passes
+    !> downloaded are kept for this pass; from here on each is deleted once
+    !> this pass is behind it
+    call RemoteBeginMainPass()
 
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
@@ -1943,8 +1953,10 @@ program EddyFlowRP
         if (EddyFlowProj%use_dynmd_file) &
         call RetrieveDynamicMetadata(tsEnd, E2Col, size(E2Col))
 
-        MaxNumFileRecords   = nint(Metadata%file_length * 60d0 * Metadata%ac_freq)
-        MaxPeriodNumRecords = nint(RPsetup%avrg_len     * 60d0 * Metadata%ac_freq)
+        !> Dynamic metadata may have just changed the rate, except over GHG
+        !> files read with their own metadata: those set it themselves, in
+        !> ImportPeriod, file by file.
+        call SetPeriodRate(Metadata%ac_freq)
 
         !> Search file containing data starting from the time
         !> closest to tsStart. Searches only from most current
@@ -1972,16 +1984,16 @@ program EddyFlowRP
         !> read biomet data. On entrance, NextRawFileIndx contains index of
         !> file to start the current period with. On exit,
         !> LatestRawFileIndx contains the index of the latest file used
-        call ImportCurrentPeriod(tsStart, tsEnd, RawFileList, &
-            NumRawFiles, NextRawFileIndx, BypassCol, MaxNumFileRecords, &
-            MetaIsNeeded, EddyFlowProj%biomet_data == 'embedded', .true., &
-            Raw, size(Raw, 1), size(Raw, 2), PeriodRecords, &
-            EmbBiometDataExist, skip_period, LatestRawFileIndx, Col, .true.)
+        call ImportPeriod(EddyFlowProj%biomet_data == 'embedded', &
+            .true., .true.)
 
         !> If it's running in metadata retriever mode,
         !> create a dummy dataset 1 minute long
         if (EddyFlowProj%run_mode == 'md_retrieval') then
-            PeriodRecords = nint(Metadata%ac_freq * Metadata%file_length * 60d0)
+            !> No larger than Raw, which the retriever never resizes: it reads
+            !> every file whatever its rate
+            PeriodRecords = min(nint(Metadata%ac_freq * Metadata%file_length * 60d0), &
+                size(Raw, 1))
             Raw = 1d0
             NumUserVar = 0
         else
@@ -3032,6 +3044,8 @@ program EddyFlowRP
     !> temporary directory below and would take it with it; embedded mode
     !> keeps that directory between runs and would not.
     call GhgPrefetchCleanup()
+    !> Likewise the raw files downloaded from a shared link
+    call RemoteCleanup()
 
     !> Delete tmp folder if running in embedded mode
     if(EddyFlowProj%run_env == 'desktop') &
@@ -3046,4 +3060,101 @@ program EddyFlowRP
         call LogSay(' ****************************************************')
     end if
     stop ''
+
+contains
+
+    !***************************************************************************
+    !> \brief Size everything that counts samples for acquisition frequency freq:
+    !> the record limits of a file and of a period, and the buffer one period's
+    !> raw data go into.
+    !>
+    !> Called once after the preamble, and again whenever a period turns out to
+    !> be at another rate - GHG files each state their own, and a project may
+    !> switch part way. Nothing changes, and nothing is logged, while the rate
+    !> stays the same, so a single-rate project runs exactly as it did.
+    !***************************************************************************
+    subroutine SetPeriodRate(freq)
+        real(kind = dbl), intent(in) :: freq
+        character(16) :: RateString
+        integer :: ncolRaw
+        logical :: changed
+
+        changed = PeriodAcFreq > 0d0 &
+            .and. abs(freq - PeriodAcFreq) > 1d-6 * PeriodAcFreq
+        if (changed) then
+            write(RateString, '(f0.3)') freq
+            call LogSay('  Acquisition frequency changes to ' &
+                // trim(RateString) // ' Hz from this period on.')
+        end if
+
+        PeriodAcFreq = freq
+        Metadata%ac_freq = freq
+        MaxNumFileRecords   = nint(Metadata%file_length * 60d0 * Metadata%ac_freq)
+        MaxPeriodNumRecords = nint(RPsetup%avrg_len     * 60d0 * Metadata%ac_freq)
+
+        !> Before the preamble has allocated it, there is nothing to resize
+        if (allocated(Raw)) then
+            if (size(Raw, 1) /= MaxPeriodNumRecords) then
+                ncolRaw = size(Raw, 2)
+                deallocate(Raw)
+                allocate(Raw(MaxPeriodNumRecords, ncolRaw))
+            end if
+        end if
+
+        if (changed) then
+            !> Whatever a previous period left allocated was sized for the
+            !> previous rate
+            if (allocated(E2Set))      deallocate(E2Set)
+            if (allocated(E2Primes))   deallocate(E2Primes)
+            if (allocated(DiagSet))    deallocate(DiagSet)
+            if (allocated(UserSet))    deallocate(UserSet)
+            if (allocated(UserPrimes)) deallocate(UserPrimes)
+
+            if (BinGridAcFreq > 0d0 .and. .not. WarnedBinGrid &
+                .and. freq > BinGridAcFreq * (1d0 + 1d-6)) then
+                call ExceptionHandler(117)
+                WarnedBinGrid = .true.
+            end if
+        end if
+    end subroutine SetPeriodRate
+
+    !***************************************************************************
+    !> \brief Import the raw data of the period tsStart-tsEnd into Raw.
+    !>
+    !> ImportCurrentPeriod reads nothing from a file at another rate than Raw
+    !> is sized for. When that file is the period's first, the period simply
+    !> is at the new rate: resize, and read it again. It costs one extra
+    !> extraction of one archive, at each change of rate only.
+    !***************************************************************************
+    subroutine ImportPeriod(BiometIsNeeded, logout, printout)
+        logical, intent(in) :: BiometIsNeeded
+        logical, intent(in) :: logout
+        logical, intent(in) :: printout
+        logical :: RateChanged
+        logical :: LogFiles
+        integer :: attempt
+
+        LogFiles = logout
+        do attempt = 1, 2
+            call ImportCurrentPeriod(tsStart, tsEnd, RawFileList, &
+                NumRawFiles, NextRawFileIndx, BypassCol, MaxNumFileRecords, &
+                MetaIsNeeded, BiometIsNeeded, LogFiles, &
+                Raw, size(Raw, 1), size(Raw, 2), PeriodRecords, &
+                EmbBiometDataExist, skip_period, LatestRawFileIndx, Col, &
+                printout, RateChanged)
+            if (.not. RateChanged) exit
+            call SetPeriodRate(Metadata%ac_freq)
+            !> The file names were logged on the first attempt
+            LogFiles = .false.
+        end do
+        !> Cannot happen - the second attempt asks for the file's own rate -
+        !> but a period left half-read must not be processed
+        if (RateChanged) skip_period = .true.
+
+        !> A file skipped for its rate leaves that rate in Metadata. Not in
+        !> the metadata retriever, which skips nothing and reports each
+        !> file's own rate.
+        if (PeriodAcFreq > 0d0 .and. EddyFlowProj%run_mode /= 'md_retrieval') &
+            Metadata%ac_freq = PeriodAcFreq
+    end subroutine ImportPeriod
 end program EddyFlowRP

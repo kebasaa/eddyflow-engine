@@ -1,3 +1,133 @@
+8.1.1 (2026-09-25)
+
+    Engine:
+	- Fix: A project whose GHG files change acquisition frequency part way -
+	       10 Hz for a season, then 20 Hz - lost every period after the change.
+	       RP sized its period buffer and the record limits once, from the
+	       first file, so after a change up in rate only the first half of
+	       each period fitted: the first faster period was read as 9000 of its
+	       18000 records, and every period after it was dropped with
+	       Warning(58). The time-lag, planar-fit and drift pre-passes never
+	       recomputed the limits at all and used the half that fitted without
+	       a word.
+	       Each archive's own rate is now checked before its data is read.
+	       When a period's first file is at a new rate, the period is read
+	       again at that rate; a period whose files disagree - on the file
+	       rate, or on the rate an instrument in use states for itself - is
+	       skipped with the new Warning(116), and the next period starts with
+	       the file where the rate changed. Nothing is resampled.
+	- New feature: When the raw files are not all at one rate, the log opens
+	               with each rate and the time it starts, e.g.
+	                  5.000 Hz from 2021-08-21 01:00
+	                 10.000 Hz from 2021-08-21 02:30
+	               found by reading the rate of the first, the last, 20 evenly
+	               spaced files and those where the file size steps, then
+	               halving between any two that disagree until the change is
+	               pinned to the file. A project at one rate prints nothing new.
+	               The binned-spectra grid is built up to the highest rate's
+	               Nyquist frequency; Warning(117) reports a faster rate the
+	               survey missed.
+	- New feature: The spectral assessment is done per acquisition rate. When a
+	               gas is not at one rate throughout - the files changed rate,
+	               or its analyser did while the file's stayed, like a QCLS going
+	               from 1 to 0.33 Hz in a 20 Hz file - its ensemble spectra,
+	               noise floor, transfer-function fit and Nyquist check are done
+	               separately for each of its rates, each only up to that rate's
+	               own Nyquist frequency, and every period is corrected with the
+	               result for its own rate. A gas whose rate never changed is
+	               fitted once from all its periods. A rate with no usable result
+	               takes the gas's next faster one, which is listed; a gas never
+	               borrows another gas's result. The Ibrom et al. (2007)
+	               correction-factor model, which comes from w'T', is fitted per
+	               file rate. Warning(119) lists each gas's rates.
+	               The assessment file stays one file: a gas with more than one
+	               rate gets a rates= token on its block and one value set per
+	               rate on each row. The GUI's validator accepts it unchanged, a
+	               build that predates it reads the first - fastest - set, and a
+	               project at one rate writes exactly the format it always did.
+	               Read back with sa_mode=0, each rate's columns are applied to
+	               that rate's periods; a file with one set applies it to all.
+	- Fix: Every gas's fitted cut-off is checked against its own Nyquist
+	       frequency and rejected above it, where the data could not have shown
+	       it. Only water's RH fit was checked before, against the station's rate.
+	       The check is on the magnitude: the IIR model has fc only squared, so
+	       the fit lands on either sign, and a gas with no attenuation it can
+	       resolve comes out at fc = -250 Hz - which was accepted, and applied
+	       as an in-situ correction of about 1. Such a gas now falls back to the
+	       analytic method, like any other unfitted one; this changes the
+	       result of a project, single-rate or not, only where that happened.
+	       Measured on the Yatir 2019 QCLS (COS, CO2, CO, N2O at 1, 0.5 and
+	       0.33 Hz in a 20 Hz file): no rate of it gives a resolvable cut-off,
+	       so its assessment is analytic at every rate, while the LI-7000 beside
+	       it fits fc = 0.9986 Hz identically in every run. The same half-hours
+	       corrected with a 0.33 Hz or a 1 Hz assessment differed by 0.00 %
+	       (Horst 97) and at most 0.1 % (Fratini 12, before this fix) - there
+	       was no resolved cut-off for the rate to change.
+	- Fix: Fratini et al. (2012) sized every period's full cospectrum from the
+	       first full-cospectra file of the run. A shorter period - a slower
+	       rate, or simply a gap - integrated the unread tail of the array, and a
+	       longer one was cut at the first file's Nyquist frequency. Each period
+	       is now sized from its own file. The routine that measured that length
+	       also never closed its unit, so the first correction that re-opened
+	       the same file found itself at its end and stopped the run.
+	- Fix: FCC's highest acquisition rate over all records - and each
+	       analyser's - was meant to set the Nyquist limit of the RH fit, but sat
+	       behind a flag that is never set and so never ran; the first record's
+	       rate stood. It now runs on every record.
+	- Fix: One period above 10 Hz switched the block-averaging correction off
+	       for every period after it, 10 Hz ones included; each period now
+	       starts from the project's setting. (No effect yet: the correction is
+	       hard-wired off.)
+	- Fix: A high-frequency noise fit with fewer than two points above its
+	       start frequency divided by zero, and an open-path hygrometer with no
+	       fitted RH class wrote log(NaN) as its RH exponential. Both are now
+	       skipped and marked unfitted.
+	- Fix: Dynamic metadata no longer overrides the acquisition frequency or
+	       file duration a GHG file states about itself when the embedded
+	       metadata is used, since the data was read at the file's own rate.
+	       Warning(118) says so once.
+	- New feature: Inputs can be read from a Google Drive or Dropbox folder
+	               shared with "anyone with the link". No login or API key is
+	               needed; curl, which ships with Windows 10 and later, macOS
+	               and Linux, does the downloading.
+	               Every input setting may hold such a link: data_path,
+	               proj_file, dyn_metadata_file, biom_file, biom_dir, pf_file,
+	               to_file, head_corr_dir, and in FCC ex_file, sa_file,
+	               sa_bin_spectra and sa_full_spectra.
+	               Raw data are not downloaded wholesale. The shared folder is
+	               listed once at startup, and each file is downloaded when it
+	               is read, with the next two fetched in the background while
+	               it is processed. Every file is downloaded once per run: what
+	               the acquisition-frequency survey and the planar-fit, time-lag
+	               and drift pre-passes download is kept for the main pass,
+	               which deletes each file once it is two files past it, and
+	               pre-pass workers download into one shared folder, one file
+	               each. Disk use during the pre-passes is therefore the files
+	               they cover. A file that two settings name, or that a setting
+	               and the raw folder both contain, is downloaded once and
+	               copied locally. Single files, and the folders read whole
+	               (biomet, cospectra, head correction), are downloaded at
+	               startup. Nothing is kept after the run.
+	               A raw file that cannot be downloaded - three attempts, and a
+	               web page where data was expected counts as a failure - is
+	               skipped with the new Warning(121), and a summary line closes
+	               the run. Any other input that cannot be read stops the run
+	               with the new Fatal error(120).
+	               Dropbox is listed through the request its own folder page
+	               makes, which is not a published API; should Dropbox change
+	               it, the listing fails with Fatal error(120) naming it rather
+	               than processing part of a folder.
+	- New feature: The output folder must be local; a link there stops the
+	               run before anything is downloaded, with the new Fatal
+	               error(122).
+	- Tested: tests/regression/check_remote.sh runs a fixture from disk and
+	          again from a local stand-in for Google Drive or Dropbox
+	          (remote_server.py), with nested folders, a remote metadata file,
+	          Dropbox paging and a time-lag pre-pass; every output is
+	          byte-identical. check_remote_fcc.sh does the same for FCC's
+	          inputs. With one file answering 404 and one an HTML page, the run
+	          finishes and names both.
+
 8.1.0 (2026-08-22)
 
     Engine:

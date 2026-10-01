@@ -70,7 +70,26 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     logical, external :: GasHasSpectralFit
     integer :: n_analytic
     type(SpectralType) :: tmpBPCF
+    !> The project's own BA/ZOH settings, as they were before any period
+    !> touched them - see below
+    logical, save :: ProjFlagsSaved = .false.
+    logical, save :: ProjBA
+    logical, save :: ProjZOH
     include 'interfaces_1.inc'
+
+    !> The BA and ZOH switches are decided per period further down - from
+    !> this period's logger version and acquisition rate - but they are
+    !> project-wide variables, so one period above 10 Hz switched block
+    !> averaging off for every period after it, 10 Hz ones included. Each
+    !> period starts again from what the project says.
+    if (.not. ProjFlagsSaved) then
+        ProjBA = EddyFlowProj%hf_correct_ghg_ba
+        ProjZOH = EddyFlowProj%hf_correct_ghg_zoh
+        ProjFlagsSaved = .true.
+    else
+        EddyFlowProj%hf_correct_ghg_ba = ProjBA
+        EddyFlowProj%hf_correct_ghg_zoh = ProjZOH
+    end if
 
     !> Checks that parameters are passed correctly
     if (app == 'EddyFlow-FCC') then

@@ -143,6 +143,10 @@ that before trusting a difference.
 | `base_ghg_ext.eddyflow` | those same two archives with their embedded metadata rewritten into the **extended `.ghg` format**: the LI-7500A declares itself a `generic_open_path` stand-in carrying real geometry - what an archive describing an analyser EddyPro cannot name has to look like - names its true identity in `instr_2_ef_model`, and repoints every `col_N_instrument` at the stand-in. The gate is an **equality**: every *data* file must be byte-identical to `base_ghg_licor`'s, because `ef_model` puts the same LI-7500A back. Only the run log differs, by the data directory and the one line announcing the format version. The stand-in states the analyser's *true* geometry, so a run that ignored `ef_model` would compute every flux to the digit and differ only in what it calls the analyser - `co2_li7500a_1_mean` against `co2_generic_open_path_1_mean`. Confirmed by stripping `ef_model` back out: four output files move, not one of them by a value. Nothing short of a full diff sees that margin. Built by `gen_ghg_ext.py` into `data_ghg_ext/`, which is generated rather than committed; `sweep.sh` skips it until it exists. |
 | `base_ghg_campbell.eddyflow` | the other half of the extended format: a **rename** rather than a stand-in. The Metek is swapped for a Campbell **CSAT3B**, which EddyPro spells `csat3b` and EddyFlow spells `csi_csat3b`; the archive states EddyPro's spelling - the only one it takes - and names the real one in `instr_1_ef_model`. The LI-COR archives cannot show this on their own, because every instrument in them is spelt the same in both programs, so nothing here reached the canonicalising path at all. What lived behind it: `col_N_instrument` is never canonicalised, so an instrument written `csat3b_1` and canonicalised to `csi_csat3b_1` left all five sonic columns pointing at a name the instrument list no longer held - **no column bound to the sonic**, and the run died with *"exactly one selected u, v, w and one selected ts or sos are required"*, which does not mention instruments. The gate is that it runs at all and that the metadata output names `csi_csat3b_1`. Its project pins `master_sonic=csi_csat3b_1`, the **resolved** name - the third place an instrument name propagates. Built by `gen_ghg_ext.py` into `data_ghg_campbell/`. |
 | `base_ghg_burba.eddyflow` | `base_ghg_licor` with the **Burba surface-heating correction on**, and the only fixture anywhere that enables it with more than one open-path analyser - every other one runs `bu_corr=0`, which is why the fault it gates went unseen. Burba et al. (2008) is the LI-7500's *own* body warming the air in its path; `OverrideSettings` switches the correction off for a site with no LI-7500, but that is site-wide, so with an LI-7500A and an LI-7700 together it stays on and the generic per-gas WPL added the LI-7500's heating to the **methane** flux. EddyPro 6.2.2 gated it per gas - its co2 block tested the model, its ch4 and gas4 blocks never mentioned Burba - and generalising to N gases lost that test along with the blocks. Only `ch4_flux` moves between a fixed and an unfixed run: co2 and h2o are on the LI-7500 and keep their terms. |
+| `base_ghg_mixed.eddyflow` | the `data_ghg/` archives stretched to six half-hours, 01:00 to 03:30, with the first three **decimated to 5 Hz** and the last three left at 10 Hz: the only fixture whose files are **not all at one acquisition frequency**. RP sized its period buffer once, from the first file, so after a change *up* in rate only half of each period fitted. The 10 Hz periods were read as 9000 of their 18000 records and then dropped with Warning(58), and the pre-passes used the half that fitted without a word. The gate is an **equality**: the three 10 Hz periods are the committed archives with only their names changed, so their FLUXNET fluxes must equal `base_ghg_licor`'s for the same archive to the last digit. The 5 Hz periods expect 9000 records. The run log opens with the list of frequencies and when each starts - `5.000 Hz from 2021-08-21 01:00`, `10.000 Hz from 2021-08-21 02:30` - which a single-rate project never prints. Built by `gen_ghg_mixed.py` into `data_ghg_mixed/`, which is generated rather than committed. |
+| `base_ghg_mixed_60.eddyflow` | the same archives in **60-minute periods**, so 02:00-03:00 holds a 5 Hz file and a 10 Hz one. Joining them would give one time series with two meanings of a sample, so that period is **skipped with Warning(116)**, and the next one starts at the 10 Hz file. The gate is that 01:00-02:00 (5 Hz, 18000 records) and 03:00-04:00 (10 Hz, 36000) are both processed. |
+| `base_ghg_mixed_sa.eddyflow` | `base_ghg_mixed` with `sa_min_smpl=2`, so three periods per rate are enough for a **spectral assessment at each acquisition rate** - the only fixture where one is fitted at all; the others hold too few periods. The fits are statistically meaningless and the fixture is about the machinery: one assessment pass per rate, **one assessment file** carrying a `rates=10.000,5.000` token on each gas block and one `Fn fc` pair per rate on each row, Warning(119), and each period corrected with its own rate's result. On the day it was built CO2 got fc 0.808 Hz at 10 Hz and 0.481 Hz at 5 Hz, and the same archive's CO2 flux became 8.10 at 5 Hz against 7.51 at 10 Hz. Read back with `sa_mode=0` the file reproduces those fluxes; altering only its 5 Hz columns moves only the 5 Hz periods; and a build that predates the format reads the first - fastest - column for every period. |
+| `base_ghg_mixed_instr.eddyflow` | all six at 10 Hz, but from 02:30 on the archives say the **LI-7700 runs at 1 Hz** (`instr_3_ac_freq=1.0`). The row rate never changes, so only the per-instrument comparison can see it. 60-minute periods: 02:00-03:00 is skipped with Warning(116), naming `li7700_2`, and the other two are processed. Built into `data_ghg_mixed_instr/`. |
 | `base_tlag_par.eddyflow` | `base_tlag_opt` with a **two-day** time-lag optimisation window in place of its three-hour one, and the only fixture whose pre-pass the engine will split across worker processes. Every other fixture's pre-pass covers too few averaging periods to be worth starting a process for, so `-j` had no gate here at all until this was added. The gate is the ordinary one - the run completes and every row matches its header - because the point is that a pre-pass computed in slices and reassembled is indistinguishable from one computed in a single loop. For the stronger claim, run it twice with `-j 1` and `-j 8` and diff `_optimal_timelags_*.txt`: it is byte-identical. Costs about a minute. |
 | `base_pwb_cache.eddyflow` | `base_rec` with `to_mode=1`, which is PWB **cache generation**: walk every averaging period first, then settle every time lag at once from the finished table. 39 fixtures configure PWB and not one of them set `to_mode=1`, so `PostProcessPwbTimelagCache` - the routine that decides every lag, and the S1/S2 / instrument-share / interpolate / back-fill / carry-forward / median ladder inside it - had **no coverage at all**. Three hours is enough to work the ladder: co2 and h2o carry forward, cos borrows across the analyser, and the aggregate summary picks a lender by donor count. Not long enough to split, so it is not a substitute for `check_parallel.sh`. |
 | `base_pwb_prefilt.eddyflow` | `base_pwb_cache` with the HDI pre-filter at **0.10 s**, which discards every detection every gas made and so drives all 21 rows into the terminal arm of `PostProcessPwbTimelagCache` - the one labelled `maxcov_default`. Nothing else in the suite reaches it: on `base_pwb_cache` every gas reports `fallback=0`. It is the case that tells a per-period covariance maximum apart from a carried lag wearing its label - before that was fixed, h2o came back with 18.8 s for three periods running, which a per-period maximum cannot do. |
@@ -635,3 +639,65 @@ one to drift away from the writer.
 > widened and the header stayed at four. Both are invisible unless something
 > compares the two sides, which is why the missing fixture mattered as much as
 > the missing loop.
+
+## Spectral assessment per acquisition rate, measured (Yatir 2019)
+
+`base_ghg_mixed_sa` exercises the machinery; whether a slower rate's assessment
+holds at a faster one was measured once, on 2026-09-25, on real data: the Yatir
+2019 QCLS, which ran at 1, 0.5 and 0.33 Hz inside 20 Hz files. Its CSVs were
+wrapped as .ghg archives stating each half-hour's QCLS rate. The scripts were
+throw-away and are not kept.
+
+- **Real switch, 2019-08-01..10-08** (253 periods at 1 Hz, 14 at 0.5, 196 at
+  0.33): three rate configurations, one column set per rate in the file.
+- **Result:** no QCLS gas gives a resolvable cut-off at any rate - every fit
+  came out at |fc| of 40-280 Hz, far above its own Nyquist - so all are
+  rejected and corrected analytically, each fallback listed. The LI-7000 in the
+  same files fits fc = 0.9986 Hz identically in every run.
+- **Same half-hours at two rates** (2019-05-01..08 at 1 Hz, and thinned to
+  0.33 Hz by point sampling and by 3 s block means), each assessment applied
+  to the others: correction factors and fluxes differed by 0.00 % (Horst 97)
+  and at most 0.1 % at the 95th percentile (Fratini 12) - not a sign that rate
+  does not matter, but that this instrument's attenuation is not resolved at
+  any of its rates, so there was nothing for the rate to change.
+- The runs used a looser spectral-assessment selection than the site project
+  (flux thresholds 0, Foken filter off, sa_min_smpl 10), the same for all.
+
+## Inputs from a shared link
+
+Any input may be a Google Drive or Dropbox folder or file shared with "anyone
+with the link" (`src/src_common/remote_source.f90`). Two scripts hold that to
+giving exactly what the same files give from disk, without the network:
+`remote_server.py` answers the requests the real providers answer, over a local
+folder, and `EDDYFLOW_REMOTE_BASE` points the engine at it.
+
+```
+BIN=<engine bin> bash check_remote.sh base_ghg_mixed.eddyflow gdrive
+BIN=<engine bin> NEST=1 EXTRACT_META=1 bash check_remote.sh base_ghg_mixed.eddyflow dropbox --page 1
+BIN=<engine bin> bash check_remote.sh base_ghg_mixed.eddyflow gdrive --missing <file> --html <file>
+BIN=<engine bin> DEDUPE=1 bash check_remote.sh base_ghg_mixed.eddyflow gdrive
+BIN=<engine bin> RP_EXTRA="-j 4" EXTEND=24 bash check_remote.sh <fixture with tlag_meth=4> dropbox
+BIN=<engine bin> bash check_remote_fcc.sh base_ghg_mixed.eddyflow
+```
+
+Every file must cross the network once per run, however many passes read it:
+the server logs each file it sends whole, and `check_remote.sh` fails on any
+sent twice. That is what holds the acquisition-frequency survey and the
+planar-fit, time-lag and drift pre-passes to reusing their downloads in the
+main pass, pre-pass workers to downloading into their parent's folder (passed
+to them as `--batch-tmp`; their own is named after their own start time), and
+a file named by two settings to one transfer. `EXTEND=N` makes N consecutive
+half-hours from the fixture's archives with the subsets off, enough for a
+pre-pass to be split over workers (four periods each); `DEDUPE=1` also names
+the shared folder as `head_corr_dir`, which is downloaded whole at startup.
+
+`check_remote.sh` runs the fixture twice through `run.sh`, from disk and from
+links, and requires every output but the run log and the project copy to be
+identical. `NEST=1` spreads the files over subfolders, `EXTRACT_META=1` serves
+the alternative metadata file from the link too, and `--page 1` makes the
+Dropbox listing page through its entries one at a time. With `--missing` or
+`--html` the outputs differ by design; the run must finish and name the files
+in Warning(121). `check_remote_fcc.sh` does the same for FCC's `ex_file` and
+cospectra folders. The links are written in quotes, as the interface's
+QSettings writes any value containing `=`.
+

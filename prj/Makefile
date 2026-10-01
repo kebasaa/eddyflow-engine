@@ -438,7 +438,8 @@ dip_test.o: \
 dir_sub.o: \
 	dir_sub.f90 \
 	m_common_global_var.o \
-	m_typedef.o
+	m_typedef.o \
+	remote_source.o
 drift_correction.o: \
 	drift_correction.f90 \
 	interfaces.inc \
@@ -452,7 +453,9 @@ eddyflow-fcc_main.o: \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_cec.o \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	remote_source.o \
+	sa_rates.o
 eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	interfaces.inc \
@@ -461,7 +464,8 @@ eddyflow-rp_main.o: \
 	m_cec.o \
 	m_rp_global_var.o \
 	prepass_parallel.o \
-	pwb_timelag_handle.o
+	pwb_timelag_handle.o \
+	remote_source.o
 edit_ini_file.o: \
 	edit_ini_file.f90 \
 	m_common_global_var.o
@@ -483,7 +487,8 @@ fcn.o: \
 	m_common_global_var.o
 filelist_by_ext.o: \
 	filelist_by_ext.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	remote_source.o
 files_in_chronological_order.o: \
 	files_in_chronological_order.f90 \
 	m_common_global_var.o
@@ -516,13 +521,15 @@ fit_rh_to_cutoff.o: \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_fx_global_var_mod.o \
-	m_levenberg_marquardt.o
+	m_levenberg_marquardt.o \
+	sa_rates.o
 fit_tf_models.o: \
 	fit_tf_models.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
 	m_fx_global_var_mod.o \
-	m_levenberg_marquardt.o
+	m_levenberg_marquardt.o \
+	sa_rates.o
 fix_dataset_for_spectra.o: \
 	fix_dataset_for_spectra.f90 \
 	m_rp_global_var.o
@@ -576,7 +583,8 @@ generate_t_cell.o: \
 	m_common_global_var.o
 ghg_prefetch.o: \
 	ghg_prefetch.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	remote_source.o
 gill_wm_w_boost.o: \
 	gill_wm_w_boost.f90 \
 	interfaces.inc \
@@ -596,7 +604,8 @@ import_current_period.o: \
 	m_rp_global_var.o
 import_native_data.o: \
 	import_native_data.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	remote_source.o
 import_slt_eddysoft.o: \
 	import_slt_eddysoft.f90 \
 	m_common_global_var.o
@@ -633,7 +642,8 @@ init_env.o: \
 init_ex_vars.o: \
 	init_ex_vars.f90 \
 	interfaces_1.inc \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 init_external_biomet.o: \
 	init_external_biomet.f90 \
 	m_rp_global_var.o
@@ -772,7 +782,8 @@ out_raw_data.o: \
 output_spectral_assessment_results.o: \
 	output_spectral_assessment_results.f90 \
 	interfaces_1.inc \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 override_master_sonic_related_settings.o: \
 	override_master_sonic_related_settings.f90 \
 	m_rp_global_var.o
@@ -818,7 +829,9 @@ power_of_two.o: \
 	power_of_two.f90
 prepass_parallel.o: \
 	prepass_parallel.f90 \
-	m_rp_global_var.o
+	ghg_prefetch.o \
+	m_rp_global_var.o \
+	remote_source.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \
@@ -853,14 +866,17 @@ read_ex_record.o: \
 read_ini_fcc.o: \
 	read_ini_fcc.f90 \
 	interfaces_1.inc \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	remote_source.o
 read_ini_rp.o: \
 	read_ini_rp.f90 \
-	m_rp_global_var.o
+	m_rp_global_var.o \
+	remote_source.o
 read_licor_ghg_archive.o: \
 	read_licor_ghg_archive.f90 \
 	ghg_prefetch.o \
-	m_rp_global_var.o
+	m_rp_global_var.o \
+	remote_source.o
 read_metadata_file.o: \
 	read_metadata_file.f90 \
 	interfaces.inc \
@@ -872,13 +888,18 @@ read_planar_fit_file.o: \
 	m_rp_global_var.o
 read_spectral_assessment_file.o: \
 	read_spectral_assessment_file.f90 \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 read_timelag_opt_file.o: \
 	read_timelag_opt_file.f90 \
 	m_rp_global_var.o \
 	pwb_timelag_handle.o
 record_names_column.o: \
 	record_names_column.f90
+remote_source.o: \
+	remote_source.f90 \
+	m_common_global_var.o \
+	m_log.o
 rename_tmp_files_common.o: \
 	rename_tmp_files_common.f90 \
 	m_common_global_var.o
@@ -916,6 +937,9 @@ rffti.o: \
 ridders_diff.o: \
 	ridders_diff.f90 \
 	m_common_global_var.o
+sa_rates.o: \
+	sa_rates.f90 \
+	m_fx_global_var_mod.o
 set_licor_diagnostics.o: \
 	set_licor_diagnostics.f90 \
 	m_rp_global_var.o
@@ -938,7 +962,8 @@ sort_wind_by_sector.o: \
 	m_rp_global_var.o
 spectra_sorting_and_averaging.o: \
 	spectra_sorting_and_averaging.f90 \
-	m_fx_global_var_mod.o
+	m_fx_global_var_mod.o \
+	sa_rates.o
 spectral_analysis.o: \
 	spectral_analysis.f90 \
 	interfaces.inc \
@@ -981,6 +1006,10 @@ string_sub.o: \
 subtract_high_freq_noise.o: \
 	subtract_high_freq_noise.f90 \
 	m_fx_global_var_mod.o
+survey_ghg_ac_freq.o: \
+	survey_ghg_ac_freq.f90 \
+	m_rp_global_var.o \
+	remote_source.o
 tag_run_mode.o: \
 	tag_run_mode.f90 \
 	m_common_global_var.o

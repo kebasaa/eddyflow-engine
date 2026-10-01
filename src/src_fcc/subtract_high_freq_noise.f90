@@ -71,6 +71,11 @@ subroutine SubtractHighFreqNoise(Spec, nrow, ncol, nlong, N, nclass, nbins)
                     end do
                     if (imin == 0) cycle
                     ipt = nlong(gas, cls) - imin + 1
+                    !> A line needs two points. One point above hfn_fmin - a
+                    !> slow analyser whose Nyquist barely clears it - made the
+                    !> slope a division by zero, and the NaN went into every
+                    !> bin of the spectrum it was subtracted from.
+                    if (ipt < 2) cycle
 
                     !> Calculate linear regression of high freq spectrum
                     sumf  = 0d0
@@ -85,6 +90,9 @@ subroutine SubtractHighFreqNoise(Spec, nrow, ncol, nlong, N, nclass, nbins)
                     end do
                     avgf = sumf / dfloat(ipt)
                     avgy = sumy / dfloat(ipt)
+                    !> Several points, all at one frequency - one bin's worth
+                    !> of the long spectrum - leave the slope undefined too
+                    if (sumff - sumf * avgf == 0d0) cycle
                     m = (sumfy - sumf * avgy) / (sumff - sumf * avgf)
                     q = avgy - m * avgf
                     !> Define noise

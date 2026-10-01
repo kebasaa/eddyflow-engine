@@ -36,6 +36,7 @@
 subroutine ImportNativeData(Filepath, FirstRecord, LastRecord, LocCol, &
     fRaw, nrow, ncol, skip_file, N, FileEndReached)
     use m_common_global_var
+    use m_remote_source, only: RemoteEnsure
     implicit none
     !> in/out variables
     integer, intent(in) :: FirstRecord
@@ -56,6 +57,8 @@ subroutine ImportNativeData(Filepath, FirstRecord, LastRecord, LocCol, &
 
 
     skip_file = .false.
+    !> A raw file from a shared link is downloaded now, if it is not yet
+    call RemoteEnsure(Filepath, .true.)
     !> Open native data file
     select case (trim(adjustl(EddyFlowProj%ftype)))
 

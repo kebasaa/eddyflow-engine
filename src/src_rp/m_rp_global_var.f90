@@ -95,6 +95,14 @@ module m_rp_global_var
     integer :: NumAllRow = 0
     integer :: NumSlowVar = 0
     integer :: MaxPeriodNumRecords
+    !> The acquisition frequency Raw and MaxPeriodNumRecords are currently
+    !> sized for. A GHG file's own metadata can say otherwise - a project may
+    !> switch from 10 to 20 Hz part way - and a file that disagrees with it is
+    !> not imported into the current period. Negative until the preamble sets it.
+    real(kind = dbl) :: PeriodAcFreq = -1d0
+    !> The rate the binned-spectra frequency grid was built for. A period
+    !> faster than this has its binned spectra cut at this rate's Nyquist.
+    real(kind = dbl) :: BinGridAcFreq = -1d0
 
     type :: DateTimeArrayType
         character(10) :: date

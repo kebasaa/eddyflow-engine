@@ -202,11 +202,19 @@ class SecondHygrometerRoundTrip(unittest.TestCase):
                       "and the reader must take them back off it")
 
     def test_the_writer_stamps_every_block(self):
+        """Both writers - the single-rate file, and the one with a column set
+        per acquisition rate (WriteMultiRateAssessment) - stamp all three
+        block kinds: the unnamed primary water table, each gas, and each
+        further hygrometer."""
         src = code(WRITER)
+        split = src.index("subroutine WriteMultiRateAssessment")
+        single, multi = src[:split], src[split:]
         self.assertEqual(
-            3, src.count("call SpectralBlockStamp("),
-            "all three block kinds are stamped: the unnamed primary water "
-            "table, each gas, and each further hygrometer")
+            3, single.count("call SpectralBlockStamp("),
+            "all three block kinds are stamped in the single-rate file")
+        self.assertEqual(
+            3, multi.count("call SpectralBlockStamp("),
+            "all three block kinds are stamped in the per-rate file")
         self.assertNotIn(
             "' vapour TFP", src,
             "the hygrometer block name must be the bare tag - the reader "

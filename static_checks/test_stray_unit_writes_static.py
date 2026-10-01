@@ -131,7 +131,9 @@ class TheSpectralOutputsGoThroughTheGuardedOpen(unittest.TestCase):
                          "every output file goes through OpenSpectralOutputFile")
 
     def test_all_five_use_the_helper(self):
-        self.assertEqual(self.SOURCE.count("call OpenSpectralOutputFile("), 5)
+        """Five files, and a sixth open site: the assessment file of a project
+        at more than one acquisition rate is written by its own routine."""
+        self.assertEqual(self.SOURCE.count("call OpenSpectralOutputFile("), 6)
 
     def test_the_helper_sinks_a_failure_rather_than_returning(self):
         """Returning would skip the other four files, which may be fine."""

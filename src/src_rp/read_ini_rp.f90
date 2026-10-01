@@ -36,6 +36,8 @@
 !***************************************************************************
 subroutine ReadIniRP(key)
     use m_rp_global_var
+    use m_remote_source, only: RemoteRefuseOutput, RemoteResolveInputs, &
+        RemoteFetchFile, RemoteFetchFolder
     implicit none
     !> in/out variables
     character(*), intent(in) :: key
@@ -65,6 +67,19 @@ subroutine ReadIniRP(key)
     !> selects only tags needed in this software, and store
     !> them in relevant variables
     call WriteVariablesRP()
+
+    !> Inputs may be shared Google Drive or Dropbox links; the output folder
+    !> may not, and is refused before anything is downloaded. The small inputs
+    !> are fetched here - the planar fit and time lag files only exist as
+    !> settings when the user supplies them - and data_path is pointed at
+    !> where raw files will be downloaded.
+    call RemoteRefuseOutput('out_path', Dir%main_out)
+    call RemoteFetchFile('pf_file', AuxFile%pf)
+    call RemoteFetchFile('to_file', AuxFile%to)
+    call RemoteFetchFolder('head_corr_dir', RPSetup%head_corr_dir, '', .false.)
+    call RemoteResolveInputs(Dir%main_in, RPsetup%recurse, AuxFile%metadata, &
+        AuxFile%DynMD, AuxFile%biomet, Dir%biomet, EddyFlowProj%biomet_tail, &
+        EddyFlowProj%biomet_recurse, -1)
 
     !> Said once, here, where both settings are finally known and where the
     !> user can still act on it. The significance test compares a flux against

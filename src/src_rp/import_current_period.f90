@@ -37,7 +37,7 @@
 subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     NumFiles, FirstFile, LocBypassCol, MaxNumFileRecords, MetaIsNeeded, &
     BiometIsNeeded, logout, Raw, nrow, ncol, N, &
-    bDataFound, skip_period, NextFile, LocCol, printout)
+    bDataFound, skip_period, NextFile, LocCol, printout, rate_changed)
 
     use m_rp_global_var
     implicit none
@@ -60,6 +60,10 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     logical, intent(out) :: bDataFound
     logical, intent(out) :: skip_period
     logical, intent(inout) :: MetaIsNeeded
+    !> The period's first file is at another acquisition frequency than
+    !> PeriodAcFreq, so nothing was imported. Metadata%ac_freq holds the
+    !> file's rate; the caller resizes for it and asks again.
+    logical, intent(out) :: rate_changed
     !> local variables
     integer :: pN
     integer :: faulty_col
@@ -77,12 +81,26 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     type(DateType) :: FollowingTimestamp
     logical, external :: FileIsRelevantToCurrentPeriod
     logical :: FileEndReached
+    logical :: rate_mismatch
+    real(kind = dbl) :: ExpectedAcFreq
+    character(24) :: FromRate, ToRate
+    real(kind = dbl) :: PeriodInstrFreq(MaxNumCol)
+    integer :: j
 
 
     !> Initializations
     bDataFound = .false.
     skip_period = .false.
+    rate_changed = .false.
     Raw = error
+
+    !> The metadata retriever reads every file for its metadata alone and
+    !> must see each one, whatever its rate
+    if (EddyFlowProj%run_mode == 'md_retrieval') then
+        ExpectedAcFreq = -1d0
+    else
+        ExpectedAcFreq = PeriodAcFreq
+    end if
 
     !> Timestamp of beginning of current period, as an
     !> initialization to check files contiguity
@@ -154,7 +172,10 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
         if (EddyFlowLog%tstamp_end) &
             CurrentTimestamp = CurrentTimestamp - DatafileDateStep
 
-        !> Calculate which portion of the current file shall be imported
+        !> Calculate which portion of the current file shall be imported.
+        !> At the period's rate: a file skipped for being at another rate
+        !> leaves its own in Metadata.
+        if (ExpectedAcFreq > 0d0) Metadata%ac_freq = ExpectedAcFreq
         call PortionOfFileInCurrentPeriod(InitialTimestamp, FinalTimestamp, &
             CurrentTimestamp, FirstRecord, LastRecord)
         if (LastRecord < 0) LastRecord = MaxNumFileRecords
@@ -181,7 +202,32 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
                     BiometIsNeeded, EddyFlowProj%run_mode /= 'md_retrieval', &
                     EddyFlowProj%run_mode /= 'md_retrieval', &
                     fRaw, size(fRaw, 1), size(fRaw, 2), skip_file, passed, &
-                    faulty_col, N, FileEndReached, printout, NextZip)
+                    faulty_col, N, FileEndReached, printout, NextZip, &
+                    ExpectedAcFreq, rate_mismatch)
+
+                !> A file at another rate than the period. As the period's
+                !> first file, it sets a new rate: the caller resizes and
+                !> starts the period again. Any later, the period would mix
+                !> two rates, so it is given up and the next period starts
+                !> with this file.
+                if (rate_mismatch) then
+                    if (allocated(fRaw)) deallocate(fRaw)
+                    NextFile = CurrentFile
+                    if (CurrentFile == FirstFile) then
+                        rate_changed = .true.
+                    else
+                        write(FromRate, '(f0.3)') ExpectedAcFreq
+                        write(ToRate, '(f0.3)') Metadata%ac_freq
+                        call LogSayList(' Warning(116)> From ' // trim(FromRate) &
+                            // ' Hz to ' // trim(ToRate) // ' Hz, at file ' &
+                            // trim(adjustl(FileList(CurrentFile)%name)))
+                        call ExceptionHandler(116)
+                        skip_period = .true.
+                    end if
+                    N = 0
+                    MetaIsNeeded = InitialMetaIsNeeded
+                    return
+                end if
 
                 !> File skip control
                 if (skip_file .or. (.not.passed(1))) then
@@ -194,6 +240,47 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
                     CurrentFile = CurrentFile + 1
                     if (allocated(fRaw)) deallocate(fRaw)
                     cycle rawfile_loop
+                end if
+
+                !> The instruments' own rates too: an analyser can go from 1
+                !> to 0.33 Hz while the file's row rate stays at 20 Hz. The
+                !> period's first file sets them, since each period's columns
+                !> are read afresh; a later file that disagrees on a column in
+                !> use would make that column's samples mean two things in one
+                !> period, so the period is given up like above. Only found
+                !> after the data are read, which the next period then reads
+                !> again - at a change of rate only.
+                if (ExpectedAcFreq > 0d0) then
+                    if (CurrentFile == FirstFile) then
+                        PeriodInstrFreq = LocCol%instr%ac_freq
+                    else
+                        do j = 1, MaxNumCol
+                            if (.not. LocCol(j)%useit) cycle
+                            if (abs(LocCol(j)%instr%ac_freq - PeriodInstrFreq(j)) &
+                                > 1d-6 * max(abs(PeriodInstrFreq(j)), 1d0)) exit
+                        end do
+                        if (j <= MaxNumCol) then
+                            !> An instrument stating no rate runs at the file's
+                            FromRate = 'the file rate'
+                            ToRate = 'the file rate'
+                            if (PeriodInstrFreq(j) > 0d0) &
+                                write(FromRate, '(f0.3, a)') PeriodInstrFreq(j), ' Hz'
+                            if (LocCol(j)%instr%ac_freq > 0d0) &
+                                write(ToRate, '(f0.3, a)') LocCol(j)%instr%ac_freq, ' Hz'
+                            call LogSayList(' Warning(116)> ' &
+                                // trim(adjustl(LocCol(j)%instr_name)) // ': from ' &
+                                // trim(FromRate) // ' to ' // trim(ToRate) &
+                                // ', at file ' &
+                                // trim(adjustl(FileList(CurrentFile)%name)))
+                            call ExceptionHandler(116)
+                            if (allocated(fRaw)) deallocate(fRaw)
+                            skip_period = .true.
+                            NextFile = CurrentFile
+                            N = 0
+                            MetaIsNeeded = InitialMetaIsNeeded
+                            return
+                        end if
+                    end if
                 end if
 
             case default

@@ -36,6 +36,7 @@
 subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
         doy_format, GetTimestamp, Recurse, FileList, nrow, printout, indent)
     use m_common_global_var
+    use m_remote_source, only: RemoteOwnsDir, RemoteWriteFileList
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow
@@ -72,22 +73,28 @@ subroutine FileListByExt(DirIn, Ext, MatchTemplate, HardMatch, Template, &
             write(ulog,'(a)') indent // '   and its sub-directories..'
     end if
 
-    !> List files, recursively in all cases
-    select case (OS(1:len_trim(OS)))
-        case('win')
-            comm = 'dir "' // DirIn(1:len_trim(DirIn)) // '*' &
-                // Ext(1:len_trim(Ext)) // '" ' // ' /O:N /S /B > ' // '"' &
-                // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
-        case('linux')
-            comm = 'find "' // DirIn(1:len_trim(DirIn)) // '" -iname "*' &
-                // Ext(1:len_trim(Ext)) // '" > ' // '"' // trim(adjustl(TmpDir)) &
-                // 'flist.tmp" ' // comm_err_redirect
-        case('mac')
-            comm = 'find "' // DirIn(1:len_trim(DirIn)-1) // '" -iname "*' &
-                // Ext(1:len_trim(Ext)) // '" > ' // '"' // trim(adjustl(TmpDir)) &
-                // 'flist.tmp" ' // comm_err_redirect
-    end select
-    dir_status = system(comm)
+    !> List files, recursively in all cases. A folder read from a shared link
+    !> is listed by the provider instead, in the same shape.
+    if (RemoteOwnsDir(DirIn)) then
+        call RemoteWriteFileList(Ext, trim(adjustl(TmpDir)) // 'flist.tmp', &
+            dir_status)
+    else
+        select case (OS(1:len_trim(OS)))
+            case('win')
+                comm = 'dir "' // DirIn(1:len_trim(DirIn)) // '*' &
+                    // Ext(1:len_trim(Ext)) // '" ' // ' /O:N /S /B > ' // '"' &
+                    // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
+            case('linux')
+                comm = 'find "' // DirIn(1:len_trim(DirIn)) // '" -iname "*' &
+                    // Ext(1:len_trim(Ext)) // '" > ' // '"' // trim(adjustl(TmpDir)) &
+                    // 'flist.tmp" ' // comm_err_redirect
+            case('mac')
+                comm = 'find "' // DirIn(1:len_trim(DirIn)-1) // '" -iname "*' &
+                    // Ext(1:len_trim(Ext)) // '" > ' // '"' // trim(adjustl(TmpDir)) &
+                    // 'flist.tmp" ' // comm_err_redirect
+        end select
+        dir_status = system(comm)
+    end if
 
     call system(comm_copy // '"' // trim(adjustl(TmpDir)) // 'flist.tmp" ' &
         // '"' // trim(adjustl(TmpDir)) // 'flist2.tmp" ' &

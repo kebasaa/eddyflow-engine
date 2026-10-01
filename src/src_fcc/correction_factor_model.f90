@@ -37,7 +37,7 @@
 !              So far, only "monotonic" option in available, but the code is present \n
 !              and commented for the other two options.
 !***************************************************************************
-subroutine CorrectionFactorModel(ExFilename, NumExRecords)
+subroutine CorrectionFactorModel(ExFilename, NumExRecords, FileRateFilter)
     use m_fx_global_var
     use m_levenberg_marquardt
     implicit none
@@ -45,6 +45,12 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords)
     !> In/out variables
     character(*), intent(in) :: ExFilename
     integer, intent(in) :: NumExRecords
+    !> Only records at this file rate, when positive. A project whose files
+    !> are not all at one rate gets one model per rate: the degraded
+    !> covariances are computed from each period's own spectrum, and the
+    !> highest cut-off they are degraded at, 1.626 Hz, is above the Nyquist of
+    !> anything slower than 3.25 Hz.
+    real(kind = dbl), intent(in) :: FileRateFilter
     !> local variables
     integer :: i
     integer :: j
@@ -62,13 +68,42 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords)
 
 
     call LogSay(' Fitting low-pass correction factor model as from Ibrom et al. (2007)..')
-    allocate(DegWT(NumExRecords, Nt + 3))
+    allocate(DegWT(NumExRecords, Nt + 4))
 
     !> Retrieve "degraded" w'T' covariances from essentials file
     call ExtractColumnFromEssentials(ExFilename, NumExRecords, 'degraded_wT_covariances', &
         DegWT, size(DegWT, 1), size(DegWT, 2), NumDegtRecords)
+
+    !> Keep only this rate's records, packed to the front
+    if (FileRateFilter > 0d0) then
+        m = 0
+        do i = 1, NumDegtRecords
+            if (abs(DegWT(i, Nt + 4) - FileRateFilter) > 1d-6 * FileRateFilter) cycle
+            m = m + 1
+            if (m < i) DegWT(m, :) = DegWT(i, :)
+        end do
+        NumDegtRecords = m
+    end if
     allocate(Fl(NumDegtRecords, Nt))
 
+    !> Re-sized when too small rather than trusted: with one model per file
+    !> rate this runs more than once, and zzFit - which nothing else frees -
+    !> would keep the first call's size.
+    if (allocated(xFit)) then
+        if (size(xFit) < NumDegtRecords * Nt) deallocate(xFit)
+    end if
+    if (allocated(yFit)) then
+        if (size(yFit) < NumDegtRecords * Nt) deallocate(yFit)
+    end if
+    if (allocated(zFit)) then
+        if (size(zFit) < NumDegtRecords * Nt) deallocate(zFit)
+    end if
+    if (allocated(zzFit)) then
+        if (size(zzFit) < NumDegtRecords * Nt) deallocate(zzFit)
+    end if
+    if (allocated(ddum)) then
+        if (size(ddum) < NumDegtRecords * Nt) deallocate(ddum)
+    end if
     if (.not. allocated(xFit)) allocate(xFit(NumDegtRecords * Nt))
     if (.not. allocated(yFit)) allocate(yFit(NumDegtRecords * Nt))
     if (.not. allocated(zFit)) allocate(zFit(NumDegtRecords * Nt))
@@ -76,7 +111,8 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords)
     if (.not. allocated(ddum)) allocate(ddum(NumDegtRecords * Nt))
 
     !> Perform a rough despiking of degraded covariances, to avoind unrealistic results
-    do j = 1, size(DegWT, 2)
+    !> - the data columns only, not the rate column after them
+    do j = 1, Nt + 3
         call QuickDespiking(DegWT(1:NumDegtRecords, j), NumDegtRecords)
     end do
 

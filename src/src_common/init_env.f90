@@ -74,6 +74,7 @@ subroutine InitEnv()
     BatchCount = 0
     BatchKind = ''
     BatchOutPath = ''
+    BatchTmpDir = ''
     EddyFlowProj%run_env = ''
     EddyFlowProj%caller = ''
     projPath = ''
@@ -153,6 +154,10 @@ subroutine InitEnv()
                 case('--batch-out')
                     if (io_status > 0 .or. len_trim(switch) == 0) exit arg_loop
                     BatchOutPath = trim(arg)
+
+                case('--batch-tmp')
+                    if (io_status > 0 .or. len_trim(switch) == 0) exit arg_loop
+                    BatchTmpDir = trim(arg)
 
                 !> Software version
                 case('-v', '--version')
@@ -260,7 +265,7 @@ logical function SwitchTakesValue(switch)
     select case (trim(token))
         case ('-s', '--system', '-e', '--environment', '-m', '--mode', &
               '-c', '--caller', '-j', '--jobs', &
-              '--batch', '--batch-out')
+              '--batch', '--batch-out', '--batch-tmp')
             SwitchTakesValue = .true.
         case default
             SwitchTakesValue = .false.

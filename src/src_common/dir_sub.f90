@@ -198,6 +198,7 @@ end function NameMatchesTemplate
 !***************************************************************************
 subroutine NumberOfFilesInDir(DirIn, ext, MatchTemplate, Template, N, rN)
     use m_common_global_var
+    use m_remote_source, only: RemoteOwnsDir, RemoteWriteFileList
     implicit none
     !> in/out variables
     character(*), intent(in) :: DirIn
@@ -214,25 +215,31 @@ subroutine NumberOfFilesInDir(DirIn, ext, MatchTemplate, Template, N, rN)
     character(FilenameLen) :: TmpFileName
     logical, external :: NameMatchesTemplate
 
-    !> List files, recursively in all cases
-    select case (OS(1:len_trim(OS)))
-        case('win')
-            comm = 'dir "' // DirIn(1:len_trim(DirIn)) // '*' &
-                // Ext(1:len_trim(Ext)) &
-                // '" ' // ' /O:N /S /B > ' // '"' &
-                // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
-        case('linux')
-            comm = 'find "' // DirIn(1:len_trim(DirIn)) &
-                // '" -iname "*' &
-                // Ext(1:len_trim(Ext)) // '" > ' // '"' &
-                // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
-        case('mac')
-            comm = 'find "' // DirIn(1:len_trim(DirIn)-1) &
-                // '" -iname "*' &
-                // Ext(1:len_trim(Ext)) // '" > ' // '"' &
-                // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
-    end select
-    dir_status = system(comm)
+    !> List files, recursively in all cases. A folder read from a shared link
+    !> is listed by the provider instead, in the same shape.
+    if (RemoteOwnsDir(DirIn)) then
+        call RemoteWriteFileList(Ext, trim(adjustl(TmpDir)) // 'flist.tmp', &
+            dir_status)
+    else
+        select case (OS(1:len_trim(OS)))
+            case('win')
+                comm = 'dir "' // DirIn(1:len_trim(DirIn)) // '*' &
+                    // Ext(1:len_trim(Ext)) &
+                    // '" ' // ' /O:N /S /B > ' // '"' &
+                    // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
+            case('linux')
+                comm = 'find "' // DirIn(1:len_trim(DirIn)) &
+                    // '" -iname "*' &
+                    // Ext(1:len_trim(Ext)) // '" > ' // '"' &
+                    // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
+            case('mac')
+                comm = 'find "' // DirIn(1:len_trim(DirIn)-1) &
+                    // '" -iname "*' &
+                    // Ext(1:len_trim(Ext)) // '" > ' // '"' &
+                    // trim(adjustl(TmpDir)) // 'flist.tmp" ' // comm_err_redirect
+        end select
+        dir_status = system(comm)
+    end if
 
     !> Exit with error if dir command failed
     if (dir_status /= 0) call ExceptionHandler(86)
