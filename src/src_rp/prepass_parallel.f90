@@ -67,6 +67,7 @@ module m_prepass_parallel
     use m_rp_global_var
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteCleanup
+    use m_process_os, only: ProcessSelfId, ParentGone
     implicit none
     private
 
@@ -76,7 +77,7 @@ module m_prepass_parallel
     public :: WriteTlagBatchDump, MergeTlagBatchDumps
     public :: WritePwbBatchDump, MergePwbBatchDumps
     public :: WritePfBatchDump, MergePfBatchDumps
-    public :: FinishBatchWorker
+    public :: FinishBatchWorker, StopIfParentGone
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
@@ -411,6 +412,7 @@ contains
         character(64) :: batchArg
         character(2048) :: cmd
         character(16) :: tag
+        character(16) :: parentId
 
         write(tag, '(a,a,i2.2)') trim(kind), '_b', k
         if (OS == 'win') then
@@ -421,6 +423,7 @@ contains
 
         write(batchArg, '(a,a,i0,a,i0,a,i0,a,i0)') trim(kind), ':', k, ':', &
             nEff, ':', sliceStart, ':', sliceEnd
+        write(parentId, '(i0)') ProcessSelfId()
 
         !> PrjPath rather than the path this program was handed: an EddyPro
         !> project has already been imported into one of ours by now, and N
@@ -443,6 +446,7 @@ contains
             // ' --batch ' // trim(batchArg) &
             // ' --batch-out "' // trim(BatchDumpPath(kind, k)) // '"' &
             // ' --batch-tmp "' // trim(NoTrailingSlash(TmpDir)) // '"' &
+            // ' --batch-parent ' // trim(parentId) &
             // ' "' // trim(PrjPath) // '"'
 
         open(newunit = u, file = trim(childPath), status = 'replace', &
@@ -839,6 +843,37 @@ contains
             if (NoTrailingSlash(n:n) == slash) NoTrailingSlash(n:n) = ' '
         end if
     end function NoTrailingSlash
+
+    !***************************************************************************
+    !> \brief Stop this worker if the process that started it has gone.
+    !>
+    !> Called at the top of every period of a worker's slice. A worker is its
+    !> own process, started through a shell script, and nothing ties its life
+    !> to the parent's: killing the parent used to leave every worker running
+    !> to the end of its slice - hours, on the Yatir run - writing records into
+    !> a directory nobody would read again. Six were found still running two
+    !> minutes after the interface's Stop.
+    !>
+    !> Nothing is written: a partial slice is not a record of anything. The
+    !> worker tidies its temporary directory as it does on finishing, and exits
+    !> with 3, distinct from both success and an ordinary failure, for whoever
+    !> reads the .rc file later.
+    !>
+    !> A period is the granularity because it is the only safe point - between
+    !> periods the worker holds nothing half-done - and it bounds the delay to
+    !> one period's work, ~25 s at the worst measured so far.
+    !***************************************************************************
+    subroutine StopIfParentGone()
+        if (BatchIndex <= 0) return
+        if (.not. ParentGone()) return
+        !> Ends the progress line the period loop left open, so the reason
+        !> does not read as part of a date.
+        call LogSay('')
+        call LogSay(' The process that started this pre-pass worker has ended,')
+        call LogSay(' so nothing will read its records. Stopping without them.')
+        call FinishBatchWorker()
+        stop 3
+    end subroutine StopIfParentGone
 
     !***************************************************************************
     !> \brief Tidy up after a worker's slice, before it stops.

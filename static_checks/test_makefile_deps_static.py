@@ -31,7 +31,8 @@ MAKEFILE = ROOT / "prj" / "Makefile"
 GENERATOR = ROOT / "prj" / "gen_makefile_deps.py"
 
 SOURCE_GLOBS = ("src/src_rp/*.f90", "src/src_rp/fft4/*.F",
-                "src/src_fcc/*.f90", "src/src_common/*.f90")
+                "src/src_fcc/*.f90", "src/src_common/*.f90",
+                "src/src_os/win/*.f90")
 
 
 def rules():

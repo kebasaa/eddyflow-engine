@@ -125,6 +125,10 @@ module m_common_global_var
     !> pre-pass and the main pass both. A worker's own directory is named
     !> after its own start time, so it cannot be derived from it.
     character(PathLen) :: BatchTmpDir = ''
+    !> The parent's process ID. A worker watches it and stops when it goes, so
+    !> stopping a run - from the interface, Task Manager, or an error in the
+    !> parent - does not leave the slices computing for nobody.
+    integer :: BatchParentPid = 0
 
     character(19), parameter :: PrjFile   = 'processing.eddyflow'
     character(6), parameter :: licor_appdata = '.licor'

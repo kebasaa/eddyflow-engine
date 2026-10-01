@@ -44,6 +44,7 @@ program EddyFlowRP
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, FinishBatchWorker, &
+        StopIfParentGone, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
@@ -683,6 +684,9 @@ program EddyFlowRP
             end if
 
             to_periods_loop: do
+                !> A worker whose parent has gone stops here, between
+                !> periods, rather than finishing a slice nobody will read.
+                call StopIfParentGone()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1247,6 +1251,9 @@ program EddyFlowRP
             end if
 
             pf_periods_loop: do
+                !> A worker whose parent has gone stops here, between
+                !> periods, rather than finishing a slice nobody will read.
+                call StopIfParentGone()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,

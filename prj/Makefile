@@ -33,6 +33,9 @@ ifeq ($(OS), Windows_NT)
 	FCC_EXE = eddyflow_fcc.exe
 	PWBREF_EXE = pwb_reference.exe
 	OS_DIR = win
+	#> Which src_os/ directory supplies m_process_os: the one module
+	#> that needs a different source per operating system.
+	OS_FAMILY = win
 	FC = gfortran.exe
 	MAKE_DIR = if not exist DIR mkdir DIR
 	PATHSEP2 = \\
@@ -48,6 +51,7 @@ else
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
 	platform=$(shell uname)
+	OS_FAMILY = posix
 	ifeq ($(platform), Linux)
 		OS_DIR = linux
 		INFO = Compiling for Linux
@@ -68,6 +72,7 @@ RP_SRC_DIR_Fd2 = ../src/src_rp/fft4/
 FCC_SRC_DIR_f90d1 = ../src/src_fcc/
 ##Common
 COMMON_SRC_DIR_f90d1 = ../src/src_common/
+OS_SRC_DIR_f90d1 = ../src/src_os/$(OS_FAMILY)/
 ##Tools - not part of either shipped executable
 TOOLS_SRC_DIR_f90d1 = ../src/src_tools/
 OBJS_DIR = ../obj/$(OS_DIR)/
@@ -92,6 +97,7 @@ RP_SRCS_Fd2 = $(notdir $(wildcard $(RP_SRC_DIR_Fd2)*.F))
 FCC_SRCS_f90d1 = $(notdir $(wildcard $(FCC_SRC_DIR_f90d1)*.f90))
 ##Common
 COMMON_SRCS_f90d1 = $(notdir $(wildcard $(COMMON_SRC_DIR_f90d1)*.f90))
+OS_SRCS_f90d1 = $(notdir $(wildcard $(OS_SRC_DIR_f90d1)*.f90))
 
 #List of object file basenames (.o)
 ##RP
@@ -101,6 +107,7 @@ RP_OBJS_Fd2=$(patsubst %.F, %.o, $(RP_SRCS_Fd2))
 FCC_OBJS_f90d1=$(patsubst %.f90, %.o, $(FCC_SRCS_f90d1))
 ##Common
 COMMON_OBJS_f90d1=$(patsubst %.f90, %.o, $(COMMON_SRCS_f90d1))
+OS_OBJS_f90d1=$(patsubst %.f90, %.o, $(OS_SRCS_f90d1))
 
 #CFLAGS = -ffpe-trap=invalid,zero -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
 #CFLAGS = -g -fcheck=all -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
@@ -116,9 +123,9 @@ COMMON_OBJS_f90d1=$(patsubst %.f90, %.o, $(COMMON_SRCS_f90d1))
 CHECKS = -fbounds-check -fcheck=all -g -fbacktrace
 CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR) -J $(OBJS_DIR)
 
-VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OBJS_DIR)
-RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1))
-FCC_OBJS = $(addprefix $(OBJS_DIR), $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1))
+VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OS_SRC_DIR_f90d1):$(OBJS_DIR)
+RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1))
+FCC_OBJS = $(addprefix $(OBJS_DIR), $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1))
 
 $(info $(INFO))
 
@@ -140,11 +147,11 @@ debug :
 	$(MAKE) clean_all
 	$(MAKE) all CFLAGS="$(CFLAGS) $(CHECKS)"
 
-rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1)
+rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(RP_EXE) $(RP_OBJS)
 
-fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1)
+fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(FCC_EXE) $(FCC_OBJS)
 
@@ -182,6 +189,10 @@ $(FCC_OBJS_f90d1):
 $(COMMON_OBJS_f90d1):
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(COMMON_SRC_DIR_f90d1)$(@:.o=.f90) -o $(OBJS_DIR)$@
+##Per operating system
+$(OS_OBJS_f90d1):
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(OS_SRC_DIR_f90d1)$(@:.o=.f90) -o $(OBJS_DIR)$@
 
 clean_all : clean_rp clean_fcc clean_stray
 
@@ -638,7 +649,8 @@ init_env.o: \
 	init_env.f90 \
 	version_and_date.inc \
 	m_common_global_var.o \
-	m_eddypro_import.o
+	m_eddypro_import.o \
+	m_process_os.o
 init_ex_vars.o: \
 	init_ex_vars.f90 \
 	interfaces_1.inc \
@@ -729,6 +741,8 @@ m_methane_tables.o: \
 	m_numeric_kinds.o
 m_numeric_kinds.o: \
 	m_numeric_kinds.f90
+m_process_os.o: \
+	m_process_os.f90
 m_pwb_core.o: \
 	m_pwb_core.f90 \
 	m_numeric_kinds.o
@@ -830,6 +844,7 @@ power_of_two.o: \
 prepass_parallel.o: \
 	prepass_parallel.f90 \
 	ghg_prefetch.o \
+	m_process_os.o \
 	m_rp_global_var.o \
 	remote_source.o
 pwb_timelag_handle.o: \
