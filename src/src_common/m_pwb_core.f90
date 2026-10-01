@@ -320,8 +320,17 @@ subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf, xc, yc)
     real(kind = dbl), intent(in) :: x(n), y(n)
     real(kind = dbl), intent(out) :: ccf(min_rl:max_rl)
     real(kind = dbl), intent(inout) :: xc(n), yc(n)
-    integer :: lag, i, nn
-    real(kind = dbl) :: mx, my, vx, vy, denom, cov
+    !> Lags summed side by side. Each keeps its own accumulator, so this is a
+    !> question of throughput, not of arithmetic - see the loops below.
+    !>
+    !> 32 measured best at the production shape (36 000 records, 581 lags,
+    !> 396 calls), against the one-lag-at-a-time loop this replaced: 8 lags
+    !> 2.9x, 16 3.1x, 32 5.6x, 64 4.4x, 128 3.4x - past 32 the accumulators
+    !> no longer stay in registers. Every one of them bit-identical.
+    integer, parameter :: NB = 32
+    integer :: lag, i, k, nblk, first, last, shared
+    real(kind = dbl) :: mx, my, vx, vy, denom
+    real(kind = dbl) :: acc(NB)
 
     mx = sum(x) / dble(n)
     my = sum(y) / dble(n)
@@ -335,23 +344,85 @@ subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf, xc, yc)
         return
     end if
 
+    !> A lag with fewer than two overlapping records has no covariance.
     do lag = min_rl, max_rl
-        nn = n - abs(lag)
-        if (nn <= 1) then
-            ccf(lag) = 0d0
-            cycle
-        end if
-        cov = 0d0
-        if (lag >= 0) then
-            do i = 1, nn
-                cov = cov + xc(i) * yc(i + lag)
+        if (n - abs(lag) <= 1) ccf(lag) = 0d0
+    end do
+
+    !> This is the inner loop of the whole PWB pre-pass - 4 combinations x
+    !> the bootstrap replicates x every gas x every period - and it used to be
+    !> one accumulator per lag, summed one lag at a time:
+    !>
+    !>     cov = cov + xc(i) * yc(i + lag)
+    !>
+    !> Every add there waits for the one before it, so the loop ran at the
+    !> latency of a floating-point add rather than its throughput. Here a block
+    !> of NB lags shares one pass over i. Each lag still has its own
+    !> accumulator, and each accumulator still receives exactly the products it
+    !> did, in exactly the order it did - i ascending from 1 to n - |lag| - so
+    !> every result is bitwise the same. What changes is that NB independent
+    !> chains are in flight at once, and the array form vectorises.
+    !>
+    !> The lags of a block do not share a range: lag L has n - |L| products.
+    !> So the range every lag in the block has is summed together, and then
+    !> each lag's own remaining products are added, still in ascending i. That
+    !> is the original order exactly, split in two.
+    !>
+    !> It depends on no reassociation, which gfortran does not do without
+    !> -ffast-math, and on no fused multiply-add, which the build disables with
+    !> -ffp-contract=off: a fused product would be rounded once instead of
+    !> twice, and that alone would move results.
+
+    !> Lags 0 and up: product xc(i) * yc(i + lag).
+    first = max(0, min_rl)
+    last = min(max_rl, n - 2)
+    lag = first
+    do while (lag <= last)
+        nblk = min(NB, last - lag + 1)
+        shared = n - (lag + nblk - 1)
+        acc(1:nblk) = 0d0
+        if (nblk == NB) then
+            do i = 1, shared
+                acc = acc + xc(i) * yc(i + lag:i + lag + NB - 1)
             end do
         else
-            do i = 1, nn
-                cov = cov + xc(i - lag) * yc(i)
+            do i = 1, shared
+                acc(1:nblk) = acc(1:nblk) + xc(i) * yc(i + lag:i + lag + nblk - 1)
             end do
         end if
-        ccf(lag) = cov / denom
+        do k = 1, nblk
+            do i = shared + 1, n - (lag + k - 1)
+                acc(k) = acc(k) + xc(i) * yc(i + lag + k - 1)
+            end do
+            ccf(lag + k - 1) = acc(k) / denom
+        end do
+        lag = lag + nblk
+    end do
+
+    !> Lags below 0, by their size m = -lag: product xc(i + m) * yc(i).
+    first = max(1, -max_rl)
+    last = min(-min_rl, n - 2)
+    lag = first
+    do while (lag <= last)
+        nblk = min(NB, last - lag + 1)
+        shared = n - (lag + nblk - 1)
+        acc(1:nblk) = 0d0
+        if (nblk == NB) then
+            do i = 1, shared
+                acc = acc + xc(i + lag:i + lag + NB - 1) * yc(i)
+            end do
+        else
+            do i = 1, shared
+                acc(1:nblk) = acc(1:nblk) + xc(i + lag:i + lag + nblk - 1) * yc(i)
+            end do
+        end if
+        do k = 1, nblk
+            do i = shared + 1, n - (lag + k - 1)
+                acc(k) = acc(k) + xc(i + lag + k - 1) * yc(i)
+            end do
+            ccf(-(lag + k - 1)) = acc(k) / denom
+        end do
+        lag = lag + nblk
     end do
 end subroutine ComputeCcfWindow
 

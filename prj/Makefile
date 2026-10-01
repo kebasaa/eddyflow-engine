@@ -32,6 +32,7 @@ ifeq ($(OS), Windows_NT)
 	RP_EXE = eddyflow_rp.exe
 	FCC_EXE = eddyflow_fcc.exe
 	PWBREF_EXE = pwb_reference.exe
+	CCFCHECK_EXE = ccf_bitexact.exe
 	OS_DIR = win
 	#> Which src_os/ directory supplies m_process_os: the one module
 	#> that needs a different source per operating system.
@@ -47,6 +48,7 @@ else
 	RP_EXE = eddyflow_rp
 	FCC_EXE = eddyflow_fcc
 	PWBREF_EXE = pwb_reference
+	CCFCHECK_EXE = ccf_bitexact
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
@@ -121,7 +123,13 @@ OS_OBJS_f90d1=$(patsubst %.f90, %.o, $(OS_SRCS_f90d1))
 # it to catch anything. Run `make debug` and the sweep again after any change
 # that indexes raw data, and keep it that way.
 CHECKS = -fbounds-check -fcheck=all -g -fbacktrace
-CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR) -J $(OBJS_DIR)
+# -ffp-contract=off: never fuse a multiply and an add into one FMA. A fused
+# product is rounded once instead of twice, so allowing it would move results
+# - and the blocked cross-correlation in m_pwb_core is bit-identical to the
+# loop it replaced only because each product is rounded exactly as before.
+# Today it changes nothing: the default x86-64 target has no FMA instruction.
+# It is here so that adding -march one day cannot silently change the numbers.
+CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -ffp-contract=off -I $(OBJS_DIR) -J $(OBJS_DIR)
 
 VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OS_SRC_DIR_f90d1):$(OBJS_DIR)
 RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1))
@@ -171,6 +179,17 @@ pwbref : m_numeric_kinds.o m_pwb_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
 	$(FC) -static -o $(OBJS_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The cross-correlation bit-exactness check. Like pwbref: not in `all`, linked
+# against the shipped m_pwb_core.o so it checks the routine that ships, and
+# left in the object directory. It holds the pre-rewrite ComputeCcfWindow
+# frozen and compares every element on its raw bits.
+# static_checks/test_pwb_ccf_blocked_static.py runs it.
+ccfcheck : m_numeric_kinds.o m_pwb_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)ccf_bitexact_main.f90 -o $(OBJS_DIR)ccf_bitexact_main.o
+	$(FC) -static -o $(OBJS_DIR)$(CCFCHECK_EXE) $(OBJS_DIR)ccf_bitexact_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
+
 
 #Compilation
 ##RP
