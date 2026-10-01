@@ -36,7 +36,7 @@
 subroutine InitEnv()
     use m_common_global_var
     use m_eddypro_import
-    use m_process_os, only: WatchParent
+    use m_process_os, only: WatchParent, RequestFullSpeed
     use, intrinsic :: iso_fortran_env, only: error_unit
     implicit none
     include 'version_and_date.inc'
@@ -195,6 +195,12 @@ subroutine InitEnv()
                 index(lowerPath, '.eddypro') == 0) projPath = ''
         end if
     end do arg_loop
+
+    !> Before any work: this is a batch computation somebody is waiting for,
+    !> not background housekeeping, and on a hybrid processor Windows otherwise
+    !> keeps a windowless program on its slowest cores. Every worker runs this
+    !> same start-up, so each asks for itself. See RequestFullSpeed.
+    call RequestFullSpeed()
 
     !> A worker whose parent has already gone has nobody to hand its records
     !> to. Checked here, before anything is created that would need tidying,

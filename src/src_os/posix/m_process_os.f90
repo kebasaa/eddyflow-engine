@@ -46,7 +46,7 @@ module m_process_os
     implicit none
     private
 
-    public :: ProcessSelfId, WatchParent, ParentGone
+    public :: ProcessSelfId, WatchParent, ParentGone, RequestFullSpeed
 
     integer, save :: parent_pid = 0
 
@@ -99,5 +99,14 @@ contains
         if (parent_pid <= 0) return
         ParentGone = p_kill(int(parent_pid, c_int), 0_c_int) /= 0_c_int
     end function ParentGone
+
+    !***************************************************************************
+    !> \brief Ask not to be run as background work - a no-op here.
+    !>
+    !> The Windows file explains what this is for. Linux and macOS schedule a
+    !> windowless process like any other, so there is nothing to ask for.
+    !***************************************************************************
+    subroutine RequestFullSpeed()
+    end subroutine RequestFullSpeed
 
 end module m_process_os

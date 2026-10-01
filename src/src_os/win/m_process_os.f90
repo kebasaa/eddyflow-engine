@@ -47,11 +47,12 @@
 ! \sa          prepass_parallel.f90, init_env.f90
 !***************************************************************************
 module m_process_os
-    use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_intptr_t
+    use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_intptr_t, c_ptr, &
+        c_loc, c_sizeof
     implicit none
     private
 
-    public :: ProcessSelfId, WatchParent, ParentGone
+    public :: ProcessSelfId, WatchParent, ParentGone, RequestFullSpeed
 
     !> SYNCHRONIZE, the only right WaitForSingleObject needs. Asking for no
     !> more means it cannot be refused on a process the same user started.
@@ -63,6 +64,16 @@ module m_process_os
     !> exits - and with it its ID, which Windows will not hand to a new process
     !> while a handle remains. So a recycled ID cannot pass for the parent.
     integer(c_intptr_t), save :: parent_handle = 0_c_intptr_t
+
+    !> PROCESS_POWER_THROTTLING_STATE, and the values that ask for none.
+    type, bind(C) :: power_throttling_state
+        integer(c_int32_t) :: version
+        integer(c_int32_t) :: control_mask
+        integer(c_int32_t) :: state_mask
+    end type power_throttling_state
+    integer(c_int), parameter :: PROCESS_POWER_THROTTLING = 4_c_int
+    integer(c_int32_t), parameter :: THROTTLING_VERSION = 1_c_int32_t
+    integer(c_int32_t), parameter :: THROTTLING_EXECUTION_SPEED = 1_c_int32_t
 
     interface
         function w_GetCurrentProcessId() bind(C, name = 'GetCurrentProcessId')
@@ -77,6 +88,21 @@ module m_process_os
             integer(c_int32_t), value :: pid
             integer(c_intptr_t) :: w_OpenProcess
         end function w_OpenProcess
+
+        function w_GetCurrentProcess() bind(C, name = 'GetCurrentProcess')
+            import :: c_intptr_t
+            integer(c_intptr_t) :: w_GetCurrentProcess
+        end function w_GetCurrentProcess
+
+        function w_SetProcessInformation(h, cls, info, nbytes) &
+                bind(C, name = 'SetProcessInformation')
+            import :: c_intptr_t, c_int, c_ptr, c_int32_t
+            integer(c_intptr_t), value :: h
+            integer(c_int), value :: cls
+            type(c_ptr), value :: info
+            integer(c_int32_t), value :: nbytes
+            integer(c_int) :: w_SetProcessInformation
+        end function w_SetProcessInformation
 
         function w_WaitForSingleObject(h, ms) bind(C, name = 'WaitForSingleObject')
             import :: c_intptr_t, c_int32_t
@@ -123,5 +149,33 @@ contains
         if (parent_handle == 0_c_intptr_t) return
         ParentGone = w_WaitForSingleObject(parent_handle, 0_c_int32_t) == WAIT_OBJECT_0
     end function ParentGone
+
+    !***************************************************************************
+    !> \brief Ask not to be run as background work.
+    !>
+    !> Windows decides how fast to run a process partly from whether it has a
+    !> window. This program has none - it is a child of the interface with its
+    !> output captured, or a worker started through a script - so it is
+    !> classed as background work, and on a hybrid processor background work
+    !> is kept on the efficiency cores. Measured on a Core Ultra 7 268V during
+    !> the Yatir run: all seven engine processes at 100 % on the four low-power
+    !> cores, the four performance cores between 3 and 8 %.
+    !>
+    !> Turning off execution-speed throttling (ControlMask set, StateMask
+    !> clear) is the documented way to say the opposite - that this is work a
+    !> user is waiting for. It changes where the program runs, never what it
+    !> computes. Failure - a Windows older than 10 1709 - is ignored: the run
+    !> simply goes on as it always did.
+    !***************************************************************************
+    subroutine RequestFullSpeed()
+        type(power_throttling_state), target :: state
+        integer(c_int) :: ok
+
+        state%version = THROTTLING_VERSION
+        state%control_mask = THROTTLING_EXECUTION_SPEED
+        state%state_mask = 0_c_int32_t
+        ok = w_SetProcessInformation(w_GetCurrentProcess(), PROCESS_POWER_THROTTLING, &
+            c_loc(state), int(c_sizeof(state), c_int32_t))
+    end subroutine RequestFullSpeed
 
 end module m_process_os
