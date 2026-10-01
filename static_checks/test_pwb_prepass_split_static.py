@@ -102,7 +102,7 @@ class TheParentDoesTheSettling(unittest.TestCase):
     def test_the_merge_appends_rather_than_interleaves(self):
         """Slice order is period order, which is what makes the stable sort in
         the post-pass reproduce a single loop."""
-        self.assertIn("do k = 2, nEff", PAR)
+        self.assertIn("do k = 2, nChunks", PAR)
 
     def test_the_cache_grows_once_per_slice(self):
         """StorePwbTimelagCacheAt reallocates and copies the whole table for

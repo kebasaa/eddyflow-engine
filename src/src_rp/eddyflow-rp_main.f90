@@ -43,7 +43,8 @@ program EddyFlowRP
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
-    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, FinishBatchWorker, &
+    use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
+        FinishBatchWorker, &
         StopIfParentGone, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
@@ -675,16 +676,16 @@ program EddyFlowRP
             end if
 
             !> The workers go first so they are already reading raw data while
-            !> this process works through the first slice. The parent takes a
-            !> slice rather than waiting: the code after the loop reads state
+            !> this process works through the first piece. The parent takes a
+            !> piece rather than waiting: the code after the loop reads state
             !> the loop establishes, and a parent that had skipped it would
             !> reach that code with the state unset.
             toParallel = toWorkers > 1
             if (toParallel) then
                 call StartPrepassBatches('to', toStartTimestampIndx, &
-                    toEndTimestampIndx, toWorkers)
-                call PrepassSlice(toStartTimestampIndx, toEndTimestampIndx, &
-                    toWorkers, 1, sliceStart, sliceEnd)
+                    toEndTimestampIndx, toWorkers, RawTimeSeries, &
+                    size(RawTimeSeries), RawFileList, NumRawFiles)
+                call PrepassChunk(1, sliceStart, sliceEnd)
                 toStartTimestampIndx = sliceStart
                 toEndTimestampIndx = sliceEnd
                 pcount = toStartTimestampIndx - 1
@@ -1055,17 +1056,18 @@ program EddyFlowRP
             write(ulog, '(a)')
             call LogSay(' Done.')
 
-            !> Now collect what the other slices produced and append them to
-            !> this one, which leaves the dataset in period order - the order
-            !> a single loop over the whole range would have built it in.
+            !> Now hand out the remaining pieces, collect what they produced
+            !> and append it to this one, which leaves the dataset in period
+            !> order - the order a single loop over the whole range would have
+            !> built it in.
             if (toParallel) then
                 call WaitPrepassBatches('to', toWorkers)
                 if (PwbCacheGenerate) then
-                    call MergePwbBatchDumps('to', toWorkers, PwbTimelagOpt, &
-                        PwbTimelagOptSize, PwbTimelagN)
+                    call MergePwbBatchDumps('to', PrepassChunkCount(), &
+                        PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
                 else
-                    call MergeTlagBatchDumps('to', toWorkers, TimelagOpt, &
-                        TimelagOptSize, ton)
+                    call MergeTlagBatchDumps('to', PrepassChunkCount(), &
+                        TimelagOpt, TimelagOptSize, ton)
                 end if
             end if
 
@@ -1249,9 +1251,9 @@ program EddyFlowRP
             pfParallel = pfWorkers > 1
             if (pfParallel) then
                 call StartPrepassBatches('pf', pfStartTimestampIndx, &
-                    pfEndTimestampIndx, pfWorkers)
-                call PrepassSlice(pfStartTimestampIndx, pfEndTimestampIndx, &
-                    pfWorkers, 1, sliceStart, sliceEnd)
+                    pfEndTimestampIndx, pfWorkers, RawTimeSeries, &
+                    size(RawTimeSeries), RawFileList, NumRawFiles)
+                call PrepassChunk(1, sliceStart, sliceEnd)
                 pfStartTimestampIndx = sliceStart
                 pfEndTimestampIndx = sliceEnd
                 pcount = pfStartTimestampIndx - 1
@@ -1465,7 +1467,8 @@ program EddyFlowRP
 
             if (pfParallel) then
                 call WaitPrepassBatches('pf', pfWorkers)
-                call MergePfBatchDumps(pfWorkers, pfWind, size(pfWind, 1), pfn)
+                call MergePfBatchDumps(PrepassChunkCount(), pfWind, &
+                    size(pfWind, 1), pfn)
             end if
 
             !> As above: a worker hands back its slice of the wind means and

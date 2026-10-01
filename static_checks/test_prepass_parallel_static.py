@@ -17,10 +17,13 @@ used to read a value after every token, so the project path swallowed
 whatever followed it - which is why a ``-e`` written after the path was
 silently ignored, and why ``-j`` written there did nothing at all.
 
-**The slices are half-open.** Both period loops exit on ``pcount >= endIndex``,
+**The pieces are half-open.** Both period loops exit on ``pcount >= endIndex``,
 so an end index is one past the last period processed. Treating it as
 inclusive lost one period per worker, which showed up only as a slightly
-different planar fit.
+different planar fit. (The range used to be cut into one slice per worker;
+it is now cut into several pieces per worker, handed out as workers come
+free - see ``test_prepass_pool_static``. Every invariant here holds for
+pieces exactly as it did for slices.)
 
 **The parent runs a slice itself.** The code after the period loop reads
 global state the loop established - ``SortWindBySector`` takes the north
@@ -141,25 +144,39 @@ class SwitchesOnlyConsumeAValueWhenTheyTakeOne(unittest.TestCase):
 class SlicesTileTheRangeExactly(unittest.TestCase):
     """Half-open, because that is what the period loops are."""
 
-    def test_the_slice_arithmetic_is_half_open(self):
-        body = PARALLEL[PARALLEL.index("subroutine PrepassSlice"):
-                        PARALLEL.index("end subroutine PrepassSlice")]
-        self.assertIn("total = iEnd - iStart", body)
-        self.assertNotIn("total = iEnd - iStart + 1", body)
-        self.assertIn("sliceEnd = sliceStart + len", body)
-        self.assertNotIn("sliceEnd = sliceStart + len - 1", body)
+    def test_the_piece_arithmetic_is_half_open(self):
+        """A cut is the first period of the next piece and the end of the
+        one before - shared, never minus one."""
+        body = PARALLEL[PARALLEL.index("subroutine PlanPrepassChunks"):
+                        PARALLEL.index("end subroutine PlanPrepassChunks")]
+        self.assertIn("ChunkStart(1) = iStart", body)
+        self.assertIn("ChunkEnd(c) = cuts(c)", body)
+        self.assertIn("ChunkStart(c + 1) = cuts(c)", body)
+        self.assertIn("ChunkEnd(NumChunks) = iEnd", body)
+        self.assertNotIn("cuts(c) - 1", body)
 
     def test_the_tiling_is_asserted_before_anything_is_launched(self):
         body = PARALLEL[PARALLEL.index("subroutine StartPrepassBatches"):
                         PARALLEL.index("end subroutine StartPrepassBatches")]
         self.assertIn("if (covered /= iEnd - iStart) &", body)
+        self.assertLess(body.index("call PlanPrepassChunks("),
+                        body.index("covered /= iEnd - iStart"))
         self.assertLess(body.index("covered /= iEnd - iStart"),
-                        body.index("call system(trim(cmd))"))
+                        body.index("call LaunchChunks("))
+
+    def test_the_tiling_check_sees_gaps_and_overlaps(self):
+        """A sum of lengths alone would pass a gap and an overlap of the same
+        size; contiguity and the two ends are checked as well."""
+        body = PARALLEL[PARALLEL.index("subroutine StartPrepassBatches"):
+                        PARALLEL.index("end subroutine StartPrepassBatches")]
+        self.assertIn("if (ChunkStart(k) /= ChunkEnd(k - 1))", body)
+        self.assertIn("if (ChunkEnd(k) <= ChunkStart(k))", body)
+        self.assertIn("ChunkStart(1) /= iStart .or. ChunkEnd(NumChunks) /= iEnd", body)
 
     def test_no_slice_reads_outside_its_own_range(self):
         """There is no lead-in: nothing that is split carries state."""
-        body = PARALLEL[PARALLEL.index("subroutine PrepassSlice"):
-                        PARALLEL.index("end subroutine PrepassSlice")]
+        body = PARALLEL[PARALLEL.index("subroutine PlanPrepassChunks"):
+                        PARALLEL.index("end subroutine PlanPrepassChunks")]
         self.assertNotIn("warmup", body)
         self.assertIn("covered", PARALLEL)
 
@@ -177,12 +194,11 @@ class TheParentRunsASliceItself(unittest.TestCase):
                 "%s must not be reachable only through an else arm" % loop)
 
     def test_the_parent_takes_slice_one(self):
-        for kind, first in (("'to'", "toWorkers"), ("'pf'", "pfWorkers")):
+        for kind in ("'to'", "'pf'"):
             i = MAIN.index("call StartPrepassBatches(%s" % kind)
             chunk = MAIN[i:i + 500]
-            self.assertIn("call PrepassSlice(", chunk)
-            self.assertIn("%s, 1, " % first, chunk,
-                          "the parent must ask for slice 1 of %s" % kind)
+            self.assertIn("call PrepassChunk(1, sliceStart, sliceEnd)", chunk,
+                          "the parent must ask for piece 1 of %s" % kind)
 
     def test_workers_are_launched_before_the_parent_starts_its_slice(self):
         for kind in ("'to'", "'pf'"):
@@ -193,9 +209,16 @@ class TheParentRunsASliceItself(unittest.TestCase):
         for name in ("MergeTlagBatchDumps", "MergePfBatchDumps"):
             body = PARALLEL[PARALLEL.index("subroutine %s" % name):
                             PARALLEL.index("end subroutine %s" % name)]
-            self.assertIn("do k = 2, nEff", body,
-                          "%s must not re-read the parent's own slice" % name)
-            self.assertNotIn("do k = 1, nEff", body)
+            self.assertIn("do k = 2, nChunks", body,
+                          "%s must not re-read the parent's own piece" % name)
+            self.assertNotIn("do k = 1, nChunks", body)
+
+    def test_the_merges_read_every_piece_not_one_per_worker(self):
+        for name in ("MergeTlagBatchDumps", "MergePwbBatchDumps"):
+            i = MAIN.index("call %s('to', " % name)
+            self.assertIn("PrepassChunkCount()", MAIN[i:i + 80])
+        i = MAIN.index("call MergePfBatchDumps(")
+        self.assertIn("PrepassChunkCount()", MAIN[i:i + 80])
 
     def test_the_merge_appends_rather_than_resets(self):
         for name in ("MergeTlagBatchDumps", "MergePfBatchDumps"):
@@ -209,7 +232,8 @@ class TheParentRunsASliceItself(unittest.TestCase):
                         PARALLEL.index("end subroutine StartPrepassBatches")]
         self.assertIn("call WriteChildScript(", body)
         i = body.index("call WriteChildScript(")
-        self.assertIn("do k = 2, nEff", body[:i])
+        self.assertIn("do k = 2, NumChunks", body[:i])
+        self.assertIn("NextChunk = 2", body)
 
 
 class AWorkerStopsBeforeItCanWriteAnything(unittest.TestCase):
@@ -288,7 +312,7 @@ class TheWaitIsPortableAndBounded(unittest.TestCase):
         body = PARALLEL[PARALLEL.index("subroutine StartPrepassBatches"):
                         PARALLEL.index("end subroutine StartPrepassBatches")]
         self.assertIn("comm_del", body)
-        self.assertLess(body.index("comm_del"), body.index("call system(trim(cmd))"))
+        self.assertLess(body.index("comm_del"), body.index("call LaunchChunks("))
 
 
 class AFailedWorkerStopsTheRun(unittest.TestCase):
