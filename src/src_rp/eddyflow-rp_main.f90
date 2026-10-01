@@ -573,8 +573,15 @@ program EddyFlowRP
         PwbTimelagN = 0
     end if
 
+    !> A planar-fit worker skips this pre-pass altogether. A worker starts the
+    !> program from the top like any run, and this pre-pass comes first: a
+    !> worker launched for a planar-fit slice used to walk its slice here as
+    !> time-lag periods, write time-lag records where its wind means belonged,
+    !> and stop - and the parent read those records as wind and lost every
+    !> sector of the fit. The wind means it is there for depend on no time lag.
     if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
-        (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only)) then
+        (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only) .and. &
+        (BatchIndex == 0 .or. BatchKind == 'to')) then
         if (.not. RPsetup%to_onthefly) then
             call ReadTimelagOptFile(TOSetup%h2o_nclass)
             if (TOSetup%h2o_nclass > 1) &

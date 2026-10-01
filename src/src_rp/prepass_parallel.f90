@@ -92,7 +92,11 @@ module m_prepass_parallel
     !> Guards the unformatted dumps. Parent and workers are the same binary in
     !> the same run, so the format never has to survive a version change - but
     !> a file a crashed earlier run left behind would otherwise be read as data.
-    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_04 '
+    !>
+    !> 05 adds the pre-pass kind to the header: a planar-fit worker once wrote
+    !> time-lag records under the planar-fit name, and the parent read them as
+    !> wind. Both ends now say which pre-pass a file belongs to.
+    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_05 '
 
 contains
 
@@ -585,6 +589,8 @@ contains
         integer :: u
         integer :: io_status
 
+        call RequireBatchKind('to')
+
         open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
             access = 'stream', status = 'replace', iostat = io_status)
         if (io_status /= 0) &
@@ -592,6 +598,7 @@ contains
 
         write(u) BatchMagic
         write(u) BatchIndex, BatchCount
+        write(u) BatchKind
         write(u) n
         if (n > 0) write(u) dataset(1:n)
         close(u)
@@ -618,6 +625,7 @@ contains
         integer :: idx
         integer :: idxCount
         character(20) :: magic
+        character(2) :: dumpKind
         type(TimeLagOptType), allocatable :: slice(:)
 
         do k = 2, nEff
@@ -631,6 +639,9 @@ contains
             if (magic /= BatchMagic) &
                 error stop 'A pre-pass worker record file is not one of ours.'
             read(u) idx, idxCount
+            read(u) dumpKind
+            if (dumpKind /= kind) &
+                error stop 'A pre-pass worker record file belongs to another pre-pass.'
             read(u) nrec
 
             if (nrec > 0) then
@@ -669,6 +680,8 @@ contains
         integer :: u
         integer :: io_status
 
+        call RequireBatchKind('to')
+
         open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
             access = 'stream', status = 'replace', iostat = io_status)
         if (io_status /= 0) &
@@ -676,6 +689,7 @@ contains
 
         write(u) BatchMagic
         write(u) BatchIndex, BatchCount
+        write(u) BatchKind
         write(u) PwbTimelagCacheN
         if (PwbTimelagCacheN > 0) write(u) PwbTimelagCache(1:PwbTimelagCacheN)
         write(u) nOpt
@@ -709,6 +723,7 @@ contains
         integer :: k, i, u, io_status
         integer :: nrec, idx, idxCount
         character(20) :: magic
+        character(2) :: dumpKind
         type(PWBTimelagCacheEntryType), allocatable :: rows(:), grown(:)
         type(TimeLagOptType), allocatable :: slice(:)
         character(10), allocatable :: sdate(:)
@@ -725,6 +740,9 @@ contains
             if (magic /= BatchMagic) &
                 error stop 'A pre-pass worker PWB file is not one of ours.'
             read(u) idx, idxCount
+            read(u) dumpKind
+            if (dumpKind /= kind) &
+                error stop 'A pre-pass worker record file belongs to another pre-pass.'
 
             read(u) nrec
             if (nrec > 0) then
@@ -769,6 +787,8 @@ contains
         integer :: u
         integer :: io_status
 
+        call RequireBatchKind('pf')
+
         open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
             access = 'stream', status = 'replace', iostat = io_status)
         if (io_status /= 0) &
@@ -776,6 +796,7 @@ contains
 
         write(u) BatchMagic
         write(u) BatchIndex, BatchCount
+        write(u) BatchKind
         write(u) n
         if (n > 0) write(u) wind(1:n, 1:3)
         close(u)
@@ -797,6 +818,7 @@ contains
         integer :: idx
         integer :: idxCount
         character(20) :: magic
+        character(2) :: dumpKind
         real(kind = dbl), allocatable :: slice(:, :)
 
         do k = 2, nEff
@@ -810,6 +832,9 @@ contains
             if (magic /= BatchMagic) &
                 error stop 'A pre-pass worker record file is not one of ours.'
             read(u) idx, idxCount
+            read(u) dumpKind
+            if (dumpKind /= 'pf') &
+                error stop 'A pre-pass worker record file belongs to another pre-pass.'
             read(u) nrec
             if (nrec > 0) then
                 allocate(slice(nrec, 3))
@@ -874,6 +899,24 @@ contains
         call FinishBatchWorker()
         stop 3
     end subroutine StopIfParentGone
+
+    !***************************************************************************
+    !> \brief Stop unless this worker was launched for pre-pass `kind`.
+    !>
+    !> Every worker runs the program from the top, so each pre-pass it meets
+    !> before its own has to stand aside for it - and the one time that did not
+    !> happen, a planar-fit worker reported time-lag records as its result.
+    !> Writing a dump for the wrong pre-pass is the moment that mistake becomes
+    !> data, so this is where it is refused.
+    !***************************************************************************
+    subroutine RequireBatchKind(kind)
+        character(*), intent(in) :: kind
+
+        if (BatchKind == kind) return
+        call LogSay(' This pre-pass worker was launched for the ' // trim(BatchKind) &
+            // ' pre-pass but reached the ' // trim(kind) // ' one.')
+        error stop 'A pre-pass worker ran the wrong pre-pass.'
+    end subroutine RequireBatchKind
 
     !***************************************************************************
     !> \brief Tidy up after a worker's slice, before it stops.

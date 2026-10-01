@@ -393,9 +393,10 @@ class ThePwbCachePrepassIsSplitToo(unittest.TestCase):
             self.assertNotIn(name, PWB, "%s is dead code" % name)
 
     def test_the_dump_format_was_versioned_when_it_changed(self):
-        """04 carries the PWB sections; an 03 dump left by an older build has
-        none of them and must be refused rather than read short."""
-        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_04 '", PARALLEL)
+        """04 carried the PWB sections; 05 adds the pre-pass kind to the
+        header. A dump left by an older build has a different layout and must
+        be refused rather than read short."""
+        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_05 '", PARALLEL)
 
 
 if __name__ == "__main__":
