@@ -144,6 +144,11 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 # rate, and one whose files disagree skipped with Warning(116). Built by
 # gen_ghg_mixed.py into data_ghg_mixed/ and data_ghg_mixed_instr/.
 #
+# base_slow_drift, _sharp and _integr carry a slow analyser on a DRIFTING
+# 0.987 Hz grid whose COS is made from w delayed by exactly 3.35 s. The sweep
+# only checks they complete; check_slow_lag.sh checks the lag. Built by
+# gen_slow_drift.py into data_slow_drift_*/.
+#
 # base_ep_licor is the same two archives handed over as an EDDYPRO project, so
 # run.sh routes it through the importer the way base_ep does. base_ep is the
 # only other importer fixture and it is run_mode=0 (advanced), file_type=1
@@ -236,6 +241,9 @@ base_slow
 base_slow_naive
 base_slow_lack
 base_slow_integr
+base_slow_drift
+base_slow_drift_sharp
+base_slow_drift_integr
 base_n_gas_sa_partial
 base_ep
 base_ep_licor
@@ -306,6 +314,11 @@ for f in $FIXTURES; do
                            gen_dir=data_ghg_mixed;    gen=gen_ghg_mixed.py ;;
         base_ghg_mixed_instr)
                            gen_dir=data_ghg_mixed_instr; gen=gen_ghg_mixed.py ;;
+        base_slow_drift)   gen_dir=data_slow_drift_smooth; gen=gen_slow_drift.py ;;
+        base_slow_drift_sharp)
+                           gen_dir=data_slow_drift_sharp; gen=gen_slow_drift.py ;;
+        base_slow_drift_integr)
+                           gen_dir=data_slow_drift_integr; gen=gen_slow_drift.py ;;
         *)                 gen_dir= ;;
     esac
     if [ -n "$gen_dir" ] && [ ! -d "$HERE/$gen_dir" ]; then

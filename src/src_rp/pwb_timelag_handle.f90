@@ -1362,6 +1362,7 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     type(PWBResultType) :: candidate(4)
     character(2) :: combo(4)
     logical :: ok(4)
+    real(kind = dbl), external :: ColumnAcFreq
 
     call InitPwbResult(LocResult)
     success = .false.
@@ -1388,6 +1389,14 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     end if
     if (min_rl >= max_rl) then
         LocResult%fallback_used = .true.
+        return
+    end if
+
+    !> A gas sampled slower than the file is detected at its own rate and
+    !> refined at the file's - see PwbDetectSlowGas. Every full-rate gas
+    !> takes the path below, unchanged.
+    if (ColumnAcFreq(gas) < Metadata%ac_freq) then
+        call PwbDetectSlowGas(Set, nrow, ncol, gas, min_rl, max_rl, LocResult, success)
         return
     end if
 
@@ -1462,13 +1471,13 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
     !> value no difference produced.
     combo = (/'cw', 'wc', 'ct', 'tc'/)
     call RunPwbCombination(w_fs, s_fs, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
-        gas, combo(1), candidate(1), ok(1))
+        gas, combo(1), Metadata%ac_freq, PWBSetup%smoothing_width, candidate(1), ok(1))
     call RunPwbCombination(w_fw, s_fw, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
-        gas, combo(2), candidate(2), ok(2))
+        gas, combo(2), Metadata%ac_freq, PWBSetup%smoothing_width, candidate(2), ok(2))
     call RunPwbCombination(t_fs, s_fs, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
-        gas, combo(3), candidate(3), ok(3))
+        gas, combo(3), Metadata%ac_freq, PWBSetup%smoothing_width, candidate(3), ok(3))
     call RunPwbCombination(t_ft, s_ft, pw%n_eff, min_rl, max_rl, eval_lo, eval_hi, &
-        gas, combo(4), candidate(4), ok(4))
+        gas, combo(4), Metadata%ac_freq, PWBSetup%smoothing_width, candidate(4), ok(4))
 
     call SelectBestCandidate(candidate, ok, LocResult, success)
     !> SelectBestCandidate copies a candidate wholesale, so the per-period
@@ -1585,9 +1594,366 @@ subroutine EnsurePwbScratch(n, lo, hi, nboot)
     sc_nboot = nboot
 end subroutine EnsurePwbScratch
 
-subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, combo, res, ok)
-    integer, intent(in) :: n, min_rl, max_rl, eval_lo, eval_hi, gas
+!***************************************************************************
+!> \brief PWB time-lag detection for a gas sampled slower than the file.
+!>
+!> The Yatir inputs carry a 1 Hz laser on the 20 Hz sonic grid with the other
+!> nineteen rows empty. Counted against the row grid that gas is 95 % missing,
+!> so PwbDetectGas's validity test failed on every period and every laser gas
+!> - COS among them - ended in the terminal fallback. Its completeness is now
+!> counted against what its own instrument owes, as everything else in the
+!> engine already counts it (EliminateCorruptedVariables via ColumnAcFreq).
+!>
+!> The lag is not limited to the gas's rate. A point-sampled value is an
+!> instantaneous measurement, so pairing it with w at an exact offset of l
+!> rows estimates the cross-covariance at l for any l: a slow gas means fewer
+!> pairs, not coarser lags. But pre-whitening fits one AR filter and applies
+!> it to both series, which needs both on one time grid. So, two stages:
+!>
+!> Stage 1 runs today's chain unchanged - stationarity, the AR fits, the four
+!> combinations, the bootstrap - on the gas's real samples (SlowColumnSampleRows:
+!> its true rows, not a fixed stride, because the phase drifts), with w and Ts
+!> taken at the same rows. That gives a coarse peak and the winning
+!> combination. Windows, block length and smoothing are converted to samples
+!> at the MEASURED spacing - about 1.0135 s at Yatir, not the nominal 1.
+!>
+!> Stage 2 evaluates every row lag within one gas interval either side of the
+!> coarse peak: gas sample k against the driver (w or Ts, as the winner had
+!> it) at row r_k - l, both filtered with the winner's AR filter along k, so
+!> the refinement stays pre-whitened. It is bootstrapped with the winner's own
+!> random stream, so the HDI is at the file's resolution and the thresholds
+!> in seconds keep their meaning. The lag leaves in rows of the file, which is
+!> what the streaming pass shifts by.
+!>
+!> The driver is taken at a row the way the instrument took the gas: at the
+!> instant, or averaged over the interval the sample closes when it says it
+!> integrates - the rule SlowColumnSpectra uses.
+!>
+!> Assumed, and reported when it does not hold: the true peak lies within one
+!> gas interval of the coarse one. If the refinement lands on the edge of its
+!> range, the period is treated as edge-pinned.
+!***************************************************************************
+subroutine PwbDetectSlowGas(Set, nrow, ncol, gas, min_rl, max_rl, LocResult, success)
+    integer, intent(in) :: nrow, ncol, gas, min_rl, max_rl
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    type(PWBResultType), intent(inout) :: LocResult
+    logical, intent(out) :: success
+
+    real(kind = dbl), external :: ColumnAcFreq
+    integer :: stride, ns, nreal, k, nboot, swidth1, margin1, trail1
+    integer :: min_s, max_s, eval_lo, eval_hi, best, driver_col
+    integer :: lo2, hi2, half, k1, k2, n2, ne2, l, b, i, nblocks, block_len
+    integer :: requested_block_len, widest, pos, p, swidth2, lag
+    integer :: nvalid_w, nvalid_t, expected
+    integer(8) :: state
+    integer, allocatable :: rows(:), starts(:)
+    logical, allocatable :: isreal(:)
+    real(kind = dbl) :: dbar, rate1, min_valid, mean_s, mean_x, cov, cnt, h1lo, h1hi
+    real(kind = dbl), allocatable :: wfull(:), tfull(:)
+    real(kind = dbl), allocatable :: ss(:), ww(:), tt(:), ss0(:)
+    real(kind = dbl), allocatable :: s_fs(:), w_fs(:), t_fs(:)
+    real(kind = dbl), allocatable :: s_fw(:), w_fw(:), s_ft(:), t_ft(:)
+    real(kind = dbl), allocatable :: raw_ccov(:), phi(:)
+    real(kind = dbl), allocatable :: xk(:), yk(:), xf(:), yf(:), xfl(:, :)
+    real(kind = dbl), allocatable :: xb(:), yb(:), xc(:), yc(:)
+    real(kind = dbl), allocatable :: curve(:), smooth(:), mean_curve(:), mean_smooth(:)
+    real(kind = dbl), allocatable :: lagsec(:)
+    integer, allocatable :: boot(:)
+    real(kind = dbl) :: c0(0:0)
+    type(PwbPreWhitenType) :: pw
+    type(PWBResultType) :: candidate(4)
+    character(2) :: combo(4)
+    logical :: ok(4)
+
+    success = .false.
+    stride = max(2, nint(Metadata%ac_freq / ColumnAcFreq(gas)))
+
+    !> The gas's real samples, and a slot for each one its instrument missed.
+    allocate(rows(nrow), isreal(nrow))
+    call SlowColumnSampleRows(Set(:, gas), nrow, stride, error, rows, isreal, ns, nreal)
+
+    !> Completeness against what this instrument owes, not the row grid.
+    expected = max(1, nint(dble(nrow) * ColumnAcFreq(gas) / Metadata%ac_freq))
+    min_valid = max(0d0, min(1d0, PWBSetup%min_valid_frac))
+    nvalid_w = count(Set(:, w) /= error)
+    nvalid_t = count(Set(:, ts) /= error)
+    if (dble(nreal) < min_valid * dble(expected) .or. ns < 16 &
+        .or. dble(nvalid_w) < min_valid * dble(nrow) &
+        .or. dble(nvalid_t) < min_valid * dble(nrow)) then
+        LocResult%fallback_used = .true.
+        return
+    end if
+
+    !> The measured spacing, in rows, and the rate it amounts to.
+    dbar = dble(rows(ns) - rows(1)) / dble(ns - 1)
+    rate1 = Metadata%ac_freq / dbar
+
+    allocate(wfull(nrow), tfull(nrow))
+    wfull = Set(:, w)
+    tfull = Set(:, ts)
+    call FillMissingLinear(wfull, nrow)
+    call FillMissingLinear(tfull, nrow)
+
+    allocate(ss(ns), ww(ns), tt(ns), ss0(ns))
+    do k = 1, ns
+        if (isreal(k)) then
+            ss(k) = Set(rows(k), gas)
+        else
+            ss(k) = error
+        end if
+        ww(k) = DriverAt(wfull, rows(k))
+        tt(k) = DriverAt(tfull, rows(k))
+    end do
+    call FillMissingLinear(ss, ns)
+    ss0 = ss
+
+    !> Stage 1, at the gas's rate. Lags in samples at the measured spacing,
+    !> rounded outwards so the declared window is covered.
+    min_s = floor(dble(min_rl) / dbar)
+    max_s = ceiling(dble(max_rl) / dbar)
+    if (min_s >= max_s) then
+        LocResult%fallback_used = .true.
+        return
+    end if
+    !> The smoothing keeps its duration: 0.3 s is one sample at 1 Hz.
+    swidth1 = max(1, nint(dble(max(1, PWBSetup%smoothing_width)) / dbar))
+    trail1 = swidth1 / 2
+    margin1 = max(trail1, nint(2d0 * rate1))
+    eval_lo = max(min_s - margin1, -(ns - 3))
+    eval_hi = min(max_s + margin1, ns - 3)
+    if (eval_lo >= eval_hi .or. eval_lo > min_s .or. eval_hi < max_s) then
+        LocResult%fallback_used = .true.
+        return
+    end if
+    nboot = max(1, PWBSetup%n_bootstrap)
+    call EnsurePwbScratch(ns, eval_lo, eval_hi, nboot)
+
+    allocate(s_fs(ns), w_fs(ns), t_fs(ns), s_fw(ns), w_fw(ns), s_ft(ns), t_ft(ns))
+    allocate(raw_ccov(min_s:max_s))
+    call PwbPreWhiten(ss, ww, tt, ns, min_s, max_s, error, pw, &
+        s_fs, w_fs, t_fs, s_fw, w_fw, s_ft, t_ft, raw_ccov, sc_xc, sc_yc)
+
+    combo = (/'cw', 'wc', 'ct', 'tc'/)
+    call RunPwbCombination(w_fs, s_fs, pw%n_eff, min_s, max_s, eval_lo, eval_hi, &
+        gas, combo(1), rate1, swidth1, candidate(1), ok(1))
+    call RunPwbCombination(w_fw, s_fw, pw%n_eff, min_s, max_s, eval_lo, eval_hi, &
+        gas, combo(2), rate1, swidth1, candidate(2), ok(2))
+    call RunPwbCombination(t_fs, s_fs, pw%n_eff, min_s, max_s, eval_lo, eval_hi, &
+        gas, combo(3), rate1, swidth1, candidate(3), ok(3))
+    call RunPwbCombination(t_ft, s_ft, pw%n_eff, min_s, max_s, eval_lo, eval_hi, &
+        gas, combo(4), rate1, swidth1, candidate(4), ok(4))
+    call SelectBestCandidate(candidate, ok, LocResult, success)
+
+    LocResult%differenced = pw%differenced
+    LocResult%ar_order_scalar = pw%p_scalar
+    LocResult%ar_order_w = pw%p_w
+    LocResult%ar_order_t = pw%p_t
+    LocResult%tlag_pw = dble(pw%tlag_pw_rl) / rate1
+    LocResult%corr_pw = pw%corr_pw
+    LocResult%cv_99 = BartlettCv99(pw%n_eff)
+    LocResult%effective_min_lag = dble(min_rl) / Metadata%ac_freq
+    LocResult%effective_max_lag = dble(max_rl) / Metadata%ac_freq
+    if (LocResult%peak_outside_window) pwb_outside_window(gas) = pwb_outside_window(gas) + 1
+
+    !> Stage 1's spread, in seconds, for the HDI below.
+    h1lo = LocResult%hdi_low
+    h1hi = LocResult%hdi_high
+
+    !> Whatever stage 2 decides, a coarse result is expressed in rows.
+    LocResult%row_lag = nint(dble(LocResult%row_lag) * dbar)
+    LocResult%selected_lag = dble(LocResult%row_lag) / Metadata%ac_freq
+    if (.not. success) return
+
+    !> Stage 2, at the rows' resolution, around the coarse peak.
+    best = 1
+    do i = 1, 4
+        if (LocResult%best_combination == combo(i)) best = i
+    end do
+    driver_col = w
+    if (best >= 3) driver_col = ts
+    half = ceiling(dbar)
+    lo2 = max(min_rl, LocResult%row_lag - half)
+    hi2 = min(max_rl, LocResult%row_lag + half)
+
+    !> One set of gas samples for every l: those whose driver rows exist for
+    !> all of them.
+    k1 = 0
+    k2 = 0
+    do k = 1, ns
+        if (rows(k) - hi2 - stride + 1 >= 1 .and. rows(k) - lo2 <= nrow) then
+            if (k1 == 0) k1 = k
+            k2 = k
+        end if
+    end do
+    n2 = k2 - k1 + 1
+    if (k1 == 0 .or. n2 < 16 .or. lo2 >= hi2) then
+        success = .false.
+        LocResult%edge_pinned = .true.
+        return
+    end if
+
+    !> The winner's filter, fitted the way stage 1 fitted it - same series,
+    !> same differencing, same AIC search - on the samples stage 2 uses.
+    allocate(yk(n2), xk(n2))
+    yk = ss0(k1:k2)
+    if (pw%differenced) then
+        ne2 = n2 - 1
+    else
+        ne2 = n2
+    end if
+    allocate(yf(ne2), xf(ne2), xfl(ne2, lo2:hi2))
+    select case (best)
+    case (1, 3)
+        call FitArAic(Differenced(yk, n2, pw%differenced), ne2, phi, p)
+    case (2)
+        do k = 1, n2
+            xk(k) = DriverAt(wfull, rows(k1 + k - 1))
+        end do
+        call FitArAic(Differenced(xk, n2, pw%differenced), ne2, phi, p)
+    case default
+        do k = 1, n2
+            xk(k) = DriverAt(tfull, rows(k1 + k - 1))
+        end do
+        call FitArAic(Differenced(xk, n2, pw%differenced), ne2, phi, p)
+    end select
+    call ApplyArFilter(Differenced(yk, n2, pw%differenced), ne2, phi, p, yf)
+    do l = lo2, hi2
+        do k = 1, n2
+            if (driver_col == w) then
+                xk(k) = DriverAt(wfull, rows(k1 + k - 1) - l)
+            else
+                xk(k) = DriverAt(tfull, rows(k1 + k - 1) - l)
+            end if
+        end do
+        call ApplyArFilter(Differenced(xk, n2, pw%differenced), ne2, phi, p, xf)
+        xfl(:, l) = xf
+    end do
+
+    !> The bootstrap, on the winner's stream: the same block draws for every
+    !> l of a replicate, so lags are compared on the same resampled data.
+    widest = max(abs(min_s), abs(max_s))
+    requested_block_len = nint(PWBSetup%block_length_s * rate1)
+    if (requested_block_len <= 0) requested_block_len = max(1, 2 * widest)
+    block_len = min(max(1, max(requested_block_len, 2 * widest)), ne2)
+    nblocks = (ne2 + block_len - 1) / block_len
+    swidth2 = max(1, PWBSetup%smoothing_width)
+    allocate(starts(nblocks), xb(ne2), yb(ne2), xc(ne2), yc(ne2))
+    allocate(curve(lo2:hi2), smooth(lo2:hi2), mean_curve(lo2:hi2), mean_smooth(lo2:hi2))
+    allocate(boot(nboot), lagsec(nboot))
+    mean_curve = 0d0
+    state = PwbStreamSeed(gas, combo(best))
+    do b = 1, nboot
+        do i = 1, nblocks
+            starts(i) = 1 + RandBelow(state, max(1, ne2 - block_len + 1))
+        end do
+        do l = lo2, hi2
+            pos = 1
+            do i = 1, nblocks
+                call CopyBlock(xfl(:, l), yf, ne2, starts(i), block_len, xb, yb, pos)
+                if (pos > ne2) exit
+            end do
+            call ComputeCcfWindow(xb, yb, ne2, 0, 0, c0, xc, yc)
+            curve(l) = c0(0)
+        end do
+        call SmoothAndFill(curve, lo2, hi2, swidth2, smooth)
+        boot(b) = ArgmaxAbs(smooth, lo2, hi2)
+        mean_curve = mean_curve + curve
+    end do
+    mean_curve = mean_curve / dble(nboot)
+    call SmoothAndFill(mean_curve, lo2, hi2, swidth2, mean_smooth)
+
+    lag = MapLagEstimate(boot, nboot)
+    do b = 1, nboot
+        lagsec(b) = dble(boot(b)) / Metadata%ac_freq
+    end do
+    call Hdi95(lagsec, nboot, LocResult%hdi_low, LocResult%hdi_high)
+    !> Stage 2's replicates can only land within one interval of the coarse
+    !> peak, so on their own they would make a period whose coarse peak was
+    !> itself uncertain look certain - on Yatir data, raw lags jumping from 1
+    !> to 15 s between periods each came out with an HDI about 1 s wide. So
+    !> where stage 1's replicates spread over more than an interval and a half,
+    !> the HDI covers both stages. Spread within about one interval only says
+    !> the peak falls between two samples, which is what stage 2 resolves, and
+    !> its HDI then stands alone.
+    if (h1hi - h1lo > 1.5d0 * dbar / Metadata%ac_freq) then
+        LocResult%hdi_low = min(LocResult%hdi_low, h1lo)
+        LocResult%hdi_high = max(LocResult%hdi_high, h1hi)
+    end if
+    LocResult%hdi_range = LocResult%hdi_high - LocResult%hdi_low
+    LocResult%row_lag = lag
+    LocResult%selected_lag = dble(lag) / Metadata%ac_freq
+    LocResult%ccf_at_mode = abs(mean_smooth(lag))
+    !> The edge of the refinement range is the edge of what this method can
+    !> see, whether or not it is also the declared window's.
+    LocResult%edge_pinned = lag == lo2 .or. lag == hi2
+    success = .not. LocResult%edge_pinned
+
+    !> The raw covariance at that lag, over the gas's real samples.
+    cnt = 0d0
+    mean_s = 0d0
+    mean_x = 0d0
+    do k = 1, ns
+        if (.not. isreal(k) .or. rows(k) - lag < 1 .or. rows(k) - lag > nrow) cycle
+        cnt = cnt + 1d0
+        mean_s = mean_s + Set(rows(k), gas)
+        mean_x = mean_x + DriverAt(wfull, rows(k) - lag)
+    end do
+    if (cnt > 1d0) then
+        mean_s = mean_s / cnt
+        mean_x = mean_x / cnt
+        cov = 0d0
+        do k = 1, ns
+            if (.not. isreal(k) .or. rows(k) - lag < 1 .or. rows(k) - lag > nrow) cycle
+            cov = cov + (Set(rows(k), gas) - mean_s) * (DriverAt(wfull, rows(k) - lag) - mean_x)
+        end do
+        LocResult%raw_covariance = cov / cnt
+    end if
+
+contains
+
+    !> The driver at a row, as the instrument took the gas: the value there,
+    !> or the mean over the interval the sample closes.
+    real(kind = dbl) function DriverAt(full, row)
+        real(kind = dbl), intent(in) :: full(:)
+        integer, intent(in) :: row
+        integer :: lo, r
+
+        r = min(max(row, 1), nrow)
+        if (E2Col(gas)%instr%integrates) then
+            lo = max(1, r - stride + 1)
+            DriverAt = sum(full(lo:r)) / dble(r - lo + 1)
+        else
+            DriverAt = full(r)
+        end if
+    end function DriverAt
+
+    !> The series as stage 1's AR fits saw it: first-differenced when the
+    !> chain differenced, as it is otherwise.
+    function Differenced(x, n, diff) result(y)
+        integer, intent(in) :: n
+        real(kind = dbl), intent(in) :: x(n)
+        logical, intent(in) :: diff
+        real(kind = dbl), allocatable :: y(:)
+
+        if (diff) then
+            allocate(y(n - 1))
+            y = x(2:n) - x(1:n - 1)
+        else
+            allocate(y(n))
+            y = x
+        end if
+    end function Differenced
+
+end subroutine PwbDetectSlowGas
+
+!> rate is the sample rate of x and y [Hz] and swidth the smoothing width in
+!> their samples: the file's rate and the configured width for a full-rate
+!> gas, the gas's own for stage 1 of a slow one (PwbDetectSlowGas).
+subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, combo, &
+    rate, swidth, res, ok)
+    integer, intent(in) :: n, min_rl, max_rl, eval_lo, eval_hi, gas, swidth
     real(kind = dbl), intent(in) :: x(n), y(n)
+    real(kind = dbl), intent(in) :: rate
     character(2), intent(in) :: combo
     type(PWBResultType), intent(out) :: res
     logical, intent(out) :: ok
@@ -1601,7 +1967,7 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
     ok = .false.
     nboot = max(1, PWBSetup%n_bootstrap)
     widest = max(abs(min_rl), abs(max_rl))
-    requested_block_len = nint(PWBSetup%block_length_s * Metadata%ac_freq)
+    requested_block_len = nint(PWBSetup%block_length_s * rate)
     if (requested_block_len <= 0) requested_block_len = max(1, 2 * widest)
 
     !> The block is derived per gas, not taken as given.
@@ -1616,11 +1982,11 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
     block_len = max(requested_block_len, 2 * widest)
     res%block_length_clamped = block_len > requested_block_len
     block_len = min(max(1, block_len), n)
-    res%effective_block_length_s = dble(block_len) / Metadata%ac_freq
+    res%effective_block_length_s = dble(block_len) / rate
     nblocks = (n + block_len - 1) / block_len
 
-    res%effective_min_lag = dble(min_rl) / Metadata%ac_freq
-    res%effective_max_lag = dble(max_rl) / Metadata%ac_freq
+    res%effective_min_lag = dble(min_rl) / rate
+    res%effective_max_lag = dble(max_rl) / rate
     sc_mean_ccf = 0d0
     state = PwbStreamSeed(gas, combo)
 
@@ -1632,21 +1998,21 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
             if (pos > n) exit
         end do
         call ComputeCcfWindow(sc_xb, sc_yb, n, eval_lo, eval_hi, sc_ccf, sc_xc, sc_yc)
-        call SmoothAndFill(sc_ccf, eval_lo, eval_hi, max(1, PWBSetup%smoothing_width), sc_smooth)
+        call SmoothAndFill(sc_ccf, eval_lo, eval_hi, max(1, swidth), sc_smooth)
         best_idx = ArgmaxAbs(sc_smooth(min_rl:max_rl), min_rl, max_rl)
         sc_boot(b) = best_idx
         sc_mean_ccf = sc_mean_ccf + sc_ccf
     end do
     sc_mean_ccf = sc_mean_ccf / dble(nboot)
-    call SmoothAndFill(sc_mean_ccf, eval_lo, eval_hi, max(1, PWBSetup%smoothing_width), sc_mean_smooth)
+    call SmoothAndFill(sc_mean_ccf, eval_lo, eval_hi, max(1, swidth), sc_mean_smooth)
 
     lag = MapLagEstimate(sc_boot, nboot)
     do i = 1, nboot
-        sc_hdi(i) = dble(sc_boot(i)) / Metadata%ac_freq
+        sc_hdi(i) = dble(sc_boot(i)) / rate
     end do
     call Hdi95(sc_hdi, nboot, res%hdi_low, res%hdi_high)
     res%row_lag = lag
-    res%selected_lag = dble(lag) / Metadata%ac_freq
+    res%selected_lag = dble(lag) / rate
     res%hdi_range = res%hdi_high - res%hdi_low
     res%edge_pinned = lag == min_rl .or. lag == max_rl
     res%ccf_at_mode = abs(sc_mean_smooth(lag))
@@ -1654,7 +2020,7 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
     !> What the guard band saw. The applied lag is the restricted one above;
     !> this only reports whether the declared window was where the signal is.
     unrestricted_idx = ArgmaxAbs(sc_mean_smooth, eval_lo, eval_hi)
-    res%unrestricted_peak_lag = dble(unrestricted_idx) / Metadata%ac_freq
+    res%unrestricted_peak_lag = dble(unrestricted_idx) / rate
     res%peak_outside_window = unrestricted_idx < min_rl .or. unrestricted_idx > max_rl
 
     res%reliability_class = 'detected'

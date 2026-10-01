@@ -378,6 +378,7 @@ cleanup_e2_set.o: \
 	m_rp_global_var.o
 column_sampling.o: \
 	column_sampling.f90 \
+	m_numeric_kinds.o \
 	m_rp_global_var.o
 configure_for_embedded.o: \
 	configure_for_embedded.f90 \

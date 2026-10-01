@@ -96,3 +96,69 @@ real(kind = dbl) function ColumnMaxLack(icol)
     if (RPsetup%instr_max_lack(slot) >= 0d0) &
         ColumnMaxLack = RPsetup%instr_max_lack(slot)
 end function ColumnMaxLack
+
+!***************************************************************************
+!
+! \brief       Where a slower column's real samples are, in the file's rows,
+!              with a slot for each sample its instrument missed.
+! \note        A slower instrument's samples do not sit at a fixed phase. The
+!              Yatir laser runs at about 0.987 Hz against the 20 Hz sonic
+!              clock, so its spacing is mostly 20 rows, often 21, and its
+!              samples pass through every row position within a half-hour.
+!              Anything that reads such a column at a fixed stride reads empty
+!              rows. This walks the column instead and returns the rows its
+!              values are actually on.
+!
+!              A gap wider than one and a half intervals is a missed sample,
+!              and gets as many slots as whole intervals fit in it, spread
+!              evenly; its value is left to the caller (usually the error
+!              code, then filled). Nothing is inserted before the first sample
+!              or after the last.
+!
+!              rows(1:ns) are the positions, isreal(1:ns) says which hold a
+!              value, nreal counts them. Both arrays must hold nrow entries,
+!              which is always enough: a slot is only ever inserted inside a
+!              gap at least two rows wide.
+! \sa          pwb_timelag_handle.f90 (PwbDetectSlowGas), spectral_analysis.f90
+!
+!***************************************************************************
+subroutine SlowColumnSampleRows(col, nrow, stride, missing, rows, isreal, ns, nreal)
+    use m_numeric_kinds
+    implicit none
+    integer, intent(in) :: nrow
+    integer, intent(in) :: stride
+    real(kind = dbl), intent(in) :: col(nrow)
+    real(kind = dbl), intent(in) :: missing
+    integer, intent(out) :: rows(nrow)
+    logical, intent(out) :: isreal(nrow)
+    integer, intent(out) :: ns
+    integer, intent(out) :: nreal
+    integer :: i
+    integer :: j
+    integer :: prev
+    integer :: gap
+    integer :: nmiss
+
+    ns = 0
+    nreal = 0
+    prev = 0
+    do i = 1, nrow
+        if (col(i) == missing) cycle
+        if (prev > 0) then
+            gap = i - prev
+            if (2 * gap > 3 * stride) then
+                nmiss = nint(dble(gap) / dble(stride)) - 1
+                do j = 1, nmiss
+                    ns = ns + 1
+                    rows(ns) = prev + nint(dble(j) * dble(gap) / dble(nmiss + 1))
+                    isreal(ns) = .false.
+                end do
+            end if
+        end if
+        ns = ns + 1
+        rows(ns) = i
+        isreal(ns) = .true.
+        nreal = nreal + 1
+        prev = i
+    end do
+end subroutine SlowColumnSampleRows
