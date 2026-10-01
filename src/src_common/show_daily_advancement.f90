@@ -34,6 +34,7 @@
 !***************************************************************************
 subroutine DisplayProgress(progress_type, init_message, tstamp, adv)
     use m_common_global_var
+    use m_log, only: LogFlush
     implicit none
     !> in/out variables
     character(*) :: init_message
@@ -61,5 +62,8 @@ subroutine DisplayProgress(progress_type, init_message, tstamp, adv)
         write(*, '(a)', advance = adv) init_message // time(1:5)
         write(ulog, '(a)', advance = adv) init_message // time(1:5)
     end select
+    !> The daily line is the progress a long pre-pass shows; it has to reach
+    !> the console and the log when it is written, not a block later.
+    call LogFlush()
 
 end subroutine DisplayProgress

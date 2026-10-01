@@ -1009,7 +1009,8 @@ set_timelags.o: \
 	m_rp_global_var.o
 show_daily_advancement.o: \
 	show_daily_advancement.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	m_log.o
 sort.o: \
 	sort.f90 \
 	m_common_global_var.o \
