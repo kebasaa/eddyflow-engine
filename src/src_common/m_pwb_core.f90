@@ -77,6 +77,15 @@
 !                 default, joining the end of a turbulence record to its
 !                 start.
 !
+!              6. MapLagEstimate is dyco's mode estimator without its jitter:
+!                 dyco adds N(0, 1e-4) noise from its random stream to the
+!                 replicate lags before the density. It can decide only a
+!                 near-exact tie between two grid points.
+!
+!              Beyond the deterministic half, tests/pwb_dyco/compare.py runs
+!              this whole chain and dyco's on the same block starts and
+!              compares every number both produce.
+!
 ! \author      Jonathan Muller
 ! \note
 ! \sa
@@ -557,15 +566,31 @@ subroutine Hdi95(x, n, lo, hi)
     hi = x(best + m)
 end subroutine Hdi95
 
-!> Mode of the bootstrap lag distribution, by Gaussian KDE on the integer
-!> grid. R uses bayestestR::map_estimate on jittered samples; dyco uses
-!> scipy's gaussian_kde. All three differ in bandwidth and grid and agree
-!> well inside bootstrap noise.
+!***************************************************************************
+!> Mode of the bootstrap lag distribution - dyco's _map_estimate, exactly.
+!>
+!> A Gaussian kernel density of the replicate lags with scipy's gaussian_kde
+!> bandwidth (Scott's rule: variance with ddof 1 times n^(-2/5)), evaluated on
+!> numpy's 512-point linspace over [min, max], its first maximum rounded half
+!> to even as Python's round() does.
+!>
+!> This was a density on the integer lags with bandwidth max(1, 1.06 sd
+!> n^-0.2) - Silverman's rule floored at a record. On the same resamples
+!> (tests/pwb_dyco/compare.py) the two put the final lag a record apart in six
+!> of forty real CH-LAE periods, one of them an S1 detection, and the paper
+!> says only "mode". dyco is the reference here, so this is dyco's.
+!>
+!> One difference is left: dyco adds N(0, 1e-4) jitter from its random stream
+!> before the density, which this has no stream for. It can matter only where
+!> two grid points are within that jitter of a tie; compare.py hands dyco zero
+!> jitter so the two can be compared exactly.
+!***************************************************************************
 integer function MapLagEstimate(samples, n)
     integer, intent(in) :: n
     integer, intent(in) :: samples(n)
-    integer :: i, grid, lo, hi, best
-    real(kind = dbl) :: mean_s, var_s, sd_s, bw, dens, best_dens, z
+    integer, parameter :: ngrid = 512
+    integer :: i, k, lo, hi, kbest
+    real(kind = dbl) :: mean_s, var_s, bw2, dens, best_dens, step, x, d, v, f
 
     lo = minval(samples)
     hi = maxval(samples)
@@ -579,23 +604,48 @@ integer function MapLagEstimate(samples, n)
     do i = 1, n
         var_s = var_s + (dble(samples(i)) - mean_s)**2
     end do
-    sd_s = sqrt(max(0d0, var_s / max(1d0, dble(n - 1))))
-    bw = max(1d0, 1.06d0 * sd_s * dble(n)**(-0.2d0))
+    var_s = var_s / dble(max(1, n - 1))
+    !> scipy: covariance = data covariance * scotts_factor**2,
+    !> scotts_factor = n**(-1/(d+4)) with d = 1.
+    bw2 = var_s * (dble(n)**(-0.2d0))**2
 
-    best = lo
+    !> numpy.linspace: start + k*step, and the last point exactly stop.
+    step = dble(hi - lo) / dble(ngrid - 1)
+    kbest = 0
     best_dens = -1d0
-    do grid = lo, hi
+    do k = 0, ngrid - 1
+        if (k == ngrid - 1) then
+            x = dble(hi)
+        else
+            x = dble(lo) + dble(k) * step
+        end if
         dens = 0d0
         do i = 1, n
-            z = (dble(grid) - dble(samples(i))) / bw
-            dens = dens + exp(-0.5d0 * z * z)
+            d = x - dble(samples(i))
+            dens = dens + exp(-0.5d0 * d * d / bw2)
         end do
         if (dens > best_dens) then
             best_dens = dens
-            best = grid
+            kbest = k
         end if
     end do
-    MapLagEstimate = best
+    if (kbest == ngrid - 1) then
+        v = dble(hi)
+    else
+        v = dble(lo) + dble(kbest) * step
+    end if
+
+    !> Python's round(): half to even.
+    f = floor(v)
+    if (v - f > 0.5d0) then
+        MapLagEstimate = int(f) + 1
+    elseif (v - f < 0.5d0) then
+        MapLagEstimate = int(f)
+    elseif (mod(int(f), 2) == 0) then
+        MapLagEstimate = int(f)
+    else
+        MapLagEstimate = int(f) + 1
+    end if
 end function MapLagEstimate
 
 real(kind = dbl) function MedianOf(x, n)

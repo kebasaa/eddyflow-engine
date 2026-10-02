@@ -32,6 +32,7 @@ ifeq ($(OS), Windows_NT)
 	RP_EXE = eddyflow_rp.exe
 	FCC_EXE = eddyflow_fcc.exe
 	PWBREF_EXE = pwb_reference.exe
+	PWBCMP_EXE = pwb_compare.exe
 	CCFCHECK_EXE = ccf_bitexact.exe
 	COVMAXCHECK_EXE = covmax_bitexact.exe
 	PWBTABLECHECK_EXE = pwb_table_check.exe
@@ -50,6 +51,7 @@ else
 	RP_EXE = eddyflow_rp
 	FCC_EXE = eddyflow_fcc
 	PWBREF_EXE = pwb_reference
+	PWBCMP_EXE = pwb_compare
 	CCFCHECK_EXE = ccf_bitexact
 	COVMAXCHECK_EXE = covmax_bitexact
 	PWBTABLECHECK_EXE = pwb_table_check
@@ -183,6 +185,17 @@ pwbref : m_numeric_kinds.o m_pwb_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
 	$(FC) -static -o $(OBJS_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The PWB comparison driver: the engine's whole full-rate chain for one
+# period - pre-whitening, the four block bootstraps, mode, HDI, choice of
+# combination - on block starts it is handed, so tests/pwb_dyco/compare.py
+# can give dyco the same resamples and compare every number. Built like
+# pwbref: not in `all`, linked against the two core objects only, left in
+# the object directory.
+pwbcmp : m_numeric_kinds.o m_pwb_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_compare_main.f90 -o $(OBJS_DIR)pwb_compare_main.o
+	$(FC) -static -o $(OBJS_DIR)$(PWBCMP_EXE) $(OBJS_DIR)pwb_compare_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
 
 # The cross-correlation bit-exactness check. Like pwbref: not in `all`, linked
 # against the shipped m_pwb_core.o so it checks the routine that ships, and

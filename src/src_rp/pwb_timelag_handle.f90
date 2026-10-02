@@ -1195,8 +1195,11 @@ subroutine PostProcessPwbTimelagCache()
             i = idx(j)
             if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
                 .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
-            !> Every one of the lags being averaged here is one the rule has
-            !> just rejected, so this is a last resort and is labelled as one.
+            !> The median is of every detection the gas made that was not
+            !> pre-filtered or pinned - accepted ones included, as dyco's
+            !> fill_tlag_gaps takes it. A gas reaching this step has had
+            !> none of its own lags carried, interpolated or back-filled
+            !> here, so it is a last resort and is labelled as one.
             PwbTimelagCache(i)%used_lag = median_lag
             PwbTimelagCache(i)%result%reliability_class = 'S3_median'
             PwbTimelagCache(i)%result%fill_method = 'median'
