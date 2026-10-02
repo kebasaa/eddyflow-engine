@@ -205,6 +205,18 @@ PY="${PY:-/c/Users/jonmuell/AppData/Local/miniconda3/python.exe}"
 #
 # That they agree is not gated here. check_parallel.sh does that.
 #
+# base_lead_gap is base_rec with its window opened two hours before the first
+# raw file - the only fixture whose first periods are skipped. The FLUXNET
+# header waits for the first import, so those periods come due before there is
+# a file to write them to; they used to be written to the unopened unit, which
+# put them in a fort.132 in the working directory and nowhere else. Its own
+# gate, check_lead_gap.py, wants a row for every period of the window, in
+# order, in RP's FLUXNET file.
+#
+# And for every fixture: no fort.NN may appear in the directory the engine ran
+# in. That is gfortran connecting a unit nobody opened, and the write it took
+# is missing from wherever it was meant to go.
+#
 # Keep this list free of comments: it is a word-split string, not shell source,
 # so a '#' line inside it becomes four or five bogus fixture names.
 FIXTURES="
@@ -212,6 +224,7 @@ base_rec
 base_cec_cos
 base_no_gas
 base_no_water
+base_lead_gap
 base_no_ch4
 base_5gas
 base_n_gas
@@ -279,6 +292,14 @@ pass=0
 fail=0
 failed=""
 
+#> The engine runs in this directory, so a write to an unopened unit lands
+#> here. Anything already here would be blamed on the first fixture.
+RUNDIR="$(pwd)"
+if ls "$RUNDIR"/fort.* >/dev/null 2>&1; then
+    echo "sweep.sh: $RUNDIR already holds fort.* files; move them first" >&2
+    exit 2
+fi
+
 for f in $FIXTURES; do
     #> A fixture is normally a .eddyflow. base_ep is an EddyPro project,
     #> which run.sh hands to the engine as it stands so the import runs for
@@ -342,6 +363,11 @@ for f in $FIXTURES; do
         #> here, leaving nothing to diagnose but a guess.
         kept="$log.failed"
         cp "$log" "$kept" 2>/dev/null
+        #> A failed run's strays are its own; the next fixture must not
+        #> inherit them.
+        for s in $(ls "$RUNDIR"/fort.* 2>/dev/null); do
+            mv "$s" "$kept.$(basename "$s")"
+        done
         printf '%-22s FAIL  (run.sh exit %s)\n' "$f" "$rc"
         echo "   evidence kept in $kept"
         tail -5 "$HERE/out_$WHICH/_fcc.log" 2>/dev/null \
@@ -349,6 +375,26 @@ for f in $FIXTURES; do
             || tail -5 "$log"
         fail=$((fail + 1)); failed="$failed $f"
         continue
+    fi
+    strays="$(ls "$RUNDIR"/fort.* 2>/dev/null)"
+    if [ -n "$strays" ]; then
+        #> Kept beside the log, and out of the way of the next fixture.
+        for s in $strays; do mv "$s" "$log.$(basename "$s")"; done
+        printf '%-22s FAIL  wrote to an unopened unit: %s\n' "$f" \
+            "$(echo $strays | xargs -n1 basename | tr '\n' ' ')"
+        echo "   kept as $log.fort.*"
+        fail=$((fail + 1)); failed="$failed $f"
+        continue
+    fi
+    if [ "$f" = base_lead_gap ]; then
+        gap="$("$PY" "$HERE/check_lead_gap.py" "$HERE/out_$WHICH" 2>&1 | tail -1)"
+        case "$gap" in
+            *"every period of the window"*) ;;
+            *)
+                printf '%-22s FAIL  %s\n' "$f" "$gap"
+                fail=$((fail + 1)); failed="$failed $f"
+                continue ;;
+        esac
     fi
     cols="$("$PY" "$HERE/check_columns.py" "$HERE/out_$WHICH" 2>&1 | tail -1)"
     case "$cols" in

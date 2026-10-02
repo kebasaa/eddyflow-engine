@@ -66,6 +66,31 @@ module m_rp_global_var
     !> pads skipped periods to this width; it used to carry its own literal,
     !> which had drifted four columns short of the header.
     integer :: nFluxnetFixedCols = 0
+    !> Whether InitFluxnetFile_rp has opened the FLUXNET file and written its
+    !> header.
+    logical :: FluxnetFileOpen = .false.
+    !> Periods skipped before that happened, waiting for their rows.
+    !>
+    !> The header is written after the first period that imports data, because
+    !> its custom-variable columns are only known then - and the width of every
+    !> row with them, a skipped period's included. A period skipped earlier
+    !> than that, as every period before the first raw file is, used to be
+    !> written anyway, to a unit nobody had opened: gfortran sent the row to
+    !> fort.132 in the working directory and the FLUXNET file never had it.
+    !> Only what belongs to the period is kept here; the rest of the row is
+    !> built when it is written, from the header's own layout.
+    type :: DeferredFluxnetRowType
+        character(10) :: start_date = ''
+        character(5)  :: start_time = ''
+        character(10) :: date = ''
+        character(5)  :: time = ''
+        logical :: daytime = .false.
+        !> nbVars values, in the units the header names; empty if the period
+        !> came before biomet was first read.
+        real(kind = dbl), allocatable :: biomet(:)
+    end type DeferredFluxnetRowType
+    type(DeferredFluxnetRowType), allocatable :: DeferredFluxnetRows(:)
+    integer :: nDeferredFluxnetRows = 0
     !> Column-name tag of each slot in FluxnetGasSlots. Taken from the project
     !> rather than E2Col, for the same reason as the slot list, and made unique
     !> so a site with two measurements of one species does not emit two columns
