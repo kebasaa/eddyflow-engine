@@ -223,7 +223,16 @@ module m_rp_global_var
     character(10), allocatable :: PwbOptDate(:)
     character(5), allocatable :: PwbOptTime(:)
     type(TimeLagType) :: toPasGas(E2NumVar)
-    type(TimeLagType) :: toH2O(toMaxH2OClass)
+    !> RH-class windows per water slot: toH2O(class, slot). Every closed-path
+    !> hygrometer is classed by its own humidity (WaterSlotClassed); this was
+    !> one table, the designated hygrometer's.
+    type(TimeLagType) :: toH2O(toMaxH2OClass, E2NumVar)
+    !> The own-evidence row lag of each gas in the period just detected: its
+    !> PWB detection where that succeeded off the window edge, else its
+    !> covariance maximum (or the default on the edge). Depends on this
+    !> period alone, so the cache-generation pre-pass compensates by it - see
+    !> the second TimeLagHandle call there.
+    integer :: pwb_raw_OwnRowLags(E2NumVar) = 0
     type(StatsType) :: Stats1
     type(StatsType) :: Stats2
     type(StatsType) :: Stats3

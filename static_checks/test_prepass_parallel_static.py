@@ -420,7 +420,8 @@ class ThePwbCachePrepassIsSplitToo(unittest.TestCase):
         """04 carried the PWB sections; 05 adds the pre-pass kind to the
         header. A dump left by an older build has a different layout and must
         be refused rather than read short."""
-        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_05 '", PARALLEL)
+        #> 06: TimeLagOptType carries a humidity per slot.
+        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_06 '", PARALLEL)
 
 
 if __name__ == "__main__":

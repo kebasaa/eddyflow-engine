@@ -43,6 +43,7 @@ module m_pwb_timelag
     public :: PostProcessPwbTimelagCache, AppendPwbCacheRows
     public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     public :: RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache
+    public :: SetPwbTimelagSummaryRH
 
     integer :: pwb_attempts(E2NumVar) = 0
     integer :: pwb_successes(E2NumVar) = 0
@@ -95,11 +96,20 @@ subroutine ResetPwbAggregateSummary()
     PwbSummaryEvidence = 0
 end subroutine ResetPwbAggregateSummary
 
+!***************************************************************************
+!> \brief Add this period's settled lags to the aggregate dataset.
+!>
+!> The humidity is NOT taken here. This runs straight after the time-lag
+!> handling, before the period's FluxParams - so Stats%RH still held the
+!> PREVIOUS period's humidity, and every period was binned into the RH class
+!> of the one before it; the first by whatever the pre-pass had left, which a
+!> parallel pre-pass leaves differently from a serial one. SetPwbTimelagSummaryRH
+!> fills it once FluxParams has run, and applies the water gate there.
+!***************************************************************************
 subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
     integer, intent(in) :: nrow, n
     type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
-    integer :: gas, origin, wsl
-    integer, external :: PrimaryWaterOutSlot
+    integer :: gas, origin
 
     TimelagOpt(n)%tlag = error
     TimelagOpt(n)%RH = error
@@ -114,16 +124,76 @@ subroutine AddPwbTimelagSummaryDataset(TimelagOpt, nrow, n)
                 PwbSummaryDonorCount(gas, origin) = PwbSummaryDonorCount(gas, origin) + 1
         end if
     end do
-    !> RH travels with the water record's own time-lag, so it is gated on the
-    !> site's water rather than on slot six.
-    wsl = PrimaryWaterOutSlot()
-    if (E2Col(wsl)%present .and. TimelagOpt(n)%tlag(wsl) /= error &
-        .and. Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
-        TimelagOpt(n)%RH = Stats%RH
-    else
-        TimelagOpt(n)%tlag(wsl) = error
-    end if
 end subroutine AddPwbTimelagSummaryDataset
+
+!***************************************************************************
+!> \brief Give row n of the aggregate dataset this period's own humidity.
+!>
+!> Called after the period's FluxParams, with have_rh false where that did
+!> not run (metadata retrieval), so a row is never left ungated. Every
+!> hygrometer gets its own humidity (PeriodWaterRH) and keeps its lag only
+!> with one - see GatePwbWaterRH.
+!***************************************************************************
+subroutine SetPwbTimelagSummaryRH(TimelagOpt, nrow, n, have_rh)
+    integer, intent(in) :: nrow, n
+    type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
+    logical, intent(in) :: have_rh
+
+    if (n < 1 .or. n > nrow) return
+    call RecordWaterRH(TimelagOpt(n), have_rh)
+    call GatePwbWaterRH(TimelagOpt(n))
+end subroutine SetPwbTimelagSummaryRH
+
+!> Each water slot's humidity for this period, in range or error. The
+!> designated hygrometer's slot is included even where the project declares no
+!> water, as the single-slot code always included it.
+subroutine RecordWaterRH(row, have_rh)
+    type(TimeLagOptType), intent(inout) :: row
+    logical, intent(in) :: have_rh
+    integer :: gas
+    real(kind = dbl) :: rh
+    real(kind = dbl), external :: PeriodWaterRH
+
+    row%RH = error
+    if (.not. have_rh) return
+    do gas = firstGas, lastGas
+        if (.not. HumiditySlot(gas)) cycle
+        rh = PeriodWaterRH(gas)
+        if (rh >= 0d0 .and. rh <= 100d0) row%RH(gas) = rh
+    end do
+end subroutine RecordWaterRH
+
+!***************************************************************************
+!> \brief A water slot's lag stands in the aggregate dataset only with its own
+!>        humidity.
+!>
+!> RH travels with each hygrometer's own lag. This was asked of the
+!> designated hygrometer alone, against the designated hygrometer's humidity;
+!> a second one kept its lag with no humidity at all, and FixTimelagOptDataset
+!> then dropped it whenever the FIRST had none.
+!***************************************************************************
+subroutine GatePwbWaterRH(row)
+    type(TimeLagOptType), intent(inout) :: row
+    integer :: gas
+
+    do gas = firstGas, lastGas
+        if (.not. HumiditySlot(gas)) cycle
+        if (E2Col(gas)%present .and. row%tlag(gas) /= error &
+            .and. row%RH(gas) /= error) cycle
+        row%RH(gas) = error
+        row%tlag(gas) = error
+    end do
+end subroutine GatePwbWaterRH
+
+!> Every water slot, plus the designated hygrometer's slot whatever it holds.
+logical function HumiditySlot(gas)
+    integer, intent(in) :: gas
+    integer, external :: PrimaryWaterOutSlot
+    logical, external :: GasSlotIsWater
+
+    HumiditySlot = gas == PrimaryWaterOutSlot()
+    if (.not. HumiditySlot) HumiditySlot = GasSlotIsWater(gas)
+end function HumiditySlot
 
 !***************************************************************************
 !> \brief Record what a period contributes that the settled table cannot say.
@@ -149,14 +219,12 @@ subroutine RecordPwbTimelagOptPeriod(TimelagOpt, nrow, n)
 
     !> No lags yet: the rebuild fills them from the settled table.
     TimelagOpt(n)%tlag = error
-    !> Provisional and ungated - the raw humidity, not yet tested against
-    !> whether water settled. Only the table knows that, so the rebuild
-    !> applies the gate.
-    if (Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
-        TimelagOpt(n)%RH = Stats%RH
-    else
-        TimelagOpt(n)%RH = error
-    end if
+    !> Provisional and ungated - each hygrometer's raw humidity, not yet
+    !> tested against whether its water settled. Only the table knows that,
+    !> so the rebuild applies the gate. Called after FluxParams, so it is
+    !> this period's; and the pre-pass compensates by each gas's own-evidence
+    !> lag, so it depends on no earlier period either.
+    call RecordWaterRH(TimelagOpt(n), .true.)
     PwbOptDate(n) = PwbPeriodDate
     PwbOptTime(n) = PwbPeriodTime
 end subroutine RecordPwbTimelagOptPeriod
@@ -178,8 +246,7 @@ end subroutine RecordPwbTimelagOptPeriod
 subroutine RebuildPwbTimelagOptFromCache(TimelagOpt, nrow, n)
     integer, intent(in) :: nrow, n
     type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
-    integer :: i, k, cursor, gas, wsl
-    integer, external :: PrimaryWaterOutSlot
+    integer :: i, k, cursor, gas
 
     if (n < 1 .or. .not. allocated(PwbOptDate)) return
 
@@ -202,15 +269,11 @@ subroutine RebuildPwbTimelagOptFromCache(TimelagOpt, nrow, n)
         TimelagOpt(k)%tlag(gas) = PwbTimelagCache(i)%used_lag
     end do
 
-    !> RH travels with the water record's own time-lag, so it is gated on the
-    !> site's water rather than on slot six - and on whether the TABLE settled
-    !> that water, which is the part the streaming version could not know.
-    wsl = PrimaryWaterOutSlot()
+    !> RH travels with each hygrometer's own time-lag, so each is gated on its
+    !> own water - and on whether the TABLE settled that water, which is the
+    !> part the streaming version could not know.
     do k = 1, n
-        if (E2Col(wsl)%present .and. TimelagOpt(k)%tlag(wsl) /= error &
-            .and. TimelagOpt(k)%RH /= error) cycle
-        TimelagOpt(k)%RH = error
-        TimelagOpt(k)%tlag(wsl) = error
+        call GatePwbWaterRH(TimelagOpt(k))
     end do
 end subroutine RebuildPwbTimelagOptFromCache
 

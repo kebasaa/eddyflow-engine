@@ -101,7 +101,10 @@ module m_prepass_parallel
     !> 05 adds the pre-pass kind to the header: a planar-fit worker once wrote
     !> time-lag records under the planar-fit name, and the parent read them as
     !> wind. Both ends now say which pre-pass a file belongs to.
-    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_05 '
+    !>
+    !> 06: TimeLagOptType carries one humidity per slot, not one scalar, so
+    !> the records it dumps changed size.
+    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_06 '
 
     !> The range is cut into about this many pieces per worker, so a worker
     !> that finishes early - on a performance core, or over a stretch with no

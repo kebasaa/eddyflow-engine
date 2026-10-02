@@ -45,6 +45,9 @@ subroutine ReadTimelagOptFile(ncls)
     integer :: read_status
     integer :: gas
     integer :: donor
+    integer :: slot
+    integer :: nrows
+    integer :: k
     logical :: matched
     character(32) :: gname
     logical, external :: GasSlotIsWater
@@ -59,6 +62,13 @@ subroutine ReadTimelagOptFile(ncls)
     open(udf, file = AuxFile%to, status = 'old', iostat = open_status)
 
     foreign = .false.
+    !> No classes until a table says so. A slot with no table of its own
+    !> keeps the error code, which SetTimelags reads as "use the plain
+    !> window".
+    ncls = 0
+    toH2O%def = error
+    toH2O%min = error
+    toH2O%max = error
     if (open_status == 0) then
         call LogSay(' Time lag optimization file found, retrieving content..')
         do
@@ -110,9 +120,10 @@ subroutine ReadTimelagOptFile(ncls)
                 if (index(strg, 'Median_' // trim(gname) // '_timelag_[s]') /= 0) then
                     read(strg(index(strg, ':')+1:len_trim(strg)), *) toPasGas(gas)%def
                     !> A plain median row for the PRIMARY means it was not
-                    !> classed by RH. A second hygrometer always has one and
-                    !> says nothing about whether the primary was classed.
-                    if (gas == PrimaryWaterSlot()) ncls = 0
+                    !> classed by RH: it has no table, so its classes stay at
+                    !> the error code they were cleared to. A second
+                    !> hygrometer always has one and says nothing about
+                    !> whether anything was classed.
                     matched = .true.
                     exit
                 end if
@@ -129,21 +140,43 @@ subroutine ReadTimelagOptFile(ncls)
             end do
             if (matched) cycle
 
-            !> h2o as a function of RH
-            ncls = 0
+            !> h2o as a function of RH. One table per classed hygrometer: the
+            !> designated one's under the title it always had, any other's with
+            !> `_for_<its label>` appended - see WriteOutTimelagOptimization.
+            !> This read the first table and stopped, so a second hygrometer's
+            !> classes, and anything written after them, were never read back.
             if (index(strg, 'H2O_timelag_determinations_as_a_function') /= 0) then
-                !> Skip one line
+                slot = PrimaryWaterSlot()
+                k = index(strg, '_for_')
+                if (k > 0) then
+                    slot = 0
+                    do gas = firstGas, lastGas
+                        if (trim(adjustl(strg(k + 5:))) == trim(GasLabel(gas))) then
+                            slot = gas
+                            exit
+                        end if
+                    end do
+                    if (slot == 0) call LogSay(' Alert> The time-lag file has RH classes for ' &
+                        // trim(adjustl(strg(k + 5:))) // ', which this project does not measure. Ignored.')
+                end if
+                !> Skip the note and the column header
                 read(udf, *)
                 read(udf, *)
-                !> Read as many classes as available
+                !> Read as many classes as available, up to as many as there
+                !> can be. The row that ends the table - a blank line - is
+                !> consumed here, which is why the writer puts one there.
+                nrows = 0
                 do
                     read(udf, '(a)', iostat = read_status) strg
                     if (read_status /= 0 .or. index(strg, '%') == 0) exit
-                    ncls = ncls + 1
+                    nrows = nrows + 1
+                    if (slot < firstGas .or. nrows > toMaxH2OClass) cycle
                     read(strg(20:len_trim(strg)), '(3(f14.2))') &
-                        toH2O(ncls)%def,  toH2O(ncls)%min,  toH2O(ncls)%max
+                        toH2O(nrows, slot)%def,  toH2O(nrows, slot)%min,  toH2O(nrows, slot)%max
                 end do
-                exit
+                !> Every table of one file has the same classes.
+                if (slot >= firstGas) ncls = min(nrows, toMaxH2OClass)
+                if (read_status /= 0) exit
             end if
         end do
     else

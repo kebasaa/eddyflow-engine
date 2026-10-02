@@ -115,7 +115,8 @@ class TheParentDoesTheSettling(unittest.TestCase):
 class AnOlderDumpIsRefusedRatherThanMisread(unittest.TestCase):
 
     def test_the_format_moved(self):
-        self.assertIn("EDDYFLOW_PREPASS_05", PAR)
+        self.assertIn("EDDYFLOW_PREPASS_06", PAR)
+        self.assertNotIn("EDDYFLOW_PREPASS_05 '", PAR)
         self.assertNotIn("EDDYFLOW_PREPASS_04", PAR)
         self.assertNotIn("EDDYFLOW_PREPASS_03", PAR)
 

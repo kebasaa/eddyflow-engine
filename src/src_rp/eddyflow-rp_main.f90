@@ -40,7 +40,8 @@ program EddyFlowRP
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
-        ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
+        ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary, &
+        SetPwbTimelagSummaryRH
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
@@ -133,7 +134,11 @@ program EddyFlowRP
     integer :: mkdir_status
     integer :: del_status
 
-    integer, allocatable :: toH2On(:)
+    !> Per RH class and per slot - every classed hygrometer has its own.
+    integer, allocatable :: toH2On(:, :)
+    !> A row was added to the PWB aggregate dataset this period and still
+    !> waits for its humidity, which only FluxParams provides.
+    logical :: pwbRowWantsRH
     integer, allocatable :: pfNumElem(:)
 
     real(kind = dbl) :: MissingRecords
@@ -186,7 +191,6 @@ program EddyFlowRP
     logical :: make_dataset_rp
     logical :: FilterWhat(E2NumVar)
     logical :: FileEndReached
-    logical :: toInit
     logical :: BiometDataFound
     logical :: AssessmentOnly
     logical :: FakeGoPlanarFit(1)
@@ -645,7 +649,6 @@ program EddyFlowRP
             bLastRec = 0
             DynamicMetadata = ErrDynamicMetadata
             LastMetadataTimestamp = DateType(0, 0, 0, 0, 0)
-            toInit = .true.
 
             !> Every period in the range is read, reduced, and turned into one
             !> record that depends on no other period's. So the range can be
@@ -790,14 +793,11 @@ program EddyFlowRP
                                     E2Set,   size(E2Set, 1),   Size(E2Set, 2), &
                                     DiagSet, size(DiagSet, 1), Size(DiagSet, 2))
 
-                !> If H2O instrument path type is 'open', doesn't make sense
-                !> to use RH classes so set it to 1.
-                if (toInit) then
-                    if (E2Col(PrimaryWaterOutSlot())%instr%path_type == 'open') then
-                        TOSetup%h2o_nclass = 1
-                        toInit = .false.
-                    end if
-                end if
+                !> An open-path hygrometer is not classed by RH. That used to
+                !> be said here by forcing the class count to one when the
+                !> designated hygrometer was open-path, which took the classes
+                !> from every other hygrometer with it; WaterSlotClassed now
+                !> asks it of each slot.
 
                 !> Clean up E2Set, eliminating values that are clearly unphysical
                 call CleanUpE2Set(E2Set, size(E2Set, 1), size(E2Set, 2))
@@ -1110,7 +1110,7 @@ program EddyFlowRP
                     allocate(toSet(PwbTimelagN))
                     call FixTimelagOptDataset(PwbTimelagOpt, PwbTimelagOptSize, &
                         toSet, size(toSet), tlagn, size(tlagn))
-                    allocate(toH2On(TOSetup%h2o_nclass))
+                    allocate(toH2On(TOSetup%h2o_nclass, E2NumVar))
                     call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
                         TOSetup%h2o_nclass, TOSetup%h2o_class_size)
                     call ResolvePwbAggregateSummary(tlagn)
@@ -1135,7 +1135,7 @@ program EddyFlowRP
             if (allocated(TimelagOpt)) deallocate(TimelagOpt)
             TimelagOptSize = 0
 
-            allocate(toH2On(TOSetup%h2o_nclass))
+            allocate(toH2On(TOSetup%h2o_nclass, E2NumVar))
 
             !> Optimize time-lags                                        ******* Improve readability of this subroutine interface
             call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, & 
@@ -1857,6 +1857,7 @@ program EddyFlowRP
     !> this pass is behind it
     call RemoteBeginMainPass()
 
+    pwbRowWantsRH = .false.
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
@@ -2485,6 +2486,7 @@ program EddyFlowRP
                     .or. PwbTimelagN > PwbTimelagOptSize) &
                     error stop 'PWB time-lag optimization dataset is not allocated safely.'
                 call AddPwbTimelagSummaryDataset(PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
+                pwbRowWantsRH = .true.
             end if
 
             !> ===== 6.1 FILTERING MOLAR DENSITY DATA FOR ABSOLUTE LIMITS TEST  ====================
@@ -2707,6 +2709,17 @@ program EddyFlowRP
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
 
+            !> The PWB aggregate row added after the time-lag handling gets
+            !> its humidity here, now that it is THIS period's. Taken where
+            !> the row was added, it was the previous period's - and for the
+            !> first period whatever the pre-pass left, which a parallel
+            !> pre-pass leaves differently from a serial one.
+            if (pwbRowWantsRH) then
+                call SetPwbTimelagSummaryRH(PwbTimelagOpt, PwbTimelagOptSize, &
+                    PwbTimelagN, .true.)
+                pwbRowWantsRH = .false.
+            end if
+
             !> Cleared every period, and for every gas.
             !>
             !> The loop below only assigns to gases on an LI-7700, so without
@@ -2928,6 +2941,15 @@ program EddyFlowRP
             call SetLicorDiagnostics(NumUserVar)
         end if
 
+        !> Metadata retrieval runs no FluxParams, so a PWB aggregate row added
+        !> this period has no humidity; it is gated without one rather than
+        !> left holding whatever the row had.
+        if (pwbRowWantsRH) then
+            call SetPwbTimelagSummaryRH(PwbTimelagOpt, PwbTimelagOptSize, &
+                PwbTimelagN, .false.)
+            pwbRowWantsRH = .false.
+        end if
+
         !>Write out full output file (main express output)
         if (EddyFlowProj%out_full) &
             call WriteOutFull(suffixOutString, PeriodRecords, PeriodActualRecords)
@@ -2963,7 +2985,7 @@ program EddyFlowRP
         allocate(toSet(PwbTimelagN))
         call FixTimelagOptDataset(PwbTimelagOpt, PwbTimelagOptSize, &
             toSet, size(toSet), tlagn, size(tlagn))
-        allocate(toH2On(TOSetup%h2o_nclass))
+        allocate(toH2On(TOSetup%h2o_nclass, E2NumVar))
         call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
             TOSetup%h2o_nclass, TOSetup%h2o_class_size)
         call ResolvePwbAggregateSummary(tlagn)

@@ -47,7 +47,8 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     !> away and printed whatever was on the stack. The class_num column came
     !> out as values like 1818717765, which is 0x6C696D45 - text read as an
     !> integer. Inherited from the EddyPro 6.2.2 fork.
-    integer, intent(in) :: h2o_n(ncls)
+    !> Per class and per slot; only classed water slots carry counts.
+    integer, intent(in) :: h2o_n(ncls, M)
     integer, external :: CreateDir
     !> local variables
     integer :: cls
@@ -57,6 +58,7 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     character(32) :: gname
     integer :: wsl
     logical, external :: GasSlotIsWater
+    logical, external :: WaterSlotClassed
     integer, external :: PrimaryWaterSlot
     character(4) :: min
     character(4) :: max
@@ -102,7 +104,9 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
         !> Only the primary is carried by the per-class table below; a
         !> second hygrometer gets an ordinary per-gas row, which is how its
         !> optimised window survives to the next run at all.
-        if (gas == PrimaryWaterSlot() .and. ncls > 1) cycle
+        if (gas == PrimaryWaterSlot()) then
+            if (WaterSlotClassed(gas)) cycle
+        end if
         gname = GasLabel(gas)
         if (actn(gas) > 0) then
             tl_def = toPasGas(gas)%def
@@ -126,30 +130,57 @@ subroutine WriteOutTimelagOptimization(actn, M, h2o_n, ncls, cls_size)
     !> The loop above already skips that record; asked as E2Col(h2o) this
     !> printed the table only when record two happened to be the hygrometer,
     !> and headed it with slot six's provenance either way.
+    !>
+    !> Written exactly as it always was - title, note, columns, position - so
+    !> an older reader, and the interface's file check, still find the
+    !> designated hygrometer's table where they look for it.
     wsl = PrimaryWaterSlot()
-    if (wsl >= firstGas .and. ncls > 1) then
-        if (PwbAggregateSummary) call WritePwbProvenance(uto, wsl)
-        write(uto, '(a, i4)') 'H2O_timelag_determinations_as_a_function_of_relative_humidity'
-        !> Built from the parameter rather than spelt out, so the sentence
-        !> cannot drift away from the gate again.
-        write(uto, '(a, i0, a)') 'Classes with numerosity < ', &
-            toMinH2OClassN, ' are inferred (see software documentation)'
-        write(uto,'(a)')             'class     RH-range       med_h2o       min_h2o       max_h2o     class_num'
-        do cls = 1, ncls
-            write(min, '(i4)') nint((cls - 1) * cls_size)
-            call ShrinkString(min)
-            write(max, '(i4)') nint(cls * cls_size)
-            call ShrinkString(max)
-            txt = min(1:len_trim(min)) // ' - ' // max(1:len_trim(max)) // '%'
-            write(uto,'(i5, 5x, a9, 3(f13.2,1x), i13)') cls,  txt, toH2O(cls)%def, toH2O(cls)%min, toH2O(cls)%max, h2o_n(cls)
-        end do
+    if (wsl >= firstGas) then
+        if (WaterSlotClassed(wsl)) then
+            if (PwbAggregateSummary) call WritePwbProvenance(uto, wsl)
+            call WriteRhTable(wsl, 'H2O_timelag_determinations_as_a_function_of_relative_humidity')
+        end if
     end if
+
+    !> Every other classed hygrometer after it, each binned by its own humidity
+    !> and named in its title. Each keeps its ordinary per-gas block above as
+    !> well, which is its plain window and what an older reader takes. A
+    !> blank line first, because a reader of the class rows stops at one.
+    do gas = firstGas, lastGas
+        if (gas == wsl) cycle
+        if (.not. WaterSlotClassed(gas)) cycle
+        write(uto, '(a)')
+        call WriteRhTable(gas, 'H2O_timelag_determinations_as_a_function_of_relative_humidity_for_' &
+            // trim(GasLabel(gas)))
+    end do
     close(uto)
     write(*,'(a)') '  Results written on file: ' &
         // TimelagOpt_Path(1:len_trim(TimelagOpt_Path))
     write(ulog,'(a)') '  Results written on file: ' &
         // TimelagOpt_Path(1:len_trim(TimelagOpt_Path))
 contains
+
+!> One RH-class table: title, the note, the column header, a row per class.
+subroutine WriteRhTable(slot, title)
+    integer, intent(in) :: slot
+    character(*), intent(in) :: title
+
+    write(uto, '(a)') title
+    !> Built from the parameter rather than spelt out, so the sentence
+    !> cannot drift away from the gate again.
+    write(uto, '(a, i0, a)') 'Classes with numerosity < ', &
+        toMinH2OClassN, ' are inferred (see software documentation)'
+    write(uto,'(a)')             'class     RH-range       med_h2o       min_h2o       max_h2o     class_num'
+    do cls = 1, ncls
+        write(min, '(i4)') nint((cls - 1) * cls_size)
+        call ShrinkString(min)
+        write(max, '(i4)') nint(cls * cls_size)
+        call ShrinkString(max)
+        txt = min(1:len_trim(min)) // ' - ' // max(1:len_trim(max)) // '%'
+        write(uto,'(i5, 5x, a9, 3(f13.2,1x), i13)') cls,  txt, toH2O(cls, slot)%def, &
+            toH2O(cls, slot)%min, toH2O(cls, slot)%max, h2o_n(cls, slot)
+    end do
+end subroutine WriteRhTable
 
 subroutine WritePwbProvenance(unit, gas)
     integer, intent(in) :: unit, gas

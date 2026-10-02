@@ -54,7 +54,7 @@ class TheWriterOnlyReadsTheCounts(unittest.TestCase):
     """The bug itself, in one declaration."""
 
     def test_the_dummy_is_intent_in(self):
-        self.assertRegex(W, r"integer, intent\(in\) :: h2o_n\(ncls\)")
+        self.assertRegex(W, r"integer, intent\(in\) :: h2o_n\(ncls, M\)")
 
     def test_it_is_not_intent_out(self):
         #> The whole defect. intent(out) discards what the caller passed.
@@ -69,17 +69,18 @@ class TheWriterOnlyReadsTheCounts(unittest.TestCase):
 
     def test_it_is_still_printed(self):
         #> A guard that dropped the column would also pass the tests above.
-        self.assertIn("h2o_n(cls)", W)
+        self.assertIn("h2o_n(cls, slot)", W)
 
 
 class TheOptimiserProducesThem(unittest.TestCase):
 
     def test_the_optimiser_declares_them_out(self):
-        self.assertRegex(O, r"integer, intent\(out\) :: h2o_n\(MM\)")
+        self.assertRegex(O, r"integer, intent\(out\) :: h2o_n\(MM, M\)")
 
     def test_the_optimiser_counts_into_them(self):
-        self.assertIn("h2o_n(cls) = 0", O)
-        self.assertIn("h2o_n(cls) = h2o_n(cls) + 1", O)
+        #> One count per class and per classed hygrometer.
+        self.assertIn("h2o_n(cls, gas) = 0", O)
+        self.assertIn("h2o_n(cls, gas) = h2o_n(cls, gas) + 1", O)
 
     def test_the_caller_fills_before_it_writes(self):
         #> Every WriteOutTimelagOptimization call must be preceded by an
@@ -167,7 +168,10 @@ class TheClassesThemselvesAreDefinedOnEveryPath(unittest.TestCase):
     def test_the_stale_read_is_still_what_the_alert_tests(self):
         """If this moves, the reasoning above needs revisiting - the point of
         clearing toH2O is that this test reads it on every path."""
-        self.assertIn("if (toH2O(1)%def == error .and. toH2O(MM)%def == error) then", O)
+        #> The designated hygrometer's table, and only when it is classed:
+        #> with classing off there is no table to have failed.
+        self.assertIn("if (WaterSlotClassed(wsl)) then", O)
+        self.assertIn("if (toH2O(1, wsl)%def == error .and. toH2O(MM, wsl)%def == error) then", O)
 
     def test_the_window_really_is_taken_from_these_classes(self):
         """Which is why this is a flux bug and not a reporting one."""

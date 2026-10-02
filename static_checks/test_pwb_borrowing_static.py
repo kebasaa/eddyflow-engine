@@ -294,7 +294,7 @@ class TheAggregateSummaryCannotSwitchTheMethod(unittest.TestCase):
         #> covariance maximization, reporting every _TLAG_PWB_SOURCE as
         #> missing.
         source = code("src/src_rp/optimize_timelags.f90")
-        block = source[source.index("if (toH2O(1)%def == error"):]
+        block = source[source.index("if (toH2O(1, wsl)%def == error"):]
         self.assertIn("Meth%tlag == 'pwb'", block)
         self.assertLess(block.index("Meth%tlag == 'pwb'"),
                         block.index("Meth%tlag = 'maxcov'"))
