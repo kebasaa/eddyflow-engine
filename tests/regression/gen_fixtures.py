@@ -213,6 +213,23 @@ def build_no_gas(src_lines):
     return _set(src_lines, 'gas_num', '0')
 
 
+def build_lead_gap(src_lines):
+    """base_rec with its window opened two hours before the first raw file.
+
+    Every other fixture's window starts on its data, so the first period
+    always imports and the FLUXNET header is written before anything else.
+    Here the first four periods are skipped for want of files, and their rows
+    are due before there is a header to put them under - the header waits for
+    the first import, because the custom-variable columns, and so the width
+    of every row, are only known then. Those rows used to be written to the
+    unopened unit anyway, which gfortran turned into a fort.132 in the working
+    directory, and the FLUXNET file started at the first period with data.
+    The gate is check_lead_gap.py.
+    """
+    lines = _set(src_lines, 'pr_start_date', '2025-05-31')
+    return _set(lines, 'pr_start_time', '22:00')
+
+
 def _water_last(src_lines, biomet_rh):
     """base_rec with its H2O record moved past the declared count.
 
@@ -334,6 +351,7 @@ TARGETS = {
     'base_auto_sa.eddyflow': ('base_n_gas.eddyflow', build_auto_sa),
     'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),
     'base_no_water.eddyflow': ('base_rec.eddyflow', build_no_water),
+    'base_lead_gap.eddyflow': ('base_rec.eddyflow', build_lead_gap),
     'base_biomet_water.eddyflow': ('base_rec.eddyflow', build_biomet_water),
     'base_biomet_rh.eddyflow': ('base_n_gas.eddyflow', build_biomet_rh),
     'base_cell_ref.eddyflow': ('base_n_gas_cell.eddyflow', build_cell_ref),

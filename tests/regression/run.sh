@@ -103,6 +103,12 @@ done
 # FCC reads the ex (FLUXNET) file RP just wrote.
 EXFILE="$(find "$OUT" -name "*fluxnet*.csv" | head -1)"
 [ -n "$EXFILE" ] || { echo "no fluxnet file from RP"; tail -30 "$OUT/_rp.log"; exit 1; }
+# Keep RP's FLUXNET file too, for the same reason as its log: FCC writes one of
+# its own, the two normalise to the same name, and FCC's replaced RP's. So the
+# file RP writes - the one every row-layout fix in RP is about - was in no
+# comparison at all, and RP periods FCC does not carry over, such as skipped
+# ones ahead of the first raw file, were visible to nothing.
+cp "$EXFILE" "${EXFILE%.csv}_rp.csv"
 sed -i "s|^ex_file=.*|ex_file=$(cygpath -w "$EXFILE" | sed 's|\\|/|g')|" "$PRJ"
 
 # SELF means "the (co)spectra this run just wrote", which is the only way to

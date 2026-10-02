@@ -33,8 +33,99 @@
 !***************************************************************************
 subroutine WriteOutFluxnetOnlyBiomet()
     use m_rp_global_var
+    implicit none
+    !> local variables
+    integer :: n
+    real(kind = dbl), allocatable :: bAggrOut(:)
+    type(DeferredFluxnetRowType), allocatable :: grown(:)
+
+
+    !> This period's biomet values, in the units the header names them in.
+    if (nbVars > 0) then
+        if (EddyFlowProj%fluxnet_standardize_biomet) then
+            if (allocated(bAggrFluxnet)) bAggrOut = bAggrFluxnet
+        else
+            if (allocated(bAggr)) bAggrOut = bAggr
+        end if
+    end if
+    if (.not. allocated(bAggrOut)) allocate(bAggrOut(0))
+
+    if (FluxnetFileOpen) then
+        call WriteFluxnetOnlyBiometRow(Stats%start_date, Stats%start_time, &
+            Stats%date, Stats%time, Stats%daytime, bAggrOut, size(bAggrOut))
+        return
+    end if
+
+    !> No header yet, so no row width either: keep what is particular to this
+    !> period and let InitFluxnetFile_rp write the row once it has written the
+    !> header. Writing it now would go to a unit nobody has opened, which
+    !> gfortran quietly turns into fort.132 in the working directory.
+    if (.not. allocated(DeferredFluxnetRows)) allocate(DeferredFluxnetRows(64))
+    if (nDeferredFluxnetRows == size(DeferredFluxnetRows)) then
+        allocate(grown(2 * size(DeferredFluxnetRows)))
+        grown(1:nDeferredFluxnetRows) = DeferredFluxnetRows
+        call move_alloc(grown, DeferredFluxnetRows)
+    end if
+    n = nDeferredFluxnetRows + 1
+    DeferredFluxnetRows(n)%start_date = Stats%start_date
+    DeferredFluxnetRows(n)%start_time = Stats%start_time
+    DeferredFluxnetRows(n)%date = Stats%date
+    DeferredFluxnetRows(n)%time = Stats%time
+    DeferredFluxnetRows(n)%daytime = Stats%daytime
+    DeferredFluxnetRows(n)%biomet = bAggrOut
+    nDeferredFluxnetRows = n
+
+end subroutine WriteOutFluxnetOnlyBiomet
+
+!***************************************************************************
+!
+! \brief       Write the rows of periods skipped before the FLUXNET header
+!              existed, in the order they were skipped
+! \note        Called by InitFluxnetFile_rp straight after the header, so the
+!              rows land ahead of the first period that had data.
+!***************************************************************************
+subroutine FlushDeferredFluxnetRows()
+    use m_rp_global_var
+    implicit none
+    !> local variables
+    integer :: i
+
+
+    do i = 1, nDeferredFluxnetRows
+        call WriteFluxnetOnlyBiometRow(DeferredFluxnetRows(i)%start_date, &
+            DeferredFluxnetRows(i)%start_time, DeferredFluxnetRows(i)%date, &
+            DeferredFluxnetRows(i)%time, DeferredFluxnetRows(i)%daytime, &
+            DeferredFluxnetRows(i)%biomet, size(DeferredFluxnetRows(i)%biomet))
+    end do
+    nDeferredFluxnetRows = 0
+    if (allocated(DeferredFluxnetRows)) deallocate(DeferredFluxnetRows)
+
+end subroutine FlushDeferredFluxnetRows
+
+!***************************************************************************
+!
+! \brief       Build and write one skipped period's FLUXNET row
+! \note        Everything that sets the row's shape - the fixed width, the
+!              custom variables, the gas, analyser, hygrometer and CEC blocks,
+!              the biomet count - is read here, as the header has it. Only
+!              what belongs to the period itself comes in as arguments, which
+!              is what lets a row be written later than its period.
+!              bvals holds nb values; the header's nbVars columns past those
+!              are written as errors.
+!***************************************************************************
+subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
+    end_time, is_daytime, bvals, nb)
+    use m_rp_global_var
     use m_cec
     implicit none
+    !> in/out variables
+    character(*), intent(in) :: start_date
+    character(*), intent(in) :: start_time
+    character(*), intent(in) :: end_date
+    character(*), intent(in) :: end_time
+    logical, intent(in) :: is_daytime
+    integer, intent(in) :: nb
+    real(kind = dbl), intent(in) :: bvals(nb)
     !> local variables
     integer :: i
     integer :: indx
@@ -43,7 +134,6 @@ subroutine WriteOutFluxnetOnlyBiomet()
     character(32) :: char_doy
     character(LongOutstringLen) :: csv_row
     character(14) :: tsIso
-    real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
     integer :: j
     integer :: cec_p
@@ -62,20 +152,20 @@ subroutine WriteOutFluxnetOnlyBiomet()
     call clearstr(csv_row)
 
     !> Start/end imestamps
-    tsIso = Stats%start_date(1:4) // Stats%start_date(6:7) // Stats%start_date(9:10) &
-                // Stats%start_time(1:2) // Stats%start_time(4:5)
+    tsIso = start_date(1:4) // start_date(6:7) // start_date(9:10) &
+                // start_time(1:2) // start_time(4:5)
     call AddDatum(csv_row, trim(adjustl(tsIso)), separator)
-    tsIso = Stats%date(1:4) // Stats%date(6:7) // Stats%date(9:10) &
-                // Stats%time(1:2) // Stats%time(4:5)
+    tsIso = end_date(1:4) // end_date(6:7) // end_date(9:10) &
+                // end_time(1:2) // end_time(4:5)
     call AddDatum(csv_row, trim(adjustl(tsIso)), separator)
 
     !> DOYs
     !>  Start
-    call DateTimeToDOY(Stats%start_date, Stats%start_time, int_doy, float_doy)
+    call DateTimeToDOY(start_date, start_time, int_doy, float_doy)
     write(char_doy, *) float_doy
     call AddDatum(csv_row, trim(adjustl(char_doy(1: index(char_doy, '.')+ 4))), separator)
     !>  End
-    call DateTimeToDOY(Stats%date, Stats%time, int_doy, float_doy)
+    call DateTimeToDOY(end_date, end_time, int_doy, float_doy)
     write(char_doy, *) float_doy
     call AddDatum(csv_row, trim(adjustl(char_doy(1: index(char_doy, '.')+ 4))), separator)
 
@@ -83,13 +173,13 @@ subroutine WriteOutFluxnetOnlyBiomet()
     call AddDatum(csv_row, 'not_enough_data', separator)
 
     !> Potential Radiations
-    indx = DateTimeToHalfHourNumber(Stats%date, Stats%time) - 1
+    indx = DateTimeToHalfHourNumber(end_date, end_time) - 1
     indx = max(indx, 2)
     lrad = (PotRad(indx) + PotRad(indx - 1)) / 2
     call AddFloatDatumToDataline(lrad, csv_row, EddyFlowProj%err_label)
 
     !> Daytime
-    if (Stats%daytime) then
+    if (is_daytime) then
         call AddDatum(csv_row, '0', separator)
     else
         call AddDatum(csv_row, '1', separator)
@@ -170,19 +260,16 @@ subroutine WriteOutFluxnetOnlyBiomet()
     end do
 
     !> write all aggregated biomet values in FLUXNET units
+    !> A period skipped before embedded biomet was first read has no values;
+    !> it still takes the header's count, with errors in its columns.
     call AddIntDatumToDataline(nbVars, csv_row, EddyFlowProj%err_label)
-    if (nbVars > 0) then
-        if (.not. allocated(bAggrOut)) allocate(bAggrOut(size(bAggr)))
-        if (EddyFlowProj%fluxnet_standardize_biomet) then
-            bAggrOut = bAggrFluxnet
+    do i = 1, nbVars
+        if (i <= nb) then
+            call AddFloatDatumToDataline(bvals(i), csv_row, EddyFlowProj%err_label)
         else
-            bAggrOut = bAggr
+            call AddFloatDatumToDataline(error, csv_row, EddyFlowProj%err_label)
         end if
-
-        do i = 1, nbVars
-            call AddFloatDatumToDataline(bAggrOut(i), csv_row, EddyFlowProj%err_label)
-        end do
-    end if
+    end do
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
-end subroutine WriteOutFluxnetOnlyBiomet
+end subroutine WriteFluxnetOnlyBiometRow

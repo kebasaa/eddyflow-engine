@@ -615,6 +615,12 @@ subroutine InitFluxnetFile_rp()
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
+    !> Periods skipped before this point - every one ahead of the first raw
+    !> file, for a start - were held back for want of a header. They precede
+    !> whatever period got the header written, so their rows go here.
+    FluxnetFileOpen = open_status == 0
+    if (FluxnetFileOpen) call FlushDeferredFluxnetRows()
+
 contains
 
 function SafeFluxnetCustomLabel(ordinal) result(clean_label)
