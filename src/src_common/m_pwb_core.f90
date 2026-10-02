@@ -95,6 +95,8 @@ module m_pwb_core
     public :: ArgmaxAbs, Hdi95, MapLagEstimate, MedianOf
     public :: CopyBlock, MixIn, RandBelow
     public :: PwbPreWhiten, PwbPreWhitenType, BartlettCv99
+    public :: FillMissingLinear, PwbDrawBlockStarts, PwbBootstrapCombination
+    public :: PwbSummariseBootstrap, PwbBestCombination
 
     !> Everything the deterministic half of the chain produces, which is also
     !> everything the reference test compares.
@@ -764,5 +766,185 @@ subroutine PwbPreWhiten(ss, ww, tt, n, min_rl, max_rl, missing, res, &
     if (allocated(phi_w)) deallocate(phi_w)
     if (allocated(phi_t)) deallocate(phi_t)
 end subroutine PwbPreWhiten
+
+!***************************************************************************
+!> \brief Linear gap filling, nearest value held at either end.
+!>
+!> R zoo::na.approx(na.rm = FALSE) followed by holding the end values, which is
+!> what dyco's _na_approx does. `missing` is the caller's missing-value code.
+!***************************************************************************
+subroutine FillMissingLinear(x, n, missing)
+    integer, intent(in) :: n
+    real(kind = dbl), intent(inout) :: x(n)
+    real(kind = dbl), intent(in) :: missing
+    integer :: i, j, k
+    real(kind = dbl) :: x0, x1
+
+    j = 0
+    do i = 1, n
+        if (x(i) /= missing) then
+            j = i
+            exit
+        end if
+    end do
+    if (j == 0) return
+    if (j > 1) x(1:j-1) = x(j)
+
+    i = j + 1
+    do while (i <= n)
+        if (x(i) /= missing) then
+            i = i + 1
+        else
+            j = i - 1
+            k = i
+            do
+                if (k > n) exit
+                if (x(k) /= missing) exit
+                k = k + 1
+            end do
+            if (k > n) then
+                x(i:n) = x(j)
+                exit
+            end if
+            x0 = x(j)
+            x1 = x(k)
+            do i = j + 1, k - 1
+                x(i) = x0 + (x1 - x0) * dble(i - j) / dble(k - j)
+            end do
+            i = k + 1
+        end if
+    end do
+end subroutine FillMissingLinear
+
+!***************************************************************************
+!> \brief Draw every block start of one combination's bootstrap.
+!>
+!> starts(i, b) is block i of replicate b, 1-based, uniform over the
+!> positions a whole block fits in - a moving-block bootstrap without wrap,
+!> as dyco's _block_bootstrap. Drawn replicate by replicate, block by block,
+!> which is the order the draws were always made in, so a stream gives the
+!> same resamples it did when they were drawn inside the replicate loop.
+!***************************************************************************
+subroutine PwbDrawBlockStarts(state, n, block_len, nblocks, nboot, starts)
+    integer(8), intent(inout) :: state
+    integer, intent(in) :: n, block_len, nblocks, nboot
+    integer, intent(out) :: starts(nblocks, nboot)
+    integer :: b, i
+
+    do b = 1, nboot
+        do i = 1, nblocks
+            starts(i, b) = 1 + RandBelow(state, max(1, n - block_len + 1))
+        end do
+    end do
+end subroutine PwbDrawBlockStarts
+
+!***************************************************************************
+!> \brief The block bootstrap of one pre-whitening combination, given its
+!>        block starts.
+!>
+!> Each replicate is the paired series rebuilt from its blocks, its CCF over
+!> [eval_lo, eval_hi], smoothed, and the lag of the largest |smoothed CCF|
+!> inside [min_rl, max_rl] - boot(b). The replicates' unsmoothed CCFs are
+!> averaged and smoothed into mean_smooth, which decides between
+!> combinations. The starts are an argument so that a test can hand the very
+!> same resamples to this and to dyco (tests/pwb_dyco); the engine draws them
+!> with PwbDrawBlockStarts. The remaining arrays are caller-owned scratch.
+!***************************************************************************
+subroutine PwbBootstrapCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, &
+    swidth, block_len, nblocks, nboot, starts, boot, mean_smooth, &
+    xb, yb, xc, yc, ccf, smooth, mean_ccf)
+    integer, intent(in) :: n, min_rl, max_rl, eval_lo, eval_hi, swidth
+    integer, intent(in) :: block_len, nblocks, nboot
+    real(kind = dbl), intent(in) :: x(n), y(n)
+    integer, intent(in) :: starts(nblocks, nboot)
+    integer, intent(out) :: boot(nboot)
+    real(kind = dbl), intent(out) :: mean_smooth(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: xb(n), yb(n), xc(n), yc(n)
+    real(kind = dbl), intent(inout) :: ccf(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: smooth(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: mean_ccf(eval_lo:eval_hi)
+    integer :: b, i, pos
+
+    mean_ccf = 0d0
+    do b = 1, nboot
+        pos = 1
+        do i = 1, nblocks
+            call CopyBlock(x, y, n, starts(i, b), block_len, xb, yb, pos)
+            if (pos > n) exit
+        end do
+        call ComputeCcfWindow(xb, yb, n, eval_lo, eval_hi, ccf, xc, yc)
+        call SmoothAndFill(ccf, eval_lo, eval_hi, max(1, swidth), smooth)
+        boot(b) = ArgmaxAbs(smooth(min_rl:max_rl), min_rl, max_rl)
+        mean_ccf = mean_ccf + ccf
+    end do
+    mean_ccf = mean_ccf / dble(nboot)
+    call SmoothAndFill(mean_ccf, eval_lo, eval_hi, max(1, swidth), mean_smooth)
+end subroutine PwbBootstrapCombination
+
+!***************************************************************************
+!> \brief What one combination's bootstrap concludes.
+!>
+!> The lag is the mode of the replicate lags (MapLagEstimate), the
+!> uncertainty their 95 % HDI in seconds, ccf_at_mode the |mean smoothed CCF|
+!> there, and unrestricted the peak of the mean smoothed CCF over the whole
+!> evaluated range, guard band included. hdi_buf is caller-owned scratch.
+!***************************************************************************
+subroutine PwbSummariseBootstrap(boot, nboot, rate, eval_lo, eval_hi, mean_smooth, &
+    hdi_buf, lag, hdi_lo, hdi_hi, ccf_at_mode, unrestricted)
+    integer, intent(in) :: nboot, eval_lo, eval_hi
+    integer, intent(in) :: boot(nboot)
+    real(kind = dbl), intent(in) :: rate
+    real(kind = dbl), intent(in) :: mean_smooth(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: hdi_buf(nboot)
+    integer, intent(out) :: lag, unrestricted
+    real(kind = dbl), intent(out) :: hdi_lo, hdi_hi, ccf_at_mode
+    integer :: i
+
+    lag = MapLagEstimate(boot, nboot)
+    do i = 1, nboot
+        hdi_buf(i) = dble(boot(i)) / rate
+    end do
+    call Hdi95(hdi_buf, nboot, hdi_lo, hdi_hi)
+    ccf_at_mode = abs(mean_smooth(lag))
+    unrestricted = ArgmaxAbs(mean_smooth, eval_lo, eval_hi)
+end subroutine PwbSummariseBootstrap
+
+!***************************************************************************
+!> \brief Which of the combinations wins.
+!>
+!> Highest |mean smoothed CCF| at the mode lag, as in the reference, first on
+!> ties. Deliberate deviation: a candidate whose mode did not land on the
+!> window edge (ok) is preferred before magnitude is consulted at all. The
+!> reference picks on magnitude alone and only then asks whether the winner
+!> is edge-pinned, which throws the period away when an unpinned candidate
+!> was available. Where no candidate is unpinned the two agree.
+!***************************************************************************
+integer function PwbBestCombination(ccf_at_mode, ok, ncand)
+    integer, intent(in) :: ncand
+    real(kind = dbl), intent(in) :: ccf_at_mode(ncand)
+    logical, intent(in) :: ok(ncand)
+    integer :: i, best
+
+    best = 0
+    do i = 1, ncand
+        if (ok(i)) then
+            if (best == 0) then
+                best = i
+            elseif (ccf_at_mode(i) > ccf_at_mode(best)) then
+                best = i
+            end if
+        end if
+    end do
+    if (best == 0) then
+        do i = 1, ncand
+            if (best == 0) then
+                best = i
+            elseif (ccf_at_mode(i) > ccf_at_mode(best)) then
+                best = i
+            end if
+        end do
+    end if
+    PwbBestCombination = best
+end function PwbBestCombination
 
 end module m_pwb_core

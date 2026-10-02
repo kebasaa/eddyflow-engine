@@ -1441,9 +1441,9 @@ subroutine PwbDetectGas(Set, nrow, ncol, gas, LocResult, success)
         return
     end if
 
-    call FillMissingLinear(ww, nrow)
-    call FillMissingLinear(tt, nrow)
-    call FillMissingLinear(ss, nrow)
+    call FillMissingLinear(ww, nrow, error)
+    call FillMissingLinear(tt, nrow, error)
+    call FillMissingLinear(ss, nrow, error)
 
     call EnsurePwbScratch(nrow, eval_lo, eval_hi, max(1, PWBSetup%n_bootstrap))
 
@@ -1533,48 +1533,6 @@ subroutine InitPwbResult(res)
     res%ar_order_w = 0
     res%ar_order_t = 0
 end subroutine InitPwbResult
-
-subroutine FillMissingLinear(x, n)
-    integer, intent(in) :: n
-    real(kind = dbl), intent(inout) :: x(n)
-    integer :: i, j, k
-    real(kind = dbl) :: x0, x1
-
-    j = 0
-    do i = 1, n
-        if (x(i) /= error) then
-            j = i
-            exit
-        end if
-    end do
-    if (j == 0) return
-    if (j > 1) x(1:j-1) = x(j)
-
-    i = j + 1
-    do while (i <= n)
-        if (x(i) /= error) then
-            i = i + 1
-        else
-            j = i - 1
-            k = i
-            do
-                if (k > n) exit
-                if (x(k) /= error) exit
-                k = k + 1
-            end do
-            if (k > n) then
-                x(i:n) = x(j)
-                exit
-            end if
-            x0 = x(j)
-            x1 = x(k)
-            do i = j + 1, k - 1
-                x(i) = x0 + (x1 - x0) * dble(i - j) / dble(k - j)
-            end do
-            i = k + 1
-        end if
-    end do
-end subroutine FillMissingLinear
 
 !> Size the shared scratch to this gas's period, reallocating only on change.
 subroutine EnsurePwbScratch(n, lo, hi, nboot)
@@ -1691,8 +1649,8 @@ subroutine PwbDetectSlowGas(Set, nrow, ncol, gas, min_rl, max_rl, LocResult, suc
     allocate(wfull(nrow), tfull(nrow))
     wfull = Set(:, w)
     tfull = Set(:, ts)
-    call FillMissingLinear(wfull, nrow)
-    call FillMissingLinear(tfull, nrow)
+    call FillMissingLinear(wfull, nrow, error)
+    call FillMissingLinear(tfull, nrow, error)
 
     allocate(ss(ns), ww(ns), tt(ns), ss0(ns))
     do k = 1, ns
@@ -1704,7 +1662,7 @@ subroutine PwbDetectSlowGas(Set, nrow, ncol, gas, min_rl, max_rl, LocResult, suc
         ww(k) = DriverAt(wfull, rows(k))
         tt(k) = DriverAt(tfull, rows(k))
     end do
-    call FillMissingLinear(ss, ns)
+    call FillMissingLinear(ss, ns, error)
     ss0 = ss
 
     !> Stage 1, at the gas's rate. Lags in samples at the measured spacing,
@@ -1957,10 +1915,11 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
     character(2), intent(in) :: combo
     type(PWBResultType), intent(out) :: res
     logical, intent(out) :: ok
-    integer :: b, i, pos, block_len, nblocks, start
+    integer :: block_len, nblocks
     integer :: requested_block_len, widest
-    integer :: nboot, lag, best_idx, unrestricted_idx
+    integer :: nboot, lag, unrestricted_idx
     integer(8) :: state
+    integer, allocatable :: starts(:, :)
 
     call InitPwbResult(res)
     res%best_combination = combo
@@ -1987,39 +1946,26 @@ subroutine RunPwbCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, gas, com
 
     res%effective_min_lag = dble(min_rl) / rate
     res%effective_max_lag = dble(max_rl) / rate
-    sc_mean_ccf = 0d0
+    !> The resamples are drawn here, from this period's own stream, and the
+    !> arithmetic is the core's: PwbBootstrapCombination takes them as an
+    !> argument, which is what lets tests/pwb_dyco give dyco the same ones.
+    allocate(starts(nblocks, nboot))
     state = PwbStreamSeed(gas, combo)
+    call PwbDrawBlockStarts(state, n, block_len, nblocks, nboot, starts)
+    call PwbBootstrapCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, &
+        swidth, block_len, nblocks, nboot, starts, sc_boot, sc_mean_smooth, &
+        sc_xb, sc_yb, sc_xc, sc_yc, sc_ccf, sc_smooth, sc_mean_ccf)
+    deallocate(starts)
 
-    do b = 1, nboot
-        pos = 1
-        do i = 1, nblocks
-            start = 1 + RandBelow(state, max(1, n - block_len + 1))
-            call CopyBlock(x, y, n, start, block_len, sc_xb, sc_yb, pos)
-            if (pos > n) exit
-        end do
-        call ComputeCcfWindow(sc_xb, sc_yb, n, eval_lo, eval_hi, sc_ccf, sc_xc, sc_yc)
-        call SmoothAndFill(sc_ccf, eval_lo, eval_hi, max(1, swidth), sc_smooth)
-        best_idx = ArgmaxAbs(sc_smooth(min_rl:max_rl), min_rl, max_rl)
-        sc_boot(b) = best_idx
-        sc_mean_ccf = sc_mean_ccf + sc_ccf
-    end do
-    sc_mean_ccf = sc_mean_ccf / dble(nboot)
-    call SmoothAndFill(sc_mean_ccf, eval_lo, eval_hi, max(1, swidth), sc_mean_smooth)
-
-    lag = MapLagEstimate(sc_boot, nboot)
-    do i = 1, nboot
-        sc_hdi(i) = dble(sc_boot(i)) / rate
-    end do
-    call Hdi95(sc_hdi, nboot, res%hdi_low, res%hdi_high)
+    call PwbSummariseBootstrap(sc_boot, nboot, rate, eval_lo, eval_hi, sc_mean_smooth, &
+        sc_hdi, lag, res%hdi_low, res%hdi_high, res%ccf_at_mode, unrestricted_idx)
     res%row_lag = lag
     res%selected_lag = dble(lag) / rate
     res%hdi_range = res%hdi_high - res%hdi_low
     res%edge_pinned = lag == min_rl .or. lag == max_rl
-    res%ccf_at_mode = abs(sc_mean_smooth(lag))
 
     !> What the guard band saw. The applied lag is the restricted one above;
     !> this only reports whether the declared window was where the signal is.
-    unrestricted_idx = ArgmaxAbs(sc_mean_smooth, eval_lo, eval_hi)
     res%unrestricted_peak_lag = dble(unrestricted_idx) / rate
     res%peak_outside_window = unrestricted_idx < min_rl .or. unrestricted_idx > max_rl
 
@@ -2063,37 +2009,14 @@ subroutine SelectBestCandidate(candidate, ok, res, success)
     logical, intent(in) :: ok(4)
     type(PWBResultType), intent(out) :: res
     logical, intent(out) :: success
-    integer :: i, best
+    integer :: best
 
     call InitPwbResult(res)
     success = .false.
 
-    !> Highest |mean smoothed CCF| at the mode lag, as in the reference.
-    !>
-    !> Deliberate deviation: a candidate whose mode did not land on the window
-    !> edge is preferred before magnitude is consulted at all. The reference
-    !> picks on magnitude alone and only then asks whether the winner is
-    !> edge-pinned, which throws the period away when an unpinned candidate
-    !> was available. Where no candidate is unpinned the two agree.
-    best = 0
-    do i = 1, 4
-        if (ok(i)) then
-            if (best == 0) then
-                best = i
-            elseif (candidate(i)%ccf_at_mode > candidate(best)%ccf_at_mode) then
-                best = i
-            end if
-        end if
-    end do
-    if (best == 0) then
-        do i = 1, 4
-            if (best == 0) then
-                best = i
-            elseif (candidate(i)%ccf_at_mode > candidate(best)%ccf_at_mode) then
-                best = i
-            end if
-        end do
-    end if
+    !> Highest |mean smoothed CCF| at the mode lag, unpinned candidates first:
+    !> see PwbBestCombination, which tests/pwb_dyco drives directly.
+    best = PwbBestCombination(candidate(:)%ccf_at_mode, ok, 4)
     if (best > 0) then
         res = candidate(best)
         success = .not. res%edge_pinned
