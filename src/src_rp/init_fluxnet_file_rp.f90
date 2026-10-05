@@ -441,6 +441,7 @@ subroutine InitFluxnetFile_rp()
 
     !> Add custom variables
     call AddDatum(csv_row, 'NUM_CUSTOM_VARS', separator)
+    nFluxnetCustomVars = max(0, NumUserVar)
     if (NumUserVar > 0) then
         do i = 1, NumUserVar
             call uppercase(usg(i)) 

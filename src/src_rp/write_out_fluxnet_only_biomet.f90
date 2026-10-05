@@ -196,8 +196,14 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end do
 
-    !> Write error codes in place of custom variables
-    do i = 1, NumUserVar + 1
+    !> Error codes in place of the custom variables and their count: one more
+    !> than the header names, not than this period declares. Where every raw
+    !> file brings its own metadata, as GHG archives do, a skipped period's file
+    !> can declare fewer variables than the one the header was written from:
+    !> base_ghg_mixed_60's 02:00 period declared 13 against the header's 16,
+    !> and its row came out three columns short, every column from there on
+    !> under the wrong name.
+    do i = 1, nFluxnetCustomVars + 1
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end do
 

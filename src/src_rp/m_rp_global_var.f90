@@ -66,6 +66,11 @@ module m_rp_global_var
     !> pads skipped periods to this width; it used to carry its own literal,
     !> which had drifted four columns short of the header.
     integer :: nFluxnetFixedCols = 0
+    !> How many custom variables the FLUXNET header names. A skipped period's
+    !> row writes this many, not its own period's NumUserVar: where every raw
+    !> file brings its own metadata, as GHG archives do, a period's count can
+    !> differ from the one the header was written with.
+    integer :: nFluxnetCustomVars = 0
     !> Whether InitFluxnetFile_rp has opened the FLUXNET file and written its
     !> header.
     logical :: FluxnetFileOpen = .false.
