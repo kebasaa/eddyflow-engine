@@ -111,9 +111,14 @@ module m_production_parallel
     integer, parameter :: LastOutUnit = uflxnt
 
     !> Pieces per worker. Each piece costs its worker the head and one
-    !> half-hour of lead-in on top of its own periods, so fewer than the
-    !> pre-passes' four; two still lets a fast core take more than a slow one.
+    !> half-hour of lead-in on top of its own periods - twice with PWB - so
+    !> fewer than the pre-passes' four; two still lets a fast core take more
+    !> than a slow one. But only once a piece would hold LongPiece half-hours
+    !> or more: below that the fixed cost dominates, and a second round of
+    !> pieces pays it again. A Yatir day cut into 11 pieces for 8 workers ran
+    !> its main pass 1.5 times faster than one process did.
     integer, parameter :: PiecesPerWorker = 2
+    integer, parameter :: LongPiece = 16
     integer, parameter :: MaxPieces = 99
     real(kind = dbl), parameter :: EmptyPeriodWeight = 0.05d0
 
@@ -294,7 +299,11 @@ contains
                 end if
             end do
         else
-            want = min(PiecesPerWorker * nEff, MaxPieces, (iEnd - iStart) / 4)
+            if ((iEnd - iStart) / (PiecesPerWorker * nEff) >= LongPiece) then
+                want = min(PiecesPerWorker * nEff, MaxPieces)
+            else
+                want = min(nEff, MaxPieces, max(1, (iEnd - iStart) / 4))
+            end if
             want = max(want, min(nEff, iEnd - iStart))
             total = sum(weight)
             cum = 0d0

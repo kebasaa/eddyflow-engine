@@ -2,8 +2,9 @@
 # Does splitting a pre-pass across worker processes change the answer?
 #
 # Usage: [PAR_JOBS=N] [PAR_KIND=pre|pr] check_parallel.sh [fixture.eddyflow]
-#        (defaults: base_tlag_par.eddyflow, PAR_JOBS=0 - one worker per core,
-#         PAR_KIND=pre - a pre-pass must have been split)
+#        (defaults: PAR_JOBS=0 - one worker per core; PAR_KIND=pre - a
+#         pre-pass must have been split, on base_tlag_par.eddyflow; with
+#         PAR_KIND=pr, base_prod_par.eddyflow, two days cut as a real run is)
 #
 # PAR_KIND=pr checks the production pass instead - the main period loop that
 # computes the fluxes - and asserts that it was split. Most fixtures span a
@@ -36,14 +37,14 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-FIXTURE="${1:-base_tlag_par.eddyflow}"
 PAR_JOBS="${PAR_JOBS:-0}"
 PAR_KIND="${PAR_KIND:-pre}"
 case "$PAR_KIND" in
-    pre) MARKER="Splitting the pre-pass across" ;;
-    pr)  MARKER="Splitting the production pass across" ;;
+    pre) MARKER="Splitting the pre-pass across"; DEFAULT=base_tlag_par.eddyflow ;;
+    pr)  MARKER="Splitting the production pass across"; DEFAULT=base_prod_par.eddyflow ;;
     *)   echo "PAR_KIND must be pre or pr"; exit 2 ;;
 esac
+FIXTURE="${1:-$DEFAULT}"
 
 echo "== serial (-j 1) =="
 RP_EXTRA="-j 1" BASE="$FIXTURE" "$HERE/run.sh" ref
