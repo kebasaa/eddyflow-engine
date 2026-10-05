@@ -539,3 +539,41 @@ real(kind = dbl) function PeriodWaterRH(slot)
     end if
 end function PeriodWaterRH
 
+
+!***************************************************************************
+!> \brief This period's biomet humidity as a water concentration, before the
+!>        mole fractions are formed from it.
+!>
+!> A gas whose moisture reference is the biomet humidity is diluted, in
+!> MoleFractionsAndMixingRatios, by Ambient%chi_biomet. FluxParams computes
+!> that - but runs after MoleFractionsAndMixingRatios, and Ambient is a global
+!> nothing resets between periods. So every period was diluted by the
+!> humidity of the period before it, and the first period of the run by that
+!> of the time-lag pre-pass's last period, from the far end of the run.
+!>
+!> The same values FluxParams arrives at, by the same arithmetic in the same
+!> order, from what AirAndCellParameters has already set for this period;
+!> FluxParams recomputes them a moment later and finds them unchanged.
+!***************************************************************************
+subroutine BiometWaterVapour()
+    use m_rp_global_var
+    implicit none
+    real(kind = dbl) :: es
+    real(kind = dbl) :: e
+    real(kind = dbl) :: rho_w
+
+    Ambient%chi_biomet = error
+    Ambient%r_biomet   = error
+    Ambient%d_biomet   = error
+    if (.not. (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax)) return
+    if (.not. (Stats%T > 0d0)) return
+    es = (dexp(77.345d0 + 0.0057d0 * Stats%T &
+                  - 7235.d0 / Stats%T)) / Stats%T**(8.2d0)
+    e = biomet%val(bRH) * 1d-2 * es
+    rho_w = e / (Rw * Stats%T)
+    if (Ambient%Va == error) return
+    Ambient%chi_biomet = rho_w * Ambient%Va / MW_H2O * 1d3
+    Ambient%r_biomet   = Ambient%chi_biomet &
+        / (1.d0 - Ambient%chi_biomet * 1d-3)
+    Ambient%d_biomet   = Ambient%chi_biomet / Ambient%Va
+end subroutine BiometWaterVapour

@@ -1040,6 +1040,7 @@ program EddyFlowRP
                 !***************************************************************
 
                 !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1]
+                call BiometWaterVapour()
                 call MoleFractionsAndMixingRatios()
 
                 !> Calculate parameters for flux computation
@@ -2759,7 +2760,10 @@ program EddyFlowRP
         !***********************************************************************
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
 
-            !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1]
+            !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1],
+            !> a gas named to the biomet humidity diluted by this period's
+            !> own - see BiometWaterVapour
+            call BiometWaterVapour()
             call MoleFractionsAndMixingRatios()
 
             !> Calculate parameters for flux computation

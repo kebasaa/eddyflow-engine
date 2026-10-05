@@ -17,6 +17,8 @@ physical reason, and each made results depend on where a run began:
 * The main pass began from whatever the pre-passes left: the dynamic metadata
   settings of the run's last record wherever a record left a field blank, and
   the PWB streaming classifier's last settled lag.
+* A gas named to the biomet humidity was diluted by the previous period's:
+  FluxParams computes it, after the mole fractions are formed from it.
 
 Part of the EddyFlow engine's static checks.
 """
@@ -38,6 +40,7 @@ STORAGE = code("src/src_rp/storage.f90")
 OVERRIDE = code("src/src_rp/override_settings.f90")
 SKIP = code("src/src_rp/write_out_fluxnet_only_biomet.f90")
 BPCF = code("src/src_common/bpcf_bandpass_spectral_corrections.f90")
+FLUXPARAMS = code("src/src_rp/flux_params.f90")
 
 
 #> The main pass's loop, not the pre-passes' (to_periods_loop, pf_periods_loop).
@@ -112,6 +115,23 @@ class PrepassWorkersOpenNoOutputFiles(unittest.TestCase):
     def test_startup_output_opens_are_parent_only(self):
         self.assertRegex(MAIN, r"nbVars > 0 &\s*\n\s*\.and\. BatchIndex == 0\) &\s*\n\s*call InitBiometOut\(\)")
         self.assertIn("if (NumUserVar > 0 .and. BatchIndex == 0) call InitUserOutFiles()", MAIN)
+
+
+class MoleFractionsUseThisPeriodsBiometHumidity(unittest.TestCase):
+
+    def test_it_is_computed_before_each_mole_fraction_that_precedes_flux_params(self):
+        calls = [m.start() for m in re.finditer(r"call MoleFractionsAndMixingRatios\(\)", MAIN)]
+        self.assertEqual(len(calls), 2)
+        for i in calls:
+            before = MAIN[:i].rstrip().splitlines()[-1]
+            self.assertIn("call BiometWaterVapour()", before)
+
+    def test_by_the_same_arithmetic_as_flux_params(self):
+        body = FLUXPARAMS[FLUXPARAMS.index("subroutine BiometWaterVapour()"):]
+        for expr in ("(dexp(77.345d0 + 0.0057d0 * Stats%T", "Ambient%Va / MW_H2O * 1d3",
+                     "/ (1.d0 - Ambient%chi_biomet * 1d-3)", "Ambient%chi_biomet / Ambient%Va"):
+            self.assertIn(expr, body)
+            self.assertIn(expr, FLUXPARAMS[:FLUXPARAMS.index("subroutine BiometWaterVapour()")])
 
 
 if __name__ == "__main__":
