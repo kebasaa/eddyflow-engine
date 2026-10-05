@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # Does splitting a pre-pass across worker processes change the answer?
 #
-# Usage: [PAR_JOBS=N] check_parallel.sh [fixture.eddyflow]
-#        (defaults: base_tlag_par.eddyflow, PAR_JOBS=0 - one worker per core)
+# Usage: [PAR_JOBS=N] [PAR_KIND=pre|pr] check_parallel.sh [fixture.eddyflow]
+#        (defaults: base_tlag_par.eddyflow, PAR_JOBS=0 - one worker per core,
+#         PAR_KIND=pre - a pre-pass must have been split)
+#
+# PAR_KIND=pr checks the production pass instead - the main period loop that
+# computes the fluxes - and asserts that it was split. Most fixtures span a
+# day or less, which the engine would cut into a handful of pieces at most;
+# set EDDYFLOW_PROD_PIECE_PERIODS=1 (or 2) to cut at nearly every half-hour,
+# so that whatever a half-hour inherits from the one before is exercised at
+# every cut. The variable only affects a run that splits, so the -j 1
+# reference is unchanged by it.
 #
 # Runs the fixture twice through run.sh - once with -j 1, once with
 # -j $PAR_JOBS - and diffs the two normalised output trees. Every file must
@@ -29,6 +38,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FIXTURE="${1:-base_tlag_par.eddyflow}"
 PAR_JOBS="${PAR_JOBS:-0}"
+PAR_KIND="${PAR_KIND:-pre}"
+case "$PAR_KIND" in
+    pre) MARKER="Splitting the pre-pass across" ;;
+    pr)  MARKER="Splitting the production pass across" ;;
+    *)   echo "PAR_KIND must be pre or pr"; exit 2 ;;
+esac
 
 echo "== serial (-j 1) =="
 RP_EXTRA="-j 1" BASE="$FIXTURE" "$HERE/run.sh" ref
@@ -37,9 +52,9 @@ RP_EXTRA="-j $PAR_JOBS" BASE="$FIXTURE" "$HERE/run.sh" chk
 
 # A pass means nothing if the parallel run never split. The parent says so in
 # its log, which run.sh keeps as *_rp.log.
-if ! grep -rqi "Splitting the pre-pass across" "$HERE/out_chk"; then
+if ! grep -rqi "$MARKER" "$HERE/out_chk"; then
     echo "FAIL: the -j $PAR_JOBS run did not split - this fixture proves nothing."
-    echo "      Use one whose pre-pass window spans enough averaging periods."
+    echo "      Use one whose window spans enough averaging periods."
     exit 1
 fi
 

@@ -12,7 +12,7 @@ def read(path):
 
 class PwbTimelagStaticTests(unittest.TestCase):
     def test_timelag_handle_uses_shared_covmax_default_fallback(self):
-        source = read("src/src_rp/timelag_handle.f90")
+        source = read("src/src_rp/timelag_handle.f90") + read("src/src_rp/pwb_stream.f90")
 
         self.assertIn("subroutine ApplyCovMaxDefaultFallback", source)
         self.assertGreaterEqual(source.count("call ApplyCovMaxDefaultFallback"), 2)
@@ -23,7 +23,10 @@ class PwbTimelagStaticTests(unittest.TestCase):
 
     def test_pwb_success_and_fallback_paths_preserve_status(self):
         source = read("src/src_rp/timelag_handle.f90")
-        pwb_block = source[source.index("case ('pwb')") : source.index("case ('none')")]
+        #> The classifier left TimeLagHandle for m_pwb_stream, which the
+        #> 'pwb' case calls; the paths it pins are there now.
+        pwb_block = (source[source.index("case ('pwb')") : source.index("case ('none')")]
+                     + read("src/src_rp/pwb_stream.f90"))
 
         self.assertNotIn("call GetPwbFinalResult", pwb_block)
         self.assertIn("call PwbDetectGas", pwb_block)
@@ -73,7 +76,7 @@ class PwbTimelagStaticTests(unittest.TestCase):
 
     def test_pwb_per_period_cache_is_versioned_and_cache_aware(self):
         module_source = read("src/src_rp/pwb_timelag_handle.f90")
-        handle_source = read("src/src_rp/timelag_handle.f90")
+        handle_source = read("src/src_rp/timelag_handle.f90") + read("src/src_rp/pwb_stream.f90")
 
         #> Versions 1 and 2 carried a pre_wpl/post_wpl stage column for a
         #> choice that no longer exists, and predate the retired speed
@@ -102,7 +105,7 @@ class PwbTimelagStaticTests(unittest.TestCase):
 
     def test_pwb_aggregate_summary_uses_native_lags_and_donor_provenance(self):
         module_source = read("src/src_rp/pwb_timelag_handle.f90")
-        handle_source = read("src/src_rp/timelag_handle.f90")
+        handle_source = read("src/src_rp/timelag_handle.f90") + read("src/src_rp/pwb_stream.f90")
         writer_source = read("src/src_rp/writeout_timelag_optimization.f90")
 
         self.assertIn("AddPwbTimelagSummaryDataset", module_source)

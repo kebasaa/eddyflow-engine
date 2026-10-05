@@ -40,6 +40,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 MODULE = "src/src_rp/pwb_timelag_handle.f90"
 HANDLER = "src/src_rp/timelag_handle.f90"
+#> The classifier itself, split out of TimeLagHandle so a split production
+#> pass can gather evidence in parallel and classify it in time order.
+STREAM = "src/src_rp/pwb_stream.f90"
 TYPES = "src/src_common/m_typedef.f90"
 
 
@@ -59,6 +62,7 @@ def body_of(source, opener, closer):
 
 MOD = code(MODULE)
 HAND = code(HANDLER)
+STR = code(STREAM)
 TYP = code(TYPES)
 
 POST = body_of(MOD, "subroutine PostProcessPwbTimelagCache",
@@ -71,16 +75,16 @@ class ThePeriodCarriesItsOwnCovarianceMaximum(unittest.TestCase):
         self.assertIn("real(kind = dbl) :: maxcov_lag", TYP)
 
     def test_it_is_taken_at_detection_time(self):
-        self.assertIn("lPwbResult%maxcov_lag = mc_used", HAND)
+        self.assertIn("ev%res(j)%maxcov_lag = ev%mc_used(j)", STR)
 
     def test_it_is_taken_for_every_period_not_only_the_ones_that_need_it(self):
         """Whether a period needs it cannot be known while the walk is still
         going - that is decided by the settled table afterwards. So it is taken
         straight after detection, before any classification has happened, and
         before the branch that used to be the only caller."""
-        detect = HAND.index("call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)")
-        taken = HAND.index("lPwbResult%maxcov_lag = mc_used")
-        classified = HAND.index("lPwbResult%reliability_class = 'S1_optimal'")
+        detect = STR.index("call PwbDetectGas(Set, nrow, ncol, j, ev%res(j), ev%success(j))")
+        taken = STR.index("ev%res(j)%maxcov_lag = ev%mc_used(j)")
+        classified = STR.index("lPwbResult%reliability_class = 'S1_optimal'")
         self.assertLess(detect, taken)
         self.assertLess(taken, classified,
                         "the maximum must be taken before anything is classified")
@@ -89,8 +93,8 @@ class ThePeriodCarriesItsOwnCovarianceMaximum(unittest.TestCase):
         """pwb_has_previous is the streaming carry flag. If the new call sat
         under it, the value would carry pass order and nothing would be
         fixed."""
-        seg = HAND[HAND.index("call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)"):
-                   HAND.index("lPwbResult%maxcov_lag = mc_used")]
+        seg = STR[STR.index("call PwbDetectGas(Set, nrow, ncol, j, ev%res(j), ev%success(j))"):
+                  STR.index("ev%res(j)%maxcov_lag = ev%mc_used(j)")]
         self.assertNotIn("pwb_has_previous", seg)
 
     def test_it_starts_unset(self):

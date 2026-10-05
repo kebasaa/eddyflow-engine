@@ -197,7 +197,7 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertIn("call FillMissingLinear(ss, nrow, error)", handler)
 
     def test_timelag_handle_falls_back_and_makefile_references_source(self):
-        handler = read("src/src_rp/timelag_handle.f90")
+        handler = read("src/src_rp/timelag_handle.f90") + read("src/src_rp/pwb_stream.f90")
         main = read("src/src_rp/eddyflow-rp_main.f90")
         makefile = read("prj/Makefile")
         self.assertIn("case ('pwb')", handler)

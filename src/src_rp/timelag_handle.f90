@@ -38,6 +38,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     DefTlagUsed, InTimelagOpt)
     use m_rp_global_var
     use m_pwb_timelag
+    use m_pwb_stream, only: PwbEvidenceType, PwbGatherEvidence, PwbClassifyPeriod, &
+        PwbEvidenceOnly, PwbLastEvidence
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow, ncol
@@ -50,17 +52,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     !> local variables
     integer :: i = 0
     integer :: j = 0
-    integer :: k = 0
     logical :: skip_apply
-    logical :: cache_found
-    logical :: cache_default_used
     logical :: cache_hit(E2NumVar)
-    !> Scratch for the per-period covariance maximum. Only mc_used is kept;
-    !> the other three are what ApplyCovMaxDefaultFallback insists on writing.
-    real(kind = dbl) :: mc_actual, mc_used
-    integer :: mc_row
-    logical :: mc_def
-    logical :: donor_ok
     integer :: def_rl(ncol)
     integer :: min_rl(ncol)
     integer :: max_rl(ncol)
@@ -68,11 +61,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     real(kind = dbl) :: ColH2O(nrow)
     real(kind = dbl) :: ColTC(nrow)
     real(kind = dbl) :: TmpSet(nrow, ncol)
-    type(PWBResultType) :: lPwbResult
-    logical :: pwb_success
-    real(kind = dbl) :: cache_actual_lag
-    real(kind = dbl) :: cache_used_lag
-    integer :: cache_row_lag
+    type(PwbEvidenceType) :: lEvidence
     !> The hygrometer that corrects the gas being handled, from that gas's
     !> own record. Was the site's water for every gas.
     integer :: msl
@@ -162,211 +151,18 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     end do
                 end if
             else
-            !> Pass 1: Run PWB detection and S1/S2 classification for all gases
-            do j = firstGas, lastGas
-                if (.not. E2Col(j)%present) cycle
-                call LookupPwbTimelagCache(j, cache_found, cache_actual_lag, &
-                    cache_used_lag, cache_row_lag, cache_default_used, lPwbResult)
-                if (cache_found) then
-                    cache_hit(j) = .true.
-                    PWBResult(j) = lPwbResult
-                    RowLags(j) = cache_row_lag
-                    TLag(j) = cache_used_lag
-                    ActTLag(j) = cache_actual_lag
-                    DefTlagUsed(j) = cache_default_used
-                    pwb_raw_OwnRowLags(j) = cache_row_lag
-                    if (trim(lPwbResult%reliability_class) == 'S1_optimal' .or. &
-                        trim(lPwbResult%reliability_class) == 'S2_optimal' .or. &
-                        trim(lPwbResult%reliability_class) == 'S4_instrument_shared') then
-                        pwb_last_optimal_lag(j) = cache_used_lag
-                        pwb_last_optimal_origin(j) = lPwbResult%origin_gas
-                        pwb_has_previous(j) = .true.
-                    end if
-                    cycle
-                end if
-                call PwbDetectGas(Set, nrow, ncol, j, lPwbResult, pwb_success)
-
-                !> This period's covariance maximum, taken whether or not
-                !> anything here needs it. It is the terminal fallback the
-                !> settled table reaches for when no evidence at all got to
-                !> a period, and it has to be a property of THIS period:
-                !> the arm used to hand back whatever the streaming pass
-                !> had settled on, which depends on where the pass began.
-                !> See step 8 of PostProcessPwbTimelagCache.
-                !>
-                !> Unconditionally, and that costs about 2% of a PWB run -
-                !> measured on base_pwb_prefilt, 44.6 s against 45.5 s, best
-                !> of three interleaved. It could be skipped for a row that
-                !> is S1 and survives the pre-filter, since such a row cannot
-                !> reach step 8, and every term in that test is a property of
-                !> this period alone. It is not, because getting the test
-                !> wrong costs a silent fall back to the carried lag this
-                !> exists to remove, and 2% is not worth that risk.
-                call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, .true., &
-                    def_rl(j), min_rl(j), max_rl(j), &
-                    mc_actual, mc_used, mc_row, mc_def)
-                lPwbResult%maxcov_lag = mc_used
-
-                !> The lag this period's own evidence gives, whatever the
-                !> classifier below makes of it: the detection where it
-                !> succeeded off the window edge - what S1 or S2 would apply -
-                !> else the covariance maximum, the fallback with no history.
-                !> The cache-generation pre-pass compensates by this (see the
-                !> apply above), so nothing it records depends on earlier
-                !> periods.
-                if (pwb_success .and. .not. lPwbResult%edge_pinned) then
-                    pwb_raw_OwnRowLags(j) = lPwbResult%row_lag
-                else
-                    pwb_raw_OwnRowLags(j) = mc_row
-                end if
-
-                if (pwb_success .and. .not. lPwbResult%edge_pinned) then
-                    if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
-                        lPwbResult%reliability_class = 'S1_optimal'
-                        lPwbResult%fill_method = 'native'
-                        RowLags(j) = lPwbResult%row_lag
-                        TLag(j) = lPwbResult%selected_lag
-                        ActTLag(j) = lPwbResult%selected_lag
-                        DefTlagUsed(j) = .false.
-                        pwb_last_optimal_lag(j) = lPwbResult%selected_lag
-                        pwb_last_optimal_origin(j) = j
-                        lPwbResult%origin_gas = j
-                        pwb_has_previous(j) = .true.
-                    elseif (pwb_has_previous(j) .and. &
-                        abs(lPwbResult%selected_lag - pwb_last_optimal_lag(j)) &
-                        <= PWBSetup%dev_thresh_s) then
-                        lPwbResult%reliability_class = 'S2_optimal'
-                        lPwbResult%fill_method = 'native'
-                        RowLags(j) = lPwbResult%row_lag
-                        TLag(j) = lPwbResult%selected_lag
-                        ActTLag(j) = lPwbResult%selected_lag
-                        DefTlagUsed(j) = .false.
-                        pwb_last_optimal_lag(j) = lPwbResult%selected_lag
-                        pwb_last_optimal_origin(j) = j
-                        lPwbResult%origin_gas = j
-                        pwb_has_previous(j) = .true.
-                    else
-                        lPwbResult%reliability_class = 'pending'
-                    end if
-                else
-                    lPwbResult%reliability_class = 'pending'
-                end if
-                if (lPwbResult%applied_lag == error .and. &
-                    trim(lPwbResult%reliability_class) /= 'pending') then
-                    lPwbResult%applied_lag = TLag(j)
-                    lPwbResult%applied_row_lag = RowLags(j)
-                end if
-                PWBResult(j) = lPwbResult
-            end do
-
-            !> Pass 2: gases on one analyser share a tube, so they share a
-            !> delay. A gas with no detection of its own takes its neighbour's.
-            !>
-            !> The neighbour is decided by analyser identity, not by the model
-            !> string: two LI-7200s at one site are two tubes, and matching on
-            !> the model made them one - the same distinction this file already
-            !> draws below for the water covariance.
-            !>
-            !> And never from water. Its lag is RH-dependent in a way the trace
-            !> gases' is not, which is exactly why the aggregate summary in
-            !> ResolvePwbAggregateSummary refuses it as a donor. The per-period
-            !> rule allowed it, so the two halves of one rule disagreed.
-            do j = firstGas, lastGas
-                if (.not. E2Col(j)%present) cycle
-                if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
-                do k = firstGas, lastGas
-                    if (k == j) cycle
-                    if (.not. E2Col(k)%present) cycle
-                    if (GasSlotIsWater(k)) cycle
-                    donor_ok = SameAnalyser(j, k)
-                    if (.not. donor_ok) cycle
-                    if (trim(PWBResult(k)%reliability_class) /= 'S1_optimal' &
-                        .and. trim(PWBResult(k)%reliability_class) /= 'S2_optimal') cycle
-                    PWBResult(j)%reliability_class = 'S4_instrument_shared'
-                    PWBResult(j)%fallback_used = .false.
-                    PWBResult(j)%fill_method = 'instrument_shared'
-                    PWBResult(j)%fallback_source = 'instrument_shared'
-                    PWBResult(j)%donor_gas = GasLabel(k)
-                    PWBResult(j)%origin_gas = merge(PWBResult(k)%origin_gas, k, &
-                        PWBResult(k)%origin_gas > 0)
-                    PWBResult(j)%applied_lag = TLag(k)
-                    PWBResult(j)%applied_row_lag = RowLags(k)
-                    TLag(j) = TLag(k)
-                    RowLags(j) = RowLags(k)
-                    ActTLag(j) = ActTLag(k)
-                    DefTlagUsed(j) = .false.
-                    pwb_last_optimal_lag(j) = TLag(k)
-                    pwb_last_optimal_origin(j) = PWBResult(j)%origin_gas
-                    pwb_has_previous(j) = .true.
-                    exit
-                end do
-            end do
-
-            !> Pass 3: S3 carry-forward or maxcov/default fallback for remaining gases
-            do j = firstGas, lastGas
-                if (.not. E2Col(j)%present) cycle
-                if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
-                if (pwb_has_previous(j)) then
-                    PWBResult(j)%reliability_class = 'S3_carryforward'
-                    PWBResult(j)%fill_method = 'carryforward'
-                    PWBResult(j)%fallback_source = 'S3_carryforward'
-                    PWBResult(j)%origin_gas = pwb_last_optimal_origin(j)
-                    if (PWBResult(j)%origin_gas > 0) &
-                        PWBResult(j)%donor_gas = GasLabel(PWBResult(j)%origin_gas)
-                    TLag(j) = pwb_last_optimal_lag(j)
-                    if (PWBResult(j)%selected_lag /= error) then
-                        ActTLag(j) = PWBResult(j)%selected_lag
-                    else
-                        ActTLag(j) = pwb_last_optimal_lag(j)
-                    end if
-                    RowLags(j) = nint(pwb_last_optimal_lag(j) * Metadata%ac_freq)
-                    DefTlagUsed(j) = .false.
-                else
-                    call ApplyCovMaxDefaultFallback(Set, nrow, ncol, j, &
-                        .true., def_rl(j), min_rl(j), max_rl(j), &
-                        ActTLag(j), TLag(j), RowLags(j), DefTlagUsed(j))
-                    PWBResult(j)%reliability_class = 'fallback'
-                    PWBResult(j)%fill_method = 'maxcov_default'
-                    PWBResult(j)%fallback_used = .true.
-                end if
-                if (PWBResult(j)%applied_lag == error) then
-                    PWBResult(j)%applied_lag = TLag(j)
-                    PWBResult(j)%applied_row_lag = RowLags(j)
-                end if
-            end do
-
-            !> Finalize: set fallback_source labels and write diagnostics
-            do j = firstGas, lastGas
-                if (.not. E2Col(j)%present) cycle
-                if (PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
-                    PWBResult(j)%fallback_source = 'maxcov_default'
-                if (.not. PWBResult(j)%fallback_used .and. trim(PWBResult(j)%fallback_source) == 'none') &
-                    PWBResult(j)%fallback_source = 'native'
-                if (trim(PWBResult(j)%fill_method) == 'none') PWBResult(j)%fill_method = 'native'
-                if (.not. cache_hit(j)) then
-                    !> Counted here for the live path. A pre-generation run
-                    !> recounts from the settled table afterwards, so these
-                    !> streaming guesses never reach the summary.
-                    call CountPwbDiagnostic(j, PWBResult(j))
-                    call StorePwbTimelagCache(j, ActTLag(j), TLag(j), &
-                        RowLags(j), DefTlagUsed(j), PWBResult(j))
-                end if
-            end do
-
-            !> Handle non-gas scalars (ts, etc.)
-            do j = ts, pe
-                if (j >= firstGas .and. j <= lastGas) cycle
-                if (E2Col(j)%present) then
-                    RowLags(j) = def_rl(j)
-                    TLag(j) = E2Col(j)%def_tl
-                    ActTLag(j) = E2Col(j)%def_tl
-                    DefTlagUsed(j) = .true.
-                else
-                    RowLags(j) = 0
-                    TLag(j) = 0d0
-                    ActTLag(j) = 0d0
-                end if
-            end do
+            !> The period's own evidence - the table's row, the detection, the
+            !> covariance maximum - then the stream's verdict on it, which is
+            !> the only part that remembers earlier periods. Kept apart so a
+            !> split production pass can gather evidence in parallel and
+            !> classify it in time order; see m_pwb_stream. A worker that
+            !> only gathers evidence stops after the first half.
+            call PwbGatherEvidence(Set, nrow, ncol, def_rl, min_rl, max_rl, lEvidence)
+            if (PwbEvidenceOnly) then
+                PwbLastEvidence = lEvidence
+            else
+                call PwbClassifyPeriod(lEvidence, ActTLag, TLag, DefTlagUsed)
+            end if
             end if  !> pwb_raw_detection_done bypass
         case ('none')
             !> not compensating for timelags

@@ -87,6 +87,7 @@ module m_remote_source
     public :: RemoteOwnsDir, RemoteWriteFileList
     public :: RemoteEnsure, RemoteIsLocal, RemoteSizeOf
     public :: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
+    public :: RemoteActive
 
     type :: RemoteEntry
         !> Full local path the file has, or will have, under the staging dir
@@ -149,6 +150,17 @@ module m_remote_source
     logical :: CurlChecked = .false.
 
 contains
+
+    !***************************************************************************
+    !> \brief Whether raw data come from a shared link this run.
+    !>
+    !> The production pass is not split then: its workers would share the
+    !> staging folder, and the main pass deletes each file once it is behind
+    !> it - behind one worker, while another may still need it.
+    !***************************************************************************
+    logical function RemoteActive()
+        RemoteActive = Active
+    end function RemoteActive
 
     !***************************************************************************
     !> \brief Whether a setting holds a link rather than a local path.

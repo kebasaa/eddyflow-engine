@@ -47,6 +47,7 @@ module m_process_os
     private
 
     public :: ProcessSelfId, WatchParent, ParentGone, RequestFullSpeed
+    public :: ProcessAlive
 
     integer, save :: parent_pid = 0
 
@@ -99,6 +100,17 @@ contains
         if (parent_pid <= 0) return
         ParentGone = p_kill(int(parent_pid, c_int), 0_c_int) /= 0_c_int
     end function ParentGone
+
+    !***************************************************************************
+    !> \brief Is a process with this ID running now? Signal 0, as above.
+    !***************************************************************************
+    logical function ProcessAlive(pid)
+        integer, intent(in) :: pid
+
+        ProcessAlive = .false.
+        if (pid <= 0) return
+        ProcessAlive = p_kill(int(pid, c_int), 0_c_int) == 0_c_int
+    end function ProcessAlive
 
     !***************************************************************************
     !> \brief Ask not to be run as background work - a no-op here.

@@ -27,6 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 MODULE = "src/src_rp/pwb_timelag_handle.f90"
 HANDLER = "src/src_rp/timelag_handle.f90"
+#> The live classifier, out of TimeLagHandle since a split production pass
+#> gathers evidence in parallel and classifies it in time order.
+STREAM = "src/src_rp/pwb_stream.f90"
 CORE = "src/src_common/m_pwb_core.f90"
 
 
@@ -79,13 +82,14 @@ class ALagIsNeverBorrowedAcrossInstruments(unittest.TestCase):
         #> kind and so could hand one tube's optimised window to another
         #> tube's gas, then feed it back into the next run.
         module = code(MODULE)
-        handler = code(HANDLER)
+        stream = code(STREAM)
         self.assertIn("if (.not. SameAnalyser(gas, g)) cycle", module)
         self.assertIn("if (.not. SameAnalyser(gas, candidate)) cycle", module)
-        self.assertIn("SameAnalyser(j, k)", handler)
+        self.assertIn("ev%same(j, k) = SameAnalyser(j, k)", stream)
+        self.assertIn("if (.not. ev%same(j, k)) cycle", stream)
 
     def test_no_donor_is_chosen_by_comparing_models(self):
-        for path in (MODULE, HANDLER):
+        for path in (MODULE, HANDLER, STREAM):
             source = code(path)
             self.assertNotIn("%instr%model /= E2Col(j)%instr%model", source)
             self.assertNotIn("%instr%model == E2Col(j)%instr%model", source)
@@ -104,7 +108,7 @@ class ALagIsNeverBorrowedAcrossInstruments(unittest.TestCase):
         self.assertGreaterEqual(searches, 3, "the donor searches moved")
         self.assertEqual(module.count("if (GasSlotIsWater("), searches,
                          "a donor search does not refuse water")
-        self.assertIn("GasSlotIsWater(k)", code(HANDLER))
+        self.assertIn("GasSlotIsWater(k)", code(STREAM))
 
     def test_a_rejected_lag_is_the_last_resort_not_the_second(self):
         """A gas the rule rejected everywhere must try its tube-mate first.

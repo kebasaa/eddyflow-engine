@@ -143,11 +143,16 @@ contains
     !> lead-in of any length would rebuild its state. A split there cannot
     !> reproduce a single pass, so it is not offered.
     !***************************************************************************
-    subroutine PlanPrepassBatches(nPeriods, allowed, nEff)
+    subroutine PlanPrepassBatches(nPeriods, allowed, nEff, what, minPerWorker)
         integer, intent(in) :: nPeriods
         logical, intent(in) :: allowed
         integer, intent(out) :: nEff
+        !> What is being split, for the log line; the pre-pass by default.
+        character(*), intent(in), optional :: what
+        !> Fewest periods per worker that make a split worth it; 4 by default.
+        integer, intent(in), optional :: minPerWorker
         integer :: requested
+        integer :: perWorker
         character(64) :: LogString
         character(4096) :: cmdline
 
@@ -183,15 +188,22 @@ contains
         !> A slice has to be worth the cost of starting a process and listing
         !> the raw directory again. Below that the split loses to the serial
         !> loop, so do not make one.
-        nEff = max(1, min(requested, nPeriods / 4))
+        perWorker = 4
+        if (present(minPerWorker)) perWorker = max(1, minPerWorker)
+        nEff = max(1, min(requested, nPeriods / perWorker))
         if (nEff <= 1) then
             nEff = 1
             return
         end if
 
         write(LogString, '(i6)') nEff
-        call LogSay('  Splitting the pre-pass across ' &
-            // trim(adjustl(LogString)) // ' worker processes.')
+        if (present(what)) then
+            call LogSay('  Splitting the ' // trim(what) // ' across ' &
+                // trim(adjustl(LogString)) // ' worker processes.')
+        else
+            call LogSay('  Splitting the pre-pass across ' &
+                // trim(adjustl(LogString)) // ' worker processes.')
+        end if
     end subroutine PlanPrepassBatches
 
     !***************************************************************************
@@ -355,7 +367,7 @@ contains
     !> has all of it, exactly as it always did.
     !***************************************************************************
     subroutine StartPrepassBatches(kind, iStart, iEnd, nEff, Series, nSeries, &
-            Files, nFiles)
+            Files, nFiles, cuts)
         character(*), intent(in) :: kind
         integer, intent(in) :: iStart
         integer, intent(in) :: iEnd
@@ -364,6 +376,9 @@ contains
         integer, intent(in) :: nFiles
         type(DateType), intent(in) :: Series(nSeries)
         type(FileListType), intent(in) :: Files(nFiles)
+        !> Where to cut, if the caller has decided that itself: the first period
+        !> of every piece but the first, ascending, strictly inside the range.
+        integer, intent(in), optional :: cuts(:)
         integer :: k
         integer :: covered
         logical :: ex
@@ -384,7 +399,21 @@ contains
             envPath = envPath(1:len_trim(envPath) - 1)
         end do
 
-        call PlanPrepassChunks(iStart, iEnd, nEff, Series, nSeries, Files, nFiles)
+        if (present(cuts)) then
+            if (size(cuts) + 1 > MaxChunks) &
+                error stop 'Too many pieces requested for a parallel pass.'
+            if (allocated(ChunkStart)) deallocate(ChunkStart, ChunkEnd)
+            NumChunks = size(cuts) + 1
+            allocate(ChunkStart(NumChunks), ChunkEnd(NumChunks))
+            ChunkStart(1) = iStart
+            do k = 1, size(cuts)
+                ChunkEnd(k) = cuts(k)
+                ChunkStart(k + 1) = cuts(k)
+            end do
+            ChunkEnd(NumChunks) = iEnd
+        else
+            call PlanPrepassChunks(iStart, iEnd, nEff, Series, nSeries, Files, nFiles)
+        end if
 
         !> The pieces have to tile [iStart, iEnd) exactly. A gap drops periods
         !> from the fit and an overlap counts them twice, and neither shows up as
@@ -1118,13 +1147,29 @@ contains
     !> one period's work, ~25 s at the worst measured so far.
     !***************************************************************************
     subroutine StopIfParentGone()
+        integer :: u
+        integer :: rmdir_status
+        logical :: op
+        character(PathLen) :: dir
+
         if (BatchIndex <= 0) return
         if (.not. ParentGone()) return
         !> Ends the progress line the period loop left open, so the reason
         !> does not read as part of a date.
         call LogSay('')
-        call LogSay(' The process that started this pre-pass worker has ended,')
+        call LogSay(' The process that started this worker has ended,')
         call LogSay(' so nothing will read its records. Stopping without them.')
+        !> A production worker's output folder: its own files are closed first,
+        !> since Windows will not delete a file that is open.
+        if (len_trim(BatchOwnOutDir) > 0) then
+            do u = uqc, uflxnt
+                inquire(unit = u, opened = op)
+                if (op) close(u)
+            end do
+            dir = NoTrailingSlash(BatchOwnOutDir)
+            rmdir_status = system(trim(comm_rmdir) // ' "' // trim(dir) // '"' &
+                // comm_err_redirect)
+        end if
         call FinishBatchWorker()
         stop 3
     end subroutine StopIfParentGone

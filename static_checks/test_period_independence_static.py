@@ -112,9 +112,11 @@ class TheMainPassStartsFromStartUpNotFromThePrepasses(unittest.TestCase):
 
 class PrepassWorkersOpenNoOutputFiles(unittest.TestCase):
 
-    def test_startup_output_opens_are_parent_only(self):
-        self.assertRegex(MAIN, r"nbVars > 0 &\s*\n\s*\.and\. BatchIndex == 0\) &\s*\n\s*call InitBiometOut\(\)")
-        self.assertIn("if (NumUserVar > 0 .and. BatchIndex == 0) call InitUserOutFiles()", MAIN)
+    def test_startup_output_opens_skip_prepass_workers(self):
+        # A production worker ('pr', 'pd') writes into a folder of its own and
+        # needs these open; a pre-pass worker ('to', 'pf') writes nothing.
+        self.assertRegex(MAIN, r"nbVars > 0 &\s*\n\s*\.and\. \(BatchIndex == 0 \.or\. BatchKind == 'pr' \.or\. BatchKind == 'pd'\)\) &\s*\n\s*call InitBiometOut\(\)")
+        self.assertRegex(MAIN, r"if \(NumUserVar > 0 \.and\. \(BatchIndex == 0 \.or\. BatchKind == 'pr' &\s*\n\s*\.or\. BatchKind == 'pd'\)\) call InitUserOutFiles\(\)")
 
 
 class MoleFractionsUseThisPeriodsBiometHumidity(unittest.TestCase):

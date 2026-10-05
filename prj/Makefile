@@ -527,6 +527,8 @@ eddyflow-rp_main.o: \
 	m_cec.o \
 	m_rp_global_var.o \
 	prepass_parallel.o \
+	production_parallel.o \
+	pwb_stream.o \
 	pwb_timelag_handle.o \
 	remote_source.o
 edit_ini_file.o: \
@@ -903,6 +905,17 @@ prepass_parallel.o: \
 	m_rp_global_var.o \
 	pwb_timelag_handle.o \
 	remote_source.o
+production_parallel.o: \
+	production_parallel.f90 \
+	m_process_os.o \
+	m_rp_global_var.o \
+	prepass_parallel.o \
+	pwb_stream.o \
+	pwb_timelag_handle.o
+pwb_stream.o: \
+	pwb_stream.f90 \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \
@@ -1131,6 +1144,7 @@ timelag_handle.o: \
 	m_common_global_var.o \
 	m_covmax_core.o \
 	m_rp_global_var.o \
+	pwb_stream.o \
 	pwb_timelag_handle.o
 timestamp.o: \
 	timestamp.f90 \
