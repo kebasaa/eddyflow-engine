@@ -215,6 +215,12 @@ program EddyFlowRP
     type (DateType) :: SelectedEndTimestamp
     type (StatsType) :: PrevStats
     type (AmbientStateType) :: prevAmbient
+    !> What the dynamic metadata merge may overwrite, as start-up left it: the
+    !> main pass begins from these rather than from the pre-passes' last record.
+    type (MetadataType) :: StartupMetadata
+    integer :: StartupWdfNumSecs
+    real(kind = dbl) :: StartupWdfStart(MaxNumWdfSectors)
+    real(kind = dbl) :: StartupWdfEnd(MaxNumWdfSectors)
     type (QCType) :: StDiff
     type (QCType) :: DtDiff
     type (ColType) :: BypassCol(MaxNumCol)
@@ -461,8 +467,11 @@ program EddyFlowRP
         allocate(bFileList(1))
     end if
 
-    !> Open biomet output file
-    if (index(EddyFlowProj%biomet_data, 'ext_') /= 0 .and. nbVars > 0) &
+    !> Open biomet output file. Not in a pre-pass worker: it writes no output,
+    !> and opening this one - the parent's own name, same run stamp - would
+    !> truncate the parent's file, or leave a stray one beside it.
+    if (index(EddyFlowProj%biomet_data, 'ext_') /= 0 .and. nbVars > 0 &
+        .and. BatchIndex == 0) &
         call InitBiometOut()
 
     !> Initialize dynamic metadata by reading the file
@@ -473,8 +482,9 @@ program EddyFlowRP
     PotRad = PotentialRadiation(Metadata%lat)
 
     !> Initialize output files for "user" variables (non-sensitive variables)
-    !> if at least one such variable exists
-    if (NumUserVar > 0) call InitUserOutFiles()
+    !> if at least one such variable exists. Not in a pre-pass worker, for the
+    !> same reason as the biomet file above.
+    if (NumUserVar > 0 .and. BatchIndex == 0) call InitUserOutFiles()
 
     !> Retrieve timestamp array in chronological order and
     !> order RawFileList, also in chronological order
@@ -535,6 +545,13 @@ program EddyFlowRP
     !> rows: all rows potentially needed for current period
     !> columns: all except ignored ones and flag columns
     if (.not. allocated(Raw)) allocate(Raw(MaxPeriodNumRecords, NumAllVar))
+
+    !> Kept before any pre-pass applies a dynamic metadata record - see where
+    !> the main pass starts.
+    StartupMetadata = Metadata
+    StartupWdfNumSecs = RPsetup%wdf_num_secs
+    StartupWdfStart = RPsetup%wdf_start
+    StartupWdfEnd = RPsetup%wdf_end
 
     !***************************************************************************
     !***************************************************************************
@@ -1852,6 +1869,37 @@ program EddyFlowRP
     DynamicMetadata = ErrDynamicMetadata
     InitGasCalRefCol = GasCalRefCol
 
+    !> Start from the settings the run began with, not from what the
+    !> pre-passes left behind. A dynamic metadata record overwrites a setting
+    !> only where its own field is valid, and the pre-passes walk the run to its
+    !> end - so the main pass's first periods used to inherit, wherever their
+    !> record left a field blank, the value of a record from the end of the run.
+    !> Over GHG files read with their own metadata the merge leaves the rate and
+    !> file length alone, and so does this: each file sets those on import.
+    if (EddyFlowProj%use_dynmd_file) then
+        Metadata%lat = StartupMetadata%lat
+        Metadata%lon = StartupMetadata%lon
+        Metadata%alt = StartupMetadata%alt
+        Metadata%canopy_height = StartupMetadata%canopy_height
+        Metadata%d = StartupMetadata%d
+        Metadata%z0 = StartupMetadata%z0
+        if (.not. (EddyFlowProj%ftype == 'licor_ghg' &
+            .and. .not. EddyFlowProj%use_extmd_file)) then
+            Metadata%ac_freq = StartupMetadata%ac_freq
+            Metadata%file_length = StartupMetadata%file_length
+        end if
+        RPsetup%wdf_num_secs = StartupWdfNumSecs
+        RPsetup%wdf_start = StartupWdfStart
+        RPsetup%wdf_end = StartupWdfEnd
+    end if
+
+    !> Likewise the PWB streaming classifier: the time-lag pre-pass runs it
+    !> too, and its last settled lag - from the end of the run - used to be
+    !> what the main pass's first periods carried forward.
+    pwb_last_optimal_lag = error
+    pwb_last_optimal_origin = 0
+    pwb_has_previous = .false.
+
     !> Raw files from a shared link that the survey and the pre-passes
     !> downloaded are kept for this pass; from here on each is deleted once
     !> this pass is behind it
@@ -1908,6 +1956,14 @@ program EddyFlowRP
 
         !> Initialize biomet variables to be used in computations
         biomet%val = error
+        !> Embedded biomet is aggregated only when a period is imported, so a
+        !> period skipped before that - no file, or files exhausted - would
+        !> otherwise write the previous period's values into its FLUXNET row.
+        if (EddyFlowProj%biomet_data == 'embedded') then
+            if (allocated(bAggr)) bAggr = error
+            if (allocated(bAggrFluxnet)) bAggrFluxnet = error
+            if (allocated(bAggrEddyFlow)) bAggrEddyFlow = error
+        end if
 
         !> Normal exit instruction: either the last period was dealt with,
         !> or raw files are finished
@@ -2916,6 +2972,7 @@ program EddyFlowRP
             if(InitializeStorage) then
                 Stor%H  = error
                 Stor%LE = error
+                Stor%ET = error
                 Stor%of = error
                 InitializeStorage = .false.
             else

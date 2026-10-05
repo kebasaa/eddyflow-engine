@@ -50,6 +50,13 @@ subroutine WriteOutFluxnetOnlyBiomet()
     end if
     if (.not. allocated(bAggrOut)) allocate(bAggrOut(0))
 
+    !> This period's own day or night. Stats%daytime is otherwise set only for
+    !> a period that gets as far as AssessDaytime, so a skipped one carried the
+    !> NIGHT flag of the last period processed before it. Its biomet values are
+    !> this period's (error where there are none), and without them the
+    !> timestamp's potential radiation decides, as for any period.
+    call AssessDaytime(Stats%date, Stats%time)
+
     if (FluxnetFileOpen) then
         call WriteFluxnetOnlyBiometRow(Stats%start_date, Stats%start_time, &
             Stats%date, Stats%time, Stats%daytime, bAggrOut, size(bAggrOut))
