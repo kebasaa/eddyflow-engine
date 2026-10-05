@@ -6,11 +6,11 @@ file_name=C:/Users/jonmuell/Documents/GitHub/eddyflow-engine/tests/regression/ba
 run_mode=0
 run_fcc=0
 project_title=CH-LAE
-sw_version=8.1.0
+sw_version=8.1.2
 ini_version=5.1.0
 project_id=CH-LAE_EP25
 file_type=1
-file_prototype=CH-LAE_ec-cos_yyyymmdd-HHMM.csv
+file_prototype=CH-LAE_ec_preproc_10hz_yyyymmdd-HHMM.csv
 use_pfile=1
 proj_file=C:/Users/jonmuell/Documents/GitHub/eddyflow-engine/tests/regression/base_ep_native.metadata
 use_dyn_md_file=0
@@ -90,7 +90,7 @@ cell_2_col=12
 diag_num=1
 diag_1_var=diag_72
 diag_1_instr=li7200_1
-diag_1_col=28
+diag_1_col=20
 cec_meth=0
 cec_h=0.000
 cec_min_o1_o2=20.0
@@ -100,6 +100,8 @@ cec_signal_strength=70.0
 cec_max_gap_fill=4
 cec_max_stationarity=25.0
 cec_singular_band=0.200
+cec_stationarity_mode=0
+cosp_model=0
 
 [FluxCorrection_SpectralAnalysis_General]
 sa_start_date=2025-06-01
@@ -148,7 +150,7 @@ automatic_spectra_config=0
 flux_run_mode=0
 
 [RawProcess_General]
-data_path=C:/Users/jonmuell/Documents/_data/CH-LAE COS/Data_202506
+data_path=C:/Users/jonmuell/Documents/GitHub/laegern_cos_fluxes/data/01_preprocessed/above_canopy/10hz_preproc/2025-06
 recurse=1
 use_geo_north=0
 mag_dec=0

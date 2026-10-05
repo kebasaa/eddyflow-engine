@@ -441,6 +441,7 @@ subroutine InitFluxnetFile_rp()
 
     !> Add custom variables
     call AddDatum(csv_row, 'NUM_CUSTOM_VARS', separator)
+    nFluxnetCustomVars = max(0, NumUserVar)
     if (NumUserVar > 0) then
         do i = 1, NumUserVar
             call uppercase(usg(i)) 
@@ -614,6 +615,12 @@ subroutine InitFluxnetFile_rp()
     !> happened to contain it.
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
+
+    !> Periods skipped before this point - every one ahead of the first raw
+    !> file, for a start - were held back for want of a header. They precede
+    !> whatever period got the header written, so their rows go here.
+    FluxnetFileOpen = open_status == 0
+    if (FluxnetFileOpen) call FlushDeferredFluxnetRows()
 
 contains
 

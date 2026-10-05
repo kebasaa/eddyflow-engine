@@ -187,13 +187,14 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertNotIn("j >= 1 .and. x(j)", core)
         self.assertIn("do while (j >= 1)", core)
         self.assertIn("if (x(j) <= tmp) exit", core)
-        #> FillMissingLinear stayed behind: it is the one loop here that knows
-        #> the engine's missing-value code, so it is engine glue rather than
-        #> arithmetic.
+        #> FillMissingLinear moved into the core too, taking the engine's
+        #> missing-value code as an argument, so tests/pwb_dyco runs the very
+        #> gap filling the engine does.
         handler = read("src/src_rp/pwb_timelag_handle.f90")
-        self.assertNotIn("k <= n .and. x(k)", handler)
-        self.assertIn("if (k > n) exit", handler)
-        self.assertIn("if (x(k) /= error) exit", handler)
+        self.assertNotIn("k <= n .and. x(k)", core)
+        self.assertIn("if (k > n) exit", core)
+        self.assertIn("if (x(k) /= missing) exit", core)
+        self.assertIn("call FillMissingLinear(ss, nrow, error)", handler)
 
     def test_timelag_handle_falls_back_and_makefile_references_source(self):
         handler = read("src/src_rp/timelag_handle.f90")

@@ -77,6 +77,15 @@
 !                 default, joining the end of a turbulence record to its
 !                 start.
 !
+!              6. MapLagEstimate is dyco's mode estimator without its jitter:
+!                 dyco adds N(0, 1e-4) noise from its random stream to the
+!                 replicate lags before the density. It can decide only a
+!                 near-exact tie between two grid points.
+!
+!              Beyond the deterministic half, tests/pwb_dyco/compare.py runs
+!              this whole chain and dyco's on the same block starts and
+!              compares every number both produce.
+!
 ! \author      Jonathan Muller
 ! \note
 ! \sa
@@ -95,6 +104,8 @@ module m_pwb_core
     public :: ArgmaxAbs, Hdi95, MapLagEstimate, MedianOf
     public :: CopyBlock, MixIn, RandBelow
     public :: PwbPreWhiten, PwbPreWhitenType, BartlettCv99
+    public :: FillMissingLinear, PwbDrawBlockStarts, PwbBootstrapCombination
+    public :: PwbSummariseBootstrap, PwbBestCombination
 
     !> Everything the deterministic half of the chain produces, which is also
     !> everything the reference test compares.
@@ -320,8 +331,17 @@ subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf, xc, yc)
     real(kind = dbl), intent(in) :: x(n), y(n)
     real(kind = dbl), intent(out) :: ccf(min_rl:max_rl)
     real(kind = dbl), intent(inout) :: xc(n), yc(n)
-    integer :: lag, i, nn
-    real(kind = dbl) :: mx, my, vx, vy, denom, cov
+    !> Lags summed side by side. Each keeps its own accumulator, so this is a
+    !> question of throughput, not of arithmetic - see the loops below.
+    !>
+    !> 32 measured best at the production shape (36 000 records, 581 lags,
+    !> 396 calls), against the one-lag-at-a-time loop this replaced: 8 lags
+    !> 2.9x, 16 3.1x, 32 5.6x, 64 4.4x, 128 3.4x - past 32 the accumulators
+    !> no longer stay in registers. Every one of them bit-identical.
+    integer, parameter :: NB = 32
+    integer :: lag, i, k, nblk, first, last, shared
+    real(kind = dbl) :: mx, my, vx, vy, denom
+    real(kind = dbl) :: acc(NB)
 
     mx = sum(x) / dble(n)
     my = sum(y) / dble(n)
@@ -335,23 +355,85 @@ subroutine ComputeCcfWindow(x, y, n, min_rl, max_rl, ccf, xc, yc)
         return
     end if
 
+    !> A lag with fewer than two overlapping records has no covariance.
     do lag = min_rl, max_rl
-        nn = n - abs(lag)
-        if (nn <= 1) then
-            ccf(lag) = 0d0
-            cycle
-        end if
-        cov = 0d0
-        if (lag >= 0) then
-            do i = 1, nn
-                cov = cov + xc(i) * yc(i + lag)
+        if (n - abs(lag) <= 1) ccf(lag) = 0d0
+    end do
+
+    !> This is the inner loop of the whole PWB pre-pass - 4 combinations x
+    !> the bootstrap replicates x every gas x every period - and it used to be
+    !> one accumulator per lag, summed one lag at a time:
+    !>
+    !>     cov = cov + xc(i) * yc(i + lag)
+    !>
+    !> Every add there waits for the one before it, so the loop ran at the
+    !> latency of a floating-point add rather than its throughput. Here a block
+    !> of NB lags shares one pass over i. Each lag still has its own
+    !> accumulator, and each accumulator still receives exactly the products it
+    !> did, in exactly the order it did - i ascending from 1 to n - |lag| - so
+    !> every result is bitwise the same. What changes is that NB independent
+    !> chains are in flight at once, and the array form vectorises.
+    !>
+    !> The lags of a block do not share a range: lag L has n - |L| products.
+    !> So the range every lag in the block has is summed together, and then
+    !> each lag's own remaining products are added, still in ascending i. That
+    !> is the original order exactly, split in two.
+    !>
+    !> It depends on no reassociation, which gfortran does not do without
+    !> -ffast-math, and on no fused multiply-add, which the build disables with
+    !> -ffp-contract=off: a fused product would be rounded once instead of
+    !> twice, and that alone would move results.
+
+    !> Lags 0 and up: product xc(i) * yc(i + lag).
+    first = max(0, min_rl)
+    last = min(max_rl, n - 2)
+    lag = first
+    do while (lag <= last)
+        nblk = min(NB, last - lag + 1)
+        shared = n - (lag + nblk - 1)
+        acc(1:nblk) = 0d0
+        if (nblk == NB) then
+            do i = 1, shared
+                acc = acc + xc(i) * yc(i + lag:i + lag + NB - 1)
             end do
         else
-            do i = 1, nn
-                cov = cov + xc(i - lag) * yc(i)
+            do i = 1, shared
+                acc(1:nblk) = acc(1:nblk) + xc(i) * yc(i + lag:i + lag + nblk - 1)
             end do
         end if
-        ccf(lag) = cov / denom
+        do k = 1, nblk
+            do i = shared + 1, n - (lag + k - 1)
+                acc(k) = acc(k) + xc(i) * yc(i + lag + k - 1)
+            end do
+            ccf(lag + k - 1) = acc(k) / denom
+        end do
+        lag = lag + nblk
+    end do
+
+    !> Lags below 0, by their size m = -lag: product xc(i + m) * yc(i).
+    first = max(1, -max_rl)
+    last = min(-min_rl, n - 2)
+    lag = first
+    do while (lag <= last)
+        nblk = min(NB, last - lag + 1)
+        shared = n - (lag + nblk - 1)
+        acc(1:nblk) = 0d0
+        if (nblk == NB) then
+            do i = 1, shared
+                acc = acc + xc(i + lag:i + lag + NB - 1) * yc(i)
+            end do
+        else
+            do i = 1, shared
+                acc(1:nblk) = acc(1:nblk) + xc(i + lag:i + lag + nblk - 1) * yc(i)
+            end do
+        end if
+        do k = 1, nblk
+            do i = shared + 1, n - (lag + k - 1)
+                acc(k) = acc(k) + xc(i + lag + k - 1) * yc(i)
+            end do
+            ccf(-(lag + k - 1)) = acc(k) / denom
+        end do
+        lag = lag + nblk
     end do
 end subroutine ComputeCcfWindow
 
@@ -484,15 +566,31 @@ subroutine Hdi95(x, n, lo, hi)
     hi = x(best + m)
 end subroutine Hdi95
 
-!> Mode of the bootstrap lag distribution, by Gaussian KDE on the integer
-!> grid. R uses bayestestR::map_estimate on jittered samples; dyco uses
-!> scipy's gaussian_kde. All three differ in bandwidth and grid and agree
-!> well inside bootstrap noise.
+!***************************************************************************
+!> Mode of the bootstrap lag distribution - dyco's _map_estimate, exactly.
+!>
+!> A Gaussian kernel density of the replicate lags with scipy's gaussian_kde
+!> bandwidth (Scott's rule: variance with ddof 1 times n^(-2/5)), evaluated on
+!> numpy's 512-point linspace over [min, max], its first maximum rounded half
+!> to even as Python's round() does.
+!>
+!> This was a density on the integer lags with bandwidth max(1, 1.06 sd
+!> n^-0.2) - Silverman's rule floored at a record. On the same resamples
+!> (tests/pwb_dyco/compare.py) the two put the final lag a record apart in six
+!> of forty real CH-LAE periods, one of them an S1 detection, and the paper
+!> says only "mode". dyco is the reference here, so this is dyco's.
+!>
+!> One difference is left: dyco adds N(0, 1e-4) jitter from its random stream
+!> before the density, which this has no stream for. It can matter only where
+!> two grid points are within that jitter of a tie; compare.py hands dyco zero
+!> jitter so the two can be compared exactly.
+!***************************************************************************
 integer function MapLagEstimate(samples, n)
     integer, intent(in) :: n
     integer, intent(in) :: samples(n)
-    integer :: i, grid, lo, hi, best
-    real(kind = dbl) :: mean_s, var_s, sd_s, bw, dens, best_dens, z
+    integer, parameter :: ngrid = 512
+    integer :: i, k, lo, hi, kbest
+    real(kind = dbl) :: mean_s, var_s, bw2, dens, best_dens, step, x, d, v, f
 
     lo = minval(samples)
     hi = maxval(samples)
@@ -506,23 +604,48 @@ integer function MapLagEstimate(samples, n)
     do i = 1, n
         var_s = var_s + (dble(samples(i)) - mean_s)**2
     end do
-    sd_s = sqrt(max(0d0, var_s / max(1d0, dble(n - 1))))
-    bw = max(1d0, 1.06d0 * sd_s * dble(n)**(-0.2d0))
+    var_s = var_s / dble(max(1, n - 1))
+    !> scipy: covariance = data covariance * scotts_factor**2,
+    !> scotts_factor = n**(-1/(d+4)) with d = 1.
+    bw2 = var_s * (dble(n)**(-0.2d0))**2
 
-    best = lo
+    !> numpy.linspace: start + k*step, and the last point exactly stop.
+    step = dble(hi - lo) / dble(ngrid - 1)
+    kbest = 0
     best_dens = -1d0
-    do grid = lo, hi
+    do k = 0, ngrid - 1
+        if (k == ngrid - 1) then
+            x = dble(hi)
+        else
+            x = dble(lo) + dble(k) * step
+        end if
         dens = 0d0
         do i = 1, n
-            z = (dble(grid) - dble(samples(i))) / bw
-            dens = dens + exp(-0.5d0 * z * z)
+            d = x - dble(samples(i))
+            dens = dens + exp(-0.5d0 * d * d / bw2)
         end do
         if (dens > best_dens) then
             best_dens = dens
-            best = grid
+            kbest = k
         end if
     end do
-    MapLagEstimate = best
+    if (kbest == ngrid - 1) then
+        v = dble(hi)
+    else
+        v = dble(lo) + dble(kbest) * step
+    end if
+
+    !> Python's round(): half to even.
+    f = floor(v)
+    if (v - f > 0.5d0) then
+        MapLagEstimate = int(f) + 1
+    elseif (v - f < 0.5d0) then
+        MapLagEstimate = int(f)
+    elseif (mod(int(f), 2) == 0) then
+        MapLagEstimate = int(f)
+    else
+        MapLagEstimate = int(f) + 1
+    end if
 end function MapLagEstimate
 
 real(kind = dbl) function MedianOf(x, n)
@@ -693,5 +816,185 @@ subroutine PwbPreWhiten(ss, ww, tt, n, min_rl, max_rl, missing, res, &
     if (allocated(phi_w)) deallocate(phi_w)
     if (allocated(phi_t)) deallocate(phi_t)
 end subroutine PwbPreWhiten
+
+!***************************************************************************
+!> \brief Linear gap filling, nearest value held at either end.
+!>
+!> R zoo::na.approx(na.rm = FALSE) followed by holding the end values, which is
+!> what dyco's _na_approx does. `missing` is the caller's missing-value code.
+!***************************************************************************
+subroutine FillMissingLinear(x, n, missing)
+    integer, intent(in) :: n
+    real(kind = dbl), intent(inout) :: x(n)
+    real(kind = dbl), intent(in) :: missing
+    integer :: i, j, k
+    real(kind = dbl) :: x0, x1
+
+    j = 0
+    do i = 1, n
+        if (x(i) /= missing) then
+            j = i
+            exit
+        end if
+    end do
+    if (j == 0) return
+    if (j > 1) x(1:j-1) = x(j)
+
+    i = j + 1
+    do while (i <= n)
+        if (x(i) /= missing) then
+            i = i + 1
+        else
+            j = i - 1
+            k = i
+            do
+                if (k > n) exit
+                if (x(k) /= missing) exit
+                k = k + 1
+            end do
+            if (k > n) then
+                x(i:n) = x(j)
+                exit
+            end if
+            x0 = x(j)
+            x1 = x(k)
+            do i = j + 1, k - 1
+                x(i) = x0 + (x1 - x0) * dble(i - j) / dble(k - j)
+            end do
+            i = k + 1
+        end if
+    end do
+end subroutine FillMissingLinear
+
+!***************************************************************************
+!> \brief Draw every block start of one combination's bootstrap.
+!>
+!> starts(i, b) is block i of replicate b, 1-based, uniform over the
+!> positions a whole block fits in - a moving-block bootstrap without wrap,
+!> as dyco's _block_bootstrap. Drawn replicate by replicate, block by block,
+!> which is the order the draws were always made in, so a stream gives the
+!> same resamples it did when they were drawn inside the replicate loop.
+!***************************************************************************
+subroutine PwbDrawBlockStarts(state, n, block_len, nblocks, nboot, starts)
+    integer(8), intent(inout) :: state
+    integer, intent(in) :: n, block_len, nblocks, nboot
+    integer, intent(out) :: starts(nblocks, nboot)
+    integer :: b, i
+
+    do b = 1, nboot
+        do i = 1, nblocks
+            starts(i, b) = 1 + RandBelow(state, max(1, n - block_len + 1))
+        end do
+    end do
+end subroutine PwbDrawBlockStarts
+
+!***************************************************************************
+!> \brief The block bootstrap of one pre-whitening combination, given its
+!>        block starts.
+!>
+!> Each replicate is the paired series rebuilt from its blocks, its CCF over
+!> [eval_lo, eval_hi], smoothed, and the lag of the largest |smoothed CCF|
+!> inside [min_rl, max_rl] - boot(b). The replicates' unsmoothed CCFs are
+!> averaged and smoothed into mean_smooth, which decides between
+!> combinations. The starts are an argument so that a test can hand the very
+!> same resamples to this and to dyco (tests/pwb_dyco); the engine draws them
+!> with PwbDrawBlockStarts. The remaining arrays are caller-owned scratch.
+!***************************************************************************
+subroutine PwbBootstrapCombination(x, y, n, min_rl, max_rl, eval_lo, eval_hi, &
+    swidth, block_len, nblocks, nboot, starts, boot, mean_smooth, &
+    xb, yb, xc, yc, ccf, smooth, mean_ccf)
+    integer, intent(in) :: n, min_rl, max_rl, eval_lo, eval_hi, swidth
+    integer, intent(in) :: block_len, nblocks, nboot
+    real(kind = dbl), intent(in) :: x(n), y(n)
+    integer, intent(in) :: starts(nblocks, nboot)
+    integer, intent(out) :: boot(nboot)
+    real(kind = dbl), intent(out) :: mean_smooth(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: xb(n), yb(n), xc(n), yc(n)
+    real(kind = dbl), intent(inout) :: ccf(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: smooth(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: mean_ccf(eval_lo:eval_hi)
+    integer :: b, i, pos
+
+    mean_ccf = 0d0
+    do b = 1, nboot
+        pos = 1
+        do i = 1, nblocks
+            call CopyBlock(x, y, n, starts(i, b), block_len, xb, yb, pos)
+            if (pos > n) exit
+        end do
+        call ComputeCcfWindow(xb, yb, n, eval_lo, eval_hi, ccf, xc, yc)
+        call SmoothAndFill(ccf, eval_lo, eval_hi, max(1, swidth), smooth)
+        boot(b) = ArgmaxAbs(smooth(min_rl:max_rl), min_rl, max_rl)
+        mean_ccf = mean_ccf + ccf
+    end do
+    mean_ccf = mean_ccf / dble(nboot)
+    call SmoothAndFill(mean_ccf, eval_lo, eval_hi, max(1, swidth), mean_smooth)
+end subroutine PwbBootstrapCombination
+
+!***************************************************************************
+!> \brief What one combination's bootstrap concludes.
+!>
+!> The lag is the mode of the replicate lags (MapLagEstimate), the
+!> uncertainty their 95 % HDI in seconds, ccf_at_mode the |mean smoothed CCF|
+!> there, and unrestricted the peak of the mean smoothed CCF over the whole
+!> evaluated range, guard band included. hdi_buf is caller-owned scratch.
+!***************************************************************************
+subroutine PwbSummariseBootstrap(boot, nboot, rate, eval_lo, eval_hi, mean_smooth, &
+    hdi_buf, lag, hdi_lo, hdi_hi, ccf_at_mode, unrestricted)
+    integer, intent(in) :: nboot, eval_lo, eval_hi
+    integer, intent(in) :: boot(nboot)
+    real(kind = dbl), intent(in) :: rate
+    real(kind = dbl), intent(in) :: mean_smooth(eval_lo:eval_hi)
+    real(kind = dbl), intent(inout) :: hdi_buf(nboot)
+    integer, intent(out) :: lag, unrestricted
+    real(kind = dbl), intent(out) :: hdi_lo, hdi_hi, ccf_at_mode
+    integer :: i
+
+    lag = MapLagEstimate(boot, nboot)
+    do i = 1, nboot
+        hdi_buf(i) = dble(boot(i)) / rate
+    end do
+    call Hdi95(hdi_buf, nboot, hdi_lo, hdi_hi)
+    ccf_at_mode = abs(mean_smooth(lag))
+    unrestricted = ArgmaxAbs(mean_smooth, eval_lo, eval_hi)
+end subroutine PwbSummariseBootstrap
+
+!***************************************************************************
+!> \brief Which of the combinations wins.
+!>
+!> Highest |mean smoothed CCF| at the mode lag, as in the reference, first on
+!> ties. Deliberate deviation: a candidate whose mode did not land on the
+!> window edge (ok) is preferred before magnitude is consulted at all. The
+!> reference picks on magnitude alone and only then asks whether the winner
+!> is edge-pinned, which throws the period away when an unpinned candidate
+!> was available. Where no candidate is unpinned the two agree.
+!***************************************************************************
+integer function PwbBestCombination(ccf_at_mode, ok, ncand)
+    integer, intent(in) :: ncand
+    real(kind = dbl), intent(in) :: ccf_at_mode(ncand)
+    logical, intent(in) :: ok(ncand)
+    integer :: i, best
+
+    best = 0
+    do i = 1, ncand
+        if (ok(i)) then
+            if (best == 0) then
+                best = i
+            elseif (ccf_at_mode(i) > ccf_at_mode(best)) then
+                best = i
+            end if
+        end if
+    end do
+    if (best == 0) then
+        do i = 1, ncand
+            if (best == 0) then
+                best = i
+            elseif (ccf_at_mode(i) > ccf_at_mode(best)) then
+                best = i
+            end if
+        end do
+    end if
+    PwbBestCombination = best
+end function PwbBestCombination
 
 end module m_pwb_core

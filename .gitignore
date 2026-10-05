@@ -37,6 +37,11 @@ src/src_rp/deprecated
 /tests/*
 !/tests/regression/
 /tests/regression/*
+# The engine-against-dyco PWB comparison: a script and its README, no output.
+!/tests/pwb_dyco/
+/tests/pwb_dyco/*
+!/tests/pwb_dyco/compare.py
+!/tests/pwb_dyco/README.md
 !/tests/regression/README.md
 !/tests/regression/run.sh
 !/tests/regression/sweep.sh

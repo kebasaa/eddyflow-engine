@@ -44,8 +44,11 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_DATA = Path(r"C:\Users\jonmuell\Documents\_data\CH-LAE COS\Data_202506")
-DEFAULT_OUT = Path(r"C:\Users\jonmuell\Documents\_data\CH-LAE COS\Data_202506_ghg")
+#: The Lagern 10 Hz files every CH-LAE fixture reads. Read only - the archives
+#: are written beside this script, never into that repository.
+DEFAULT_DATA = Path(r"C:\Users\jonmuell\Documents\GitHub\laegern_cos_fluxes\data"
+                    r"\01_preprocessed\above_canopy\10hz_preproc\2025-06")
+DEFAULT_OUT = HERE / "data_ghg_lae"
 
 #: Where 7-Zip is looked for when it is not already on PATH. The portable
 #: distribution ships one, and that is the same binary the engine would use.
@@ -80,7 +83,7 @@ def main():
     if not args.data.is_dir():
         sys.exit("raw data not found at %s - it lives outside the repo" % args.data)
 
-    files = sorted(args.data.glob("*.csv"))[: int(args.hours * 2)]
+    files = sorted(args.data.glob("CH-LAE_ec_preproc_10hz_*.csv"))[: int(args.hours * 2)]
     if not files:
         sys.exit("no .csv files under %s" % args.data)
 
@@ -115,7 +118,7 @@ def main():
         if key == "file_type":
             line = "file_type=0" + line[len(line.rstrip()):]
         elif key == "file_prototype":
-            line = ("file_prototype=CH-LAE_ec-cos_yyyymmdd-HHMM.ghg"
+            line = ("file_prototype=CH-LAE_ec_preproc_10hz_yyyymmdd-HHMM.ghg"
                     + line[len(line.rstrip()):])
         elif key == "data_path":
             line = ("data_path=" + args.out.as_posix()

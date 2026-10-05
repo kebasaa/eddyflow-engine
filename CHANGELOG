@@ -1,3 +1,9 @@
+8.1.2 (2026-10-02)
+
+    Engine:
+	- Version bump to 8.1.2, to match EddyFlow GUI 8.1.2. No change to the
+	  computation.
+
 8.1.1 (2026-09-25)
 
     Engine:

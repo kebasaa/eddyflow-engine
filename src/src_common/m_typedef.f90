@@ -1813,7 +1813,11 @@ module m_typedef
     type :: TimeLagOptType
         real(kind = dbl) :: Tlag(E2NumVar)
         real(kind = dbl) :: T
-        real(kind = dbl) :: RH
+        !> The period's relative humidity as each water slot's lag is binned
+        !> by it - the biomet RH where the site has a valid one, otherwise that
+        !> hygrometer's own (PeriodWaterRH). Was one scalar, the designated
+        !> hygrometer's, which every water slot was then binned and gated by.
+        real(kind = dbl) :: RH(E2NumVar)
     end type TimeLagOptType
 
     type :: TOSetupType

@@ -79,7 +79,8 @@ class TheWalkRecordsOnlyWhatTheTableCannotSay(unittest.TestCase):
         self.assertNotIn("reliability_class", RECORD)
 
     def test_it_records_the_humidity(self):
-        self.assertIn("Stats%RH", RECORD)
+        #> Every hygrometer's own, after FluxParams - see RecordWaterRH.
+        self.assertIn("call RecordWaterRH(TimelagOpt(n), .true.)", RECORD)
 
     def test_it_records_which_period_this_is(self):
         """The dataset has no time axis of its own, so without this the
@@ -112,9 +113,15 @@ class TheRebuildReadsTheSettledTable(unittest.TestCase):
         """RH travels with the water record's own lag, and only the table
         knows whether water settled - which is precisely what the streaming
         version could not wait for."""
-        self.assertIn("PrimaryWaterOutSlot", REBUILD)
-        self.assertIn("TimelagOpt(k)%tlag(wsl) = error", REBUILD)
-        self.assertIn("TimelagOpt(k)%RH = error", REBUILD)
+        #> Each hygrometer on its own water and its own humidity.
+        self.assertIn("call GatePwbWaterRH(TimelagOpt(k))", REBUILD)
+        gate = body_of(MOD, "subroutine GatePwbWaterRH",
+                       "end subroutine GatePwbWaterRH")
+        self.assertIn("row%tlag(gas) = error", gate)
+        self.assertIn("row%RH(gas) = error", gate)
+        slot = body_of(MOD, "function HumiditySlot", "end function HumiditySlot")
+        self.assertIn("PrimaryWaterOutSlot", slot)
+        self.assertIn("GasSlotIsWater(gas)", slot)
 
     def test_the_search_is_a_cursor_not_a_scan(self):
         """Rows and periods are both in period order. A season is some twenty

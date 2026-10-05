@@ -44,7 +44,8 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     real(kind = dbl), intent(in) :: cls_size
     type (TimeLagDatasetType), intent(in) :: toSet(nrow)
     integer, intent(in) :: actn(M)
-    integer, intent(out) :: h2o_n(MM)
+    !> Per class and per slot: only classed water slots are filled.
+    integer, intent(out) :: h2o_n(MM, M)
     !> local variables
     integer :: gas
     integer :: wsl
@@ -70,6 +71,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     real(kind = dbl) :: sdvec
     real(kind = dbl) :: tmpvec(nrow)
     real(kind = dbl) ,parameter :: min_range = 0.3d0
+    logical, external :: WaterSlotClassed
     include '../src_common/interfaces_1.inc'
 
 !TO REFINE integer :: read_status
@@ -136,23 +138,24 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
             toPasGas(gas)%min = medx - (TOSetup%pg_range * MAD / 0.6745d0)
             deallocate (tmpx, devx)
 
-            !> If H2O was split in classes, now make H2O calculations
-            if (gas == wsl .and. MM > 1) then
+            !> Every classed hygrometer, each by its own humidity - see
+            !> WaterSlotClassed. This was the designated hygrometer alone.
+            if (WaterSlotClassed(gas)) then
                 !> Water vapour, the same as above, but for RH classes
-                toH2O%def=error
-                toH2O%min=error
-                toH2O%max=error
+                toH2O(:, gas)%def=error
+                toH2O(:, gas)%min=error
+                toH2O(:, gas)%max=error
                 do cls = 1, MM
-                    h2o_n(cls) = 0
+                    h2o_n(cls, gas) = 0
                     tmpvec = 0d0
                     do i = 1, actn(gas)
-                        if(toSet(i)%RH(wsl) >= dfloat(cls - 1) * cls_size &
-                            .and. toSet(i)%RH(wsl) <= dfloat(cls) * cls_size) then
-                            h2o_n(cls) = h2o_n(cls) + 1
-                            tmpvec(h2o_n(cls)) = toSet(i)%tlag(wsl)
+                        if(toSet(i)%RH(gas) >= dfloat(cls - 1) * cls_size &
+                            .and. toSet(i)%RH(gas) <= dfloat(cls) * cls_size) then
+                            h2o_n(cls, gas) = h2o_n(cls, gas) + 1
+                            tmpvec(h2o_n(cls, gas)) = toSet(i)%tlag(gas)
                         end if
                     end do
-                    N = h2o_n(cls)
+                    N = h2o_n(cls, gas)
                     if (N < min_numerosity) cycle
                     !> Eliminate outliers in each class
                     !> and redefine "short" time-lag set (without outliers)
@@ -191,13 +194,13 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                     devdw(1:ndw) = dabs(tmpdw(1:ndw) - meddw)
                     call median(devup(1:nup), nup, MADup)
                     call median(devdw(1:ndw), ndw, MADdw)
-                    toH2O(cls)%def = medx
-                    toH2O(cls)%max = medx + (TOSetup%pg_range * MADup / 0.6745d0)
-                    toH2O(cls)%min = medx - (TOSetup%pg_range * MADdw / 0.6745d0)
+                    toH2O(cls, gas)%def = medx
+                    toH2O(cls, gas)%max = medx + (TOSetup%pg_range * MADup / 0.6745d0)
+                    toH2O(cls, gas)%min = medx - (TOSetup%pg_range * MADdw / 0.6745d0)
                     if (TOSetup%pg_range * MADup / 0.6745d0 < min_range) &
-                        toH2O(cls)%max = medx + min_range
+                        toH2O(cls, gas)%max = medx + min_range
                     if (TOSetup%pg_range * MADdw / 0.6745d0 < min_range) &
-                        toH2O(cls)%min = medx - min_range
+                        toH2O(cls, gas)%min = medx - min_range
                     deallocate (tmpx, devx)
                     deallocate (tmpup, tmpdw)
                     deallocate (devup, devdw)
@@ -207,7 +210,7 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                 !> Detects first good class
                 first = 1
                 do cls = 1, MM
-                    if (h2o_n(cls) > min_numerosity) then
+                    if (h2o_n(cls, gas) > min_numerosity) then
                         first = cls
                         exit
                     end if
@@ -215,29 +218,29 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                 !> Detects last good class
                 last = MM
                 do cls = MM, 1, -1
-                    if (h2o_n(cls) > min_numerosity) then
+                    if (h2o_n(cls, gas) > min_numerosity) then
                         last = cls
                         exit
                     end if
                 end do
                 !> Set initial classes equal to first good class
-                if (first > 1) toH2O(1:first - 1) = toH2O(first)
+                if (first > 1) toH2O(1:first - 1, gas) = toH2O(first, gas)
                 !> For intermediate classes, averages before and after
                 if (last > first + 1) then
                     do cls = first + 1, last - 1
-                        if (h2o_n(cls) == min_numerosity) then
-                            toH2O(cls)%def = (toH2O(cls-1)%def + toH2O(cls+1)%def) * 0.5d0
-                            toH2O(cls)%min = (toH2O(cls-1)%min + toH2O(cls+1)%min) * 0.5d0
-                            toH2O(cls)%max = (toH2O(cls-1)%max + toH2O(cls+1)%max) * 0.5d0
+                        if (h2o_n(cls, gas) == min_numerosity) then
+                            toH2O(cls, gas)%def = (toH2O(cls-1, gas)%def + toH2O(cls+1, gas)%def) * 0.5d0
+                            toH2O(cls, gas)%min = (toH2O(cls-1, gas)%min + toH2O(cls+1, gas)%min) * 0.5d0
+                            toH2O(cls, gas)%max = (toH2O(cls-1, gas)%max + toH2O(cls+1, gas)%max) * 0.5d0
                         end if
                     end do
                 end if
                 !> Set traling classes to linear extrapolation of last 2 good ones
                 if (last < MM .and. last > 2) then
                     do cls = last + 1, MM
-                        toH2O(cls)%def = 2d0 * toH2O(cls - 1)%def - toH2O(cls - 2)%def
-                        toH2O(cls)%min = 2d0 * toH2O(cls - 1)%min - toH2O(cls - 2)%min
-                        toH2O(cls)%max = 2d0 * toH2O(cls - 1)%max - toH2O(cls - 2)%max
+                        toH2O(cls, gas)%def = 2d0 * toH2O(cls - 1, gas)%def - toH2O(cls - 2, gas)%def
+                        toH2O(cls, gas)%min = 2d0 * toH2O(cls - 1, gas)%min - toH2O(cls - 2, gas)%min
+                        toH2O(cls, gas)%max = 2d0 * toH2O(cls - 1, gas)%max - toH2O(cls - 2, gas)%max
                     end do
                 end if
             end if
@@ -258,15 +261,58 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     !> detections, and a hygrometer that has few or none leaves them empty -
     !> which says nothing at all about the other gases' lags, and used to be
     !> masked by the summary borrowing a donor from another analyser.
-    if (toH2O(1)%def == error .and. toH2O(MM)%def == error) then
-        if (Meth%tlag == 'pwb') then
-            call LogSay(' Alert> No H2O relative-humidity classes could be filled for the')
-            call LogSay('        aggregate time-lag summary. The half-hourly PWB table is')
-            call LogSay('        unaffected and is what this run uses.')
-        else
-            call ExceptionHandler(43)
-            Meth%tlag = 'maxcov'
-            TimeLagOptSelected = .false.
+    !>
+    !> Asked of the designated hygrometer alone, and only when it is classed
+    !> at all. A second hygrometer with no classes falls back to its own
+    !> single window, which says nothing about the method. And with
+    !> classing off (one class, or an open-path primary) there was never a
+    !> table to fill, yet this test - not gated on that - read it as failed
+    !> and switched every such run to covariance maximisation.
+    !>
+    !> Nested, not one .and.: MM can be zero, and Fortran does not promise to
+    !> stop before reading toH2O(MM, wsl).
+    if (WaterSlotClassed(wsl)) then
+        if (toH2O(1, wsl)%def == error .and. toH2O(MM, wsl)%def == error) then
+            if (Meth%tlag == 'pwb') then
+                call LogSay(' Alert> No H2O relative-humidity classes could be filled for the')
+                call LogSay('        aggregate time-lag summary. The half-hourly PWB table is')
+                call LogSay('        unaffected and is what this run uses.')
+            else
+                call ExceptionHandler(43)
+                Meth%tlag = 'maxcov'
+                TimeLagOptSelected = .false.
+            end if
         end if
     end if
 end subroutine OptimizeTimelags
+
+!***************************************************************************
+!
+! \brief       Whether a slot's time lag is classed by relative humidity.
+! \author      Jonathan Muller
+! \note        Every closed-path hygrometer, each by its own humidity: water
+!              adsorbs on the wall of the tube it is drawn through, so its lag
+!              drifts with humidity, and each analyser has its own tube. An
+!              open-path hygrometer has no tube and is not classed - which is
+!              what forcing the class count to one for an open-path primary
+!              used to say, for the primary alone and for every other
+!              hygrometer with it.
+!
+!              Only the designated hygrometer used to be classed. A second one
+!              took a single window, and its determinations were gated on the
+!              designated hygrometer's humidity rather than its own.
+!***************************************************************************
+logical function WaterSlotClassed(slot)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: slot
+    logical, external :: GasSlotIsWater
+
+    WaterSlotClassed = .false.
+    if (slot < firstGas .or. slot > lastGas) return
+    if (TOSetup%h2o_nclass <= 1) return
+    if (.not. GasSlotIsWater(slot)) return
+    if (.not. E2Col(slot)%present) return
+    if (E2Col(slot)%instr%path_type == 'open') return
+    WaterSlotClassed = .true.
+end function WaterSlotClassed

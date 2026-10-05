@@ -45,13 +45,13 @@ subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
     integer :: tnrow
     integer :: expected
     integer :: stride
-    integer :: offset
-    !> How many of the column's own intervals to look at before deciding where
-    !> its samples sit, and the widest stride worth tallying - a rate ratio
-    !> past this is not a sub-sampled instrument, it is a misdeclared one.
-    integer, parameter :: PhaseIntervals = 20
-    integer, parameter :: MaxPhaseStride = 1000
-    integer :: tally(0:MaxPhaseStride - 1)
+    integer :: nslot
+    integer :: nreal
+    !> The widest stride worth following - a rate ratio past this is not a
+    !> sub-sampled instrument, it is a misdeclared one.
+    integer, parameter :: MaxSampleStride = 1000
+    integer, allocatable :: rows(:)
+    logical, allocatable :: isreal(:)
     real(kind = dbl), external :: ColumnAcFreq
 
 
@@ -71,30 +71,41 @@ subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
             SpecCol(j)%present = .false.
     end do
 
-    !> Where a slower column's real samples sit, recorded HERE because the
-    !> interpolation below is about to remove the only evidence of it. A
-    !> column at the file's own rate has every row and so has phase zero.
+    !> Where a slower column's real samples are, recorded HERE because the
+    !> interpolation below is about to remove the only evidence of them.
     !>
-    !> The commonest offset over many intervals, not the first one found: a
-    !> column whose very first sample happens to be missing - an ordinary gap
-    !> at the start of a period - would otherwise report phase zero and have
-    !> every one of its rebuilt samples read an interpolated blend instead of a
-    !> measurement. A real sampling pattern gives one offset an overwhelming
-    !> majority; a column with no clear winner is not on a regular grid, and
-    !> zero is as good an answer as any for it.
-    SpecPhase(1:ncol) = 0
+    !> The rows themselves, not one phase per column. A phase was the
+    !> commonest offset in the first twenty intervals, which describes a
+    !> column on a fixed grid exactly - and on such a column the rows are
+    !> exactly the phase rows, so nothing it computed moves. But the Yatir
+    !> laser drifts through every row position in a half-hour, and there no
+    !> phase is right for more than a stretch: most rebuilt samples read an
+    !> interpolated blend of two real ones. A missed sample gets a slot at its
+    !> place in the sequence; its value is the interpolated one, as before.
+    allocate(rows(nrow), isreal(nrow))
     do j = 1, ncol
+        SpecSamples(j)%n = 0
+        if (allocated(SpecSamples(j)%r)) deallocate(SpecSamples(j)%r)
         stride = nint(Metadata%ac_freq / ColumnAcFreq(j))
-        if (stride <= 1 .or. stride > MaxPhaseStride) cycle
-        tally(0:stride - 1) = 0
-        do i = 1, min(nrow, PhaseIntervals * stride)
-            if (Set(i, j) /= error) then
-                offset = mod(i - 1, stride)
-                tally(offset) = tally(offset) + 1
-            end if
+        if (stride <= 1 .or. stride > MaxSampleStride) cycle
+        call SlowColumnSampleRows(Set(1:nrow, j), nrow, stride, error, &
+            rows, isreal, nslot, nreal)
+        if (nslot < 2) cycle
+        allocate(SpecSamples(j)%r(nslot))
+        SpecSamples(j)%r = rows(1:nslot)
+        SpecSamples(j)%n = nslot
+    end do
+    deallocate(rows, isreal)
+
+    !> The shift ReplaceGapWithLinearInterpolation is about to apply to each
+    !> column: it removes leading error rows by moving the column up.
+    SpecLead = 0
+    do j = 1, GHGNumVar
+        if (.not. SpecCol(j)%present) cycle
+        do i = 1, nrow
+            if (Set(i, j) /= error) exit
         end do
-        if (any(tally(0:stride - 1) > 0)) &
-            SpecPhase(j) = maxloc(tally(0:stride - 1), dim = 1) - 1
+        if (i <= nrow) SpecLead(j) = i - 1
     end do
 
     !> nrow2 is the smallest nrow of all columns

@@ -142,6 +142,25 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                 DefTlagUsed = pwb_raw_DefTlagUsed
                 PWBResult = pwb_raw_Result
                 pwb_raw_detection_done = .false.
+                !> The cache-generation pre-pass shifts each gas by the lag of
+                !> its OWN evidence, not by the streaming classifier's. Those
+                !> carried, borrowed and S2-anchored lags depend on the periods
+                !> before, and the humidity recorded from the shifted water
+                !> depended on them with it - so a pre-pass split across
+                !> workers, each starting cold, recorded a different humidity
+                !> near every cut than one walk did. The table is untouched:
+                !> its rows were stored by the detection call, before this.
+                !> For water that the table settles from its own evidence -
+                !> the only water whose humidity the summary keeps - this is
+                !> the settled lag. Production (InTimelagOpt false) still
+                !> applies what it is given.
+                if (PwbCacheGenerate .and. InTimelagOpt) then
+                    do j = firstGas, lastGas
+                        if (.not. E2Col(j)%present) cycle
+                        RowLags(j) = pwb_raw_OwnRowLags(j)
+                        TLag(j) = dble(RowLags(j)) / Metadata%ac_freq
+                    end do
+                end if
             else
             !> Pass 1: Run PWB detection and S1/S2 classification for all gases
             do j = firstGas, lastGas
@@ -155,6 +174,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     TLag(j) = cache_used_lag
                     ActTLag(j) = cache_actual_lag
                     DefTlagUsed(j) = cache_default_used
+                    pwb_raw_OwnRowLags(j) = cache_row_lag
                     if (trim(lPwbResult%reliability_class) == 'S1_optimal' .or. &
                         trim(lPwbResult%reliability_class) == 'S2_optimal' .or. &
                         trim(lPwbResult%reliability_class) == 'S4_instrument_shared') then
@@ -186,6 +206,19 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
                     def_rl(j), min_rl(j), max_rl(j), &
                     mc_actual, mc_used, mc_row, mc_def)
                 lPwbResult%maxcov_lag = mc_used
+
+                !> The lag this period's own evidence gives, whatever the
+                !> classifier below makes of it: the detection where it
+                !> succeeded off the window edge - what S1 or S2 would apply -
+                !> else the covariance maximum, the fallback with no history.
+                !> The cache-generation pre-pass compensates by this (see the
+                !> apply above), so nothing it records depends on earlier
+                !> periods.
+                if (pwb_success .and. .not. lPwbResult%edge_pinned) then
+                    pwb_raw_OwnRowLags(j) = lPwbResult%row_lag
+                else
+                    pwb_raw_OwnRowLags(j) = mc_row
+                end if
 
                 if (pwb_success .and. .not. lPwbResult%edge_pinned) then
                     if (lPwbResult%hdi_range < PWBSetup%hdi_thresh_s) then
@@ -543,6 +576,7 @@ end subroutine ApplyCovMaxDefaultFallback
 !*******************************************************************************
 subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     use m_rp_global_var
+    use m_covmax_core, only: CrossCovarianceSeries
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow
@@ -585,42 +619,51 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     !> time the far end has been computed the near one is long gone.
     nlag = lagmax - lagmin + 1
     allocate(CovSeries(nlag))
-    do i = lagmin, lagmax
-        N2 = nrow - abs(i)
-        allocate(ShSet(N2, 2))
-        allocate(ShPrimes(N2, 2))
+    !> Without stochastic detrending, the cross-covariance at every lag in one
+    !> call - no shifted copies, no 2x2 matrix of which one entry was read.
+    !> Bitwise the same values: see m_covmax_core. With detrending each shifted
+    !> window is detrended on its own, so the copies are real work and the loop
+    !> below stays exactly as it was.
+    if (.not. RPSetup%covmax_stocdet) then
+        call CrossCovarianceSeries(Col1, Col2, nrow, lagmin, lagmax, error, CovSeries)
+    else
+        do i = lagmin, lagmax
+            N2 = nrow - abs(i)
+            allocate(ShSet(N2, 2))
+            allocate(ShPrimes(N2, 2))
 
-        !> Align the two timeseries at the current time-lag 
-        do ii = 1, N2
-            if (i < 0) then
-                ShSet(ii, 1) = Col1(ii - i)
-                ShSet(ii, 2) = Col2(ii)
+            !> Align the two timeseries at the current time-lag 
+            do ii = 1, N2
+                if (i < 0) then
+                    ShSet(ii, 1) = Col1(ii - i)
+                    ShSet(ii, 2) = Col2(ii)
+                else
+                    ShSet(ii, 1) = Col1(ii)
+                    ShSet(ii, 2) = Col2(ii + i)
+                end if
+            end do
+
+
+            !> Linear detrending
+            ! call VariableLinearDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
+            ! call VariableLinearDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
+            if (RPSetup%covmax_stocdet) then
+                !> Stochastic detrending
+                call VariableStochasticDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
+                call VariableStochasticDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
             else
-                ShSet(ii, 1) = Col1(ii)
-                ShSet(ii, 2) = Col2(ii + i)
+                !> Block average
+                ShPrimes = ShSet
             end if
+
+            call CovarianceMatrixNoError(ShPrimes, size(ShPrimes, 1), size(ShPrimes, 2), CovMat, error)
+            Cov = CovMat(1, 2)
+            CovSeries(i - lagmin + 1) = Cov
+
+            deallocate(ShSet)
+            deallocate(ShPrimes)
         end do
-
-
-        !> Linear detrending
-        ! call VariableLinearDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
-        ! call VariableLinearDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
-        if (RPSetup%covmax_stocdet) then
-            !> Stochastic detrending
-            call VariableStochasticDetrending(ShSet(:, 1), ShPrimes(:, 1), N2)
-            call VariableStochasticDetrending(ShSet(:, 2), ShPrimes(:, 2), N2)
-        else
-            !> Block average
-            ShPrimes = ShSet
-        end if
-
-        call CovarianceMatrixNoError(ShPrimes, size(ShPrimes, 1), size(ShPrimes, 2), CovMat, error)
-        Cov = CovMat(1, 2)
-        CovSeries(i - lagmin + 1) = Cov
-
-        deallocate(ShSet)
-        deallocate(ShPrimes)
-    end do
+    end if
 
     !> Whether the chord can be drawn at all. Both ends have to exist, and
     !> two points make a line through themselves and nothing else, so a

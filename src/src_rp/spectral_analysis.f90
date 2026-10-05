@@ -238,14 +238,26 @@ end subroutine CapSpectraAtColumnNyquist
 !              attenuated, and increasingly so towards the cut-off. This takes
 !              the real samples instead.
 !
-!              Decimating by an integer factor over the same span leaves the
-!              natural-frequency grid ALONE: nf(i) = i * F / N becomes
-!              i * (F/k) / (N/k), the same number. So the result drops into the
-!              same arrays at the same indices, and the shared axis, the
-!              binning and the writers need no notion of a second rate. The
-!              two grids coincide exactly when k divides N and to within
-!              (k-1)/N - a twentieth of a per cent on a half-hour at 10 Hz -
-!              when it does not.
+!              It reads the column at its REAL sample rows (SpecSamples, from
+!              FixDatasetForSpectra) rather than at a fixed phase and stride:
+!              a slow instrument need not sit on a fixed phase of the rows -
+!              the Yatir laser drifts through all of them in a half-hour - and
+!              on one that does, the real rows are the phase rows, so nothing
+!              computed for it moves.
+!
+!              Decimating over the same span leaves the natural-frequency grid
+!              ALONE: nf(i) = i * F / N becomes i * (F/k) / (N/k), the same
+!              number, for k the MEASURED mean spacing in rows - 20.27 at Yatir,
+!              where the nominal 20 would stretch the frequency axis by 1.35 %.
+!              So the result drops into the same arrays at the same indices,
+!              and the shared axis, the binning and the writers need no notion
+!              of a second rate. The two grids coincide exactly when the
+!              samples span the set and to within a sample's worth when they
+!              do not - a twentieth of a per cent on a half-hour at 10 Hz.
+!
+!              Sampling jitter of up to half a row remains where the drift puts
+!              a sample between two rows: a small phase error near the
+!              decimated Nyquist, stated here rather than hidden.
 !
 !              The cospectrum is a property of the pair, not of the gas: `w` is
 !              re-sampled onto the gas's grid, at the same instants, and how it
@@ -273,11 +285,12 @@ subroutine SlowColumnSpectra(Set, N, M, tap_win, normalise, &
     !> local variables
     integer :: i
     integer :: j
+    integer :: k
     integer :: row
     integer :: lo
     integer :: stride
     integer :: nd
-    integer :: phase
+    integer, allocatable :: srow(:)
     real(kind = dbl) :: freq
     real(kind = dbl) :: sumw
     real(kind = dbl) :: var_gas
@@ -301,32 +314,53 @@ subroutine SlowColumnSpectra(Set, N, M, tap_win, normalise, &
         stride = nint(Metadata%ac_freq / freq)
         if (stride <= 1) cycle
 
-        !> The column's samples sit at a fixed offset inside each interval;
-        !> SpecPhase records it in E2Primes rows and SpecRowOffset is where
-        !> this set starts in those rows. Sampling at the wrong offset would
-        !> read interpolated blends of two real samples and quietly attenuate
-        !> the very thing this exists to measure.
-        phase = modulo(SpecPhase(j) - SpecRowOffset, stride)
-
-        !> Counted from the phase, so the last sample lands on or before row N
-        !> and there is nothing to clamp. Clamping would have repeated the last
-        !> row - a fabricated sample, in the one routine whose whole purpose is
-        !> to use only real ones.
+        !> The column's real sample rows, recorded in E2Primes rows, brought
+        !> into this set's rows - SpecRowOffset is where it starts in those.
+        !> In the set the gas's own values sit SpecLead(j) rows higher, because
+        !> interpolating its gaps moved the column up past its leading empty
+        !> rows; w did not move. So the gas is read at its shifted row and w at
+        !> the instant the sample was taken. Reading both at the recorded row,
+        !> as the fixed-phase reading did, read interpolated blends of the gas
+        !> and paired them with w up to an interval out of step.
+        !> Only rows inside the set, so the last sample lands on or before row
+        !> N and there is nothing to clamp: clamping would repeat the last row,
+        !> a fabricated sample in the one routine whose purpose is to use only
+        !> real ones.
         !>
+        !> Every real sample in the set is used. The fixed-phase reading this
+        !> replaced counted (N - phase) / stride of them, one short whenever a
+        !> sample sat on the set's last stretch, and where a period opened in a
+        !> gap longer than twenty intervals it found no phase at all and fell
+        !> back to zero.
+        if (SpecSamples(j)%n < 2) cycle
+        allocate(srow(SpecSamples(j)%n))
+        nd = 0
+        do k = 1, SpecSamples(j)%n
+            row = SpecSamples(j)%r(k) - SpecRowOffset
+            if (row - SpecLead(j) < 1 .or. row - SpecLead(w) < 1 .or. row > N) cycle
+            nd = nd + 1
+            srow(nd) = row
+        end do
         !> Even, because OneSidedPowerSpectrum walks the transform in pairs.
-        nd = (N - phase) / stride
         nd = nd - mod(nd, 2)
         !> Too few samples to say anything about a spectrum. Left as the
         !> full-rate pass produced it, and capped at this column's Nyquist by
         !> CapSpectraAtColumnNyquist either way.
-        if (nd < 16) cycle
+        if (nd < 16) then
+            deallocate(srow)
+            cycle
+        end if
+
+        !> The decimated rate is the measured one: the mean spacing of these
+        !> samples, which on a fixed grid is the stride exactly.
+        freq = Metadata%ac_freq * dble(nd - 1) / dble(srow(nd) - srow(1))
 
         allocate(raw_w(nd), raw_gas(nd), DecSet(nd, 2))
         allocate(dspec(nd/2 + 1), dcosp(nd/2 + 1))
 
         do i = 1, nd
-            row = phase + 1 + (i - 1) * stride
-            raw_gas(i) = Set(row, j)
+            raw_gas(i) = Set(srow(i) - SpecLead(j), j)
+            row = srow(i) - SpecLead(w)
             if (E2Col(j)%instr%integrates) then
                 !> Averaged over the interval the sample closes, which is what
                 !> the instrument itself did to the gas.
@@ -367,7 +401,7 @@ subroutine SlowColumnSpectra(Set, N, M, tap_win, normalise, &
             Cospectrum(nd/2 + 2:N/2 + 1)%of(j) = error
         end if
 
-        deallocate(raw_w, raw_gas, DecSet, dspec, dcosp)
+        deallocate(raw_w, raw_gas, DecSet, dspec, dcosp, srow)
     end do
 end subroutine SlowColumnSpectra
 

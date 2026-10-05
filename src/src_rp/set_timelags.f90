@@ -49,7 +49,9 @@ subroutine SetTimelags()
     real(kind = dbl) :: cell_time(GHGNumVar)
     real(kind = dbl) :: cell_volume(GHGNumVar)
     real(kind = dbl) :: safety
+    logical :: classed
     logical, external :: GasSlotIsWater
+    logical, external :: WaterSlotClassed
 
     !> Multiplier. Water is the active gas - it adsorbs on the tube wall and
     !> its lag drifts with humidity - so it gets the wider search window.
@@ -67,19 +69,52 @@ subroutine SetTimelags()
         wsl = PrimaryWaterSlot()
         do gas = firstGas, lastGas
             if (E2Col(gas)%present) then
-                !> Only the SITE's hygrometer is classed by relative
-                !> humidity. RH is a site quantity and the optimiser fits
-                !> one table from it; a second hygrometer is a measurement
-                !> like any other and takes its own window, which
-                !> OptimizeTimelags already computes for every gas.
+                !> Every classed hygrometer reads its own RH-class table, at
+                !> its own humidity - see WaterSlotClassed. Only the site's
+                !> hygrometer used to (commit b6be573 restricted it, because
+                !> every water slot then read the ONE table, so a second
+                !> hygrometer got the first one's window); with a table per
+                !> hygrometer that reason is gone.
                 !>
-                !> Every water slot used to read that table, so a second
-                !> hygrometer got the primary's window - and, when RH
-                !> classing was off, no optimised window at all, because the
-                !> branch below does nothing when h2o_nclass <= 1.
-                if (.not. GasSlotIsWater(gas) .or. gas /= wsl &
-                    .or. TOSetup%h2o_nclass <= 1) then
-                    !> Passive gases.
+                !> A class with no window - none in this file for this
+                !> hygrometer, or too few determinations - falls back to the
+                !> hygrometer's plain optimised window below, as an
+                !> unclassed one always has.
+                classed = .false.
+                if (WaterSlotClassed(gas)) then
+                    !> For water vapor, adjust time-lag to current RH either
+                    !> taken from meteo or estimated locally from this
+                    !> hygrometer's raw data
+                    if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
+                        !> If meteo RH is available, uses that one
+                        lRH = biomet%val(bRH)
+                    else
+                        !> If meteo RH is not available, calculate one
+                        call LocalRhEstimate(lRH, gas)
+                    end if
+                    do cls = 1, TOSetup%h2o_nclass
+                        if (lRH >= (cls - 1) * TOSetup%h2o_class_size .and. lRH <= cls * TOSetup%h2o_class_size) then
+                            !> Only where the class actually has a window. The
+                            !> optimisation file carries a row per RH class
+                            !> whether or not any determination fell in it, and
+                            !> an empty one is the error code - so an unguarded
+                            !> copy replaced the metadata's declared window with
+                            !> [-9999, -9999] and the lag search ran off the end
+                            !> of the record.
+                            if (toH2O(cls, gas)%max > toH2O(cls, gas)%min) then
+                                E2Col(gas)%def_tl = toH2O(cls, gas)%def
+                                E2Col(gas)%min_tl = toH2O(cls, gas)%min
+                                E2Col(gas)%max_tl = toH2O(cls, gas)%max
+                                classed = .true.
+                            end if
+                        end if
+                    end do
+                    !> The designated hygrometer keeps exactly its old
+                    !> behaviour: classed, it never took the plain window.
+                    if (gas == wsl) classed = .true.
+                end if
+                if (.not. classed) then
+                    !> Passive gases, and hygrometers without a class window.
                     !>
                     !> Only where the optimiser actually has a window for this
                     !> gas. Its table is filled from the time-lag optimisation
@@ -90,35 +125,6 @@ subroutine SetTimelags()
                         E2Col(gas)%def_tl = toPasGas(gas)%def
                         E2Col(gas)%min_tl = toPasGas(gas)%min
                         E2Col(gas)%max_tl = toPasGas(gas)%max
-                    end if
-                else
-                    !> For water vapor, if requested adjust time-lag to current RH
-                    !> either taken from meteo or estimated locally from raw data
-                    if (TOSetup%h2o_nclass > 1) then
-                        if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
-                            !> If meteo RH is available, uses that one
-                            lRH = biomet%val(bRH)
-                        else
-                            !> If meteo RH is not available, calculate one
-                            call LocalRhEstimate(lRH)
-                        end if
-                        do cls = 1, TOSetup%h2o_nclass
-                            if (lRH >= (cls - 1) * TOSetup%h2o_class_size .and. lRH <= cls * TOSetup%h2o_class_size) then
-                                !> Only where the class actually has a window,
-                                !> the same test the gas branch above applies.
-                                !> The optimisation file carries a row per RH
-                                !> class whether or not any determination fell
-                                !> in it, and an empty one is the error code -
-                                !> so an unguarded copy replaced the metadata's
-                                !> declared window with [-9999, -9999] and the
-                                !> lag search ran off the end of the record.
-                                if (toH2O(cls)%max > toH2O(cls)%min) then
-                                    E2Col(gas)%def_tl = toH2O(cls)%def
-                                    E2Col(gas)%min_tl = toH2O(cls)%min
-                                    E2Col(gas)%max_tl = toH2O(cls)%max
-                                end if
-                            end if
-                        end do
                     end if
                 end if
             end if
@@ -163,11 +169,14 @@ end subroutine SetTimelags
 ! \test
 ! \todo
 !***************************************************************************
-subroutine LocalRhEstimate(lRH)
+subroutine LocalRhEstimate(lRH, wsl)
     use m_rp_global_var
     implicit none
     !> in/out variables
     real(kind = dbl), intent(out) :: lRH
+    !> The hygrometer whose humidity is wanted - each classed one asks for
+    !> its own. This read the designated hygrometer for every caller.
+    integer, intent(in) :: wsl
     !> local variables
     real(kind = dbl) :: lChi
     real(kind = dbl) :: locT
@@ -176,7 +185,6 @@ subroutine LocalRhEstimate(lRH)
     real(kind = dbl) :: lRHOw
     real(kind = dbl) :: locES
     real(kind = dbl) :: Ma
-    integer :: wsl
     include '../src_common/interfaces_1.inc'
 
     !> Air temperature and pressure estimates
@@ -199,9 +207,7 @@ subroutine LocalRhEstimate(lRH)
 
     !> First calculate stuff for H2O
     lChi = error
-    !> The local humidity estimate comes from the primary water record.
-    wsl = PrimaryWaterSlot()
-    if (wsl < firstGas) then
+    if (wsl < firstGas .or. wsl > lastGas) then
         lRH = error
         return
     end if

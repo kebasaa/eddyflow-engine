@@ -511,3 +511,31 @@ subroutine FluxParams(printout)
     if (printout) write(ulog,'(a)') ' Done.'
 end subroutine FluxParams
 
+!***************************************************************************
+!
+! \brief       The relative humidity a water slot's time lag is classed by.
+! \author      Jonathan Muller
+! \note        The site's biomet RH where it has a valid one - the ambient
+!              humidity the tube's wall sees, the same for every analyser -
+!              and otherwise that hygrometer's own, from its own water
+!              (Ambient%RH_at). Valid only after this period's FluxParams.
+!
+!              For the designated hygrometer both are Stats%RH exactly:
+!              FluxParams takes the biomet value into Stats%RH, and assigns
+!              Stats%RH into RH_at for that slot. So a one-hygrometer project
+!              is classed by the very number it always was.
+!***************************************************************************
+real(kind = dbl) function PeriodWaterRH(slot)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: slot
+
+    if (biomet%val(bRH) > 0d0 .and. biomet%val(bRH) < RHmax) then
+        PeriodWaterRH = Stats%RH
+    elseif (slot >= firstGas .and. slot <= lastGas) then
+        PeriodWaterRH = Ambient%RH_at(slot)
+    else
+        PeriodWaterRH = error
+    end if
+end function PeriodWaterRH
+

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Does splitting a pre-pass across worker processes change the answer?
 #
-# Usage: check_parallel.sh [fixture.eddyflow]   (default: base_tlag_par.eddyflow)
+# Usage: [PAR_JOBS=N] check_parallel.sh [fixture.eddyflow]
+#        (defaults: base_tlag_par.eddyflow, PAR_JOBS=0 - one worker per core)
 #
-# Runs the fixture twice through run.sh - once with -j 1, once with -j 0 -
-# and diffs the two normalised output trees. Every file must match.
+# Runs the fixture twice through run.sh - once with -j 1, once with
+# -j $PAR_JOBS - and diffs the two normalised output trees. Every file must
+# match. The job count sets how many pieces the range is cut into (about four
+# per worker), so running it at a few values checks more than one cut.
 #
 # Why this is a separate script and not just a sweep fixture: sweep.sh does
 # not diff against a reference at all, and run.sh passes no -j, so the stored
@@ -25,16 +28,17 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FIXTURE="${1:-base_tlag_par.eddyflow}"
+PAR_JOBS="${PAR_JOBS:-0}"
 
 echo "== serial (-j 1) =="
 RP_EXTRA="-j 1" BASE="$FIXTURE" "$HERE/run.sh" ref
-echo "== parallel (-j 0) =="
-RP_EXTRA="-j 0" BASE="$FIXTURE" "$HERE/run.sh" chk
+echo "== parallel (-j $PAR_JOBS) =="
+RP_EXTRA="-j $PAR_JOBS" BASE="$FIXTURE" "$HERE/run.sh" chk
 
 # A pass means nothing if the parallel run never split. The parent says so in
 # its log, which run.sh keeps as *_rp.log.
 if ! grep -rqi "Splitting the pre-pass across" "$HERE/out_chk"; then
-    echo "FAIL: the -j 0 run did not split - this fixture proves nothing."
+    echo "FAIL: the -j $PAR_JOBS run did not split - this fixture proves nothing."
     echo "      Use one whose pre-pass window spans enough averaging periods."
     exit 1
 fi

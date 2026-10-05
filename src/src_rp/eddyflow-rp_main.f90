@@ -40,10 +40,13 @@ program EddyFlowRP
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
-        ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
+        ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary, &
+        SetPwbTimelagSummaryRH
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
-    use m_prepass_parallel, only: PlanPrepassBatches, PrepassSlice, FinishBatchWorker, &
+    use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
+        FinishBatchWorker, &
+        StopIfParentGone, &
         StartPrepassBatches, WaitPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
@@ -131,7 +134,11 @@ program EddyFlowRP
     integer :: mkdir_status
     integer :: del_status
 
-    integer, allocatable :: toH2On(:)
+    !> Per RH class and per slot - every classed hygrometer has its own.
+    integer, allocatable :: toH2On(:, :)
+    !> A row was added to the PWB aggregate dataset this period and still
+    !> waits for its humidity, which only FluxParams provides.
+    logical :: pwbRowWantsRH
     integer, allocatable :: pfNumElem(:)
 
     real(kind = dbl) :: MissingRecords
@@ -184,7 +191,6 @@ program EddyFlowRP
     logical :: make_dataset_rp
     logical :: FilterWhat(E2NumVar)
     logical :: FileEndReached
-    logical :: toInit
     logical :: BiometDataFound
     logical :: AssessmentOnly
     logical :: FakeGoPlanarFit(1)
@@ -572,8 +578,15 @@ program EddyFlowRP
         PwbTimelagN = 0
     end if
 
+    !> A planar-fit worker skips this pre-pass altogether. A worker starts the
+    !> program from the top like any run, and this pre-pass comes first: a
+    !> worker launched for a planar-fit slice used to walk its slice here as
+    !> time-lag periods, write time-lag records where its wind means belonged,
+    !> and stop - and the parent read those records as wind and lost every
+    !> sector of the fit. The wind means it is there for depend on no time lag.
     if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
-        (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only)) then
+        (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only) .and. &
+        (BatchIndex == 0 .or. BatchKind == 'to')) then
         if (.not. RPsetup%to_onthefly) then
             call ReadTimelagOptFile(TOSetup%h2o_nclass)
             if (TOSetup%h2o_nclass > 1) &
@@ -636,7 +649,6 @@ program EddyFlowRP
             bLastRec = 0
             DynamicMetadata = ErrDynamicMetadata
             LastMetadataTimestamp = DateType(0, 0, 0, 0, 0)
-            toInit = .true.
 
             !> Every period in the range is read, reduced, and turned into one
             !> record that depends on no other period's. So the range can be
@@ -667,22 +679,25 @@ program EddyFlowRP
             end if
 
             !> The workers go first so they are already reading raw data while
-            !> this process works through the first slice. The parent takes a
-            !> slice rather than waiting: the code after the loop reads state
+            !> this process works through the first piece. The parent takes a
+            !> piece rather than waiting: the code after the loop reads state
             !> the loop establishes, and a parent that had skipped it would
             !> reach that code with the state unset.
             toParallel = toWorkers > 1
             if (toParallel) then
                 call StartPrepassBatches('to', toStartTimestampIndx, &
-                    toEndTimestampIndx, toWorkers)
-                call PrepassSlice(toStartTimestampIndx, toEndTimestampIndx, &
-                    toWorkers, 1, sliceStart, sliceEnd)
+                    toEndTimestampIndx, toWorkers, RawTimeSeries, &
+                    size(RawTimeSeries), RawFileList, NumRawFiles)
+                call PrepassChunk(1, sliceStart, sliceEnd)
                 toStartTimestampIndx = sliceStart
                 toEndTimestampIndx = sliceEnd
                 pcount = toStartTimestampIndx - 1
             end if
 
             to_periods_loop: do
+                !> A worker whose parent has gone stops here, between
+                !> periods, rather than finishing a slice nobody will read.
+                call StopIfParentGone()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -778,14 +793,11 @@ program EddyFlowRP
                                     E2Set,   size(E2Set, 1),   Size(E2Set, 2), &
                                     DiagSet, size(DiagSet, 1), Size(DiagSet, 2))
 
-                !> If H2O instrument path type is 'open', doesn't make sense
-                !> to use RH classes so set it to 1.
-                if (toInit) then
-                    if (E2Col(PrimaryWaterOutSlot())%instr%path_type == 'open') then
-                        TOSetup%h2o_nclass = 1
-                        toInit = .false.
-                    end if
-                end if
+                !> An open-path hygrometer is not classed by RH. That used to
+                !> be said here by forcing the class count to one when the
+                !> designated hygrometer was open-path, which took the classes
+                !> from every other hygrometer with it; WaterSlotClassed now
+                !> asks it of each slot.
 
                 !> Clean up E2Set, eliminating values that are clearly unphysical
                 call CleanUpE2Set(E2Set, size(E2Set, 1), size(E2Set, 2))
@@ -1044,17 +1056,18 @@ program EddyFlowRP
             write(ulog, '(a)')
             call LogSay(' Done.')
 
-            !> Now collect what the other slices produced and append them to
-            !> this one, which leaves the dataset in period order - the order
-            !> a single loop over the whole range would have built it in.
+            !> Now hand out the remaining pieces, collect what they produced
+            !> and append it to this one, which leaves the dataset in period
+            !> order - the order a single loop over the whole range would have
+            !> built it in.
             if (toParallel) then
                 call WaitPrepassBatches('to', toWorkers)
                 if (PwbCacheGenerate) then
-                    call MergePwbBatchDumps('to', toWorkers, PwbTimelagOpt, &
-                        PwbTimelagOptSize, PwbTimelagN)
+                    call MergePwbBatchDumps('to', PrepassChunkCount(), &
+                        PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
                 else
-                    call MergeTlagBatchDumps('to', toWorkers, TimelagOpt, &
-                        TimelagOptSize, ton)
+                    call MergeTlagBatchDumps('to', PrepassChunkCount(), &
+                        TimelagOpt, TimelagOptSize, ton)
                 end if
             end if
 
@@ -1097,7 +1110,7 @@ program EddyFlowRP
                     allocate(toSet(PwbTimelagN))
                     call FixTimelagOptDataset(PwbTimelagOpt, PwbTimelagOptSize, &
                         toSet, size(toSet), tlagn, size(tlagn))
-                    allocate(toH2On(TOSetup%h2o_nclass))
+                    allocate(toH2On(TOSetup%h2o_nclass, E2NumVar))
                     call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
                         TOSetup%h2o_nclass, TOSetup%h2o_class_size)
                     call ResolvePwbAggregateSummary(tlagn)
@@ -1122,7 +1135,7 @@ program EddyFlowRP
             if (allocated(TimelagOpt)) deallocate(TimelagOpt)
             TimelagOptSize = 0
 
-            allocate(toH2On(TOSetup%h2o_nclass))
+            allocate(toH2On(TOSetup%h2o_nclass, E2NumVar))
 
             !> Optimize time-lags                                        ******* Improve readability of this subroutine interface
             call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, & 
@@ -1238,15 +1251,18 @@ program EddyFlowRP
             pfParallel = pfWorkers > 1
             if (pfParallel) then
                 call StartPrepassBatches('pf', pfStartTimestampIndx, &
-                    pfEndTimestampIndx, pfWorkers)
-                call PrepassSlice(pfStartTimestampIndx, pfEndTimestampIndx, &
-                    pfWorkers, 1, sliceStart, sliceEnd)
+                    pfEndTimestampIndx, pfWorkers, RawTimeSeries, &
+                    size(RawTimeSeries), RawFileList, NumRawFiles)
+                call PrepassChunk(1, sliceStart, sliceEnd)
                 pfStartTimestampIndx = sliceStart
                 pfEndTimestampIndx = sliceEnd
                 pcount = pfStartTimestampIndx - 1
             end if
 
             pf_periods_loop: do
+                !> A worker whose parent has gone stops here, between
+                !> periods, rather than finishing a slice nobody will read.
+                call StopIfParentGone()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1451,7 +1467,8 @@ program EddyFlowRP
 
             if (pfParallel) then
                 call WaitPrepassBatches('pf', pfWorkers)
-                call MergePfBatchDumps(pfWorkers, pfWind, size(pfWind, 1), pfn)
+                call MergePfBatchDumps(PrepassChunkCount(), pfWind, &
+                    size(pfWind, 1), pfn)
             end if
 
             !> As above: a worker hands back its slice of the wind means and
@@ -1840,6 +1857,7 @@ program EddyFlowRP
     !> this pass is behind it
     call RemoteBeginMainPass()
 
+    pwbRowWantsRH = .false.
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
@@ -2468,6 +2486,7 @@ program EddyFlowRP
                     .or. PwbTimelagN > PwbTimelagOptSize) &
                     error stop 'PWB time-lag optimization dataset is not allocated safely.'
                 call AddPwbTimelagSummaryDataset(PwbTimelagOpt, PwbTimelagOptSize, PwbTimelagN)
+                pwbRowWantsRH = .true.
             end if
 
             !> ===== 6.1 FILTERING MOLAR DENSITY DATA FOR ABSOLUTE LIMITS TEST  ====================
@@ -2690,6 +2709,17 @@ program EddyFlowRP
             !> Calculate parameters for flux computation
             call FluxParams(.true.)
 
+            !> The PWB aggregate row added after the time-lag handling gets
+            !> its humidity here, now that it is THIS period's. Taken where
+            !> the row was added, it was the previous period's - and for the
+            !> first period whatever the pre-pass left, which a parallel
+            !> pre-pass leaves differently from a serial one.
+            if (pwbRowWantsRH) then
+                call SetPwbTimelagSummaryRH(PwbTimelagOpt, PwbTimelagOptSize, &
+                    PwbTimelagN, .true.)
+                pwbRowWantsRH = .false.
+            end if
+
             !> Cleared every period, and for every gas.
             !>
             !> The loop below only assigns to gases on an LI-7700, so without
@@ -2911,6 +2941,15 @@ program EddyFlowRP
             call SetLicorDiagnostics(NumUserVar)
         end if
 
+        !> Metadata retrieval runs no FluxParams, so a PWB aggregate row added
+        !> this period has no humidity; it is gated without one rather than
+        !> left holding whatever the row had.
+        if (pwbRowWantsRH) then
+            call SetPwbTimelagSummaryRH(PwbTimelagOpt, PwbTimelagOptSize, &
+                PwbTimelagN, .false.)
+            pwbRowWantsRH = .false.
+        end if
+
         !>Write out full output file (main express output)
         if (EddyFlowProj%out_full) &
             call WriteOutFull(suffixOutString, PeriodRecords, PeriodActualRecords)
@@ -2946,7 +2985,7 @@ program EddyFlowRP
         allocate(toSet(PwbTimelagN))
         call FixTimelagOptDataset(PwbTimelagOpt, PwbTimelagOptSize, &
             toSet, size(toSet), tlagn, size(tlagn))
-        allocate(toH2On(TOSetup%h2o_nclass))
+        allocate(toH2On(TOSetup%h2o_nclass, E2NumVar))
         call OptimizeTimelags(toSet, size(toSet), tlagn, E2NumVar, toH2On, &
             TOSetup%h2o_nclass, TOSetup%h2o_class_size)
         call ResolvePwbAggregateSummary(tlagn)

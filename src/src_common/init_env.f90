@@ -36,6 +36,8 @@
 subroutine InitEnv()
     use m_common_global_var
     use m_eddypro_import
+    use m_process_os, only: WatchParent, RequestFullSpeed
+    use, intrinsic :: iso_fortran_env, only: error_unit
     implicit none
     include 'version_and_date.inc'
     !> local variables
@@ -55,6 +57,7 @@ subroutine InitEnv()
     character(PathLen) :: lowerPath
     character(8) :: batchPadding
     integer :: jobs_status
+    integer :: parent_status
 
 
     !> Store current timestamp information
@@ -143,7 +146,8 @@ subroutine InitEnv()
                 !> <kind>:<k>:<n>:<first>:<last>, naming the pre-pass ('pf' or
                 !> 'to'), which slice of it this process owns, and the period
                 !> indices that slice spans; --batch-out is where to leave the
-                !> resulting records. Deliberately absent from
+                !> resulting records; --batch-parent is the parent's process
+                !> ID, so the worker can stop if it goes. Deliberately absent from
                 !> CommandLineHelp: they are an implementation detail of the
                 !> parallel pre-pass, not an interface.
                 case('--batch')
@@ -158,6 +162,11 @@ subroutine InitEnv()
                 case('--batch-tmp')
                     if (io_status > 0 .or. len_trim(switch) == 0) exit arg_loop
                     BatchTmpDir = trim(arg)
+
+                case('--batch-parent')
+                    if (io_status > 0 .or. len_trim(switch) == 0) exit arg_loop
+                    read(arg, *, iostat = parent_status) BatchParentPid
+                    if (parent_status /= 0 .or. BatchParentPid < 0) BatchParentPid = 0
 
                 !> Software version
                 case('-v', '--version')
@@ -186,6 +195,29 @@ subroutine InitEnv()
                 index(lowerPath, '.eddypro') == 0) projPath = ''
         end if
     end do arg_loop
+
+    !> Before any work: this is a batch computation somebody is waiting for,
+    !> not background housekeeping, and on a hybrid processor Windows otherwise
+    !> keeps a windowless program on its slowest cores. Every worker runs this
+    !> same start-up, so each asks for itself. See RequestFullSpeed.
+    call RequestFullSpeed()
+
+    !> A worker whose parent has already gone has nobody to hand its records
+    !> to. Checked here, before anything is created that would need tidying,
+    !> and the handle opened now is what each period checks afterwards - see
+    !> StopIfParentGone.
+    !>
+    !> Standard error rather than the console-and-log pair everything else
+    !> uses: the run log is not open yet, and a write to its unit now would
+    !> land in a fort.NNN file instead. The worker's script captures stderr in
+    !> its .out file, which is where its parent would have looked.
+    if (BatchIndex > 0 .and. BatchParentPid > 0) then
+        if (.not. WatchParent(BatchParentPid)) then
+            write(error_unit, '(a)') ' The process that started this pre-pass worker is no'
+            write(error_unit, '(a)') ' longer running, so nothing would read its records.'
+            stop 3
+        end if
+    end if
 
     !> Set OS-dependent parameters
     if (len_trim(OS) == 0) OS = OS_default
@@ -265,7 +297,7 @@ logical function SwitchTakesValue(switch)
     select case (trim(token))
         case ('-s', '--system', '-e', '--environment', '-m', '--mode', &
               '-c', '--caller', '-j', '--jobs', &
-              '--batch', '--batch-out', '--batch-tmp')
+              '--batch', '--batch-out', '--batch-tmp', '--batch-parent')
             SwitchTakesValue = .true.
         case default
             SwitchTakesValue = .false.

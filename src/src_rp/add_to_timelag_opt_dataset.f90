@@ -45,10 +45,14 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     integer :: gas
     integer :: wsl
     real(kind = dbl) :: flux_test
+    real(kind = dbl) :: le
+    real(kind = dbl) :: rh
     character(32) :: label
+    real(kind = dbl), external :: PeriodWaterRH
     include '../src_common/interfaces.inc'
 
     wsl = PrimaryWaterOutSlot()
+    TimelagOpt(n)%RH = error
 
     !> Passive gases. Three unrolled arms before, naming co2, ch4 and the
     !> fourth slot, so a fifth gas never contributed to the time-lag
@@ -62,6 +66,7 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     !> deciding deliberately.
     do gas = firstGas, lastGas
         if (gas == wsl) cycle
+        if (GasSlotIsWater(gas)) cycle
         TimelagOpt(n)%tlag(gas) = error
         if (.not. E2Col(gas)%present) cycle
 
@@ -79,23 +84,34 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
             TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
     end do
 
-    !> Water vapor and RH. Gated on the site's latent heat flux rather than on
-    !> its own flux, which is why it keeps an arm of its own.
-    if (E2Col(wsl)%present) then
-        if (Flux0%LE > TOSetup%le_min_flux &
-            .and. Essentials%used_timelag(wsl) /= E2Col(wsl)%max_tl &
-            .and. Essentials%used_timelag(wsl) /= E2Col(wsl)%min_tl) then
-            TimelagOpt(n)%tlag(wsl) = Essentials%used_timelag(wsl)
-        else
-            TimelagOpt(n)%tlag(wsl) = error
+    !> Water vapour and RH, every hygrometer. Each is gated on its own latent
+    !> heat flux - the threshold is a latent heat flux, not a molar one,
+    !> which is why water keeps an arm of its own - and carries the RH its
+    !> lag is classed by. A second hygrometer used to go through the passive
+    !> arm above, gated on its molar flux against a threshold meant for other
+    !> species, and took the designated hygrometer's RH.
+    !>
+    !> The designated one is gated on Flux0%LE itself, so its determinations
+    !> are exactly what they were; the others' latent heat is formed the way
+    !> Fluxes0_rp forms that one.
+    do gas = firstGas, lastGas
+        if (gas /= wsl) then
+            if (.not. GasSlotIsWater(gas)) cycle
         end if
-        if (Stats%RH >= 0d0 .and. Stats%RH <= 100d0) then
-            TimelagOpt(n)%RH = Stats%RH
+        TimelagOpt(n)%tlag(gas) = error
+        if (.not. E2Col(gas)%present) cycle
+        if (gas == wsl) then
+            le = Flux0%LE
+        elseif (Flux0%gas(gas) /= error .and. Ambient%lambda > 0d0) then
+            le = Flux0%gas(gas) * Ambient%lambda * MW_H2O * 1d-3
         else
-            TimelagOpt(n)%RH = error
+            le = error
         end if
-    else
-        TimelagOpt(n)%tlag(wsl) = error
-        TimelagOpt(n)%RH = error
-    end if
+        if (le /= error .and. le > TOSetup%le_min_flux &
+            .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
+            .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
+            TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        rh = PeriodWaterRH(gas)
+        if (rh >= 0d0 .and. rh <= 100d0) TimelagOpt(n)%RH(gas) = rh
+    end do
 end subroutine AddToTimelagOptDataset

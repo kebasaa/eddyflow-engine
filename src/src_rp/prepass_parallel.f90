@@ -31,11 +31,14 @@
 !              once at the end and is cheap. So the loop is the cost, and the
 !              loop's periods are independent of one another.
 !
-!              This module splits that loop into contiguous slices and runs
-!              each in a copy of this program, which processes its slice and
-!              writes the records it produced to a file instead of going on to
-!              compute fluxes. The parent reads the slices back in order and
-!              hands the concatenation to the unchanged finalisation code.
+!              This module cuts that loop into contiguous pieces of similar
+!              work - several per worker - and runs each in a copy of this
+!              program, which processes its piece and writes the records it
+!              produced to a file instead of going on to compute fluxes. A
+!              fixed number run at once, and each that finishes makes room for
+!              the next, so a fast core takes more pieces than a slow one. The
+!              parent reads the pieces back in order and hands the
+!              concatenation to the unchanged finalisation code.
 !
 !              Processes rather than threads because the period loop reaches
 !              most of the program's global state - Stats, E2Col, Essentials,
@@ -44,7 +47,8 @@
 !
 !              The concatenation is exact: the records are fixed-size derived
 !              types with no allocatable components, written unformatted and
-!              read back by the same binary, and appended in slice order.
+!              read back by the same binary, and appended in piece order -
+!              whatever order the pieces finished in.
 !
 !              The PWB cache pre-pass may be split too, now - see the call
 !              site in eddyflow-rp_main.f90 for why splitting it stayed unsafe
@@ -67,16 +71,18 @@ module m_prepass_parallel
     use m_rp_global_var
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteCleanup
+    use m_process_os, only: ProcessSelfId, ParentGone
+    use m_pwb_timelag, only: AppendPwbCacheRows
     implicit none
     private
 
-    public :: PlanPrepassBatches, PrepassSlice
+    public :: PlanPrepassBatches, PrepassChunk, PrepassChunkCount
     public :: StartPrepassBatches, WaitPrepassBatches
     public :: BatchDumpPath
     public :: WriteTlagBatchDump, MergeTlagBatchDumps
     public :: WritePwbBatchDump, MergePwbBatchDumps
     public :: WritePfBatchDump, MergePfBatchDumps
-    public :: FinishBatchWorker
+    public :: FinishBatchWorker, StopIfParentGone
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
@@ -91,7 +97,35 @@ module m_prepass_parallel
     !> Guards the unformatted dumps. Parent and workers are the same binary in
     !> the same run, so the format never has to survive a version change - but
     !> a file a crashed earlier run left behind would otherwise be read as data.
-    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_04 '
+    !>
+    !> 05 adds the pre-pass kind to the header: a planar-fit worker once wrote
+    !> time-lag records under the planar-fit name, and the parent read them as
+    !> wind. Both ends now say which pre-pass a file belongs to.
+    !>
+    !> 06: TimeLagOptType carries one humidity per slot, not one scalar, so
+    !> the records it dumps changed size.
+    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_06 '
+
+    !> The range is cut into about this many pieces per worker, so a worker
+    !> that finishes early - on a performance core, or over a stretch with no
+    !> data - takes the next piece instead of idling until the slowest is done.
+    integer, parameter :: ChunksPerWorker = 4
+
+    !> Every per-piece file name carries the piece number in two digits.
+    integer, parameter :: MaxChunks = 99
+
+    !> What walking a period with no raw file costs, against 1 for a period
+    !> that is read and reduced: it imports nothing, so almost nothing.
+    real(kind = dbl), parameter :: EmptyPeriodWeight = 0.05d0
+
+    !> The current pre-pass's pieces, half-open like the loops: piece k is
+    !> [ChunkStart(k), ChunkEnd(k)). One pre-pass runs at a time, so one plan.
+    integer :: NumChunks = 0
+    integer, allocatable :: ChunkStart(:)
+    integer, allocatable :: ChunkEnd(:)
+
+    !> The next piece no worker has been given yet.
+    integer :: NextChunk = 0
 
 contains
 
@@ -161,40 +195,138 @@ contains
     end subroutine PlanPrepassBatches
 
     !***************************************************************************
-    !> \brief The index range worker k owns.
+    !> \brief Cut [iStart, iEnd) into pieces of about equal work.
+    !>
+    !> The range used to be cut into one slice per worker by period count. On
+    !> the Yatir run that gave one slice 801 raw files and another none - the
+    !> data thin out from June and stop for two weeks in July - and the run
+    !> waited on the heaviest. So the cut is by work instead: each period
+    !> weighs 1 if a raw file covers it and EmptyPeriodWeight if none does,
+    !> and the pieces hold equal shares of the total. There are several per
+    !> worker, handed out as workers come free, which takes care of what the
+    !> weights cannot see: a core that is slower than another.
+    !>
+    !> The weight is only an estimate of cost - the file's time span from
+    !> its name, not whether it holds usable records - and it decides nothing
+    !> but where the cuts fall. Any cut is correct: the pieces tile the range
+    !> and are merged back in order.
     !>
     !> The range is HALF-OPEN, [iStart, iEnd), because that is what the period
     !> loops themselves do: both exit on `pcount >= endIndex`, so the end index
-    !> is one past the last period processed. sliceEnd is exclusive for the
-    !> same reason and can be assigned straight to the loop's end index.
+    !> is one past the last period processed, and period p runs from
+    !> Series(p) to Series(p + 1). Piece ends are exclusive for the same reason
+    !> and go straight into the loop's end index.
     !>
-    !> Slices tile the range exactly - no gaps, no overlaps - with the
-    !> remainder spread over the first slices rather than dumped on the last.
+    !> Piece 1 is the parent's, and the parent has to read at least one raw
+    !> file in it: the code after the loop reads state that reading a file
+    !> establishes (see StartPrepassBatches). So piece 1 always reaches the
+    !> first period that has a file, however long the empty stretch before it.
     !***************************************************************************
-    subroutine PrepassSlice(iStart, iEnd, nEff, k, sliceStart, sliceEnd)
+    subroutine PlanPrepassChunks(iStart, iEnd, nEff, Series, nSeries, Files, nFiles)
         integer, intent(in) :: iStart
         integer, intent(in) :: iEnd
         integer, intent(in) :: nEff
+        integer, intent(in) :: nSeries
+        integer, intent(in) :: nFiles
+        type(DateType), intent(in) :: Series(nSeries)
+        type(FileListType), intent(in) :: Files(nFiles)
+        integer :: p
+        integer :: j
+        integer :: c
+        integer :: want
+        integer :: firstData
+        integer :: nCuts
+        !> One fewer cut than pieces, at most.
+        integer :: cuts(MaxChunks)
+        real(kind = dbl) :: total
+        real(kind = dbl) :: cum
+        real(kind = dbl), allocatable :: weight(:)
+
+        if (allocated(ChunkStart)) deallocate(ChunkStart, ChunkEnd)
+
+        !> No more pieces than periods a few to each, as for the slices
+        !> before: a piece still has to pay for starting a process.
+        want = min(ChunksPerWorker * nEff, MaxChunks, (iEnd - iStart) / 4)
+        want = max(want, min(nEff, iEnd - iStart))
+
+        !> Which periods a raw file covers. Files are in time order, so one
+        !> forward sweep: skip the files that end before the period starts,
+        !> then the period has data if the next file starts before it ends.
+        allocate(weight(iStart:iEnd - 1))
+        firstData = 0
+        j = 1
+        do p = iStart, iEnd - 1
+            do while (j <= nFiles)
+                if (Files(j)%timestamp + DatafileDateStep > Series(p)) exit
+                j = j + 1
+            end do
+            weight(p) = EmptyPeriodWeight
+            if (j <= nFiles) then
+                if (Files(j)%timestamp < Series(p + 1)) then
+                    weight(p) = 1d0
+                    if (firstData == 0) firstData = p
+                end if
+            end if
+        end do
+        total = sum(weight)
+
+        !> Cut where the running total passes each equal share. A cut is the
+        !> first period of the next piece, so it lies strictly inside the
+        !> range, and there is at most one per period, so each lies strictly
+        !> after the one before; a share too thin to hold a period of its own
+        !> is absorbed into the next piece.
+        nCuts = 0
+        cum = 0d0
+        do p = iStart + 1, iEnd - 1
+            cum = cum + weight(p - 1)
+            if (nCuts + 1 >= want) exit
+            if (cum >= total * dble(nCuts + 1) / dble(want)) then
+                nCuts = nCuts + 1
+                cuts(nCuts) = p
+            end if
+        end do
+        deallocate(weight)
+
+        !> Piece 1 reaches the first period with a file.
+        if (firstData > 0) then
+            do while (nCuts > 0)
+                if (cuts(1) > firstData) exit
+                cuts(1:nCuts - 1) = cuts(2:nCuts)
+                nCuts = nCuts - 1
+            end do
+        end if
+
+        NumChunks = nCuts + 1
+        allocate(ChunkStart(NumChunks), ChunkEnd(NumChunks))
+        ChunkStart(1) = iStart
+        do c = 1, nCuts
+            ChunkEnd(c) = cuts(c)
+            ChunkStart(c + 1) = cuts(c)
+        end do
+        ChunkEnd(NumChunks) = iEnd
+    end subroutine PlanPrepassChunks
+
+    !***************************************************************************
+    !> \brief The index range of piece k of the current pre-pass, half-open.
+    !***************************************************************************
+    subroutine PrepassChunk(k, sliceStart, sliceEnd)
         integer, intent(in) :: k
         integer, intent(out) :: sliceStart
         integer, intent(out) :: sliceEnd
-        integer :: total
-        integer :: base
-        integer :: rem
-        integer :: len
 
-        total = iEnd - iStart
-        base = total / nEff
-        rem = total - base * nEff
-
-        sliceStart = iStart + (k - 1) * base + min(k - 1, rem)
-        len = base
-        if (k <= rem) len = len + 1
-        sliceEnd = sliceStart + len
-    end subroutine PrepassSlice
+        sliceStart = ChunkStart(k)
+        sliceEnd = ChunkEnd(k)
+    end subroutine PrepassChunk
 
     !***************************************************************************
-    !> \brief Where worker k of pre-pass `kind` leaves its records.
+    !> \brief How many pieces the current pre-pass was cut into.
+    !***************************************************************************
+    integer function PrepassChunkCount()
+        PrepassChunkCount = NumChunks
+    end function PrepassChunkCount
+
+    !***************************************************************************
+    !> \brief Where piece k of pre-pass `kind` leaves its records.
     !***************************************************************************
     character(PathLen) function BatchDumpPath(kind, k)
         character(*), intent(in) :: kind
@@ -206,36 +338,40 @@ contains
     end function BatchDumpPath
 
     !***************************************************************************
-    !> \brief Launch workers 2..nEff and return at once, leaving slice 1 to the
-    !>        caller.
+    !> \brief Cut the range into pieces, start the first workers, and return at
+    !>        once, leaving piece 1 to the caller.
     !>
-    !> The parent takes the first slice itself rather than waiting idle. That is
+    !> nEff is how many processes may run at once, parent included. While the
+    !> parent works through piece 1, nEff - 1 workers take pieces 2, 3, ...;
+    !> WaitPrepassBatches hands out the rest as they come free.
+    !>
+    !> The parent takes the first piece itself rather than waiting idle. That is
     !> not only one process fewer: the code after the period loop reads global
     !> state the loop itself established - SortWindBySector wants the north
     !> offset out of E2Col, which is filled when a raw file's metadata is read -
     !> and a parent that had skipped the loop would arrive there with that state
     !> unset and bin every period into the wrong wind sector. Nothing enumerates
-    !> what the finalisation depends on, so the parent runs a slice and thereby
+    !> what the finalisation depends on, so the parent runs a piece and thereby
     !> has all of it, exactly as it always did.
     !***************************************************************************
-    subroutine StartPrepassBatches(kind, iStart, iEnd, nEff)
+    subroutine StartPrepassBatches(kind, iStart, iEnd, nEff, Series, nSeries, &
+            Files, nFiles)
         character(*), intent(in) :: kind
         integer, intent(in) :: iStart
         integer, intent(in) :: iEnd
         integer, intent(in) :: nEff
+        integer, intent(in) :: nSeries
+        integer, intent(in) :: nFiles
+        type(DateType), intent(in) :: Series(nSeries)
+        type(FileListType), intent(in) :: Files(nFiles)
         integer :: k
-        integer :: u
-        integer :: io_status
-        integer :: sliceStart
-        integer :: sliceEnd
         integer :: covered
         logical :: ex
-        character(PathLen) :: masterPath
         character(PathLen) :: childPath
         character(PathLen) :: rcPath
         character(PathLen) :: exePath
         character(PathLen) :: envPath
-        character(2048) :: cmd
+        character(64) :: LogString
 
         call get_command_argument(0, value = exePath)
 
@@ -248,31 +384,73 @@ contains
             envPath = envPath(1:len_trim(envPath) - 1)
         end do
 
-        !> The slices have to tile [iStart, iEnd) exactly. A gap drops periods
+        call PlanPrepassChunks(iStart, iEnd, nEff, Series, nSeries, Files, nFiles)
+
+        !> The pieces have to tile [iStart, iEnd) exactly. A gap drops periods
         !> from the fit and an overlap counts them twice, and neither shows up as
         !> anything but a slightly different answer - so it is checked here
         !> rather than left to be discovered.
         covered = 0
-        do k = 1, nEff
-            call PrepassSlice(iStart, iEnd, nEff, k, sliceStart, sliceEnd)
-            covered = covered + (sliceEnd - sliceStart)
+        do k = 1, NumChunks
+            if (ChunkEnd(k) <= ChunkStart(k)) covered = -huge(covered)
+            if (k > 1) then
+                if (ChunkStart(k) /= ChunkEnd(k - 1)) covered = -huge(covered)
+            end if
+            covered = covered + (ChunkEnd(k) - ChunkStart(k))
         end do
+        if (ChunkStart(1) /= iStart .or. ChunkEnd(NumChunks) /= iEnd) &
+            covered = -huge(covered)
         if (covered /= iEnd - iStart) &
             error stop 'Pre-pass slices do not tile the period range.'
 
+        write(LogString, '(i6)') NumChunks
+        call LogSay('  The range is cut into ' // trim(adjustl(LogString)) &
+            // ' pieces of similar work; each worker takes the next as it')
+        call LogSay('  comes free.')
+
         !> A stale return code from an earlier attempt would be read as a worker
         !> that had already finished.
-        do k = 2, nEff
+        do k = 2, NumChunks
             rcPath = ReturnCodePath(kind, k)
             inquire(file = trim(rcPath), exist = ex)
             if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
                 // comm_err_redirect)
         end do
 
-        !> One script per worker, and a master that only launches them. The
-        !> alternative - putting each command line inside the master's own
+        !> One script per piece, written now, started when its turn comes. The
+        !> alternative - putting each command line inside a launcher's own
         !> start/cmd quoting - nests quotes three deep, and every raw data
         !> directory here has a space in its name.
+        do k = 2, NumChunks
+            call WriteChildScript(kind, k, NumChunks, ChunkStart(k), ChunkEnd(k), &
+                exePath, envPath, childPath)
+        end do
+
+        NextChunk = 2
+        call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))
+    end subroutine StartPrepassBatches
+
+    !***************************************************************************
+    !> \brief Start the next n pieces, each in its own worker, and return.
+    !>
+    !> Through a launcher script, as the slices always were: it holds one
+    !> start line per piece and exits at once, leaving the workers running.
+    !> They are still this process's descendants for everything that matters -
+    !> the interface's job object, and their own watch on this process.
+    !***************************************************************************
+    subroutine LaunchChunks(kind, n)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: n
+        integer :: k
+        integer :: u
+        integer :: io_status
+        character(PathLen) :: masterPath
+        character(PathLen) :: childPath
+        character(16) :: tag
+        character(2048) :: cmd
+
+        if (n <= 0) return
+
         if (OS == 'win') then
             masterPath = trim(TmpDir) // 'batch_' // trim(kind) // '_run.bat'
         else
@@ -291,116 +469,177 @@ contains
             write(u, '(a)') '#!/bin/sh'
         end if
 
-        do k = 2, nEff
-            call PrepassSlice(iStart, iEnd, nEff, k, sliceStart, sliceEnd)
-            call WriteChildScript(kind, k, nEff, sliceStart, sliceEnd, &
-                exePath, envPath, childPath)
+        do k = NextChunk, NextChunk + n - 1
+            write(tag, '(a,a,i2.2)') trim(kind), '_b', k
             if (OS == 'win') then
+                childPath = trim(TmpDir) // 'batch_' // trim(tag) // '.bat'
                 write(u, '(a)') 'start "" /B cmd /c "' // trim(childPath) // '"'
             else
+                childPath = trim(TmpDir) // 'batch_' // trim(tag) // '.sh'
                 write(u, '(a)') 'sh "' // trim(childPath) // '" &'
             end if
         end do
         close(u)
+        NextChunk = NextChunk + n
 
-        !> On Windows this returns as soon as the workers are started, so the
-        !> caller gets on with its own slice and the waiting happens later. On
-        !> the others the launcher ends in `wait`, so this call blocks - the
-        !> parent's slice then runs after the workers rather than beside them,
-        !> which costs one slice of wall clock and nothing in correctness.
+        !> On Windows this returns as soon as the workers are started. On the
+        !> others each line is backgrounded, so the launcher returns as soon
+        !> as it has started them too.
         if (OS == 'win') then
             cmd = 'cmd /c "' // trim(masterPath) // '"'
         else
             cmd = 'sh "' // trim(masterPath) // '"'
         end if
         call system(trim(cmd))
-    end subroutine StartPrepassBatches
+    end subroutine LaunchChunks
 
     !***************************************************************************
-    !> \brief Wait for workers 2..nEff, and fail loudly if any of them did.
+    !> \brief Hand out the remaining pieces as workers come free, and fail
+    !>        loudly as soon as any of them does.
+    !>
+    !> The parent has finished piece 1 when it gets here, so from now on it
+    !> only dispatches, and nEff workers run at once. Each poll looks for the
+    !> return codes of the running pieces; every one that has appeared frees a
+    !> place for the next piece. A fast core therefore simply finishes more
+    !> pieces than a slow one, and nobody idles while work is left.
     !>
     !> A worker that dies has almost always hit a data or configuration fault
-    !> the serial run would have hit too. Carrying on with the slices that did
+    !> the serial run would have hit too. Carrying on with the pieces that did
     !> work would fit the planar fit, or the time-lag windows, to less data than
-    !> was asked for and say so only in a line of log - so this stops instead.
+    !> was asked for and say so only in a line of log - so this stops instead,
+    !> at once rather than after the rest have finished. The workers still
+    !> running notice within one period that this process has gone, and stop.
     !***************************************************************************
     subroutine WaitPrepassBatches(kind, nEff)
         character(*), intent(in) :: kind
         integer, intent(in) :: nEff
         integer :: k
-        integer :: u
         integer :: rc
         integer :: ticks
-        integer :: io_status
-        logical :: ex
-        logical :: allDone
+        integer :: nDone
+        integer :: nRunning
+        logical :: finished
+        logical, allocatable :: running(:)
         character(64) :: LogString
+        character(64) :: CountString
 
-        call LogSayNoAdv('  Waiting for the workers..')
+        allocate(running(NumChunks))
+        running = .false.
+        running(2:NextChunk - 1) = .true.
+
+        write(CountString, '(i6)') NumChunks
+        call LogSay('  Waiting for the workers:')
+        nDone = 1
         ticks = 0
         do
-            allDone = .true.
-            do k = 2, nEff
-                inquire(file = trim(ReturnCodePath(kind, k)), exist = ex)
-                if (.not. ex) allDone = .false.
+            do k = 2, NextChunk - 1
+                if (.not. running(k)) cycle
+                call ChunkReturnCode(kind, k, finished, rc)
+                if (.not. finished) cycle
+                running(k) = .false.
+                nDone = nDone + 1
+                ticks = 0
+
+                if (rc /= 0) then
+                    call AppendWorkerLog(kind, k)
+                    write(LogString, '(i6)') k
+                    !> Its console output rather than its log: a worker that died
+                    !> rather than returned never closed the log, so the last thing
+                    !> it managed to say - which is the thing worth reading - is
+                    !> only in what the launcher captured.
+                    call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
+                        // ' failed. What it printed before it stopped:')
+                    call DumpWorkerStdout(kind, k)
+                    error stop 'A parallel pre-pass worker failed.'
+                end if
+
+                if (.not. DumpExists(kind, k)) then
+                    call AppendWorkerLog(kind, k)
+                    write(LogString, '(i6)') k
+                    call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
+                        // ' exited cleanly but wrote no records. What it printed:')
+                    call DumpWorkerStdout(kind, k)
+                    error stop 'A parallel pre-pass worker produced no output.'
+                end if
+
+                write(LogString, '(i6)') nDone
+                call LogSay('   ' // trim(adjustl(LogString)) // ' of ' &
+                    // trim(adjustl(CountString)) // ' pieces done.')
             end do
-            if (allDone) exit
+            if (nDone >= NumChunks) exit
+
+            !> Keep nEff workers busy while pieces are left.
+            nRunning = count(running)
+            if (nRunning < nEff .and. NextChunk <= NumChunks) then
+                k = NextChunk
+                call LaunchChunks(kind, min(nEff - nRunning, NumChunks - NextChunk + 1))
+                running(k:NextChunk - 1) = .true.
+            end if
+
             call system(comm_sleep)
             ticks = ticks + 1
             if (ticks > MaxWaitTicks) then
                 call LogSay('')
-                call LogSay(' A pre-pass worker has not finished within a day.')
+                call LogSay(' No pre-pass worker has finished within a day.')
                 error stop 'Parallel pre-pass timed out.'
             end if
         end do
-        !> The return code is echoed into the file after it is created, so a read
-        !> arriving between the two sees an empty file.
-        call system(comm_sleep)
-        call LogSay(' Done.')
+        deallocate(running)
 
-        do k = 2, nEff
-            rc = -1
-            open(newunit = u, file = trim(ReturnCodePath(kind, k)), &
-                status = 'old', iostat = io_status)
-            if (io_status == 0) then
-                read(u, *, iostat = io_status) rc
-                close(u)
-                if (io_status /= 0) rc = -1
-            end if
-
+        !> Every worker's log, in piece order, so the run log reads as one walk
+        !> through the range whatever order the pieces finished in.
+        do k = 2, NumChunks
             call AppendWorkerLog(kind, k)
-
-            if (rc /= 0) then
-                write(LogString, '(i6)') k
-                !> Its console output rather than its log: a worker that died
-                !> rather than returned never closed the log, so the last thing
-                !> it managed to say - which is the thing worth reading - is
-                !> only in what the launcher captured.
-                call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
-                    // ' failed. What it printed before it stopped:')
-                call DumpWorkerStdout(kind, k)
-                error stop 'A parallel pre-pass worker failed.'
-            end if
-
-            inquire(file = trim(BatchDumpPath(kind, k)), exist = ex)
-            if (.not. ex) then
-                write(LogString, '(i6)') k
-                call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
-                    // ' exited cleanly but wrote no records. What it printed:')
-                call DumpWorkerStdout(kind, k)
-                error stop 'A parallel pre-pass worker produced no output.'
-            end if
         end do
     end subroutine WaitPrepassBatches
 
     !***************************************************************************
+    !> \brief Whether piece k's worker has finished, and with what code.
+    !>
+    !> The script creates the return-code file and then echoes the code into
+    !> it, so a read that lands between the two finds an empty file. That reads
+    !> as "not yet", and the next poll finds the code.
+    !***************************************************************************
+    subroutine ChunkReturnCode(kind, k, finished, rc)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        logical, intent(out) :: finished
+        integer, intent(out) :: rc
+        integer :: u
+        integer :: io_status
+        logical :: ex
+
+        finished = .false.
+        rc = -1
+        inquire(file = trim(ReturnCodePath(kind, k)), exist = ex)
+        if (.not. ex) return
+        open(newunit = u, file = trim(ReturnCodePath(kind, k)), &
+            status = 'old', iostat = io_status)
+        if (io_status /= 0) return
+        read(u, *, iostat = io_status) rc
+        close(u)
+        if (io_status /= 0) then
+            rc = -1
+            return
+        end if
+        finished = .true.
+    end subroutine ChunkReturnCode
+
+    logical function DumpExists(kind, k)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+
+        inquire(file = trim(BatchDumpPath(kind, k)), exist = DumpExists)
+    end function DumpExists
+
+    !***************************************************************************
     !> \brief Write the command line for one worker into its own script.
     !***************************************************************************
-    subroutine WriteChildScript(kind, k, nEff, sliceStart, sliceEnd, &
+    subroutine WriteChildScript(kind, k, nChunks, sliceStart, sliceEnd, &
             exePath, envPath, childPath)
         character(*), intent(in) :: kind
         integer, intent(in) :: k
-        integer, intent(in) :: nEff
+        integer, intent(in) :: nChunks
         integer, intent(in) :: sliceStart
         integer, intent(in) :: sliceEnd
         character(*), intent(in) :: exePath
@@ -411,6 +650,7 @@ contains
         character(64) :: batchArg
         character(2048) :: cmd
         character(16) :: tag
+        character(16) :: parentId
 
         write(tag, '(a,a,i2.2)') trim(kind), '_b', k
         if (OS == 'win') then
@@ -420,7 +660,8 @@ contains
         end if
 
         write(batchArg, '(a,a,i0,a,i0,a,i0,a,i0)') trim(kind), ':', k, ':', &
-            nEff, ':', sliceStart, ':', sliceEnd
+            nChunks, ':', sliceStart, ':', sliceEnd
+        write(parentId, '(i0)') ProcessSelfId()
 
         !> PrjPath rather than the path this program was handed: an EddyPro
         !> project has already been imported into one of ours by now, and N
@@ -443,6 +684,7 @@ contains
             // ' --batch ' // trim(batchArg) &
             // ' --batch-out "' // trim(BatchDumpPath(kind, k)) // '"' &
             // ' --batch-tmp "' // trim(NoTrailingSlash(TmpDir)) // '"' &
+            // ' --batch-parent ' // trim(parentId) &
             // ' "' // trim(PrjPath) // '"'
 
         open(newunit = u, file = trim(childPath), status = 'replace', &
@@ -581,6 +823,8 @@ contains
         integer :: u
         integer :: io_status
 
+        call RequireBatchKind('to')
+
         open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
             access = 'stream', status = 'replace', iostat = io_status)
         if (io_status /= 0) &
@@ -588,21 +832,22 @@ contains
 
         write(u) BatchMagic
         write(u) BatchIndex, BatchCount
+        write(u) BatchKind
         write(u) n
         if (n > 0) write(u) dataset(1:n)
         close(u)
     end subroutine WriteTlagBatchDump
 
     !***************************************************************************
-    !> rief Read the workers' slices back, in order, as if one loop ran.
+    !> \brief Read the workers' pieces back, in order, as if one loop ran.
     !>
-    !> Slice 1 is already in dataset(1:n) - the parent ran it itself - so this
-    !> appends slices 2..nEff after it, which is the order the serial loop would
-    !> have produced them in.
+    !> Piece 1 is already in dataset(1:n) - the parent ran it itself - so this
+    !> appends pieces 2..nChunks after it, which is the order the serial loop
+    !> would have produced them in.
     !***************************************************************************
-    subroutine MergeTlagBatchDumps(kind, nEff, dataset, nmax, n)
+    subroutine MergeTlagBatchDumps(kind, nChunks, dataset, nmax, n)
         character(*), intent(in) :: kind
-        integer, intent(in) :: nEff
+        integer, intent(in) :: nChunks
         integer, intent(in) :: nmax
         type(TimeLagOptType), intent(inout) :: dataset(nmax)
         integer, intent(inout) :: n
@@ -614,9 +859,10 @@ contains
         integer :: idx
         integer :: idxCount
         character(20) :: magic
+        character(2) :: dumpKind
         type(TimeLagOptType), allocatable :: slice(:)
 
-        do k = 2, nEff
+        do k = 2, nChunks
             open(newunit = u, file = trim(BatchDumpPath(kind, k)), &
                 form = 'unformatted', access = 'stream', status = 'old', &
                 iostat = io_status)
@@ -627,6 +873,9 @@ contains
             if (magic /= BatchMagic) &
                 error stop 'A pre-pass worker record file is not one of ours.'
             read(u) idx, idxCount
+            read(u) dumpKind
+            if (dumpKind /= kind) &
+                error stop 'A pre-pass worker record file belongs to another pre-pass.'
             read(u) nrec
 
             if (nrec > 0) then
@@ -665,6 +914,8 @@ contains
         integer :: u
         integer :: io_status
 
+        call RequireBatchKind('to')
+
         open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
             access = 'stream', status = 'replace', iostat = io_status)
         if (io_status /= 0) &
@@ -672,6 +923,7 @@ contains
 
         write(u) BatchMagic
         write(u) BatchIndex, BatchCount
+        write(u) BatchKind
         write(u) PwbTimelagCacheN
         if (PwbTimelagCacheN > 0) write(u) PwbTimelagCache(1:PwbTimelagCacheN)
         write(u) nOpt
@@ -684,33 +936,34 @@ contains
     end subroutine WritePwbBatchDump
 
     !***************************************************************************
-    !> \brief Read the workers' PWB slices back, in order, as if one loop ran.
+    !> \brief Read the workers' PWB pieces back, in order, as if one loop ran.
     !>
-    !> Slice 1 is already here - the parent ran it - so this appends 2..nEff
-    !> after it. Order is the whole point: the post-pass sorts the table by
-    !> timestamp with a stable insertion sort, so rows appended in slice order
+    !> Piece 1 is already here - the parent ran it - so this appends
+    !> 2..nChunks after it. Order is the whole point: the post-pass sorts the
+    !> table by timestamp with a stable insertion sort, so rows appended in
+    !> piece order
     !> come out exactly as a single loop would have left them, and periods
     !> sharing a timestamp keep their gas order.
     !>
-    !> The cache grows once per slice rather than once per row. Storing a row
-    !> at a time reallocates and copies the whole table each time, which is
-    !> quadratic and is what StorePwbTimelagCacheAt does for the serial walk.
+    !> The rows go through AppendPwbCacheRows, the one way rows are added,
+    !> so the table's capacity and its order flag stay true to its contents.
     !***************************************************************************
-    subroutine MergePwbBatchDumps(kind, nEff, dataset, nmax, nOpt)
+    subroutine MergePwbBatchDumps(kind, nChunks, dataset, nmax, nOpt)
         character(*), intent(in) :: kind
-        integer, intent(in) :: nEff
+        integer, intent(in) :: nChunks
         integer, intent(in) :: nmax
         type(TimeLagOptType), intent(inout) :: dataset(nmax)
         integer, intent(inout) :: nOpt
         integer :: k, i, u, io_status
         integer :: nrec, idx, idxCount
         character(20) :: magic
-        type(PWBTimelagCacheEntryType), allocatable :: rows(:), grown(:)
+        character(2) :: dumpKind
+        type(PWBTimelagCacheEntryType), allocatable :: rows(:)
         type(TimeLagOptType), allocatable :: slice(:)
         character(10), allocatable :: sdate(:)
         character(5), allocatable :: stime(:)
 
-        do k = 2, nEff
+        do k = 2, nChunks
             open(newunit = u, file = trim(BatchDumpPath(kind, k)), &
                 form = 'unformatted', access = 'stream', status = 'old', &
                 iostat = io_status)
@@ -721,17 +974,15 @@ contains
             if (magic /= BatchMagic) &
                 error stop 'A pre-pass worker PWB file is not one of ours.'
             read(u) idx, idxCount
+            read(u) dumpKind
+            if (dumpKind /= kind) &
+                error stop 'A pre-pass worker record file belongs to another pre-pass.'
 
             read(u) nrec
             if (nrec > 0) then
                 allocate(rows(nrec))
                 read(u) rows
-                allocate(grown(PwbTimelagCacheN + nrec))
-                if (PwbTimelagCacheN > 0) &
-                    grown(1:PwbTimelagCacheN) = PwbTimelagCache(1:PwbTimelagCacheN)
-                grown(PwbTimelagCacheN + 1:PwbTimelagCacheN + nrec) = rows
-                call move_alloc(grown, PwbTimelagCache)
-                PwbTimelagCacheN = PwbTimelagCacheN + nrec
+                call AppendPwbCacheRows(rows, nrec)
                 deallocate(rows)
             end if
 
@@ -765,6 +1016,8 @@ contains
         integer :: u
         integer :: io_status
 
+        call RequireBatchKind('pf')
+
         open(newunit = u, file = trim(BatchOutPath), form = 'unformatted', &
             access = 'stream', status = 'replace', iostat = io_status)
         if (io_status /= 0) &
@@ -772,16 +1025,17 @@ contains
 
         write(u) BatchMagic
         write(u) BatchIndex, BatchCount
+        write(u) BatchKind
         write(u) n
         if (n > 0) write(u) wind(1:n, 1:3)
         close(u)
     end subroutine WritePfBatchDump
 
     !***************************************************************************
-    !> \brief Read the planar-fit slices back, after the parent's own.
+    !> \brief Read the planar-fit pieces back, in order, after the parent's own.
     !***************************************************************************
-    subroutine MergePfBatchDumps(nEff, wind, nmax, n)
-        integer, intent(in) :: nEff
+    subroutine MergePfBatchDumps(nChunks, wind, nmax, n)
+        integer, intent(in) :: nChunks
         integer, intent(in) :: nmax
         real(kind = dbl), intent(inout) :: wind(nmax, 3)
         integer, intent(inout) :: n
@@ -793,9 +1047,10 @@ contains
         integer :: idx
         integer :: idxCount
         character(20) :: magic
+        character(2) :: dumpKind
         real(kind = dbl), allocatable :: slice(:, :)
 
-        do k = 2, nEff
+        do k = 2, nChunks
             open(newunit = u, file = trim(BatchDumpPath('pf', k)), &
                 form = 'unformatted', access = 'stream', status = 'old', &
                 iostat = io_status)
@@ -806,6 +1061,9 @@ contains
             if (magic /= BatchMagic) &
                 error stop 'A pre-pass worker record file is not one of ours.'
             read(u) idx, idxCount
+            read(u) dumpKind
+            if (dumpKind /= 'pf') &
+                error stop 'A pre-pass worker record file belongs to another pre-pass.'
             read(u) nrec
             if (nrec > 0) then
                 allocate(slice(nrec, 3))
@@ -839,6 +1097,55 @@ contains
             if (NoTrailingSlash(n:n) == slash) NoTrailingSlash(n:n) = ' '
         end if
     end function NoTrailingSlash
+
+    !***************************************************************************
+    !> \brief Stop this worker if the process that started it has gone.
+    !>
+    !> Called at the top of every period of a worker's slice. A worker is its
+    !> own process, started through a shell script, and nothing ties its life
+    !> to the parent's: killing the parent used to leave every worker running
+    !> to the end of its slice - hours, on the Yatir run - writing records into
+    !> a directory nobody would read again. Six were found still running two
+    !> minutes after the interface's Stop.
+    !>
+    !> Nothing is written: a partial slice is not a record of anything. The
+    !> worker tidies its temporary directory as it does on finishing, and exits
+    !> with 3, distinct from both success and an ordinary failure, for whoever
+    !> reads the .rc file later.
+    !>
+    !> A period is the granularity because it is the only safe point - between
+    !> periods the worker holds nothing half-done - and it bounds the delay to
+    !> one period's work, ~25 s at the worst measured so far.
+    !***************************************************************************
+    subroutine StopIfParentGone()
+        if (BatchIndex <= 0) return
+        if (.not. ParentGone()) return
+        !> Ends the progress line the period loop left open, so the reason
+        !> does not read as part of a date.
+        call LogSay('')
+        call LogSay(' The process that started this pre-pass worker has ended,')
+        call LogSay(' so nothing will read its records. Stopping without them.')
+        call FinishBatchWorker()
+        stop 3
+    end subroutine StopIfParentGone
+
+    !***************************************************************************
+    !> \brief Stop unless this worker was launched for pre-pass `kind`.
+    !>
+    !> Every worker runs the program from the top, so each pre-pass it meets
+    !> before its own has to stand aside for it - and the one time that did not
+    !> happen, a planar-fit worker reported time-lag records as its result.
+    !> Writing a dump for the wrong pre-pass is the moment that mistake becomes
+    !> data, so this is where it is refused.
+    !***************************************************************************
+    subroutine RequireBatchKind(kind)
+        character(*), intent(in) :: kind
+
+        if (BatchKind == kind) return
+        call LogSay(' This pre-pass worker was launched for the ' // trim(BatchKind) &
+            // ' pre-pass but reached the ' // trim(kind) // ' one.')
+        error stop 'A pre-pass worker ran the wrong pre-pass.'
+    end subroutine RequireBatchKind
 
     !***************************************************************************
     !> \brief Tidy up after a worker's slice, before it stops.

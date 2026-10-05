@@ -50,13 +50,13 @@
 !***************************************************************************
 module m_log
     use m_index_parameters
-    use iso_fortran_env, only: iostat_end
+    use iso_fortran_env, only: iostat_end, output_unit
     implicit none
     save
     private
 
     public :: LogStart, LogInit, LogSay, LogSayList, LogSayNoAdv, LogClose, &
-              LogIsOpen
+              LogIsOpen, LogFlush
 
     !> Long enough for the widest message the engine emits.
     integer, parameter :: LogLineLen = 2048
@@ -150,8 +150,7 @@ contains
         character(*), intent(in) :: text
 
         write(*, '(a)') text
-        if (.not. Connected) return
-        write(ulog, '(a)') text
+        if (Connected) write(ulog, '(a)') text
         call LogFlush()
     end subroutine LogSay
 
@@ -168,8 +167,7 @@ contains
         character(*), intent(in) :: text
 
         write(*, *) text
-        if (.not. Connected) return
-        write(ulog, *) text
+        if (Connected) write(ulog, *) text
         call LogFlush()
     end subroutine LogSayList
 
@@ -181,15 +179,22 @@ contains
         character(*), intent(in) :: text
 
         write(*, '(a)', advance = 'no') text
-        if (.not. Connected) return
-        write(ulog, '(a)', advance = 'no') text
+        if (Connected) write(ulog, '(a)', advance = 'no') text
+        call LogFlush()
     end subroutine LogSayNoAdv
 
     !> Flushed per line once the log has a name, because the run that most
     !> needs reading back is the one that died, and a buffered tail is exactly
     !> what would be missing from it. Pointless on the scratch file, which
     !> LogInit reads back in full anyway.
+    !>
+    !> The console too. When it is not a terminal - the interface reading a
+    !> pipe, a pre-pass worker writing to its .out file - gfortran buffers it
+    !> in blocks, and a worker's file stayed empty for an hour of a parallel
+    !> run while its parent's progress arrived in bursts. A handful of lines a
+    !> period costs nothing to flush.
     subroutine LogFlush()
+        flush(output_unit)
         if (Named) flush(ulog)
     end subroutine LogFlush
 

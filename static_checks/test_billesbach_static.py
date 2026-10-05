@@ -191,8 +191,13 @@ class TheShuffleIsUnbiasedAndReproducible(unittest.TestCase):
 
     def test_nothing_else_in_the_engine_draws_from_that_generator(self):
         #> Seeding here is safe only because the shuffle owns random_number.
+        #> src_tools holds standalone check programs (ccfcheck, covmaxcheck),
+        #> never linked into the engine; they draw test data from their own
+        #> process's generator.
         users = []
         for path in sorted((SRC).rglob("*.f90")):
+            if "src_tools" in path.parts:
+                continue
             text = path.read_text(encoding="utf-8", errors="replace")
             if re.search(r"call random_number\(", text):
                 users.append(path.name)

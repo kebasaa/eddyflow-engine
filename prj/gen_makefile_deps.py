@@ -49,12 +49,19 @@ ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = ROOT / "prj" / "Makefile"
 
 #: Where the compiler rules look for sources. Order is irrelevant - basenames
-#: are unique across all four, which the generator asserts.
+#: are unique across all of them, which the generator asserts.
+#:
+#: src_os/ has one directory per operating system and the Makefile compiles
+#: exactly one of them. Only win/ is read here: the posix/ file declares the
+#: same module with the same dependencies (none), so its rule is identical, and
+#: reading both would trip the basename check below.
+#: static_checks/test_worker_outlives_parent_static.py keeps the two in step.
 SOURCE_GLOBS = (
     "src/src_rp/*.f90",
     "src/src_rp/fft4/*.F",
     "src/src_fcc/*.f90",
     "src/src_common/*.f90",
+    "src/src_os/win/*.f90",
 )
 
 BEGIN = "#> BEGIN GENERATED dependencies - edit gen_makefile_deps.py, not this block"

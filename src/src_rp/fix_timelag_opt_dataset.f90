@@ -62,6 +62,11 @@ subroutine FixTimelagOptDataset(TimelagOpt, nrow, toSet, ton, actn, tlncol)
     !> `gas == h2o` that named record two; a project whose water sits elsewhere
     !> both dropped the real hygrometer's RH and applied the RH treatment to
     !> whatever gas held slot six.
+    !>
+    !> Each hygrometer on its own humidity. Tested on the designated
+    !> hygrometer's, a second hygrometer lost every period in which the
+    !> FIRST one had no RH - or, under PWB, had not settled - even for its own
+    !> plain window.
     do i = 1, ton
         toSet(i)%tlag = 0d0
         toSet(i)%RH   = 0d0
@@ -70,13 +75,13 @@ subroutine FixTimelagOptDataset(TimelagOpt, nrow, toSet, ton, actn, tlncol)
     do i = 1, ton
         do gas = firstGas, lastGas
             if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
-            if(GasSlotIsWater(gas) .and. TimelagOpt(i)%RH == error) cycle
+            if(GasSlotIsWater(gas) .and. TimelagOpt(i)%RH(gas) == error) cycle
             if(TimelagOpt(i)%tlag(gas) /= error) then
                 actn(gas) = actn(gas) + 1
                 toSet(actn(gas))%tlag(gas) = TimelagOpt(i)%tlag(gas)
                 !> Stored at this gas's own compaction index, so the RH and
                 !> the lag in a row always come from the same period.
-                toSet(actn(gas))%RH(gas) = TimelagOpt(i)%RH
+                toSet(actn(gas))%RH(gas) = TimelagOpt(i)%RH(gas)
             end if
         end do
     end do

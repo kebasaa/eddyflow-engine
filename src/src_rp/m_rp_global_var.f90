@@ -66,6 +66,36 @@ module m_rp_global_var
     !> pads skipped periods to this width; it used to carry its own literal,
     !> which had drifted four columns short of the header.
     integer :: nFluxnetFixedCols = 0
+    !> How many custom variables the FLUXNET header names. A skipped period's
+    !> row writes this many, not its own period's NumUserVar: where every raw
+    !> file brings its own metadata, as GHG archives do, a period's count can
+    !> differ from the one the header was written with.
+    integer :: nFluxnetCustomVars = 0
+    !> Whether InitFluxnetFile_rp has opened the FLUXNET file and written its
+    !> header.
+    logical :: FluxnetFileOpen = .false.
+    !> Periods skipped before that happened, waiting for their rows.
+    !>
+    !> The header is written after the first period that imports data, because
+    !> its custom-variable columns are only known then - and the width of every
+    !> row with them, a skipped period's included. A period skipped earlier
+    !> than that, as every period before the first raw file is, used to be
+    !> written anyway, to a unit nobody had opened: gfortran sent the row to
+    !> fort.132 in the working directory and the FLUXNET file never had it.
+    !> Only what belongs to the period is kept here; the rest of the row is
+    !> built when it is written, from the header's own layout.
+    type :: DeferredFluxnetRowType
+        character(10) :: start_date = ''
+        character(5)  :: start_time = ''
+        character(10) :: date = ''
+        character(5)  :: time = ''
+        logical :: daytime = .false.
+        !> nbVars values, in the units the header names; empty if the period
+        !> came before biomet was first read.
+        real(kind = dbl), allocatable :: biomet(:)
+    end type DeferredFluxnetRowType
+    type(DeferredFluxnetRowType), allocatable :: DeferredFluxnetRows(:)
+    integer :: nDeferredFluxnetRows = 0
     !> Column-name tag of each slot in FluxnetGasSlots. Taken from the project
     !> rather than E2Col, for the same reason as the slot list, and made unique
     !> so a site with two measurements of one species does not emit two columns
@@ -177,8 +207,43 @@ module m_rp_global_var
     integer :: PwbSummaryEvidence(E2NumVar) = 0
     character(10) :: PwbPeriodDate = ''
     character(5) :: PwbPeriodTime = ''
+    !> The table holds PwbTimelagCacheN rows; it is allocated with room for
+    !> more, so appending a row does not copy the whole table. Read it as
+    !> PwbTimelagCache(1:PwbTimelagCacheN), never whole.
+    !> Where each slower column's real samples are, in E2Primes rows, with a
+    !> slot for each one its instrument missed - SlowColumnSampleRows, recorded
+    !> by FixDatasetForSpectra before it interpolates the evidence away, read
+    !> by SlowColumnSpectra. n = 0 for a column at the file's own rate.
+    !>
+    !> Rows rather than one phase per column, because the phase need not be
+    !> fixed: the Yatir laser runs at 0.987 Hz against the 20 Hz rows, so its
+    !> samples pass through every row position in a half-hour, and reading
+    !> such a column at a fixed phase reads interpolated blends of two real
+    !> samples - which quietly attenuates what the rebuild exists to measure.
+    type :: SpecSampleRowsType
+        integer, allocatable :: r(:)
+        integer :: n = 0
+    end type SpecSampleRowsType
+    type(SpecSampleRowsType) :: SpecSamples(E2NumVar)
+    !> How many rows each column was moved up by when FixDatasetForSpectra
+    !> interpolated its gaps: ReplaceGapWithLinearInterpolation removes a
+    !> column's leading error rows by shifting the rest of it up. A slower
+    !> column nearly always opens with a few empty rows before its first
+    !> sample, so in the interpolated set its sample k sits SpecLead rows
+    !> above where SpecSamples recorded it - and w, which opens with none,
+    !> does not move.
+    integer :: SpecLead(E2NumVar) = 0
     type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
     integer :: PwbTimelagCacheN = 0
+    !> Whether the rows are in nondecreasing period order, and the period of
+    !> the last one, in minutes. While they are, a period's rows are found by
+    !> bisection rather than by a scan from row 1 - and it is the same row:
+    !> see LocatePwbRow.
+    logical :: PwbCacheInTimeOrder = .true.
+    integer(8) :: PwbCacheLastMinutes = 0
+    !> Each row's period in minutes, beside the table and the same size, so
+    !> bisecting does not parse a date string at every step.
+    integer(8), allocatable :: PwbCacheMinutes(:)
 
     !> Which averaging period each row of the aggregate time-lag dataset came
     !> from. The dataset has no time axis of its own, so the correspondence is
@@ -188,7 +253,16 @@ module m_rp_global_var
     character(10), allocatable :: PwbOptDate(:)
     character(5), allocatable :: PwbOptTime(:)
     type(TimeLagType) :: toPasGas(E2NumVar)
-    type(TimeLagType) :: toH2O(toMaxH2OClass)
+    !> RH-class windows per water slot: toH2O(class, slot). Every closed-path
+    !> hygrometer is classed by its own humidity (WaterSlotClassed); this was
+    !> one table, the designated hygrometer's.
+    type(TimeLagType) :: toH2O(toMaxH2OClass, E2NumVar)
+    !> The own-evidence row lag of each gas in the period just detected: its
+    !> PWB detection where that succeeded off the window edge, else its
+    !> covariance maximum (or the default on the edge). Depends on this
+    !> period alone, so the cache-generation pre-pass compensates by it - see
+    !> the second TimeLagHandle call there.
+    integer :: pwb_raw_OwnRowLags(E2NumVar) = 0
     type(StatsType) :: Stats1
     type(StatsType) :: Stats2
     type(StatsType) :: Stats3

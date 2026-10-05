@@ -35,7 +35,9 @@ What it builds, from the same three hours of CH-LAE the other fixtures use:
 Usage:  python gen_slow.py [--data-out DIR]
 
 Writes the projects and metadata beside this script, and the decimated raw
-files to a sibling of the source data directory.
+files to data_slow/ beside it, which is gitignored. Never beside the source:
+the source is the Lagern repository's own data folder, read here and never
+written into.
 """
 
 import argparse
@@ -59,13 +61,13 @@ MIRO_COLS = [7, 8, 9, 10, 11, 12]
 KEEP_EVERY = 10
 FILL = "-9999"
 
-HEADER_ROWS = 4
+HEADER_ROWS = 1
 SOURCE_PROJECT = "base_n_gas.eddyflow"
 SOURCE_METADATA = "base_site.metadata"
 
 #: The three-hour subset base_n_gas processes, one file per half hour.
 FILES = [
-    f"CH-LAE_ec-cos_20250601-{h:02d}{m:02d}.csv"
+    f"CH-LAE_ec_preproc_10hz_20250601-{h:02d}{m:02d}.csv"
     for h in range(3)
     for m in (0, 30)
 ]
@@ -123,15 +125,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-out", default=None,
                     help="where to write the decimated raw files "
-                         "(default: a '_slow' sibling of the source data dir)")
+                         "(default: data_slow/ beside this script)")
     args = ap.parse_args()
 
     project = (HERE / SOURCE_PROJECT).read_text(encoding="utf-8")
     metadata = (HERE / SOURCE_METADATA).read_text(encoding="utf-8")
 
     src_dir = Path(ini_value(project, "data_path"))
-    out_dir = Path(args.data_out) if args.data_out else \
-        src_dir.with_name(src_dir.name + "_slow")
+    #> Beside this script, gitignored, and never beside the source: the source
+    #> is the Lagern repository's own data folder, which is read here and must
+    #> not be written into.
+    out_dir = Path(args.data_out) if args.data_out else HERE / "data_slow"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for name in FILES:

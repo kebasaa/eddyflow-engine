@@ -32,7 +32,14 @@ ifeq ($(OS), Windows_NT)
 	RP_EXE = eddyflow_rp.exe
 	FCC_EXE = eddyflow_fcc.exe
 	PWBREF_EXE = pwb_reference.exe
+	PWBCMP_EXE = pwb_compare.exe
+	CCFCHECK_EXE = ccf_bitexact.exe
+	COVMAXCHECK_EXE = covmax_bitexact.exe
+	PWBTABLECHECK_EXE = pwb_table_check.exe
 	OS_DIR = win
+	#> Which src_os/ directory supplies m_process_os: the one module
+	#> that needs a different source per operating system.
+	OS_FAMILY = win
 	FC = gfortran.exe
 	MAKE_DIR = if not exist DIR mkdir DIR
 	PATHSEP2 = \\
@@ -44,10 +51,15 @@ else
 	RP_EXE = eddyflow_rp
 	FCC_EXE = eddyflow_fcc
 	PWBREF_EXE = pwb_reference
+	PWBCMP_EXE = pwb_compare
+	CCFCHECK_EXE = ccf_bitexact
+	COVMAXCHECK_EXE = covmax_bitexact
+	PWBTABLECHECK_EXE = pwb_table_check
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
 	PATHSEP2 = /
 	platform=$(shell uname)
+	OS_FAMILY = posix
 	ifeq ($(platform), Linux)
 		OS_DIR = linux
 		INFO = Compiling for Linux
@@ -68,6 +80,7 @@ RP_SRC_DIR_Fd2 = ../src/src_rp/fft4/
 FCC_SRC_DIR_f90d1 = ../src/src_fcc/
 ##Common
 COMMON_SRC_DIR_f90d1 = ../src/src_common/
+OS_SRC_DIR_f90d1 = ../src/src_os/$(OS_FAMILY)/
 ##Tools - not part of either shipped executable
 TOOLS_SRC_DIR_f90d1 = ../src/src_tools/
 OBJS_DIR = ../obj/$(OS_DIR)/
@@ -92,6 +105,7 @@ RP_SRCS_Fd2 = $(notdir $(wildcard $(RP_SRC_DIR_Fd2)*.F))
 FCC_SRCS_f90d1 = $(notdir $(wildcard $(FCC_SRC_DIR_f90d1)*.f90))
 ##Common
 COMMON_SRCS_f90d1 = $(notdir $(wildcard $(COMMON_SRC_DIR_f90d1)*.f90))
+OS_SRCS_f90d1 = $(notdir $(wildcard $(OS_SRC_DIR_f90d1)*.f90))
 
 #List of object file basenames (.o)
 ##RP
@@ -101,6 +115,7 @@ RP_OBJS_Fd2=$(patsubst %.F, %.o, $(RP_SRCS_Fd2))
 FCC_OBJS_f90d1=$(patsubst %.f90, %.o, $(FCC_SRCS_f90d1))
 ##Common
 COMMON_OBJS_f90d1=$(patsubst %.f90, %.o, $(COMMON_SRCS_f90d1))
+OS_OBJS_f90d1=$(patsubst %.f90, %.o, $(OS_SRCS_f90d1))
 
 #CFLAGS = -ffpe-trap=invalid,zero -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
 #CFLAGS = -g -fcheck=all -Wall -pedantic -fall-intrinsics -fbounds-check -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2003 -O3 -I $(OBJS_DIR)
@@ -114,11 +129,17 @@ COMMON_OBJS_f90d1=$(patsubst %.f90, %.o, $(COMMON_SRCS_f90d1))
 # it to catch anything. Run `make debug` and the sweep again after any change
 # that indexes raw data, and keep it that way.
 CHECKS = -fbounds-check -fcheck=all -g -fbacktrace
-CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -I $(OBJS_DIR) -J $(OBJS_DIR)
+# -ffp-contract=off: never fuse a multiply and an add into one FMA. A fused
+# product is rounded once instead of twice, so allowing it would move results
+# - and the blocked cross-correlation in m_pwb_core is bit-identical to the
+# loop it replaced only because each product is rounded exactly as before.
+# Today it changes nothing: the default x86-64 target has no FMA instruction.
+# It is here so that adding -march one day cannot silently change the numbers.
+CFLAGS = -Wno-surprising -Wall -pedantic -fall-intrinsics -Wextra -Wcharacter-truncation -Wunderflow -Wno-compare-reals -std=f2008 -O3 -ffp-contract=off -I $(OBJS_DIR) -J $(OBJS_DIR)
 
-VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OBJS_DIR)
-RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1))
-FCC_OBJS = $(addprefix $(OBJS_DIR), $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1))
+VPATH = $(RP_SRC_DIR_f90d1):$(RP_SRC_DIR_Fd2):$(FCC_SRC_DIR_f90d1):$(COMMON_SRC_DIR_f90d1):$(OS_SRC_DIR_f90d1):$(OBJS_DIR)
+RP_OBJS = $(addprefix $(OBJS_DIR), $(RP_OBJS_f90d1) $(RP_OBJS_Fd2)$(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1))
+FCC_OBJS = $(addprefix $(OBJS_DIR), $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1))
 
 $(info $(INFO))
 
@@ -140,11 +161,11 @@ debug :
 	$(MAKE) clean_all
 	$(MAKE) all CFLAGS="$(CFLAGS) $(CHECKS)"
 
-rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1)
+rp : $(RP_OBJS_f90d1) $(RP_OBJS_Fd2) $(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(RP_EXE) $(RP_OBJS)
 
-fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1)
+fcc : $(FCC_OBJS_f90d1) $(COMMON_OBJS_f90d1) $(OS_OBJS_f90d1)
 	@$(subst DIR,$(OS_EXE_DIR),$(MAKE_DIR))
 	$(FC) $(LDFLAGS) -o $(EXE_DIR)$(FCC_EXE) $(FCC_OBJS)
 
@@ -165,6 +186,43 @@ pwbref : m_numeric_kinds.o m_pwb_core.o
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_reference_main.f90 -o $(OBJS_DIR)pwb_reference_main.o
 	$(FC) -static -o $(OBJS_DIR)$(PWBREF_EXE) $(OBJS_DIR)pwb_reference_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
 
+# The PWB comparison driver: the engine's whole full-rate chain for one
+# period - pre-whitening, the four block bootstraps, mode, HDI, choice of
+# combination - on block starts it is handed, so tests/pwb_dyco/compare.py
+# can give dyco the same resamples and compare every number. Built like
+# pwbref: not in `all`, linked against the two core objects only, left in
+# the object directory.
+pwbcmp : m_numeric_kinds.o m_pwb_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_compare_main.f90 -o $(OBJS_DIR)pwb_compare_main.o
+	$(FC) -static -o $(OBJS_DIR)$(PWBCMP_EXE) $(OBJS_DIR)pwb_compare_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The cross-correlation bit-exactness check. Like pwbref: not in `all`, linked
+# against the shipped m_pwb_core.o so it checks the routine that ships, and
+# left in the object directory. It holds the pre-rewrite ComputeCcfWindow
+# frozen and compares every element on its raw bits.
+# static_checks/test_pwb_ccf_blocked_static.py runs it.
+ccfcheck : m_numeric_kinds.o m_pwb_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)ccf_bitexact_main.f90 -o $(OBJS_DIR)ccf_bitexact_main.o
+	$(FC) -static -o $(OBJS_DIR)$(CCFCHECK_EXE) $(OBJS_DIR)ccf_bitexact_main.o $(OBJS_DIR)m_pwb_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The covariance-maximisation bit-exactness check, built like ccfcheck: the
+# old per-lag path frozen, compared on raw bits with the shipped module.
+# static_checks/test_covmax_series_static.py runs it.
+covmaxcheck : m_numeric_kinds.o m_covmax_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)covmax_bitexact_main.f90 -o $(OBJS_DIR)covmax_bitexact_main.o
+	$(FC) -static -o $(OBJS_DIR)$(COVMAXCHECK_EXE) $(OBJS_DIR)covmax_bitexact_main.o $(OBJS_DIR)m_covmax_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The PWB table check: store a year of rows through the shipped routines and
+# confirm every lookup returns the row a scan from row 1 would. Unlike the
+# two above it needs the engine's own state, so it links every RP object but
+# the main program. static_checks/test_pwb_table_static.py runs it.
+pwbtablecheck : rp
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)pwb_table_check_main.f90 -o $(OBJS_DIR)pwb_table_check_main.o
+	$(FC) -static -o $(OBJS_DIR)$(PWBTABLECHECK_EXE) $(OBJS_DIR)pwb_table_check_main.o $(filter-out $(OBJS_DIR)eddyflow-rp_main.o,$(RP_OBJS))
+
 #Compilation
 ##RP
 $(RP_OBJS_f90d1):
@@ -182,6 +240,10 @@ $(FCC_OBJS_f90d1):
 $(COMMON_OBJS_f90d1):
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(COMMON_SRC_DIR_f90d1)$(@:.o=.f90) -o $(OBJS_DIR)$@
+##Per operating system
+$(OS_OBJS_f90d1):
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(OS_SRC_DIR_f90d1)$(@:.o=.f90) -o $(OBJS_DIR)$@
 
 clean_all : clean_rp clean_fcc clean_stray
 
@@ -329,6 +391,7 @@ cleanup_e2_set.o: \
 	m_rp_global_var.o
 column_sampling.o: \
 	column_sampling.f90 \
+	m_numeric_kinds.o \
 	m_rp_global_var.o
 configure_for_embedded.o: \
 	configure_for_embedded.f90 \
@@ -638,7 +701,8 @@ init_env.o: \
 	init_env.f90 \
 	version_and_date.inc \
 	m_common_global_var.o \
-	m_eddypro_import.o
+	m_eddypro_import.o \
+	m_process_os.o
 init_ex_vars.o: \
 	init_ex_vars.f90 \
 	interfaces_1.inc \
@@ -700,6 +764,9 @@ m_common_global_var.o: \
 	m_log.o \
 	m_methane_tables.o \
 	m_typedef.o
+m_covmax_core.o: \
+	m_covmax_core.f90 \
+	m_numeric_kinds.o
 m_dates.o: \
 	m_dates.f90
 m_eddypro_import.o: \
@@ -729,6 +796,8 @@ m_methane_tables.o: \
 	m_numeric_kinds.o
 m_numeric_kinds.o: \
 	m_numeric_kinds.f90
+m_process_os.o: \
+	m_process_os.f90
 m_pwb_core.o: \
 	m_pwb_core.f90 \
 	m_numeric_kinds.o
@@ -830,7 +899,9 @@ power_of_two.o: \
 prepass_parallel.o: \
 	prepass_parallel.f90 \
 	ghg_prefetch.o \
+	m_process_os.o \
 	m_rp_global_var.o \
+	pwb_timelag_handle.o \
 	remote_source.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
@@ -952,7 +1023,8 @@ set_timelags.o: \
 	m_rp_global_var.o
 show_daily_advancement.o: \
 	show_daily_advancement.f90 \
-	m_common_global_var.o
+	m_common_global_var.o \
+	m_log.o
 sort.o: \
 	sort.f90 \
 	m_common_global_var.o \
@@ -1057,6 +1129,7 @@ timelag_handle.o: \
 	timelag_handle.f90 \
 	interfaces_1.inc \
 	m_common_global_var.o \
+	m_covmax_core.o \
 	m_rp_global_var.o \
 	pwb_timelag_handle.o
 timestamp.o: \
