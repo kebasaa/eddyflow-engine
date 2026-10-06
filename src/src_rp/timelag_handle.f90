@@ -76,10 +76,8 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     skip_apply = pwb_detect_only_mode
     pwb_detect_only_mode = .false.
 
-    if  (.not. InTimelagOpt .and. .not. skip_apply) write(*, '(a)', advance = 'no') &
-        '  Compensating time-lags..'
-    if  (.not. InTimelagOpt .and. .not. skip_apply) write(ulog, '(a)', advance = 'no') &
-        '  Compensating time-lags..'
+    if  (.not. InTimelagOpt .and. .not. skip_apply) &
+        call LogOpenLine('  Compensating time-lags..')
 
     !> for E2Set scalars, initialise auxiliary vars to zero
     def_rl(:) = 0
@@ -325,8 +323,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             end if
         end do
         Set = TmpSet
-        if  (.not. InTimelagOpt) write(*,'(a)') ' Done.'
-        if  (.not. InTimelagOpt) write(ulog,'(a)') ' Done.'
+        if  (.not. InTimelagOpt) call LogEndLine(' Done.')
     end if
 end subroutine TimeLagHandle
 

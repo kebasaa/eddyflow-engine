@@ -101,7 +101,7 @@ class MissingValueStaticTests(unittest.TestCase):
     def test_an_untested_gas_is_reported_once(self):
         body = read("src/src_rp/test_absolute_limits.f90")
         assert "call ExceptionHandler(109)" in body
-        assert "if (.not. AlLimitsWarned) then" in body, (
+        assert "if (.not. AlLimitsWarned) warnNoLimits = .true." in body, (
             "the test runs every averaging period; unlatched, the warning "
             "would bury the log"
         )

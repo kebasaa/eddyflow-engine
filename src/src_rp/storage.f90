@@ -37,6 +37,8 @@ subroutine Storage(PrevStats, prevAmbient)
         Stor%H  = error
         Stor%LE = error
         Stor%of(firstGas:lastGas)  = error
+        !> Ends the line, which the next step's would otherwise continue.
+        call LogSay(' Done.')
         return
     end if
 

@@ -79,6 +79,7 @@ program EddyFlowRP
     integer :: ProdWorkers = 1
     integer :: ProdNCuts = 0
     integer :: ProdCuts(99)
+    character(32) :: SectorLine
     !> With PWB time lags the split runs in three phases: detection workers
     !> ('pd') gather each period's evidence, this process classifies it in time
     !> order, and production workers ('pr') compute the fluxes with the lags it
@@ -397,14 +398,11 @@ program EddyFlowRP
         !> If requested, read external metadata file \n
         !> This is the case with non-GHG files or with GHG files if user \n
         !> explicitly selects an alternative metadata file
-        write(*,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
-            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
-        write(ulog,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
-            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
+        call LogOpenLine(' Reading alternative metadata file: "' &
+            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..')
         call ReadMetadataFile(Col, AuxFile%metadata, IniFileNotFound, .true.)
         if (IniFileNotFound) then
-            write(*, *)
-            write(ulog, *)
+            call LogSay('')
             call ExceptionHandler(22)
         end if
         !> Retrieve variables to be used (from EddyFlow project file) \n
@@ -413,12 +411,11 @@ program EddyFlowRP
         MetaIsNeeded = .false.
         call MetadataFileValidation(Col, passed, faulty_col)
         if (.not. passed(1)) then
-            write(*, *)
-            write(ulog, *)
+            call LogSay('')
             call InformOfMetadataProblem(passed, faulty_col)
             call ExceptionHandler(23)
         end if
-        call LogSay(' Done.')
+        call LogEndLine(' Done.')
     else
         !> In case of standard GHG processing, without alternative metadata \n
         !> file one GHG file must be opened to read the metadata content for \n
@@ -1590,8 +1587,8 @@ program EddyFlowRP
             !> Loop over wind sectors
             GoPlanarFit = .true.
             secloop: do sec = 1, PFSetup%num_sec
-                write(*, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
-                write(ulog, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
+                write(SectorLine, '(a, i2, a)') '  Sector n.', sec, '..'
+                call LogOpenLine(trim(SectorLine))
                 if (PFSetup%wsect_exclude(sec)) then
                     GoPlanarFit(sec) = .false.
                     PFb(:, sec) = error
@@ -1670,7 +1667,7 @@ program EddyFlowRP
                 !> Update sector-wise rotation matrix
                 PFMat(:, :, sec) = PP
 
-                call LogSay(' Done.')
+                call LogEndLine(' Done.')
             end do secloop
 
             !> Fix sectors without calculations, using closest
@@ -2743,7 +2740,7 @@ program EddyFlowRP
                 call ResetCecFlux(CECFlux(cec_p))
             end do
             if (EddyFlowProj%do_cec > 0) then
-                call LogSayNoAdv('  Calculating CEC partitioning..')
+                call LogOpenLine('  Calculating CEC partitioning..')
                 call CecPairs(CecPairList, nCecPairs)
                 if (nCecPairs > 0) then
                     if (.not. allocated(CecPrimes)) &
@@ -2761,7 +2758,7 @@ program EddyFlowRP
                     end do
                     if (allocated(CecPrimes)) deallocate(CecPrimes)
                 end if
-                call LogSay(' Done.')
+                call LogEndLine(' Done.')
             end if
 
             !> ===== 7. DETRENDING =============================================
