@@ -35,8 +35,209 @@
 ! \test
 ! \todo
 !***************************************************************************
+!*******************************************************************************
+!
+! \brief       The dynamic metadata file, held in memory.
+!
+!              RetrieveDynamicMetadata used to open the file and read it from
+!              the top for every averaging period - twice per period in the main
+!              pass, and once more for every period a worker of a split run
+!              skips - so a year's run read a year-long file some 35 000 times.
+!              It is now read once. What a call picks is a property of the file
+!              and of the period alone: the scan stops at the first row dated
+!              after the period, and the row before it is applied. So the rows
+!              are kept, each parsed when a scan first reaches it - as far as the
+!              old reading went, and no further - and a call that comes after
+!              the previous one carries on from where that one stopped, which
+!              finds the same row: every row before it was no later than the
+!              previous period, and so no later than this one.
+!
+!              Applying the row is not cached: ReadMetadataFromTextVars,
+!              FixDynamicMetadata and ExtractUsableMetadataFromDynamic merge
+!              into what earlier rows left, and still run on every call.
+!
+! \author      Jonathan Muller
+!*******************************************************************************
+module m_dynmd_rows
+    use m_rp_global_var
+    implicit none
+    private
+    public :: DynRowsLoaded, DynRowsUsable, LoadDynMDRows, PickDynMDRow
+
+    type :: DynMDRowType
+        !> The line as read into a LongInstringLen buffer, trailing blanks gone
+        character(len = :), allocatable :: text
+        logical :: blank = .false.
+        logical :: parsed = .false.
+        !> Splitting it ran out of fields - Warning(105) - when a scan reached it
+        logical :: overwide = .false.
+        type(DateType) :: ts
+    end type DynMDRowType
+
+    type(DynMDRowType), allocatable :: Rows(:)
+    integer :: nRows = 0
+    logical :: DynRowsLoaded = .false.
+    logical :: DynRowsUsable = .false.
+
+    !> Where the last scan stopped: the first row dated after LastFinal (nRows
+    !> + 1 at the end of the file), the last row before it no later than
+    !> LastFinal, and how many rows short of it overflowed when split.
+    logical :: HaveLast = .false.
+    type(DateType) :: LastFinal
+    integer :: StopRow = 1
+    integer :: LastQual = 0
+    integer :: OverBefore = 0
+
+contains
+
+    !***************************************************************************
+    !> \brief Read the file into memory, the way each call used to read it.
+    !>
+    !> Left unusable - so every call reads the file as it always did - when
+    !> it cannot be opened (each call then reports that, as before), or when
+    !> it has no date or no time column, where the old scan read a timestamp
+    !> no row ever set.
+    !***************************************************************************
+    subroutine LoadDynMDRows()
+        integer :: open_status
+        integer :: read_status
+        character(LongInstringLen) :: dataline
+        type(DynMDRowType), allocatable :: grown(:)
+
+        DynRowsLoaded = .true.
+        DynRowsUsable = .false.
+        if (DynamicMetadataOrder(dynmd_date) == nint(error) &
+            .or. DynamicMetadataOrder(dynmd_time) == nint(error)) return
+        open(udf, file = AuxFile%DynMD, status = 'old', iostat = open_status)
+        if (open_status /= 0) return
+        read(udf, '(a)') dataline
+        allocate(Rows(1024))
+        nRows = 0
+        do
+            dataline = ''
+            read(udf, '(a)', iostat = read_status) dataline
+            if (read_status /= 0) exit
+            if (nRows == size(Rows)) then
+                allocate(grown(2 * size(Rows)))
+                grown(1:nRows) = Rows(1:nRows)
+                call move_alloc(grown, Rows)
+            end if
+            nRows = nRows + 1
+            Rows(nRows)%text = trim(dataline)
+            Rows(nRows)%blank = len(trim(dataline)) == 0
+        end do
+        close(udf)
+        DynRowsUsable = .true.
+    end subroutine LoadDynMDRows
+
+    !***************************************************************************
+    !> \brief The row the old scan would apply for FinalTimestamp, as split
+    !>        text in vars; found is false when no row qualifies.
+    !>
+    !> Warning(105) is raised once for every overflowing row the old scan
+    !> would have split on the way, as it was.
+    !***************************************************************************
+    subroutine PickDynMDRow(FinalTimestamp, vars, nvars, found)
+        type(DateType), intent(in) :: FinalTimestamp
+        integer, intent(in) :: nvars
+        character(32), intent(out) :: vars(nvars)
+        logical, intent(out) :: found
+        integer :: k
+        integer :: w
+        logical :: over
+
+        if (HaveLast) then
+            if (FinalTimestamp < LastFinal) HaveLast = .false.
+        end if
+        if (.not. HaveLast) then
+            StopRow = 1
+            LastQual = 0
+            OverBefore = 0
+        end if
+
+        k = StopRow
+        do while (k <= nRows)
+            if (Rows(k)%blank) then
+                k = k + 1
+                cycle
+            end if
+            if (.not. Rows(k)%parsed) call ParseRow(k, nvars)
+            if (Rows(k)%ts <= FinalTimestamp) then
+                LastQual = k
+                if (Rows(k)%overwide) OverBefore = OverBefore + 1
+                k = k + 1
+                cycle
+            end if
+            exit
+        end do
+        StopRow = k
+        LastFinal = FinalTimestamp
+        HaveLast = .true.
+
+        !> Every row the old scan split: those before the stop, and the row it
+        !> stopped at
+        w = OverBefore
+        if (StopRow <= nRows) then
+            if (Rows(StopRow)%overwide) w = w + 1
+        end if
+        do k = 1, w
+            call ExceptionHandler(105)
+        end do
+
+        found = LastQual > 0
+        vars = 'none'
+        if (found) call SplitRow(Rows(LastQual)%text, vars, nvars, over)
+    end subroutine PickDynMDRow
+
+    !> A row's timestamp, read from its date and time fields as the old scan did.
+    subroutine ParseRow(k, nvars)
+        integer, intent(in) :: k
+        integer, intent(in) :: nvars
+        character(32) :: vars(nvars)
+        character(10) :: date
+        character(5) :: time
+
+        vars = 'none'
+        call SplitRow(Rows(k)%text, vars, nvars, Rows(k)%overwide)
+        read(vars(DynamicMetadataOrder(dynmd_date)), *) date
+        read(vars(DynamicMetadataOrder(dynmd_time)), *) time
+        call DateTimeToDateType(date, time, Rows(k)%ts)
+        Rows(k)%parsed = .true.
+    end subroutine ParseRow
+
+    !> Split a row at the separator into vars, which stay 'none' past the
+    !> last field; over is true when there were more fields than vars.
+    subroutine SplitRow(text, vars, nvars, over)
+        character(*), intent(in) :: text
+        integer, intent(in) :: nvars
+        character(32), intent(inout) :: vars(nvars)
+        logical, intent(out) :: over
+        character(LongInstringLen) :: dataline
+        integer :: sepa
+        integer :: var_num
+
+        over = .false.
+        dataline = text
+        var_num = 0
+        do
+            sepa = index(dataline, separator)
+            if (sepa == 0) sepa = len_trim(dataline) + 1
+            if (len_trim(dataline) == 0) exit
+            if (var_num >= nvars) then
+                over = .true.
+                exit
+            end if
+            var_num = var_num + 1
+            vars(var_num) = dataline(1:sepa - 1)
+            dataline = dataline(sepa + 1: len_trim(dataline))
+        end do
+    end subroutine SplitRow
+
+end module m_dynmd_rows
+
 subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
     use m_rp_global_var
+    use m_dynmd_rows
     implicit none
     !> In/out variables
     integer, intent(in) :: ncol
@@ -54,9 +255,23 @@ subroutine RetrieveDynamicMetadata(FinalTimestamp, LocCol, ncol)
     character(32) :: mdCurrentStringVars(MaxRowFields)
     character(LongInstringLen) :: dataline
     type (DateType) :: mdCurrentTimestamp
+    logical :: found
 
 
     call LogSayNoAdv('  Retrieving dynamic metadata..')
+
+    !> From memory - see m_dynmd_rows - whenever the file could be held there
+    if (.not. DynRowsLoaded) call LoadDynMDRows()
+    if (DynRowsUsable) then
+        call PickDynMDRow(FinalTimestamp, mdCurrentStringVars, &
+            size(mdCurrentStringVars), found)
+        if (found) call ReadMetadataFromTextVars(mdCurrentStringVars, &
+            size(mdCurrentStringVars))
+        call FixDynamicMetadata()
+        call ExtractUsableMetadataFromDynamic(LocCol, size(LocCol))
+        call LogSay(' Done.')
+        return
+    end if
 
     !> Open dynamic metadata file
     open(udf, file = AuxFile%DynMD, status = 'old', iostat = open_status)
