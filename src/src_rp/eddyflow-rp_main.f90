@@ -56,7 +56,7 @@ program EddyFlowRP
         AdoptProdWorkerOutput, CaptureProdContext, WriteProdContext, &
         ReadProdContext, ProdPieceBegins, FinishProdWorker, MergeProdPieces, &
         KeepPwbEvidence, FinishEvidenceWorker, KeepPwbVerdict, &
-        ReplayProdEvidence, WriteProdVerdicts, ReadProdVerdicts, FindProdVerdict, &
+        ReplayProdEvidence, ReadProdVerdicts, FindProdVerdict, &
         RemoveStaleWorkerRoots, SetProdRemoteWindow
     use m_pwb_stream, only: PwbVerdictType, PwbTakeVerdict, PwbApplyVerdict, &
         PwbEvidenceOnly, PwbLastEvidence
@@ -3195,8 +3195,7 @@ program EddyFlowRP
     if (ProdSplit) then
         if (ProdPwb) then
             call WaitPrepassBatches('pd', ProdWorkers)
-            call ReplayProdEvidence()
-            call WriteProdVerdicts(ProdStarts, ProdEnds, ProdNCuts + 1)
+            call ReplayProdEvidence(ProdStarts, ProdNCuts + 1)
             call StartPrepassBatches('pr', ProdStarts(1), ProdEnds(ProdNCuts + 1), &
                 ProdWorkers, MasterTimeSeries, size(MasterTimeSeries), &
                 RawFileList, NumRawFiles, ProdCuts(1:ProdNCuts))

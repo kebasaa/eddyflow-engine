@@ -108,6 +108,21 @@ class ThePwbClassifierIsInOnePlace(unittest.TestCase):
         self.assertLess(replay.index("RowLags = 0"), replay.index("call PwbClassifyPeriod("))
         self.assertIn("pwb_raw_ActTLag, pwb_raw_TLag, pwb_raw_DefTlagUsed", replay)
 
+    def test_the_parent_keeps_one_verdict_and_streams_the_rest(self):
+        keep = body(PROD, "subroutine", "KeepPwbVerdict")
+        self.assertIn("LastVerdict = v", keep)
+        self.assertNotIn("Verdicts(", keep)
+        replay = body(PROD, "subroutine", "ReplayProdEvidence")
+        self.assertIn("call WritePwbVerdict(uv, v, prev)", replay)
+        self.assertIn("if (LastVerdict%pcount >= cutStarts(k) - 1) then", replay)
+
+    def test_verdicts_carry_only_the_slots_that_changed(self):
+        write = body(STREAM, "subroutine", "WritePwbVerdict")
+        self.assertIn("if (SlotChanged(v, prev, j))", write)
+        self.assertIn("transfer(a, 0_8) == transfer(b, 0_8)", STREAM)
+        self.assertIn("if (ev%present(j)) write(u) j, ev%def_tl(j), ev%def_rl(j)",
+                      body(STREAM, "subroutine", "WritePwbEvidence"))
+
     def test_a_production_worker_takes_verdicts_from_its_lead_in_on(self):
         self.assertIn("if (BatchKind == 'pr' .and. pcount >= BatchSliceStart - 1) then", MAIN)
 

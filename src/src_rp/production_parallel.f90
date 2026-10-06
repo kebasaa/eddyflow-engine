@@ -94,7 +94,7 @@ module m_production_parallel
     public :: WriteProdContext, ReadProdContext
     public :: ProdPieceBegins, FinishProdWorker, MergeProdPieces
     public :: KeepPwbEvidence, FinishEvidenceWorker
-    public :: KeepPwbVerdict, ReplayProdEvidence, WriteProdVerdicts
+    public :: KeepPwbVerdict, ReplayProdEvidence
     public :: ReadProdVerdicts, FindProdVerdict, RemoveWorkerRoots
     public :: RemoveStaleWorkerRoots
     public :: SetProdRemoteWindow
@@ -152,6 +152,12 @@ module m_production_parallel
     !> newunit numbers are negative, so whether the dump is open is kept apart.
     integer :: EvidenceUnit = 0
     logical :: EvidenceOpen = .false.
+    !> The parent keeps only its last verdict - the lead-in of the piece after
+    !> it - and writes every other straight into the file of the piece it
+    !> belongs to, so its memory does not grow with the run. A production
+    !> worker holds the verdicts of its own piece.
+    type(PwbVerdictType) :: LastVerdict
+    logical :: HaveLastVerdict = .false.
     type(PwbVerdictType), allocatable :: Verdicts(:)
     integer :: nVerdicts = 0
 
@@ -919,33 +925,32 @@ contains
     !***************************************************************************
     subroutine KeepPwbVerdict(v)
         type(PwbVerdictType), intent(in) :: v
-        type(PwbVerdictType), allocatable :: grown(:)
 
-        if (.not. allocated(Verdicts)) allocate(Verdicts(64))
-        if (nVerdicts >= size(Verdicts)) then
-            allocate(grown(2 * size(Verdicts)))
-            grown(1:nVerdicts) = Verdicts(1:nVerdicts)
-            call move_alloc(grown, Verdicts)
-        end if
-        nVerdicts = nVerdicts + 1
-        Verdicts(nVerdicts) = v
+        LastVerdict = v
+        HaveLastVerdict = .true.
     end subroutine KeepPwbVerdict
 
     !***************************************************************************
     !> \brief Parent: classify the detection workers' evidence, piece by piece
     !>        in time order, continuing the stream this process left at the end
-    !>        of its own piece.
+    !>        of its own piece, and give each production worker the verdicts
+    !>        it needs - its lead-in's and its piece's - as they come.
     !***************************************************************************
-    subroutine ReplayProdEvidence()
+    subroutine ReplayProdEvidence(cutStarts, nPieces)
+        integer, intent(in) :: nPieces
+        integer, intent(in) :: cutStarts(nPieces)
         integer :: k
         integer :: ud
+        integer :: uv
         integer :: io_status
         logical :: more
+        logical :: havePrev
         character(20) :: magic
         type(PwbEvidenceType) :: ev
         type(PwbVerdictType) :: v
+        type(PwbVerdictType) :: prev
 
-        do k = 2, PrepassChunkCount()
+        do k = 2, nPieces
             open(newunit = ud, file = trim(BatchDumpPath('pd', k)), &
                 form = 'unformatted', access = 'stream', status = 'old', &
                 action = 'read', iostat = io_status)
@@ -953,14 +958,40 @@ contains
             read(ud, iostat = io_status) magic
             if (io_status /= 0 .or. magic /= EvidMagic) &
                 error stop 'A detection worker dump is not one of this run.'
+            open(newunit = uv, file = trim(VerdictPath(k)), form = 'unformatted', &
+                access = 'stream', status = 'replace', iostat = io_status)
+            if (io_status /= 0) error stop 'Could not write a PWB verdict file.'
+            write(uv) VerdMagic
+            havePrev = .false.
+            !> The lead-in's verdict, when the half-hour before the piece was
+            !> classified at all
+            if (HaveLastVerdict) then
+                if (LastVerdict%pcount >= cutStarts(k) - 1) then
+                    write(uv) .true.
+                    call WritePwbVerdict(uv, LastVerdict)
+                    prev = LastVerdict
+                    havePrev = .true.
+                end if
+            end if
             do
                 read(ud, iostat = io_status) more
                 if (io_status /= 0) error stop 'A detection worker dump is truncated.'
                 if (.not. more) exit
                 call ReadPwbEvidence(ud, ev)
                 call PwbReplayEvidence(ev, v)
+                write(uv) .true.
+                if (havePrev) then
+                    call WritePwbVerdict(uv, v, prev)
+                else
+                    call WritePwbVerdict(uv, v)
+                end if
+                prev = v
+                havePrev = .true.
                 call KeepPwbVerdict(v)
             end do
+            write(uv) .false.
+            write(uv) VerdMagic
+            close(uv)
             read(ud, iostat = io_status) magic
             close(ud)
             if (io_status /= 0 .or. magic /= EvidMagic) &
@@ -970,59 +1001,40 @@ contains
     end subroutine ReplayProdEvidence
 
     !***************************************************************************
-    !> \brief Parent: give each production worker the verdicts it needs - its
-    !>        lead-in's and its piece's.
-    !***************************************************************************
-    subroutine WriteProdVerdicts(cutStarts, cutEnds, nPieces)
-        integer, intent(in) :: nPieces
-        integer, intent(in) :: cutStarts(nPieces)
-        integer, intent(in) :: cutEnds(nPieces)
-        integer :: k
-        integer :: i
-        integer :: n
-        integer :: ud
-        integer :: io_status
-
-        do k = 2, nPieces
-            n = 0
-            do i = 1, nVerdicts
-                if (Verdicts(i)%pcount >= cutStarts(k) - 1 &
-                    .and. Verdicts(i)%pcount < cutEnds(k)) n = n + 1
-            end do
-            open(newunit = ud, file = trim(VerdictPath(k)), form = 'unformatted', &
-                access = 'stream', status = 'replace', iostat = io_status)
-            if (io_status /= 0) error stop 'Could not write a PWB verdict file.'
-            write(ud) VerdMagic, n
-            do i = 1, nVerdicts
-                if (Verdicts(i)%pcount >= cutStarts(k) - 1 &
-                    .and. Verdicts(i)%pcount < cutEnds(k)) &
-                    call WritePwbVerdict(ud, Verdicts(i))
-            end do
-            write(ud) VerdMagic
-            close(ud)
-        end do
-    end subroutine WriteProdVerdicts
-
-    !***************************************************************************
     !> \brief Production worker: take up the verdicts its parent settled.
     !***************************************************************************
     subroutine ReadProdVerdicts()
         integer :: ud
-        integer :: i
         integer :: io_status
+        logical :: more
         character(20) :: magic
+        type(PwbVerdictType), allocatable :: grown(:)
 
         open(newunit = ud, file = trim(VerdictPath(BatchIndex)), &
             form = 'unformatted', access = 'stream', status = 'old', &
             action = 'read', iostat = io_status)
         if (io_status /= 0) error stop 'Production worker could not read its PWB verdicts.'
-        read(ud, iostat = io_status) magic, nVerdicts
+        read(ud, iostat = io_status) magic
         if (io_status /= 0 .or. magic /= VerdMagic) &
             error stop 'PWB verdict file is not one of this run.'
         if (allocated(Verdicts)) deallocate(Verdicts)
-        allocate(Verdicts(max(1, nVerdicts)))
-        do i = 1, nVerdicts
-            call ReadPwbVerdict(ud, Verdicts(i))
+        allocate(Verdicts(64))
+        nVerdicts = 0
+        do
+            read(ud, iostat = io_status) more
+            if (io_status /= 0) error stop 'PWB verdict file is truncated.'
+            if (.not. more) exit
+            if (nVerdicts == size(Verdicts)) then
+                allocate(grown(2 * size(Verdicts)))
+                grown(1:nVerdicts) = Verdicts(1:nVerdicts)
+                call move_alloc(grown, Verdicts)
+            end if
+            nVerdicts = nVerdicts + 1
+            if (nVerdicts == 1) then
+                call ReadPwbVerdict(ud, Verdicts(1))
+            else
+                call ReadPwbVerdict(ud, Verdicts(nVerdicts), Verdicts(nVerdicts - 1))
+            end if
         end do
         read(ud, iostat = io_status) magic
         close(ud)

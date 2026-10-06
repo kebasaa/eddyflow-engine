@@ -94,14 +94,18 @@ module m_pwb_stream
     !> there; the results only for the gases present, since every other slot
     !> the call touches it resets - a parent of a year's run keeps one of these
     !> per half-hour, and the whole PWBResult array is some 25 kB.
+    !>
+    !> No default values: every field is set by PwbTakeVerdict or
+    !> ReadPwbVerdict before it is read, and with them gfortran warns, falsely,
+    !> of an uninitialised temporary wherever one is declared locally.
     type :: PwbVerdictType
-        integer :: pcount = 0
-        integer :: row_lags(E2NumVar) = 0
-        real(kind = dbl) :: act_tlag(E2NumVar) = 0d0
-        real(kind = dbl) :: tlag(E2NumVar) = 0d0
-        logical :: def_used(E2NumVar) = .false.
-        integer :: own_row_lags(E2NumVar) = 0
-        integer :: ngas = 0
+        integer :: pcount
+        integer :: row_lags(E2NumVar)
+        real(kind = dbl) :: act_tlag(E2NumVar)
+        real(kind = dbl) :: tlag(E2NumVar)
+        logical :: def_used(E2NumVar)
+        integer :: own_row_lags(E2NumVar)
+        integer :: ngas
         integer, allocatable :: gas(:)
         type(PWBResultType), allocatable :: res(:)
     end type PwbVerdictType
@@ -372,7 +376,9 @@ contains
     !***************************************************************************
     subroutine PwbReplayEvidence(ev, v)
         type(PwbEvidenceType), intent(in) :: ev
-        type(PwbVerdictType), intent(out) :: v
+        !> inout, and its arrays replaced in PwbTakeVerdict: gfortran warns of
+        !> an uninitialised temporary for intent(out) here, falsely.
+        type(PwbVerdictType), intent(inout) :: v
 
         call SetPwbPeriodTimestamp(ev%date, ev%time)
         RowLags = 0
@@ -386,9 +392,11 @@ contains
     subroutine PwbTakeVerdict(p, present, v)
         integer, intent(in) :: p
         logical, intent(in) :: present(E2NumVar)
-        type(PwbVerdictType), intent(out) :: v
+        type(PwbVerdictType), intent(inout) :: v
         integer :: j
 
+        if (allocated(v%gas)) deallocate(v%gas)
+        if (allocated(v%res)) deallocate(v%res)
         v%pcount = p
         v%row_lags = RowLags
         v%act_tlag = pwb_raw_ActTLag
@@ -428,7 +436,11 @@ contains
     end subroutine PwbApplyVerdict
 
     !***************************************************************************
-    !> \brief One period's evidence to a stream file, the present gases only.
+    !> \brief One period's evidence to a stream file, the present slots only.
+    !>
+    !> A slot that is not present is never read by the classifier - its
+    !> nominal lag included - so only present slots are written, and the
+    !> reader leaves the rest at the type's defaults.
     !***************************************************************************
     subroutine WritePwbEvidence(u, ev)
         integer, intent(in) :: u
@@ -438,7 +450,10 @@ contains
         integer :: n
 
         write(u) ev%pcount, ev%date, ev%time, ev%ac_freq
-        write(u) ev%present, ev%def_tl, ev%def_rl
+        write(u) count(ev%present)
+        do j = 1, E2NumVar
+            if (ev%present(j)) write(u) j, ev%def_tl(j), ev%def_rl(j)
+        end do
         n = count(ev%present(firstGas:lastGas))
         write(u) n
         do j = firstGas, lastGas
@@ -464,7 +479,12 @@ contains
             call InitPwbResult(ev%res(j))
         end do
         read(u) ev%pcount, ev%date, ev%time, ev%ac_freq
-        read(u) ev%present, ev%def_tl, ev%def_rl
+        read(u) n
+        do i = 1, n
+            read(u) j
+            ev%present(j) = .true.
+            read(u) ev%def_tl(j), ev%def_rl(j)
+        end do
         read(u) n
         do i = 1, n
             read(u) j, ev%cache_found(j), ev%cache_actual(j), ev%cache_used(j), &
@@ -476,23 +496,91 @@ contains
         end do
     end subroutine ReadPwbEvidence
 
-    subroutine WritePwbVerdict(u, v)
+    !***************************************************************************
+    !> \brief One verdict to a stream file.
+    !>
+    !> The lag arrays carry, for every slot a period lacks, whatever an earlier
+    !> period left - so from one verdict to the next only a few slots change.
+    !> With prev, the record holds only the slots that differ from it; the
+    !> first record of a file is written whole.
+    !***************************************************************************
+    subroutine WritePwbVerdict(u, v, prev)
         integer, intent(in) :: u
         type(PwbVerdictType), intent(in) :: v
+        type(PwbVerdictType), intent(in), optional :: prev
+        integer :: j
+        integer :: n
 
-        write(u) v%pcount, v%row_lags, v%act_tlag, v%tlag, v%def_used, &
-            v%own_row_lags, v%ngas
+        write(u) v%pcount, present(prev)
+        if (present(prev)) then
+            n = 0
+            do j = 1, E2NumVar
+                if (SlotChanged(v, prev, j)) n = n + 1
+            end do
+            write(u) n
+            do j = 1, E2NumVar
+                if (SlotChanged(v, prev, j)) write(u) j, v%row_lags(j), v%act_tlag(j), &
+                    v%tlag(j), v%def_used(j), v%own_row_lags(j)
+            end do
+        else
+            write(u) v%row_lags, v%act_tlag, v%tlag, v%def_used, v%own_row_lags
+        end if
+        write(u) v%ngas
         if (v%ngas > 0) write(u) v%gas, v%res
     end subroutine WritePwbVerdict
 
-    subroutine ReadPwbVerdict(u, v)
+    !> Read a verdict WritePwbVerdict wrote; prev is the record before it in
+    !> the same file, which a record of changes is applied to.
+    subroutine ReadPwbVerdict(u, v, prev)
         integer, intent(in) :: u
         type(PwbVerdictType), intent(out) :: v
+        type(PwbVerdictType), intent(in), optional :: prev
+        integer :: i
+        integer :: j
+        integer :: n
+        logical :: delta
 
-        read(u) v%pcount, v%row_lags, v%act_tlag, v%tlag, v%def_used, &
-            v%own_row_lags, v%ngas
+        read(u) v%pcount, delta
+        if (delta) then
+            if (.not. present(prev)) error stop 'A PWB verdict file starts with a record of changes.'
+            v%row_lags = prev%row_lags
+            v%act_tlag = prev%act_tlag
+            v%tlag = prev%tlag
+            v%def_used = prev%def_used
+            v%own_row_lags = prev%own_row_lags
+            read(u) n
+            do i = 1, n
+                read(u) j
+                read(u) v%row_lags(j), v%act_tlag(j), v%tlag(j), v%def_used(j), &
+                    v%own_row_lags(j)
+            end do
+        else
+            read(u) v%row_lags, v%act_tlag, v%tlag, v%def_used, v%own_row_lags
+        end if
+        read(u) v%ngas
         allocate(v%gas(v%ngas), v%res(v%ngas))
         if (v%ngas > 0) read(u) v%gas, v%res
     end subroutine ReadPwbVerdict
+
+    !> Which lag slots differ between two verdicts, bit for bit.
+    logical function SlotChanged(v, prev, j)
+        type(PwbVerdictType), intent(in) :: v
+        type(PwbVerdictType), intent(in) :: prev
+        integer, intent(in) :: j
+
+        SlotChanged = v%row_lags(j) /= prev%row_lags(j) &
+            .or. .not. SameBits(v%act_tlag(j), prev%act_tlag(j)) &
+            .or. .not. SameBits(v%tlag(j), prev%tlag(j)) &
+            .or. (v%def_used(j) .neqv. prev%def_used(j)) &
+            .or. v%own_row_lags(j) /= prev%own_row_lags(j)
+    end function SlotChanged
+
+    !> Equal as stored, so a NaN or a signed zero is carried exactly.
+    elemental logical function SameBits(a, b)
+        real(kind = dbl), intent(in) :: a
+        real(kind = dbl), intent(in) :: b
+
+        SameBits = transfer(a, 0_8) == transfer(b, 0_8)
+    end function SameBits
 
 end module m_pwb_stream
