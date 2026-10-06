@@ -132,6 +132,66 @@
 	          that splits, 47 with PWB and 54 without; base_prod_par covers
 	          two days cut as a real run is, and check_remote.sh a split run
 	          from a Google Drive and a Dropbox link.
+	- New feature: FCC splits its work across worker processes too, with -j as
+	               for RP (0 or absent: every core; 1: serial). The flux
+	               computation: after the first record written, which opens
+	               the output files, the rest of the essentials file is cut
+	               into pieces; a worker takes the spectral assessment from
+	               the run's own process rather than repeating it, processes
+	               its piece, and its rows are appended to the output files in
+	               record order, so they hold what one process would have
+	               written and the post-flux despiking and the datasets run on
+	               them unchanged. The import of the binned (co)spectra:
+	               workers read the files and the run's own process takes
+	               their bins in file order, so the essentials lookup, the
+	               screening and the sums, which depend on that order, are
+	               unchanged. Both run serially, with a line in the log saying
+	               why, in embedded mode and when FCC's inputs come from a
+	               shared link.
+	               On the Yatir day's RP output repeated over 120 days (5760
+	               periods, 8 cores) FCC took 57 s, against 112 s on one core
+	               and 301 s before this release's changes; the import 7 s
+	               against 13 s and 50 s. Every output is byte-identical.
+	- Change: FCC is 2.7 times faster on one core, with byte-identical output.
+	          ReadExRecord turns the error label into -9999 in every
+	          essentials row, FCC reads that file about four times, and the
+	          replacement rebuilt a buffer ten times the row for every match -
+	          some 150 a row - even with the default label, where nothing
+	          changes. It now returns at once when there is nothing to
+	          replace. The post-flux despiking cache is no longer copied whole
+	          to add each period, and the cospectra fit dataset is no longer
+	          allocated and cleared for every period of the assessment range,
+	          about a GB per stability regime for a year. On 120 days of the
+	          Yatir record the flux computation took 0.65 s a day instead of
+	          1.30 s, flat from the first day to the last.
+	- Change: The run's own process hands a worker that has finished the next
+	          piece between its own periods, not only once its own piece is
+	          done, so no core waits for it. It matters when workers finish
+	          first, as they did in the time-lag pre-pass of a Yatir day; with
+	          pieces of equal work they rarely do.
+	- Fix: Warning(109), for a gas with no absolute limits, was written onto
+	       the open "Absolute limits test.." line, so its first line read as
+	       part of the test's and the interface left it out of the warning
+	       panel. It is now raised after the test's " Done.". The same was
+	       possible for a borrowed time lag, a planar-fit sector excluded or
+	       without a matrix, the alternative metadata file's format note and
+	       the CEC pairing warnings: those progress lines now end before a
+	       message is written. The storage-terms line of a period without a
+	       predecessor, and the in-situ RH fit line of a second hygrometer,
+	       were never ended and ran on into the next one.
+	- Fix: With a spectral assessment per acquisition rate, a gas whose rate
+	       has no usable assessment kept the RH exponential the previous
+	       period had loaded, so its in-situ correction could depend on the
+	       period before. It is now reset with the rest. No regression fixture
+	       reaches this case.
+	- Tested: check_parallel.sh PAR_KIND=fx compares FCC split against serial,
+	          with EDDYFLOW_FCC_PIECE_PERIODS and EDDYFLOW_FCC_PIECE_FILES
+	          forcing pieces of one record or file; byte-identical on 26 runs
+	          of the spectral-assessment fixtures and base_prod_par, on the
+	          120-day record, and on 30 days of it with an empty binned file
+	          and with the essentials file cut to half.
+	          tests/regression/run.sh passes FCC_EXTRA to FCC, -j 1 unless
+	          set.
 
 8.1.1 (2026-09-25)
 
