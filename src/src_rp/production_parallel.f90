@@ -83,6 +83,7 @@ module m_production_parallel
     use m_rp_global_var
     use m_prepass_parallel, only: BatchDumpPath, PrepassChunkCount
     use m_process_os, only: ProcessSelfId, ProcessAlive
+    use m_remote_source, only: RemoteSetWindow, RemotePositionOf
     use m_pwb_timelag, only: InitPwbTimelagCache, AppendPwbCacheRows
     use m_pwb_stream, only: PwbEvidenceType, PwbVerdictType, PwbReplayEvidence, &
         WritePwbEvidence, ReadPwbEvidence, WritePwbVerdict, ReadPwbVerdict
@@ -96,6 +97,7 @@ module m_production_parallel
     public :: KeepPwbVerdict, ReplayProdEvidence, WriteProdVerdicts
     public :: ReadProdVerdicts, FindProdVerdict, RemoveWorkerRoots
     public :: RemoveStaleWorkerRoots
+    public :: SetProdRemoteWindow
 
     !> Both files are read back by the same binary in the same run, so the
     !> format never has to survive a version change; the magic guards against a
@@ -235,6 +237,118 @@ contains
             return
         end do
     end function ProdCutAllowed
+
+    !***************************************************************************
+    !> \brief Raw data from a shared link: which downloaded files this process
+    !>        may delete, and which it may fetch ahead, in a split pass.
+    !>
+    !> Every process of a run shares one staging folder, and a single pass
+    !> deletes each file once it is two behind the one being read. Split, that
+    !> rule deletes files other processes still read: every worker re-reads the
+    !> head, and the half-hour before each cut is read by the pieces on both
+    !> sides of it. So each process deletes only the files its own piece alone
+    !> reads, and fetches ahead only within its own piece, so it never fetches
+    !> a file a neighbour has already finished with and deleted - which would
+    !> download it twice, and leave it behind. The files no window covers - the
+    !> head's, the boundaries' - stay until the parent's RemoteCleanup.
+    !>
+    !> role: 'head' - the parent before it splits, deleting nothing;
+    !>       'p1'   - the parent in its own piece [pieceStart, pieceEnd);
+    !>       'pd'   - a detection worker, deleting nothing: its production
+    !>                twin reads the same piece afterwards;
+    !>       'pr'   - a production worker.
+    !***************************************************************************
+    subroutine SetProdRemoteWindow(role, pieceStart, pieceEnd, lastPiece, headEnd, &
+            Series, nSeries, Files, nFiles)
+        character(*), intent(in) :: role
+        integer, intent(in) :: pieceStart
+        integer, intent(in) :: pieceEnd
+        logical, intent(in) :: lastPiece
+        integer, intent(in) :: headEnd
+        integer, intent(in) :: nSeries
+        integer, intent(in) :: nFiles
+        type(DateType), intent(in) :: Series(nSeries)
+        type(FileListType), intent(in) :: Files(nFiles)
+        integer :: lo
+        integer :: hi
+        integer :: flo
+        integer :: fhi
+
+        if (nFiles < 1) return
+        if (RemotePositionOf(Files(1)%path) == 0) return
+
+        select case (role)
+            case ('head')
+                call RemoteSetWindow(0, 0, 1, huge(1))
+                return
+            case ('p1')
+                lo = PosOf(LastFileOf(headEnd))
+                flo = 1
+            case default
+                lo = PosOf(FirstFileOf(pieceStart - 1))
+                flo = lo
+        end select
+        if (lastPiece) then
+            hi = huge(1)
+            fhi = huge(1)
+        else
+            hi = PosOf(FirstFileOf(pieceEnd - 1)) - 1
+            fhi = PosOf(LastFileOf(pieceEnd - 1))
+        end if
+        !> An edge that could not be found deletes nothing rather than guess:
+        !> lo at 0 would reach back into the head.
+        if (lo <= 0 .or. hi <= lo) then
+            lo = 0
+            hi = 0
+        end if
+        if (role == 'pd') then
+            call RemoteSetWindow(0, 0, flo, fhi)
+        else
+            call RemoteSetWindow(lo, hi, flo, fhi)
+        end if
+
+    contains
+
+        !> The first and last file a period reads; 0 if none.
+        integer function FirstFileOf(q)
+            integer, intent(in) :: q
+            integer :: i
+            logical, external :: FileIsRelevantToCurrentPeriod
+
+            FirstFileOf = 0
+            if (q < 1 .or. q + 1 > nSeries) return
+            do i = 1, nFiles
+                if (FileIsRelevantToCurrentPeriod(Files(i)%name, Series(q), Series(q + 1))) then
+                    FirstFileOf = i
+                    return
+                end if
+            end do
+        end function FirstFileOf
+
+        integer function LastFileOf(q)
+            integer, intent(in) :: q
+            integer :: i
+            logical, external :: FileIsRelevantToCurrentPeriod
+
+            LastFileOf = 0
+            if (q < 1 .or. q + 1 > nSeries) return
+            do i = nFiles, 1, -1
+                if (FileIsRelevantToCurrentPeriod(Files(i)%name, Series(q), Series(q + 1))) then
+                    LastFileOf = i
+                    return
+                end if
+            end do
+        end function LastFileOf
+
+        !> A list index's processing position. A period without a file has no
+        !> window edge to give: nothing is deleted then, rather than guessing.
+        integer function PosOf(i)
+            integer, intent(in) :: i
+
+            PosOf = 0
+            if (i >= 1 .and. i <= nFiles) PosOf = RemotePositionOf(Files(i)%path)
+        end function PosOf
+    end subroutine SetProdRemoteWindow
 
     !***************************************************************************
     !> \brief Where to cut [iStart, iEnd) into pieces.

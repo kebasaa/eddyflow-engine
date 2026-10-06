@@ -911,7 +911,8 @@ production_parallel.o: \
 	m_rp_global_var.o \
 	prepass_parallel.o \
 	pwb_stream.o \
-	pwb_timelag_handle.o
+	pwb_timelag_handle.o \
+	remote_source.o
 pwb_stream.o: \
 	pwb_stream.f90 \
 	m_rp_global_var.o \

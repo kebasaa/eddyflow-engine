@@ -44,7 +44,7 @@ program EddyFlowRP
         SetPwbTimelagSummaryRH
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup, &
-        RemoteActive
+        RemoteClearWindow
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
         FinishBatchWorker, &
         StopIfParentGone, &
@@ -57,7 +57,7 @@ program EddyFlowRP
         ReadProdContext, ProdPieceBegins, FinishProdWorker, MergeProdPieces, &
         KeepPwbEvidence, FinishEvidenceWorker, KeepPwbVerdict, &
         ReplayProdEvidence, WriteProdVerdicts, ReadProdVerdicts, FindProdVerdict, &
-        RemoveStaleWorkerRoots
+        RemoveStaleWorkerRoots, SetProdRemoteWindow
     use m_pwb_stream, only: PwbVerdictType, PwbTakeVerdict, PwbApplyVerdict, &
         PwbEvidenceOnly, PwbLastEvidence
     !use netcdf
@@ -1954,6 +1954,17 @@ program EddyFlowRP
         call ReadProdContext(ProdHeadEnd, GoPlanarFit, bf)
     if (BatchKind == 'pr' .and. Meth%tlag == 'pwb') call ReadProdVerdicts()
 
+    !> Raw data from a shared link: in a pass that may be split, the parent
+    !> deletes nothing until it knows whether it did - every worker re-reads
+    !> the head - and a worker deletes only what its own piece alone reads.
+    !> See SetProdRemoteWindow.
+    if (ProdSplitArmed) call SetProdRemoteWindow('head', 0, 0, .false., 0, &
+        MasterTimeSeries, size(MasterTimeSeries), RawFileList, NumRawFiles)
+    if (BatchKind == 'pr' .or. BatchKind == 'pd') &
+        call SetProdRemoteWindow(BatchKind, BatchSliceStart, BatchSliceEnd, &
+            BatchIndex == BatchCount, ProdHeadEnd, &
+            MasterTimeSeries, size(MasterTimeSeries), RawFileList, NumRawFiles)
+
     !> Raw files from a shared link that the survey and the pre-passes
     !> downloaded are kept for this pass; from here on each is deleted once
     !> this pass is behind it
@@ -3147,6 +3158,13 @@ program EddyFlowRP
         if (ProdSplitArmed .and. .not. InitializeStorage) then
             ProdSplitArmed = .false.
             call TryProdSplit()
+            if (ProdSplit) then
+                call SetProdRemoteWindow('p1', ProdStarts(1), ProdEnds(1), .false., &
+                    pcount, MasterTimeSeries, size(MasterTimeSeries), &
+                    RawFileList, NumRawFiles)
+            else
+                call RemoteClearWindow()
+            end if
         end if
     end do periods_loop
 
@@ -3339,7 +3357,6 @@ contains
         if (RUsetup%meth == 'billesbach_11') &
             why = 'the Billesbach random uncertainty draws from one random stream'
         if (EddyFlowProj%run_env == 'embedded') why = 'it runs in embedded mode'
-        if (RemoteActive()) why = 'the raw data come from a shared link'
         if (EddyFlowProj%biomet_data == 'embedded' .and. initializeBiometOut) &
             why = 'its biomet output file is not open yet'
         if (AddUserStatsHeader .and. userStatsOpen) &

@@ -13,7 +13,9 @@ the design that a run only exercises when its data happen to need them:
 * The PWB classifier lives in one place, m_pwb_stream, so the single pass and
   the parent's replay of a split one cannot drift apart.
 * What cannot be split is refused: the Billesbach random stream, embedded
-  mode, raw data from a shared link, an output file still to be opened.
+  mode, an output file still to be opened.
+* Raw data from a shared link: each process deletes only the downloaded files
+  its own piece alone reads, and fetches ahead only within its piece.
 * A cut needs the half-hour before it to begin with a raw file of its own,
   which is what makes a worker's file search land where a single pass's did.
 
@@ -116,7 +118,6 @@ class WhatCannotBeSplitIsRefused(unittest.TestCase):
         split = body(MAIN, "subroutine", "TryProdSplit")
         for cond in ("RUsetup%meth == 'billesbach_11'",
                      "EddyFlowProj%run_env == 'embedded'",
-                     "RemoteActive()",
                      "EddyFlowProj%biomet_data == 'embedded' .and. initializeBiometOut",
                      "AddUserStatsHeader .and. userStatsOpen"):
             self.assertIn(cond, split)
@@ -124,6 +125,31 @@ class WhatCannotBeSplitIsRefused(unittest.TestCase):
     def test_a_worker_that_opens_a_file_mid_piece_stops(self):
         self.assertIn("if (op .and. .not. PieceOpen(u)) then",
                       body(PROD, "subroutine", "FinishProdWorker"))
+
+    def test_a_shared_link_is_no_longer_refused(self):
+        self.assertNotIn("RemoteActive", MAIN)
+
+
+class SharedLinkFilesAreDeletedOnlyByTheirOwnPiece(unittest.TestCase):
+
+    REMOTE = code("src/src_common/remote_source.f90")
+
+    def test_eviction_and_fetching_ahead_keep_to_the_window(self):
+        evict = self.REMOTE[self.REMOTE.index("subroutine Evict("):
+                            self.REMOTE.index("end subroutine Evict")]
+        self.assertIn("if (Windowed .and. (p <= EvictLo .or. p > EvictHi)) cycle", evict)
+        self.assertIn("if (Windowed .and. (p < FetchLo .or. p > FetchHi)) cycle", self.REMOTE)
+
+    def test_the_parent_deletes_nothing_until_it_knows_whether_it_split(self):
+        self.assertIn("if (ProdSplitArmed) call SetProdRemoteWindow('head'", MAIN)
+        after = MAIN[MAIN.index("call TryProdSplit()"):]
+        self.assertLess(after.index("call SetProdRemoteWindow('p1'"),
+                        after.index("call RemoteClearWindow()"))
+
+    def test_detection_workers_delete_nothing(self):
+        window = body(PROD, "subroutine", "SetProdRemoteWindow")
+        self.assertIn("call RemoteSetWindow(0, 0, flo, fhi)", window)
+        self.assertIn("if (lo <= 0 .or. hi <= lo) then", window)
 
     def test_only_a_serial_parent_decides(self):
         self.assertIn("ProdSplitArmed = BatchIndex == 0 .and. NumJobs /= 1", MAIN)
