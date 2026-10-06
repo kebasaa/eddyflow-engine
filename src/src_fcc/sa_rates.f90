@@ -738,9 +738,15 @@ contains
             if (k > 0) then
                 RegPar(gas, :) = RegParR(gas, :, k)
             else
+                !> The RH exponential too: left alone, it kept whichever
+                !> rate's coefficients the previous period had loaded, so a
+                !> period's correction depended on the one before it.
                 RegPar(gas, :)%Fn = error
                 RegPar(gas, :)%fc = error
                 RegPar(gas, :)%f2 = error
+                RegPar(gas, :)%e1 = error
+                RegPar(gas, :)%e2 = error
+                RegPar(gas, :)%e3 = error
             end if
         end do
         !> The project-wide RH exponential is the primary hygrometer's
