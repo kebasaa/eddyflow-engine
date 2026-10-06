@@ -111,6 +111,7 @@ Program EddyFlowFCC
     type(DateType), allocatable :: MasterTimeSeries(:)
     type(FitSpectraType), allocatable :: FitUnstable(:)
     type(FitSpectraType), allocatable :: FitStable(:)
+    type(FitSpectraType), allocatable :: FitGrown(:)
 
     !> External functions
     integer, external :: NumOfPeriods
@@ -412,13 +413,14 @@ Program EddyFlowFCC
             if (.not. allocated(MeanBinCosp)) then
                 allocate(MeanBinCosp(nbins, MaxGasClasses))
                 MeanBinCosp = NullMeanSpec
+                !> Grown as cospectra arrive (below), not sized for one per
+                !> period of the range: at about 1 KB a row that was a GB each
+                !> for a year, allocated and cleared before the first file.
                 deallocate(FitUnstable)
-                allocate(FitUnstable(nbins * &
-                    (saEndTimestampIndx - saStartTimestampIndx + 1)))
+                allocate(FitUnstable(nbins * 64))
                 FitUnstable = NullFitCosp
                 deallocate(FitStable)
-                allocate(FitStable  (nbins * &
-                    (saEndTimestampIndx - saStartTimestampIndx + 1)))
+                allocate(FitStable  (nbins * 64))
                 FitStable   = NullFitCosp
             end if
 
@@ -434,6 +436,19 @@ Program EddyFlowFCC
 
             !> Sort current cospectra in time-slot classes
             if (EddyFlowProj%out_avrg_cosp .and. .not. skip_cospectra) then
+
+                !> Room for this file's bins in either regime. Only rows
+                !> 1:nfit of each are ever read.
+                if (maxval(nfit) + nbins > size(FitStable)) then
+                    allocate(FitGrown(2 * size(FitStable) + nbins))
+                    FitGrown = NullFitCosp
+                    FitGrown(1:size(FitStable)) = FitStable
+                    call move_alloc(FitGrown, FitStable)
+                    allocate(FitGrown(size(FitStable)))
+                    FitGrown = NullFitCosp
+                    FitGrown(1:size(FitUnstable)) = FitUnstable
+                    call move_alloc(FitGrown, FitUnstable)
+                end if
 
                 !> Add current cospectra to dataset for regression
                 call AddToCospectraFitDataset(lEx, BinCospForStable, &

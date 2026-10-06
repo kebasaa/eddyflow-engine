@@ -1136,6 +1136,23 @@ function replace2(string, what, with) result(nstring)
     integer :: cnt
     integer :: start
 
+    !> Nothing to replace, or each match replaced by itself: the result is the
+    !> input. Said first because the loop below rebuilds the whole buffer -
+    !> ten times the input, 640 KB for an essentials row - for every match,
+    !> and ReadExRecord replaces the error label with -9999, which with the
+    !> default label is this very case: some 150 matches a row, every row.
+    !> Lengths are compared too: '-9999' == '-9999 ' is true in Fortran.
+    if (len(what) == len(with)) then
+        if (what == with) then
+            nstring = trim(string)
+            return
+        end if
+    end if
+    if (index(string, what) == 0) then
+        nstring = trim(string)
+        return
+    end if
+
     tstring = string
     start = 1
     cnt = 0
