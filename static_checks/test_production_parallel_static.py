@@ -35,7 +35,9 @@ def code(rel):
 
 
 MAIN = code("src/src_rp/eddyflow-rp_main.f90")
-PROD = code("src/src_rp/production_parallel.f90")
+# The worker pool itself moved to src_common/batch_pool.f90, shared with FCC;
+# what is checked here is read from both.
+PROD = code("src/src_rp/production_parallel.f90") + code("src/src_common/batch_pool.f90")
 STREAM = code("src/src_rp/pwb_stream.f90")
 TLAG = code("src/src_rp/timelag_handle.f90")
 UNITS = code("src/src_common/m_index_parameters.f90")
@@ -196,7 +198,7 @@ class AStoppedRunTakesItsWorkersWithIt(unittest.TestCase):
         self.assertIn("call StopIfParentGone()", MAIN[start:start + 400])
 
     def test_an_orphaned_worker_removes_its_own_folder(self):
-        pool = code("src/src_rp/prepass_parallel.f90")
+        pool = code("src/src_rp/prepass_parallel.f90") + code("src/src_common/batch_pool.f90")
         stop = body(pool, "subroutine", "StopIfParentGone")
         self.assertIn("BatchOwnOutDir", stop)
         self.assertLess(stop.index("if (op) close(u)"), stop.index("comm_rmdir"))

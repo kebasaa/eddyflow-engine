@@ -132,7 +132,7 @@ class EachFileIsDownloadedOnce(unittest.TestCase):
         # Without this the path is not read as the switch's value at all
         switches = init[init.index("logical function SwitchTakesValue"):]
         self.assertIn("'--batch-tmp'", switches[:switches.index("end function")])
-        launcher = code("src_rp/prepass_parallel.f90")
+        launcher = code("src_rp/prepass_parallel.f90") + code("src_common/batch_pool.f90")
         self.assertIn("' --batch-tmp \"' // trim(NoTrailingSlash(TmpDir)) // '\"'", launcher)
         # before the project path, like every other switch
         self.assertLess(launcher.index("--batch-tmp"), launcher.index("trim(PrjPath) // '\"'"))
@@ -163,7 +163,7 @@ class WorkersLeaveNothingBehind(unittest.TestCase):
             self.assertIn("call FinishBatchWorker()", tail)
 
     def test_the_worker_removes_its_own_directory_in_desktop_mode(self):
-        c = code("src_rp/prepass_parallel.f90")
+        c = code("src_rp/prepass_parallel.f90") + code("src_common/batch_pool.f90")
         body = c[c.index("subroutine FinishBatchWorker"):c.index("end subroutine FinishBatchWorker")]
         self.assertIn("call RemoteCleanup()", body)
         self.assertIn("EddyFlowProj%run_env == 'desktop'", body)

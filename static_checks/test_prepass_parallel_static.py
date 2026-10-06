@@ -54,7 +54,9 @@ def read(rel):
     return (SRC / rel).read_text(encoding="utf-8", errors="replace")
 
 
-PARALLEL = read("src_rp/prepass_parallel.f90")
+# The worker pool itself moved to src_common/batch_pool.f90, shared with FCC;
+# what is checked here is read from both.
+PARALLEL = read("src_rp/prepass_parallel.f90") + read("src_common/batch_pool.f90")
 MAIN = read("src_rp/eddyflow-rp_main.f90")
 ENV = read("src_common/init_env.f90")
 RUNLOG = read("src_common/init_run_log.f90")

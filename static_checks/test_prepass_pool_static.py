@@ -37,7 +37,9 @@ def code(text):
     return "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("!"))
 
 
-PARALLEL = code(read("src_rp/prepass_parallel.f90"))
+# The worker pool itself moved to src_common/batch_pool.f90, shared with FCC;
+# what is checked here is read from both.
+PARALLEL = code(read("src_rp/prepass_parallel.f90") + read("src_common/batch_pool.f90"))
 MAIN = code(read("src_rp/eddyflow-rp_main.f90"))
 
 

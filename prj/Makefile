@@ -306,6 +306,12 @@ available_mean_spectra_cospectra.o: \
 basic_stats.o: \
 	basic_stats.f90 \
 	m_common_global_var.o
+batch_pool.o: \
+	batch_pool.f90 \
+	ghg_prefetch.o \
+	m_common_global_var.o \
+	m_process_os.o \
+	remote_source.o
 binned_frequency_vector.o: \
 	binned_frequency_vector.f90 \
 	m_rp_global_var.o
@@ -900,16 +906,13 @@ power_of_two.o: \
 	power_of_two.f90
 prepass_parallel.o: \
 	prepass_parallel.f90 \
-	ghg_prefetch.o \
-	m_process_os.o \
+	batch_pool.o \
 	m_rp_global_var.o \
-	pwb_timelag_handle.o \
-	remote_source.o
+	pwb_timelag_handle.o
 production_parallel.o: \
 	production_parallel.f90 \
-	m_process_os.o \
+	batch_pool.o \
 	m_rp_global_var.o \
-	prepass_parallel.o \
 	pwb_stream.o \
 	pwb_timelag_handle.o \
 	remote_source.o

@@ -81,8 +81,9 @@
 !***************************************************************************
 module m_production_parallel
     use m_rp_global_var
-    use m_prepass_parallel, only: BatchDumpPath, PrepassChunkCount
-    use m_process_os, only: ProcessSelfId, ProcessAlive
+    use m_batch_pool, only: BatchDumpPath, PrepassChunkCount, ForcedPieceLength, &
+        RemoveStaleWorkerRoots, WorkerRoot, RemoveWorkerRoots, NoSlashEnd, &
+        AppendBytes, FileBytes
     use m_remote_source, only: RemoteSetWindow, RemotePositionOf
     use m_pwb_timelag, only: InitPwbTimelagCache, AppendPwbCacheRows
     use m_pwb_stream, only: PwbEvidenceType, PwbVerdictType, PwbReplayEvidence, &
@@ -172,21 +173,10 @@ module m_production_parallel
 contains
 
     !***************************************************************************
-    !> \brief Test hook: cut the production range into pieces of this many
-    !>        periods, whatever the core count, so that every fixture - most
-    !>        span a day or less - is cut at nearly every half-hour. 0 if unset.
+    !> \brief Test hook: production pieces of this many periods. 0 if unset.
     !***************************************************************************
     integer function ProdForcedPieceLength()
-        character(32) :: val
-        integer :: stat
-        integer :: io_status
-
-        ProdForcedPieceLength = 0
-        call get_environment_variable('EDDYFLOW_PROD_PIECE_PERIODS', val, status = stat)
-        if (stat /= 0 .or. len_trim(val) == 0) return
-        read(val, *, iostat = io_status) ProdForcedPieceLength
-        if (io_status /= 0) ProdForcedPieceLength = 0
-        ProdForcedPieceLength = max(0, ProdForcedPieceLength)
+        ProdForcedPieceLength = ForcedPieceLength('EDDYFLOW_PROD_PIECE_PERIODS')
     end function ProdForcedPieceLength
 
     !***************************************************************************
@@ -473,96 +463,6 @@ contains
         io_status = system(trim(comm_rmdir) // ' "' &
             // trim(NoSlashEnd(WorkerMainOut)) // '"' // comm_err_redirect)
     end subroutine AdoptProdWorkerOutput
-
-    !***************************************************************************
-    !> \brief Parent: remove the worker folders runs that were killed left.
-    !>
-    !> A run stopped from the interface is terminated whole, workers and all,
-    !> and nothing gets the chance to tidy up - so each such run left one
-    !> folder per worker under tmp, holding the rows its piece had written.
-    !> A folder is a dead run's if the process id in its name is not running,
-    !> or is this process's own: then the id has been reused, and the folder
-    !> is about to be wanted again.
-    !***************************************************************************
-    subroutine RemoveStaleWorkerRoots()
-        integer :: u
-        integer :: io_status
-        integer :: under
-        integer :: pid
-        integer :: rmdir_status
-        character(PathLen) :: base
-        character(PathLen) :: listing
-        character(PathLen) :: entry
-        character(2048) :: cmd
-
-        base = trim(homedir) // 'tmp' // slash
-        listing = trim(TmpDir) // 'pr_stale_roots.txt'
-        if (OS == 'win') then
-            cmd = 'dir /b /ad "' // trim(base) // 'p*_*" > "' // trim(listing) &
-                // '"' // comm_err_redirect
-        else
-            cmd = 'cd "' // trim(base) // '" && ls -1d p*_* > "' // trim(listing) &
-                // '"' // comm_err_redirect
-        end if
-        rmdir_status = system(trim(cmd))
-        open(newunit = u, file = trim(listing), status = 'old', action = 'read', &
-            iostat = io_status)
-        if (io_status /= 0) return
-        do
-            read(u, '(a)', iostat = io_status) entry
-            if (io_status /= 0) exit
-            entry = adjustl(entry)
-            !> p<pid>_<kind><k>: anything else under tmp is not ours.
-            under = index(entry, '_')
-            if (entry(1:1) /= 'p' .or. under < 3) cycle
-            if (verify(entry(2:under - 1), '0123456789') /= 0) cycle
-            if (entry(under + 1:under + 2) /= 'pd' .and. entry(under + 1:under + 2) /= 'pr') cycle
-            if (verify(trim(entry(under + 3:)), '0123456789') /= 0) cycle
-            read(entry(2:under - 1), *, iostat = io_status) pid
-            if (io_status /= 0) cycle
-            if (pid /= ProcessSelfId()) then
-                if (ProcessAlive(pid)) cycle
-            end if
-            rmdir_status = system(trim(comm_rmdir) // ' "' // trim(base) &
-                // trim(entry) // '"' // comm_err_redirect)
-        end do
-        close(u, status = 'delete')
-    end subroutine RemoveStaleWorkerRoots
-
-    !***************************************************************************
-    !> \brief Worker k's own output folder: tmp\p<parent's process id>_<kind><k>.
-    !>
-    !> Not inside the parent's temporary folder, which would be shorter to
-    !> clean up: that one's name is 24 characters, and under it a worker's
-    !> per-period file names - a timestamp, the run stamp, the run mode - went
-    !> past Windows' 260-character path limit in a home folder where the
-    !> parent's own output did not. The parent's process id keeps two runs
-    !> sharing a home folder apart, and the kind the detection and production
-    !> workers of one piece.
-    !***************************************************************************
-    character(PathLen) function WorkerRoot(parentPid, kind, k)
-        integer, intent(in) :: parentPid
-        character(*), intent(in) :: kind
-        integer, intent(in) :: k
-        character(32) :: tag
-
-        write(tag, '(a,i0,a,a,i2.2)') 'p', parentPid, '_', trim(kind), k
-        WorkerRoot = trim(homedir) // 'tmp' // slash // trim(tag) // slash
-    end function WorkerRoot
-
-    !> Parent: remove every worker folder of one kind.
-    subroutine RemoveWorkerRoots(kind)
-        character(*), intent(in) :: kind
-        integer :: k
-        integer :: rmdir_status
-        character(PathLen) :: path
-
-        do k = 2, PrepassChunkCount()
-            path = WorkerRoot(ProcessSelfId(), kind, k)
-            rmdir_status = system(trim(comm_rmdir) // ' "' &
-                // trim(NoSlashEnd(path)) // '"' // comm_err_redirect)
-        end do
-    end subroutine RemoveWorkerRoots
 
     !***************************************************************************
     !> \brief Parent: keep what the main pass starts from.
@@ -1074,68 +974,6 @@ contains
             VerdictPath = trim(TmpDir) // trim(tag)
         end if
     end function VerdictPath
-
-    character(PathLen) function NoSlashEnd(dir)
-        character(*), intent(in) :: dir
-        integer :: n
-
-        NoSlashEnd = dir
-        n = len_trim(NoSlashEnd)
-        if (n > 1) then
-            if (NoSlashEnd(n:n) == slash) NoSlashEnd(n:n) = ' '
-        end if
-    end function NoSlashEnd
-
-    !***************************************************************************
-    !> \brief Copy bytes [offset, end) of `from` onto the end of `to`.
-    !>
-    !> Raw bytes, so nothing about a row - trailing blanks, line ends, UTF-8 -
-    !> can change on the way.
-    !***************************************************************************
-    subroutine AppendBytes(from, offset, to)
-        character(*), intent(in) :: from
-        integer(8), intent(in) :: offset
-        character(*), intent(in) :: to
-        integer, parameter :: Chunk = 1048576
-        integer :: ui
-        integer :: uo
-        integer :: io_status
-        integer :: n
-        integer(8) :: total
-        integer(8) :: pos
-        character(len = :), allocatable :: buf
-
-        total = FileBytes(from)
-        if (total <= offset) return
-        open(newunit = ui, file = trim(from), access = 'stream', &
-            form = 'unformatted', status = 'old', action = 'read', iostat = io_status)
-        if (io_status /= 0) error stop 'Could not read a production worker file.'
-        open(newunit = uo, file = trim(to), access = 'stream', &
-            form = 'unformatted', status = 'old', position = 'append', &
-            action = 'write', iostat = io_status)
-        if (io_status /= 0) error stop 'Could not append to an output file.'
-        allocate(character(len = Chunk) :: buf)
-        pos = offset + 1
-        do while (pos <= total)
-            n = int(min(int(Chunk, 8), total - pos + 1))
-            read(ui, pos = pos, iostat = io_status) buf(1:n)
-            if (io_status /= 0) error stop 'Could not read a production worker file.'
-            write(uo, iostat = io_status) buf(1:n)
-            if (io_status /= 0) error stop 'Could not append to an output file.'
-            pos = pos + n
-        end do
-        close(ui)
-        close(uo)
-    end subroutine AppendBytes
-
-    integer(8) function FileBytes(path)
-        character(*), intent(in) :: path
-        logical :: ex
-
-        FileBytes = 0
-        inquire(file = trim(path), exist = ex, size = FileBytes)
-        if (.not. ex .or. FileBytes < 0) FileBytes = 0
-    end function FileBytes
 
     !> A per-period folder under this worker's own output folder, moved to the
     !> same place under the parent's.
