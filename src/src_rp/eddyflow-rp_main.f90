@@ -48,7 +48,7 @@ program EddyFlowRP
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
         FinishBatchWorker, &
         StopIfParentGone, &
-        StartPrepassBatches, WaitPrepassBatches, &
+        StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
         WritePfBatchDump, MergePfBatchDumps
@@ -751,6 +751,9 @@ program EddyFlowRP
                 !> A worker whose parent has gone stops here, between
                 !> periods, rather than finishing a slice nobody will read.
                 call StopIfParentGone()
+                !> A parent hands a worker that has finished the next piece now,
+                !> not once its own piece is done.
+                call TopUpPrepassBatches()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1320,6 +1323,9 @@ program EddyFlowRP
                 !> A worker whose parent has gone stops here, between
                 !> periods, rather than finishing a slice nobody will read.
                 call StopIfParentGone()
+                !> A parent hands a worker that has finished the next piece now,
+                !> not once its own piece is done.
+                call TopUpPrepassBatches()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -2052,6 +2058,7 @@ program EddyFlowRP
         !> the storage terms of its first period see the one before; and then
         !> its piece. All but the piece is dropped - see ProdPieceBegins.
         if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop
+        if (ProdSplit) call TopUpPrepassBatches()
         if (BatchKind == 'pr' .or. BatchKind == 'pd') then
             if (pcount >= BatchSliceEnd) exit periods_loop
             if (pcount > ProdHeadEnd .and. pcount < BatchSliceStart - 1) then

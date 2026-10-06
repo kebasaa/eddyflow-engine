@@ -77,7 +77,7 @@ module m_prepass_parallel
     private
 
     public :: PlanPrepassBatches, PrepassChunk, PrepassChunkCount
-    public :: StartPrepassBatches, WaitPrepassBatches
+    public :: StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches
     public :: BatchDumpPath
     public :: WriteTlagBatchDump, MergeTlagBatchDumps
     public :: WritePwbBatchDump, MergePwbBatchDumps
@@ -126,6 +126,15 @@ module m_prepass_parallel
 
     !> The next piece no worker has been given yet.
     integer :: NextChunk = 0
+
+    !> The pool of the pass under way: which pass, how many processes may run
+    !> at once (the parent included), which pieces a worker is running, and
+    !> how many pieces are done - the parent's own counted once it waits.
+    logical :: PoolActive = .false.
+    character(2) :: PoolKind = ''
+    integer :: PoolEff = 0
+    integer :: PoolDone = 0
+    logical, allocatable :: Running(:)
 
 contains
 
@@ -455,8 +464,16 @@ contains
                 exePath, envPath, childPath)
         end do
 
+        PoolKind = kind
+        PoolEff = nEff
+        PoolDone = 0
+        if (allocated(Running)) deallocate(Running)
+        allocate(Running(NumChunks))
+        Running = .false.
         NextChunk = 2
         call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))
+        Running(2:NextChunk - 1) = .true.
+        PoolActive = .true.
     end subroutine StartPrepassBatches
 
     !***************************************************************************
@@ -523,6 +540,25 @@ contains
     end subroutine LaunchChunks
 
     !***************************************************************************
+    !> \brief Parent, between two of its own periods: hand a free core the next
+    !>        piece, and fail loudly as soon as any worker does.
+    !>
+    !> A worker that finishes while the parent is still on piece 1 would
+    !> otherwise leave its core idle until the parent gets to the wait - with
+    !> PWB for a while, since a detection piece is cheaper than the parent's
+    !> own, which computes fluxes too. Called once per period; it only looks
+    !> for return-code files, so it costs nothing a period would notice. Quiet:
+    !> the period loop may have a progress line open, and the pieces finished
+    !> are counted when the parent starts waiting.
+    !***************************************************************************
+    subroutine TopUpPrepassBatches()
+        logical :: progressed
+
+        if (.not. PoolActive) return
+        call PollPrepassPool(PoolEff - 1, .true., progressed)
+    end subroutine TopUpPrepassBatches
+
+    !***************************************************************************
     !> \brief Hand out the remaining pieces as workers come free, and fail
     !>        loudly as soon as any of them does.
     !>
@@ -543,67 +579,24 @@ contains
         character(*), intent(in) :: kind
         integer, intent(in) :: nEff
         integer :: k
-        integer :: rc
         integer :: ticks
-        integer :: nDone
-        integer :: nRunning
-        logical :: finished
-        logical, allocatable :: running(:)
-        character(64) :: LogString
-        character(64) :: CountString
+        logical :: progressed
 
-        allocate(running(NumChunks))
-        running = .false.
-        running(2:NextChunk - 1) = .true.
+        if (.not. PoolActive .or. trim(kind) /= trim(PoolKind)) &
+            error stop 'Waiting for workers of a pass that was not started.'
+        PoolEff = nEff
 
-        write(CountString, '(i6)') NumChunks
         call LogSay('  Waiting for the workers:')
-        nDone = 1
+        !> Piece 1 is the parent's own, done now; and whatever finished while
+        !> the parent was on it.
+        PoolDone = PoolDone + 1
+        if (PoolDone > 1) call SayPiecesDone()
         ticks = 0
         do
-            do k = 2, NextChunk - 1
-                if (.not. running(k)) cycle
-                call ChunkReturnCode(kind, k, finished, rc)
-                if (.not. finished) cycle
-                running(k) = .false.
-                nDone = nDone + 1
-                ticks = 0
-
-                if (rc /= 0) then
-                    call AppendWorkerLog(kind, k)
-                    write(LogString, '(i6)') k
-                    !> Its console output rather than its log: a worker that died
-                    !> rather than returned never closed the log, so the last thing
-                    !> it managed to say - which is the thing worth reading - is
-                    !> only in what the launcher captured.
-                    call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
-                        // ' failed. What it printed before it stopped:')
-                    call DumpWorkerStdout(kind, k)
-                    error stop 'A parallel pre-pass worker failed.'
-                end if
-
-                if (.not. DumpExists(kind, k)) then
-                    call AppendWorkerLog(kind, k)
-                    write(LogString, '(i6)') k
-                    call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
-                        // ' exited cleanly but wrote no records. What it printed:')
-                    call DumpWorkerStdout(kind, k)
-                    error stop 'A parallel pre-pass worker produced no output.'
-                end if
-
-                write(LogString, '(i6)') nDone
-                call LogSay('   ' // trim(adjustl(LogString)) // ' of ' &
-                    // trim(adjustl(CountString)) // ' pieces done.')
-            end do
-            if (nDone >= NumChunks) exit
-
-            !> Keep nEff workers busy while pieces are left.
-            nRunning = count(running)
-            if (nRunning < nEff .and. NextChunk <= NumChunks) then
-                k = NextChunk
-                call LaunchChunks(kind, min(nEff - nRunning, NumChunks - NextChunk + 1))
-                running(k:NextChunk - 1) = .true.
-            end if
+            if (PoolDone >= NumChunks) exit
+            call PollPrepassPool(nEff, .false., progressed)
+            if (progressed) ticks = 0
+            if (PoolDone >= NumChunks) exit
 
             call system(comm_sleep)
             ticks = ticks + 1
@@ -613,7 +606,8 @@ contains
                 error stop 'Parallel pre-pass timed out.'
             end if
         end do
-        deallocate(running)
+        deallocate(Running)
+        PoolActive = .false.
 
         !> Every worker's log, in piece order, so the run log reads as one walk
         !> through the range whatever order the pieces finished in.
@@ -621,6 +615,76 @@ contains
             call AppendWorkerLog(kind, k)
         end do
     end subroutine WaitPrepassBatches
+
+    !***************************************************************************
+    !> \brief One look at the pool: count the pieces whose workers have
+    !>        returned, stop the run if one failed, and start pieces until
+    !>        `slots` workers are running or none is left.
+    !***************************************************************************
+    subroutine PollPrepassPool(slots, quiet, progressed)
+        integer, intent(in) :: slots
+        logical, intent(in) :: quiet
+        logical, intent(out) :: progressed
+        integer :: k
+        integer :: rc
+        integer :: nRunning
+        logical :: finished
+        logical :: delivered
+        character(64) :: LogString
+
+        progressed = .false.
+        do k = 2, NextChunk - 1
+            if (.not. Running(k)) cycle
+            call ChunkReturnCode(PoolKind, k, finished, rc)
+            if (.not. finished) cycle
+            Running(k) = .false.
+            PoolDone = PoolDone + 1
+            progressed = .true.
+
+            delivered = rc == 0
+            if (delivered) delivered = DumpExists(PoolKind, k)
+            if (.not. delivered) then
+                !> Ends the progress line the period loop may have left open.
+                if (quiet) call LogSay('')
+                call AppendWorkerLog(PoolKind, k)
+                write(LogString, '(i6)') k
+                if (rc /= 0) then
+                    !> Its console output rather than its log: a worker that died
+                    !> rather than returned never closed the log, so the last thing
+                    !> it managed to say - which is the thing worth reading - is
+                    !> only in what the launcher captured.
+                    call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
+                        // ' failed. What it printed before it stopped:')
+                    call DumpWorkerStdout(PoolKind, k)
+                    error stop 'A parallel pre-pass worker failed.'
+                end if
+                call LogSay(' Pre-pass worker ' // trim(adjustl(LogString)) &
+                    // ' exited cleanly but wrote no records. What it printed:')
+                call DumpWorkerStdout(PoolKind, k)
+                error stop 'A parallel pre-pass worker produced no output.'
+            end if
+
+            if (.not. quiet) call SayPiecesDone()
+        end do
+
+        !> Keep `slots` workers busy while pieces are left.
+        nRunning = count(Running)
+        if (nRunning < slots .and. NextChunk <= NumChunks) then
+            k = NextChunk
+            call LaunchChunks(PoolKind, min(slots - nRunning, NumChunks - NextChunk + 1))
+            Running(k:NextChunk - 1) = .true.
+        end if
+    end subroutine PollPrepassPool
+
+    subroutine SayPiecesDone()
+        character(64) :: LogString
+        character(64) :: CountString
+
+        write(LogString, '(i6)') PoolDone
+        write(CountString, '(i6)') NumChunks
+        call LogSay('   ' // trim(adjustl(LogString)) // ' of ' &
+            // trim(adjustl(CountString)) // ' pieces done.')
+    end subroutine SayPiecesDone
 
     !***************************************************************************
     !> \brief Whether piece k's worker has finished, and with what code.

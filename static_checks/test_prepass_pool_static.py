@@ -49,6 +49,8 @@ def body(name, kind="subroutine"):
 PLAN = body("PlanPrepassChunks")
 START = body("StartPrepassBatches")
 WAIT = body("WaitPrepassBatches")
+POLL = body("PollPrepassPool")
+TOPUP = body("TopUpPrepassBatches")
 LAUNCH = body("LaunchChunks")
 
 
@@ -97,11 +99,12 @@ class AFreeWorkerTakesTheNextPiece(unittest.TestCase):
         self.assertIn("call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))", START)
 
     def test_the_wait_keeps_neff_workers_running_while_pieces_are_left(self):
-        loop = WAIT[WAIT.index("        do\n"):WAIT.index("deallocate(running)")]
-        self.assertIn("nRunning = count(running)", loop)
-        self.assertIn("if (nRunning < nEff .and. NextChunk <= NumChunks) then", loop)
-        self.assertIn("call LaunchChunks(kind, min(nEff - nRunning, NumChunks - NextChunk + 1))",
-                      loop)
+        loop = WAIT[WAIT.index("        do\n"):WAIT.index("deallocate(Running)")]
+        self.assertIn("call PollPrepassPool(nEff, .false., progressed)", loop)
+        self.assertIn("nRunning = count(Running)", POLL)
+        self.assertIn("if (nRunning < slots .and. NextChunk <= NumChunks) then", POLL)
+        self.assertIn("call LaunchChunks(PoolKind, min(slots - nRunning, NumChunks - NextChunk + 1))",
+                      POLL)
 
     def test_a_piece_is_launched_once(self):
         self.assertIn("NextChunk = NextChunk + n", LAUNCH)
@@ -116,19 +119,24 @@ class AFreeWorkerTakesTheNextPiece(unittest.TestCase):
     def test_the_wait_is_bounded_by_progress_not_by_total_time(self):
         """A season legitimately takes hours; what must not happen is a day
         with no piece finishing."""
-        self.assertIn("ticks = 0", WAIT[WAIT.index("running(k) = .false."):])
+        self.assertIn("progressed = .true.", POLL[POLL.index("Running(k) = .false."):])
+        self.assertIn("if (progressed) ticks = 0", WAIT)
         self.assertIn("if (ticks > MaxWaitTicks) then", WAIT)
 
 
 class AFailureStillStopsTheRun(unittest.TestCase):
 
     def test_at_once_inside_the_dispatch_loop(self):
-        loop = WAIT[WAIT.index("        do\n"):WAIT.index("if (nDone >= NumChunks) exit")]
-        self.assertIn("error stop 'A parallel pre-pass worker failed.'", loop)
-        self.assertIn("error stop 'A parallel pre-pass worker produced no output.'", loop)
+        self.assertIn("error stop 'A parallel pre-pass worker failed.'", POLL)
+        self.assertIn("error stop 'A parallel pre-pass worker produced no output.'", POLL)
+
+    def test_a_failure_noticed_mid_period_ends_the_open_line_first(self):
+        i = POLL.index("if (.not. delivered) then")
+        self.assertLess(POLL.index("if (quiet) call LogSay('')", i),
+                        POLL.index("call AppendWorkerLog(PoolKind, k)", i))
 
     def test_worker_logs_join_the_run_log_in_piece_order(self):
-        tail = WAIT[WAIT.index("deallocate(running)"):]
+        tail = WAIT[WAIT.index("deallocate(Running)"):]
         self.assertIn("do k = 2, NumChunks", tail)
         self.assertIn("call AppendWorkerLog(kind, k)", tail)
 
@@ -136,9 +144,37 @@ class AFailureStillStopsTheRun(unittest.TestCase):
 class ProgressIsReported(unittest.TestCase):
 
     def test_each_finished_piece_is_counted_once(self):
-        self.assertIn("' pieces done.'", WAIT)
-        i = WAIT.index("nDone = nDone + 1")
-        self.assertLess(i, WAIT.index("' pieces done.'"))
+        self.assertIn("' pieces done.'", body("SayPiecesDone"))
+        i = POLL.index("PoolDone = PoolDone + 1")
+        self.assertLess(i, POLL.index("if (.not. quiet) call SayPiecesDone()"))
+
+    def test_the_parent_s_own_piece_counts_once_it_waits(self):
+        i = WAIT.index("call LogSay('  Waiting for the workers:')")
+        self.assertLess(i, WAIT.index("PoolDone = PoolDone + 1"))
+        self.assertIn("if (PoolDone > 1) call SayPiecesDone()", WAIT)
+
+
+class NoCoreIdlesWhileTheParentWorks(unittest.TestCase):
+    """A worker that finishes while the parent is still on piece 1 is given
+    the next piece then, not when the parent reaches the wait."""
+
+    def test_the_parent_tops_up_quietly_leaving_its_own_core(self):
+        self.assertIn("if (.not. PoolActive) return", TOPUP)
+        self.assertIn("call PollPrepassPool(PoolEff - 1, .true., progressed)", TOPUP)
+
+    def test_every_loop_the_parent_shares_tops_up_once_a_period(self):
+        for loop in ("to_periods_loop: do", "pf_periods_loop: do"):
+            i = MAIN.index(loop)
+            self.assertIn("call TopUpPrepassBatches()", MAIN[i:i + 600], loop)
+        i = MAIN.index("if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop")
+        self.assertIn("if (ProdSplit) call TopUpPrepassBatches()", MAIN[i:i + 200])
+
+    def test_the_pool_is_set_up_when_the_workers_start(self):
+        self.assertLess(START.index("allocate(Running(NumChunks))"),
+                        START.index("call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))"))
+        self.assertIn("Running(2:NextChunk - 1) = .true.", START)
+        self.assertIn("PoolActive = .true.", START)
+        self.assertIn("PoolActive = .false.", WAIT)
 
 
 class NothingOfThisRunsWithoutParallelProcessing(unittest.TestCase):
