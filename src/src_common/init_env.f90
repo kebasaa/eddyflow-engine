@@ -128,8 +128,9 @@ subroutine InitEnv()
                     EddyFlowProj%caller = trim(arg)
                     if (EddyFlowProj%caller(1:1) == '-') EddyFlowProj%caller = ''
 
-                !> Switch for "jobs", how many worker processes the
-                !> assessment pre-passes may be split across. 0, and the
+                !> Switch for "jobs", how many worker processes a run may
+                !> be split across: RP's pre-passes and production pass,
+                !> FCC's flux computation. 0, and the
                 !> absent switch, mean "as many as there are cores"; 1 is
                 !> the serial path. Anything unparseable is treated as
                 !> absent rather than as an error, in keeping with every
@@ -428,8 +429,8 @@ subroutine CommandLineHelp(sw_ver, build_date)
                                                              & if not provided assumes \.'
     write(ulog, '(a)') '   [-e | --environment [DIRECTORY]]     Working directory, to be provided in embedded mode;&
                                                              & if not provided assumes \.'
-    call LogSay('   [-j | --jobs [N]]                    Worker processes for the planar-fit and time-lag&
-                                                         & pre-passes; 0 or absent uses every core, 1 is serial')
+    call LogSay('   [-j | --jobs [N]]                    Worker processes a run is split across;&
+                                                         & 0 or absent uses every core, 1 is serial')
     call LogSay('   [-h | --help]                        Display this help and exit')
     call LogSay('   [-v | --version]                     Output version information and exit')
     write(*, '(a)')

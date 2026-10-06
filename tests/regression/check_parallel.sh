@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Does splitting a pre-pass across worker processes change the answer?
 #
-# Usage: [PAR_JOBS=N] [PAR_KIND=pre|pr] check_parallel.sh [fixture.eddyflow]
+# Usage: [PAR_JOBS=N] [PAR_KIND=pre|pr|fx] check_parallel.sh [fixture.eddyflow]
 #        (defaults: PAR_JOBS=0 - one worker per core; PAR_KIND=pre - a
 #         pre-pass must have been split, on base_tlag_par.eddyflow; with
 #         PAR_KIND=pr, base_prod_par.eddyflow, two days cut as a real run is)
@@ -13,6 +13,12 @@
 # so that whatever a half-hour inherits from the one before is exercised at
 # every cut. The variable only affects a run that splits, so the -j 1
 # reference is unchanged by it.
+#
+# PAR_KIND=fx checks FCC's flux computation, split by essentials record. RP
+# runs serially both times; only FCC is given -j. Set
+# EDDYFLOW_FCC_PIECE_PERIODS=1 (or 2, 3) to cut at nearly every record. Both
+# run logs are left out of the comparison: FCC's parent appends its workers'
+# logs to its own.
 #
 # Runs the fixture twice through run.sh - once with -j 1, once with
 # -j $PAR_JOBS - and diffs the two normalised output trees. Every file must
@@ -42,14 +48,24 @@ PAR_KIND="${PAR_KIND:-pre}"
 case "$PAR_KIND" in
     pre) MARKER="Splitting the pre-pass across"; DEFAULT=base_tlag_par.eddyflow ;;
     pr)  MARKER="Splitting the production pass across"; DEFAULT=base_prod_par.eddyflow ;;
-    *)   echo "PAR_KIND must be pre or pr"; exit 2 ;;
+    fx)  MARKER="Splitting the flux computation across"; DEFAULT=base_prod_par.eddyflow ;;
+    *)   echo "PAR_KIND must be pre, pr or fx"; exit 2 ;;
 esac
 FIXTURE="${1:-$DEFAULT}"
 
-echo "== serial (-j 1) =="
-RP_EXTRA="-j 1" BASE="$FIXTURE" "$HERE/run.sh" ref
-echo "== parallel (-j $PAR_JOBS) =="
-RP_EXTRA="-j $PAR_JOBS" BASE="$FIXTURE" "$HERE/run.sh" chk
+if [ "$PAR_KIND" = fx ]; then
+    echo "== serial (FCC -j 1) =="
+    RP_EXTRA="-j 1" FCC_EXTRA="-j 1" BASE="$FIXTURE" "$HERE/run.sh" ref
+    echo "== parallel (FCC -j $PAR_JOBS) =="
+    RP_EXTRA="-j 1" FCC_EXTRA="-j $PAR_JOBS" BASE="$FIXTURE" "$HERE/run.sh" chk
+    LOGS="*_log_*"
+else
+    echo "== serial (-j 1) =="
+    RP_EXTRA="-j 1" BASE="$FIXTURE" "$HERE/run.sh" ref
+    echo "== parallel (-j $PAR_JOBS) =="
+    RP_EXTRA="-j $PAR_JOBS" BASE="$FIXTURE" "$HERE/run.sh" chk
+    LOGS="*_rp.log"
+fi
 
 # A pass means nothing if the parallel run never split. The parent says so in
 # its log, which run.sh keeps as *_rp.log.
@@ -62,7 +78,7 @@ fi
 status=0
 while IFS= read -r f; do
     rel="${f#"$HERE/out_ref/"}"
-    case "$rel" in *_rp.log) continue ;; esac
+    case "$(basename "$rel")" in $LOGS) continue ;; esac
     if ! cmp -s "$f" "$HERE/out_chk/$rel"; then
         echo "DIFFERS: $rel"
         status=1
@@ -70,8 +86,8 @@ while IFS= read -r f; do
 done < <(find "$HERE/out_ref" -type f)
 
 # Catch a file that exists on only one side, which cmp above cannot see.
-a="$(cd "$HERE/out_ref" && find . -type f ! -name "*_rp.log" | sort)"
-b="$(cd "$HERE/out_chk" && find . -type f ! -name "*_rp.log" | sort)"
+a="$(cd "$HERE/out_ref" && find . -type f ! -name "$LOGS" | sort)"
+b="$(cd "$HERE/out_chk" && find . -type f ! -name "$LOGS" | sort)"
 if [ "$a" != "$b" ]; then
     echo "FAIL: the two runs did not write the same set of files"
     diff <(echo "$a") <(echo "$b") || true

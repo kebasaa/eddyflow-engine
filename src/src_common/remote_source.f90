@@ -88,6 +88,7 @@ module m_remote_source
     public :: RemoteEnsure, RemoteIsLocal, RemoteSizeOf
     public :: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
     public :: RemoteSetWindow, RemoteClearWindow, RemotePositionOf
+    public :: RemoteFetchedAny
 
     type :: RemoteEntry
         !> Full local path the file has, or will have, under the staging dir
@@ -130,6 +131,10 @@ module m_remote_source
     logical :: MainPass = .false.
     !> Processing positions up to here have been deleted by the main pass
     integer :: EvictedUpTo = 0
+    !> A file or folder setting was a link and was downloaded. FCC does not
+    !> split its flux computation then: every worker would download it again.
+    logical :: FetchedAny = .false.
+
     !> A production pass split across processes: each deletes only positions
     !> in (EvictLo, EvictHi] - the files no other process will read - and
     !> fetches ahead only within [FetchLo, FetchHi], so it never downloads a
@@ -245,8 +250,14 @@ contains
         character(*), intent(inout) :: path
 
         if (.not. IsRemotePath(path)) return
+        FetchedAny = .true.
         call FetchSingle(setting, path, setting)
     end subroutine RemoteFetchFile
+
+    !> Whether any input of this run was downloaded from a shared link.
+    logical function RemoteFetchedAny()
+        RemoteFetchedAny = FetchedAny
+    end function RemoteFetchedAny
 
     !***************************************************************************
     !> \brief If the setting links to a folder, download it whole.
@@ -262,6 +273,7 @@ contains
         logical, intent(in) :: recursive
 
         if (.not. IsRemotePath(dir)) return
+        FetchedAny = .true.
         call FetchFolder(setting, dir, tail, recursive)
     end subroutine RemoteFetchFolder
 

@@ -28,6 +28,10 @@ Program EddyFlowFCC
     use m_cec
     use m_sa_rates
     use m_remote_source, only: RemoteCleanup
+    use m_batch_pool, only: WaitPrepassBatches, TopUpPrepassBatches, &
+        StopIfParentGone, FinishBatchWorker
+    use m_fcc_parallel, only: CaptureFccContext, TryFccFluxSplit, &
+        FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces
     implicit none
 
     integer, external :: CreateDir
@@ -105,6 +109,13 @@ Program EddyFlowFCC
     integer :: cec_slot
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
     real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    !> The flux loop split across worker processes (m_fcc_parallel): the
+    !> record that opened the output files, the one the parent's own piece
+    !> ends before, and how many processes run at once.
+    integer :: FccHead = 0
+    integer :: FccParentEnd = 0
+    integer :: FccWorkers = 1
+    integer :: skip_status
 
     !> Allocatable variabled
     type(DateType), allocatable :: exTimeSeries(:)
@@ -226,6 +237,13 @@ Program EddyFlowFCC
 
         !> Retrieve length of full cospectra for later allocation
         call FullCospectraLength(FullFilelist(1)%path, nrow_full)
+    end if
+
+    !> A worker of a split flux computation does not repeat the spectral
+    !> assessment: it takes the parent's, and goes straight to the records.
+    if (BatchKind == 'fx') then
+        call FccWorkerStart(FccHead)
+        goto 100
     end if
 
     !****************************************************************
@@ -585,6 +603,9 @@ Program EddyFlowFCC
 
 100 continue
 
+    !> What the flux loop starts from, for workers should it be split
+    if (BatchIndex == 0) call CaptureFccContext()
+
     !***************************************************************************
     !***************************************************************************
     !****** MAIN CYCLE ON RESULTS RECORDS RETRIEVED FROM ESSENTIALS FILE *******
@@ -612,6 +633,25 @@ Program EddyFlowFCC
     day   = 0
     InitializeOuputFiles = .true.
     ex_loop: do i = 1, NumExRecords
+
+        !> Split across workers: the parent stops where the first worker's
+        !> piece begins and hands out pieces as workers come free. A worker
+        !> processes the head again, so its output files open as the parent's
+        !> did, skips the records up to its piece unread, and stops at its end.
+        if (FccParentEnd > 0) then
+            if (i >= FccParentEnd) exit ex_loop
+            call TopUpPrepassBatches()
+        end if
+        if (BatchKind == 'fx') then
+            if (i >= BatchSliceEnd) exit ex_loop
+            call StopIfParentGone()
+            if (i /= FccHead .and. i < BatchSliceStart) then
+                read(uex, *, iostat = skip_status)
+                if (skip_status < 0) exit ex_loop
+                cycle ex_loop
+            end if
+            if (i == BatchSliceStart) call FccPieceBegins()
+        end if
 
         !> Read record from essentials file
         call ReadExRecord('', uex, -1, lEx, ValidRecord, EndOfFileReached)
@@ -775,6 +815,9 @@ Program EddyFlowFCC
         if (InitializeOuputFiles) then
             call InitOutFiles(lEx)
             InitializeOuputFiles = .false.
+            !> Every output file is open now, so the rest can be split
+            if (BatchIndex == 0) &
+                call TryFccFluxSplit(i, NumExRecords, FccParentEnd, FccWorkers)
         end if
 
         if (EddyFlowProj%out_full .and. .not. lEx%not_enough_data) call WriteOutFullFcc(lEx)
@@ -790,6 +833,20 @@ Program EddyFlowFCC
         end if
 
     end do ex_loop
+
+    !> A worker's piece is done: say where its rows are, and stop
+    if (BatchKind == 'fx') then
+        close(uex)
+        call FinishFccWorker()
+        call FinishBatchWorker()
+        stop
+    end if
+
+    !> The workers' pieces, appended to this process's files in order
+    if (FccParentEnd > 0) then
+        call WaitPrepassBatches('fx', FccWorkers)
+        call MergeFccPieces()
+    end if
     close(uex)
     close(uflx)
     close(ufnet_e)

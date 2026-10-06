@@ -521,6 +521,8 @@ eddyflow-fcc_main.o: \
 	eddyflow-fcc_main.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	batch_pool.o \
+	fcc_parallel.o \
 	m_cec.o \
 	m_fx_global_var_mod.o \
 	remote_source.o \
@@ -553,6 +555,12 @@ exception_handler.o: \
 extract_column_from_essentials.o: \
 	extract_column_from_essentials.f90 \
 	m_common_global_var.o
+fcc_parallel.o: \
+	fcc_parallel.f90 \
+	batch_pool.o \
+	m_fx_global_var_mod.o \
+	remote_source.o \
+	sa_rates.o
 fcn.o: \
 	fcn.f90 \
 	m_common_global_var.o

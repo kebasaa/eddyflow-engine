@@ -53,6 +53,7 @@ module m_batch_pool
     public :: FinishBatchWorker, StopIfParentGone
     public :: ForcedPieceLength, RemoveStaleWorkerRoots, WorkerRoot
     public :: RemoveWorkerRoots, NoSlashEnd, AppendBytes, FileBytes
+    public :: MaxChunks
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
