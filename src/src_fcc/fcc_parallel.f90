@@ -46,6 +46,16 @@
 !              Refused, so the loop runs on serially: embedded mode, and inputs
 !              from a shared link, which every worker would download again.
 !
+!              The binned (co)spectra the spectral assessment imports are read
+!              by workers too ('sb'), but only read: a worker parses its files
+!              and hands back their bins. The parent runs the import loop as it
+!              always did, taking each file's bins from the workers in file
+!              order instead of reading the file - so the lookup in the
+!              essentials file, the quality screening and the sums, which
+!              depend on the order the files come in, are its own and
+!              unchanged. It reads the first piece itself while the workers
+!              read the rest.
+!
 ! \author      Jonathan Muller
 ! \sa          batch_pool.f90, eddyflow-fcc_main.f90,
 !              production_parallel.f90 (the same pattern in RP)
@@ -56,16 +66,24 @@ module m_fcc_parallel
     use m_batch_pool, only: PlanPrepassBatches, StartPrepassBatches, &
         WaitPrepassBatches, PrepassChunkCount, BatchDumpPath, ForcedPieceLength, &
         RemoveStaleWorkerRoots, WorkerRoot, RemoveWorkerRoots, NoSlashEnd, &
-        AppendBytes, FileBytes, MaxChunks
+        AppendBytes, FileBytes, MaxChunks, WaitForBatchPiece, CancelBatchPool, &
+        PrepassChunk, FinishBatchWorker, StopIfParentGone
     use m_remote_source, only: RemoteFetchedAny
     implicit none
     private
 
     public :: CaptureFccContext, TryFccFluxSplit, FccWorkerStart
     public :: FccPieceBegins, FinishFccWorker, MergeFccPieces
+    public :: StartBinnedSplit, GetBinnedFile, FinishBinnedSplit, RunBinnedReadWorker
 
     character(20), parameter :: CtxMagic = 'EDDYFLOW_FCCCTX_01  '
     character(20), parameter :: DumpMagic = 'EDDYFLOW_FCCOUT_01  '
+    character(20), parameter :: BinMagic = 'EDDYFLOW_FCCBIN_01  '
+
+    !> A binned-import piece holds this many files at least. One piece per
+    !> worker: the files are much alike, and every further piece would pay
+    !> for starting a process again.
+    integer, parameter :: MinPieceFiles = 16
 
     !> A worker piece pays for starting a process and reading the essentials
     !> file once more, so it should hold this many records at least.
@@ -89,6 +107,13 @@ module m_fcc_parallel
     logical :: PieceOpen(NOut) = .false.
     integer(8) :: PieceOffset(NOut) = 0
     character(PathLen) :: PiecePath(NOut) = ''
+
+    !> The parent's side of a split binned import: whether one is under way,
+    !> which piece it is reading, and that piece's dump.
+    logical :: SbActive = .false.
+    integer :: SbPiece = 0
+    integer :: SbUnit = 0
+    logical :: SbOpen = .false.
 
 contains
 
@@ -375,6 +400,278 @@ contains
         end do
         call RemoveWorkerRoots('fx')
     end subroutine MergeFccPieces
+
+    !***************************************************************************
+    !> \brief Parent, before the import loop: cut the selected binned files
+    !>        into pieces and start the workers reading them.
+    !***************************************************************************
+    subroutine StartBinnedSplit(first, last, Files, nFiles)
+        integer, intent(in) :: first
+        integer, intent(in) :: last
+        integer, intent(in) :: nFiles
+        type(FileListType), intent(in) :: Files(nFiles)
+        integer :: nEff
+        integer :: n
+        integer :: c
+        integer :: k
+        integer :: want
+        integer :: forced
+        integer :: u
+        integer :: io_status
+        integer :: cuts(MaxChunks)
+        type(DateType) :: noSeries(1)
+
+        SbActive = .false.
+        SbPiece = 0
+        SbOpen = .false.
+        if (BatchIndex > 0) return
+        if (EddyFlowProj%run_env == 'embedded') return
+        if (RemoteFetchedAny()) return
+
+        n = last - first + 1
+        forced = ForcedPieceLength('EDDYFLOW_FCC_PIECE_FILES')
+        if (forced > 0) then
+            call PlanPrepassBatches(n, .true., nEff, 'binned (co)spectra import', 1)
+        else
+            call PlanPrepassBatches(n, .true., nEff, 'binned (co)spectra import', MinPieceFiles)
+        end if
+        if (nEff <= 1) return
+        if (forced > 0) then
+            want = min(MaxChunks, max(1, n / forced))
+        else
+            want = min(MaxChunks, nEff, max(1, n / MinPieceFiles))
+        end if
+        if (want <= 1) return
+        k = 0
+        do c = 1, want - 1
+            k = k + 1
+            cuts(k) = first + int(int(n, 8) * c / want)
+            if (k > 1) then
+                if (cuts(k) <= cuts(k - 1)) k = k - 1
+            end if
+        end do
+        if (k == 0) return
+
+        !> The list the workers read from, so they need not list the folder
+        open(newunit = u, file = trim(BinListPath()), form = 'unformatted', &
+            access = 'stream', status = 'replace', iostat = io_status)
+        if (io_status /= 0) error stop 'Could not write the binned file list for the workers.'
+        write(u) BinMagic, first, last
+        write(u) Files(first:last)
+        close(u)
+
+        call StartPrepassBatches('sb', first, last + 1, nEff, noSeries, 1, &
+            Files, nFiles, cuts(1:k))
+        SbActive = .true.
+        SbPiece = 1
+    end subroutine StartBinnedSplit
+
+    !***************************************************************************
+    !> \brief Parent, in place of ReadBinnedFile: file fcount's bins, read here
+    !>        in the first piece and taken from a worker's dump after it.
+    !>
+    !> Called for every file of the loop in turn, as ReadBinnedFile was. Like
+    !> it, leaves nbins alone for a file that could not be read, and says so
+    !> with Error(62) - the worker's own message stays in its log.
+    !***************************************************************************
+    subroutine GetBinnedFile(fcount, InFile, BinSpec, BinCosp, nrow, nbins, skip)
+        integer, intent(in) :: fcount
+        type(FileListType), intent(in) :: InFile
+        integer, intent(in) :: nrow
+        type(SpectraSetType), intent(inout) :: BinSpec(nrow)
+        type(SpectraSetType), intent(inout) :: BinCosp(nrow)
+        integer, intent(inout) :: nbins
+        logical, intent(out) :: skip
+        integer :: s
+        integer :: e
+        integer :: fc
+        integer :: nb
+        logical :: more
+        logical :: sk
+
+        if (.not. SbActive) then
+            call ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
+            return
+        end if
+        call PrepassChunk(1, s, e)
+        if (fcount < e) then
+            call ReadBinnedFile(InFile, BinSpec, BinCosp, nrow, nbins, skip)
+            return
+        end if
+
+        !> The piece this file is in; the pieces before it are done with
+        do
+            call PrepassChunk(SbPiece, s, e)
+            if (fcount < e .and. SbPiece > 1) exit
+            if (SbOpen) close(SbUnit, status = 'delete')
+            SbOpen = .false.
+            SbPiece = SbPiece + 1
+        end do
+        if (.not. SbOpen) call OpenBinDump(SbPiece)
+
+        read(SbUnit) more, fc, sk, nb
+        if (.not. more .or. fc /= fcount) &
+            error stop 'A binned-import worker dump is out of step with the import.'
+        skip = sk
+        if (skip) then
+            call ExceptionHandler(62)
+            return
+        end if
+        nbins = nb
+        call ReadBins(SbUnit, BinSpec, nrow, nbins)
+        call ReadBins(SbUnit, BinCosp, nrow, nbins)
+    end subroutine GetBinnedFile
+
+    !> Wait for piece k and open its dump, checking it was written for the
+    !> gases this process expects.
+    subroutine OpenBinDump(k)
+        integer, intent(in) :: k
+        integer :: io_status
+        character(20) :: magic
+        character(64) :: mine(GHGNumVar)
+        character(64) :: theirs(GHGNumVar)
+        include '../src_common/interfaces_1.inc'
+
+        call WaitForBatchPiece(k)
+        open(newunit = SbUnit, file = trim(BatchDumpPath('sb', k)), &
+            form = 'unformatted', access = 'stream', status = 'old', &
+            action = 'readwrite', iostat = io_status)
+        if (io_status /= 0) error stop 'Could not read a binned-import worker dump.'
+        read(SbUnit, iostat = io_status) magic, theirs
+        if (io_status /= 0 .or. magic /= BinMagic) &
+            error stop 'A binned-import worker dump is not one of this run.'
+        call SpectralVarTags(mine)
+        if (any(mine /= theirs)) &
+            error stop 'A binned-import worker read the files for other gases.'
+        SbOpen = .true.
+    end subroutine OpenBinDump
+
+    !***************************************************************************
+    !> \brief Parent, after the import loop: let the workers still reading
+    !>        finish - the loop may have stopped early, at the end of the
+    !>        essentials file - and remove what is left of their dumps.
+    !***************************************************************************
+    subroutine FinishBinnedSplit()
+        integer :: k
+        integer :: u
+        integer :: io_status
+        logical :: ex
+
+        if (.not. SbActive) return
+        if (SbOpen) close(SbUnit, status = 'delete')
+        SbOpen = .false.
+        call CancelBatchPool()
+        do k = 2, PrepassChunkCount()
+            inquire(file = trim(BatchDumpPath('sb', k)), exist = ex)
+            if (.not. ex) cycle
+            open(newunit = u, file = trim(BatchDumpPath('sb', k)), status = 'old', &
+                iostat = io_status)
+            if (io_status == 0) close(u, status = 'delete')
+        end do
+        SbActive = .false.
+    end subroutine FinishBinnedSplit
+
+    !***************************************************************************
+    !> \brief Binned-import worker: read its piece of the files and stop.
+    !***************************************************************************
+    subroutine RunBinnedReadWorker()
+        integer :: u
+        integer :: ud
+        integer :: io_status
+        integer :: first
+        integer :: last
+        integer :: fcount
+        integer :: nbins
+        logical :: skip
+        character(20) :: magic
+        character(64) :: tags(GHGNumVar)
+        type(FileListType), allocatable :: Files(:)
+        type(SpectraSetType) :: BinSpec(MaxNumBins)
+        type(SpectraSetType) :: BinCosp(MaxNumBins)
+        include '../src_common/interfaces_1.inc'
+
+        open(newunit = u, file = trim(BinListPath()), form = 'unformatted', &
+            access = 'stream', status = 'old', action = 'read', iostat = io_status)
+        if (io_status /= 0) error stop 'Binned-import worker could not open its file list.'
+        read(u, iostat = io_status) magic, first, last
+        if (io_status /= 0 .or. magic /= BinMagic) &
+            error stop 'Binned-import file list is not one of this run.'
+        allocate(Files(first:last))
+        read(u) Files
+        close(u)
+        if (BatchSliceStart < first .or. BatchSliceEnd - 1 > last) &
+            error stop 'Binned-import worker piece lies outside the file list.'
+
+        open(newunit = ud, file = trim(BatchOutPath), form = 'unformatted', &
+            access = 'stream', status = 'replace', iostat = io_status)
+        if (io_status /= 0) error stop 'Binned-import worker could not write its dump.'
+        call SpectralVarTags(tags)
+        write(ud) BinMagic, tags
+        nbins = 0
+        do fcount = BatchSliceStart, BatchSliceEnd - 1
+            call StopIfParentGone()
+            call ReadBinnedFile(Files(fcount), BinSpec, BinCosp, MaxNumBins, nbins, skip)
+            write(ud) .true., fcount, skip, nbins
+            if (skip) cycle
+            call WriteBins(ud, BinSpec, MaxNumBins, nbins)
+            call WriteBins(ud, BinCosp, MaxNumBins, nbins)
+        end do
+        write(ud) .false., 0, .true., 0
+        close(ud)
+        call FinishBatchWorker()
+        stop
+    end subroutine RunBinnedReadWorker
+
+    !> One file's bins, rows 1:nbins and gas slots up to the last with a value:
+    !> the rest of the array is ErrSpec, which is what ReadBinnedFile leaves.
+    subroutine WriteBins(u, Bins, nrow, nbins)
+        integer, intent(in) :: u
+        integer, intent(in) :: nrow
+        integer, intent(in) :: nbins
+        type(SpectraSetType), intent(in) :: Bins(nrow)
+        integer :: i
+        integer :: j
+        integer :: hi
+
+        hi = 0
+        do i = 1, nbins
+            do j = size(Bins(i)%of), hi + 1, -1
+                if (Bins(i)%of(j) /= error) then
+                    hi = j
+                    exit
+                end if
+            end do
+        end do
+        write(u) hi
+        do i = 1, nbins
+            write(u) Bins(i)%fnum, Bins(i)%fn, Bins(i)%fnorm
+            if (hi > 0) write(u) Bins(i)%of(1:hi)
+        end do
+    end subroutine WriteBins
+
+    subroutine ReadBins(u, Bins, nrow, nbins)
+        integer, intent(in) :: u
+        integer, intent(in) :: nrow
+        integer, intent(in) :: nbins
+        type(SpectraSetType), intent(inout) :: Bins(nrow)
+        integer :: i
+        integer :: hi
+
+        Bins = ErrSpec
+        read(u) hi
+        do i = 1, nbins
+            read(u) Bins(i)%fnum, Bins(i)%fn, Bins(i)%fnorm
+            if (hi > 0) read(u) Bins(i)%of(1:hi)
+        end do
+    end subroutine ReadBins
+
+    character(PathLen) function BinListPath()
+        if (BatchIndex > 0) then
+            BinListPath = trim(BatchTmpDir) // slash // 'batch_sb_list.bin'
+        else
+            BinListPath = trim(TmpDir) // 'batch_sb_list.bin'
+        end if
+    end function BinListPath
 
     !> The context file sits in the parent's temporary folder, which a worker
     !> knows as --batch-tmp.

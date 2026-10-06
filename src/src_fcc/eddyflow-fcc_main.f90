@@ -31,7 +31,8 @@ Program EddyFlowFCC
     use m_batch_pool, only: WaitPrepassBatches, TopUpPrepassBatches, &
         StopIfParentGone, FinishBatchWorker
     use m_fcc_parallel, only: CaptureFccContext, TryFccFluxSplit, &
-        FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces
+        FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces, &
+        StartBinnedSplit, GetBinnedFile, FinishBinnedSplit, RunBinnedReadWorker
     implicit none
 
     integer, external :: CreateDir
@@ -167,6 +168,11 @@ Program EddyFlowFCC
         call ConfigureForEmbedded('EddyFlow-FCC')
 
     if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
+
+    !> A worker of a split binned import only reads its files, which needs
+    !> the project and nothing from the essentials file - so it starts here,
+    !> without reading that, and stops.
+    if (BatchKind == 'sb') call RunBinnedReadWorker()
 
     !> Before anything reads a record. InitExVars parses the whole file by
     !> field position, so a file from an older RP does not announce itself -
@@ -383,6 +389,9 @@ Program EddyFlowFCC
         allocate(FitStable(0))
         allocate(FitUnstable(0))
         fcount = saStartTimestampIndx - 1
+        !> Workers read the files after the first piece meanwhile
+        call StartBinnedSplit(saStartTimestampIndx, saEndTimestampIndx, &
+            BinnedFileList, size(BinnedFileList))
         binned_loop: do
             !> Update file counter
             fcount = fcount + 1
@@ -392,7 +401,7 @@ Program EddyFlowFCC
 
             !> Read (co)spectra from file
             SADiagSelectedFiles = SADiagSelectedFiles + 1
-            call ReadBinnedFile(BinnedFileList(fcount), BinSpec, BinCosp, &
+            call GetBinnedFile(fcount, BinnedFileList(fcount), BinSpec, BinCosp, &
                 size(BinSpec), nbins, skip)
             if (skip) cycle binned_loop
             SADiagReadableFiles = SADiagReadableFiles + 1
@@ -479,6 +488,7 @@ Program EddyFlowFCC
                     lEx%end_time, nbins)
             end if
         end do binned_loop
+        call FinishBinnedSplit()
         close(uex)
         call LogSay('  Done.')
 

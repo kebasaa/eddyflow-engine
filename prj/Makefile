@@ -557,6 +557,7 @@ extract_column_from_essentials.o: \
 	m_common_global_var.o
 fcc_parallel.o: \
 	fcc_parallel.f90 \
+	interfaces_1.inc \
 	batch_pool.o \
 	m_fx_global_var_mod.o \
 	remote_source.o \

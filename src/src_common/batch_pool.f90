@@ -49,6 +49,7 @@ module m_batch_pool
 
     public :: PlanPrepassBatches, PlanPrepassChunks, PrepassChunk, PrepassChunkCount
     public :: StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches
+    public :: WaitForBatchPiece, CancelBatchPool
     public :: BatchDumpPath, RequireBatchKind, NoTrailingSlash
     public :: FinishBatchWorker, StopIfParentGone
     public :: ForcedPieceLength, RemoveStaleWorkerRoots, WorkerRoot
@@ -645,6 +646,68 @@ contains
         call LogSay('   ' // trim(adjustl(LogString)) // ' of ' &
             // trim(adjustl(CountString)) // ' pieces done.')
     end subroutine SayPiecesDone
+
+    !***************************************************************************
+    !> rief Parent: block until piece k is done, keeping the other workers
+    !>        busy meanwhile.
+    !>
+    !> For a parent that consumes the pieces in order while they are being
+    !> produced, rather than waiting for all of them: it is busy with that
+    !> itself, so nEff - 1 workers run. Quiet, like TopUpPrepassBatches.
+    !***************************************************************************
+    subroutine WaitForBatchPiece(k)
+        integer, intent(in) :: k
+        integer :: ticks
+        logical :: progressed
+
+        if (.not. PoolActive) return
+        if (k < 2 .or. k > NumChunks) return
+        ticks = 0
+        do
+            call PollPrepassPool(PoolEff - 1, .true., progressed)
+            if (k < NextChunk .and. .not. Running(k)) exit
+            if (progressed) ticks = 0
+            call system(comm_sleep)
+            ticks = ticks + 1
+            if (ticks > MaxWaitTicks) then
+                call LogSay('')
+                call LogSay(' No worker has finished within a day.')
+                error stop 'Parallel pass timed out.'
+            end if
+        end do
+    end subroutine WaitForBatchPiece
+
+    !***************************************************************************
+    !> rief Parent: start no more pieces, wait for the running ones to end,
+    !>        and close the pool, without folding their logs into the run's.
+    !>
+    !> For a parent that has taken what it needed from the pieces - all of
+    !> them, or fewer, when its input ended early - and says itself whatever
+    !> they said.
+    !***************************************************************************
+    subroutine CancelBatchPool()
+        integer :: ticks
+        logical :: progressed
+
+        if (.not. PoolActive) return
+        NextChunk = NumChunks + 1
+        ticks = 0
+        do
+            if (count(Running) == 0) exit
+            call PollPrepassPool(0, .true., progressed)
+            if (count(Running) == 0) exit
+            if (progressed) ticks = 0
+            call system(comm_sleep)
+            ticks = ticks + 1
+            if (ticks > MaxWaitTicks) then
+                call LogSay('')
+                call LogSay(' No worker has finished within a day.')
+                error stop 'Parallel pass timed out.'
+            end if
+        end do
+        deallocate(Running)
+        PoolActive = .false.
+    end subroutine CancelBatchPool
 
     !***************************************************************************
     !> \brief Whether piece k's worker has finished, and with what code.
