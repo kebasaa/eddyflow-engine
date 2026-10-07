@@ -75,6 +75,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     logical, save :: ProjFlagsSaved = .false.
     logical, save :: ProjBA
     logical, save :: ProjZOH
+    integer, save :: ProjSonicOutputRate
     include 'interfaces_1.inc'
 
     !> The BA and ZOH switches are decided per period further down - from
@@ -82,13 +83,19 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     !> project-wide variables, so one period above 10 Hz switched block
     !> averaging off for every period after it, 10 Hz ones included. Each
     !> period starts again from what the project says.
+    !>
+    !> The sonic output rate likewise: when the project leaves it unset, it is
+    !> defaulted below from the sonic's model, and that default used to stay -
+    !> taken from whichever period first needed it.
     if (.not. ProjFlagsSaved) then
         ProjBA = EddyFlowProj%hf_correct_ghg_ba
         ProjZOH = EddyFlowProj%hf_correct_ghg_zoh
+        ProjSonicOutputRate = EddyFlowProj%sonic_output_rate
         ProjFlagsSaved = .true.
     else
         EddyFlowProj%hf_correct_ghg_ba = ProjBA
         EddyFlowProj%hf_correct_ghg_zoh = ProjZOH
+        EddyFlowProj%sonic_output_rate = ProjSonicOutputRate
     end if
 
     !> Checks that parameters are passed correctly

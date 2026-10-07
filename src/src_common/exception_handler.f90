@@ -126,10 +126,8 @@ subroutine ExceptionHandler(error_code)
             call LogSayList(' Error(33)> Number of wind records for this sector is less than requested.')
             call LogSayList(' Error(33)> Planar-fit rotation matrix not calculated for this sector.')
         case(34)
-            write(*,*) ' Error(34)> Occurred while calculating planar-fit rotations &
-                                     &for this sector: singular matrix found.'
-            write(ulog,*) ' Error(34)> Occurred while calculating planar-fit rotations &
-                                     &for this sector: singular matrix found.'
+            call LogSayList(' Error(34)> Occurred while calculating planar-fit rotations &
+                                     &for this sector: singular matrix found.')
             call LogSayList(' Error(34)> Planar-fit rotation matrix not calculated for this sector.')
         case(35)
             call LogSayList(' Fatal error(35)> Oops! Something went wrong. EddyFlow was not able to process any raw file.')

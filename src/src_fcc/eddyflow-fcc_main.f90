@@ -28,6 +28,11 @@ Program EddyFlowFCC
     use m_cec
     use m_sa_rates
     use m_remote_source, only: RemoteCleanup
+    use m_batch_pool, only: WaitPrepassBatches, TopUpPrepassBatches, &
+        StopIfParentGone, FinishBatchWorker
+    use m_fcc_parallel, only: CaptureFccContext, TryFccFluxSplit, &
+        FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces, &
+        StartBinnedSplit, GetBinnedFile, FinishBinnedSplit, RunBinnedReadWorker
     implicit none
 
     integer, external :: CreateDir
@@ -105,12 +110,20 @@ Program EddyFlowFCC
     integer :: cec_slot
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
     real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    !> The flux loop split across worker processes (m_fcc_parallel): the
+    !> record that opened the output files, the one the parent's own piece
+    !> ends before, and how many processes run at once.
+    integer :: FccHead = 0
+    integer :: FccParentEnd = 0
+    integer :: FccWorkers = 1
+    integer :: skip_status
 
     !> Allocatable variabled
     type(DateType), allocatable :: exTimeSeries(:)
     type(DateType), allocatable :: MasterTimeSeries(:)
     type(FitSpectraType), allocatable :: FitUnstable(:)
     type(FitSpectraType), allocatable :: FitStable(:)
+    type(FitSpectraType), allocatable :: FitGrown(:)
 
     !> External functions
     integer, external :: NumOfPeriods
@@ -155,6 +168,11 @@ Program EddyFlowFCC
         call ConfigureForEmbedded('EddyFlow-FCC')
 
     if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
+
+    !> A worker of a split binned import only reads its files, which needs
+    !> the project and nothing from the essentials file - so it starts here,
+    !> without reading that, and stops.
+    if (BatchKind == 'sb') call RunBinnedReadWorker()
 
     !> Before anything reads a record. InitExVars parses the whole file by
     !> field position, so a file from an older RP does not announce itself -
@@ -225,6 +243,13 @@ Program EddyFlowFCC
 
         !> Retrieve length of full cospectra for later allocation
         call FullCospectraLength(FullFilelist(1)%path, nrow_full)
+    end if
+
+    !> A worker of a split flux computation does not repeat the spectral
+    !> assessment: it takes the parent's, and goes straight to the records.
+    if (BatchKind == 'fx') then
+        call FccWorkerStart(FccHead)
+        goto 100
     end if
 
     !****************************************************************
@@ -364,6 +389,9 @@ Program EddyFlowFCC
         allocate(FitStable(0))
         allocate(FitUnstable(0))
         fcount = saStartTimestampIndx - 1
+        !> Workers read the files after the first piece meanwhile
+        call StartBinnedSplit(saStartTimestampIndx, saEndTimestampIndx, &
+            BinnedFileList, size(BinnedFileList))
         binned_loop: do
             !> Update file counter
             fcount = fcount + 1
@@ -373,7 +401,7 @@ Program EddyFlowFCC
 
             !> Read (co)spectra from file
             SADiagSelectedFiles = SADiagSelectedFiles + 1
-            call ReadBinnedFile(BinnedFileList(fcount), BinSpec, BinCosp, &
+            call GetBinnedFile(fcount, BinnedFileList(fcount), BinSpec, BinCosp, &
                 size(BinSpec), nbins, skip)
             if (skip) cycle binned_loop
             SADiagReadableFiles = SADiagReadableFiles + 1
@@ -412,13 +440,14 @@ Program EddyFlowFCC
             if (.not. allocated(MeanBinCosp)) then
                 allocate(MeanBinCosp(nbins, MaxGasClasses))
                 MeanBinCosp = NullMeanSpec
+                !> Grown as cospectra arrive (below), not sized for one per
+                !> period of the range: at about 1 KB a row that was a GB each
+                !> for a year, allocated and cleared before the first file.
                 deallocate(FitUnstable)
-                allocate(FitUnstable(nbins * &
-                    (saEndTimestampIndx - saStartTimestampIndx + 1)))
+                allocate(FitUnstable(nbins * 64))
                 FitUnstable = NullFitCosp
                 deallocate(FitStable)
-                allocate(FitStable  (nbins * &
-                    (saEndTimestampIndx - saStartTimestampIndx + 1)))
+                allocate(FitStable  (nbins * 64))
                 FitStable   = NullFitCosp
             end if
 
@@ -435,6 +464,19 @@ Program EddyFlowFCC
             !> Sort current cospectra in time-slot classes
             if (EddyFlowProj%out_avrg_cosp .and. .not. skip_cospectra) then
 
+                !> Room for this file's bins in either regime. Only rows
+                !> 1:nfit of each are ever read.
+                if (maxval(nfit) + nbins > size(FitStable)) then
+                    allocate(FitGrown(2 * size(FitStable) + nbins))
+                    FitGrown = NullFitCosp
+                    FitGrown(1:size(FitStable)) = FitStable
+                    call move_alloc(FitGrown, FitStable)
+                    allocate(FitGrown(size(FitStable)))
+                    FitGrown = NullFitCosp
+                    FitGrown(1:size(FitUnstable)) = FitUnstable
+                    call move_alloc(FitGrown, FitUnstable)
+                end if
+
                 !> Add current cospectra to dataset for regression
                 call AddToCospectraFitDataset(lEx, BinCospForStable, &
                     BinCospForUnstable, size(BinCospForStable), nfit, &
@@ -446,6 +488,7 @@ Program EddyFlowFCC
                     lEx%end_time, nbins)
             end if
         end do binned_loop
+        call FinishBinnedSplit()
         close(uex)
         call LogSay('  Done.')
 
@@ -570,6 +613,9 @@ Program EddyFlowFCC
 
 100 continue
 
+    !> What the flux loop starts from, for workers should it be split
+    if (BatchIndex == 0) call CaptureFccContext()
+
     !***************************************************************************
     !***************************************************************************
     !****** MAIN CYCLE ON RESULTS RECORDS RETRIEVED FROM ESSENTIALS FILE *******
@@ -597,6 +643,25 @@ Program EddyFlowFCC
     day   = 0
     InitializeOuputFiles = .true.
     ex_loop: do i = 1, NumExRecords
+
+        !> Split across workers: the parent stops where the first worker's
+        !> piece begins and hands out pieces as workers come free. A worker
+        !> processes the head again, so its output files open as the parent's
+        !> did, skips the records up to its piece unread, and stops at its end.
+        if (FccParentEnd > 0) then
+            if (i >= FccParentEnd) exit ex_loop
+            call TopUpPrepassBatches()
+        end if
+        if (BatchKind == 'fx') then
+            if (i >= BatchSliceEnd) exit ex_loop
+            call StopIfParentGone()
+            if (i /= FccHead .and. i < BatchSliceStart) then
+                read(uex, *, iostat = skip_status)
+                if (skip_status < 0) exit ex_loop
+                cycle ex_loop
+            end if
+            if (i == BatchSliceStart) call FccPieceBegins()
+        end if
 
         !> Read record from essentials file
         call ReadExRecord('', uex, -1, lEx, ValidRecord, EndOfFileReached)
@@ -760,6 +825,9 @@ Program EddyFlowFCC
         if (InitializeOuputFiles) then
             call InitOutFiles(lEx)
             InitializeOuputFiles = .false.
+            !> Every output file is open now, so the rest can be split
+            if (BatchIndex == 0) &
+                call TryFccFluxSplit(i, NumExRecords, FccParentEnd, FccWorkers)
         end if
 
         if (EddyFlowProj%out_full .and. .not. lEx%not_enough_data) call WriteOutFullFcc(lEx)
@@ -775,6 +843,20 @@ Program EddyFlowFCC
         end if
 
     end do ex_loop
+
+    !> A worker's piece is done: say where its rows are, and stop
+    if (BatchKind == 'fx') then
+        close(uex)
+        call FinishFccWorker()
+        call FinishBatchWorker()
+        stop
+    end if
+
+    !> The workers' pieces, appended to this process's files in order
+    if (FccParentEnd > 0) then
+        call WaitPrepassBatches('fx', FccWorkers)
+        call MergeFccPieces()
+    end if
     close(uex)
     close(uflx)
     close(ufnet_e)

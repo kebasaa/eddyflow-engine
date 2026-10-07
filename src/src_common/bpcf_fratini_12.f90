@@ -76,6 +76,13 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     real(kind = dbl) :: max_bpcf_f12(GHGNumVar)
     type(DateType) :: Timestamp
     logical, external :: GasSlotIsWater
+    !> Which file holds each period's full cospectra: the list's indices in
+    !> timestamp order, built once per list - see FirstFileAt.
+    integer, allocatable, save :: Order(:)
+    type(DateType), allocatable, save :: SortedTs(:)
+    integer, save :: nIndexed = -1
+    character(PathLen), save :: IndexedFirst = ''
+    character(PathLen), save :: IndexedLast = ''
 
     !> Plausibility band for the correction factor the direct method returns.
     !>
@@ -95,15 +102,10 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         if (GasSlotIsWater(i)) max_bpcf_f12(i) = 20d0
     end do
 
-    !> Detect name of file to be read
-    indx = nint(error)
-    do i = 1, nfull
-        call DateTimeToDateType(lEx%end_date, lEx%end_time, Timestamp)
-        if (LocFileList(i)%timestamp == Timestamp) then
-            indx = i
-            exit
-        end if
-    enddo
+    !> Detect name of file to be read: the first in the list whose timestamp
+    !> is this period's end
+    call DateTimeToDateType(lEx%end_date, lEx%end_time, Timestamp)
+    indx = FirstFileAt(Timestamp)
 
     !> Set cospectra to be retrieved
     wanted(w_u:w_w) = .false.
@@ -265,6 +267,147 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     else
         BPCF%of(:) = 1d0
     end if
+
+contains
+
+    !***************************************************************************
+    !> \brief The lowest list index whose timestamp equals ts, or the error
+    !>        code if none does.
+    !>
+    !> What a scan of the list from the top finds, which is what this was:
+    !> every period walked the whole list, converting the period's own date
+    !> again at each step - a year of half-hours against a year of files,
+    !> some 300 million steps. The list is fixed for the run, so it is sorted
+    !> once and each period is a binary search.
+    !>
+    !> Sorted by the five fields EqualDates compares, in turn, and ties by list
+    !> index - so equal timestamps sit together, lowest index first, and two
+    !> are equal here exactly when the scan's == would say so.
+    !***************************************************************************
+    integer function FirstFileAt(ts)
+        type(DateType), intent(in) :: ts
+        integer :: lo
+        integer :: hi
+        integer :: mid
+
+        if (.not. IndexCurrent()) call BuildIndex()
+        FirstFileAt = nint(error)
+        lo = 1
+        hi = nIndexed + 1
+        do while (lo < hi)
+            mid = (lo + hi) / 2
+            if (Before(SortedTs(mid), ts)) then
+                lo = mid + 1
+            else
+                hi = mid
+            end if
+        end do
+        if (lo <= nIndexed) then
+            if (SortedTs(lo) == ts) FirstFileAt = Order(lo)
+        end if
+    end function FirstFileAt
+
+    !> The index was built for this list: same length, same first and last file.
+    logical function IndexCurrent()
+        IndexCurrent = nIndexed == nfull
+        if (.not. IndexCurrent .or. nfull == 0) return
+        IndexCurrent = IndexedFirst == LocFileList(1)%path &
+            .and. IndexedLast == LocFileList(nfull)%path
+    end function IndexCurrent
+
+    !> Bottom-up merge sort of the list's indices, by timestamp then index.
+    subroutine BuildIndex()
+        integer, allocatable :: tmp(:)
+        integer :: width
+        integer :: left
+        integer :: mid_
+        integer :: right
+        integer :: a
+        integer :: b
+        integer :: k
+
+        if (allocated(Order)) deallocate(Order)
+        if (allocated(SortedTs)) deallocate(SortedTs)
+        allocate(Order(max(1, nfull)), SortedTs(max(1, nfull)), tmp(max(1, nfull)))
+        do k = 1, nfull
+            Order(k) = k
+        end do
+        width = 1
+        do while (width < nfull)
+            left = 1
+            do while (left <= nfull)
+                mid_ = min(left + width - 1, nfull)
+                right = min(left + 2 * width - 1, nfull)
+                a = left
+                b = mid_ + 1
+                k = left
+                do while (a <= mid_ .and. b <= right)
+                    if (Precedes(Order(b), Order(a))) then
+                        tmp(k) = Order(b)
+                        b = b + 1
+                    else
+                        tmp(k) = Order(a)
+                        a = a + 1
+                    end if
+                    k = k + 1
+                end do
+                do while (a <= mid_)
+                    tmp(k) = Order(a)
+                    a = a + 1
+                    k = k + 1
+                end do
+                do while (b <= right)
+                    tmp(k) = Order(b)
+                    b = b + 1
+                    k = k + 1
+                end do
+                left = left + 2 * width
+            end do
+            Order(1:nfull) = tmp(1:nfull)
+            width = 2 * width
+        end do
+        do k = 1, nfull
+            SortedTs(k) = LocFileList(Order(k))%timestamp
+        end do
+        nIndexed = nfull
+        if (nfull > 0) then
+            IndexedFirst = LocFileList(1)%path
+            IndexedLast = LocFileList(nfull)%path
+        end if
+        deallocate(tmp)
+    end subroutine BuildIndex
+
+    !> List entry i before entry j: earlier timestamp, or the same and lower index.
+    logical function Precedes(i, j)
+        integer, intent(in) :: i
+        integer, intent(in) :: j
+
+        if (Before(LocFileList(i)%timestamp, LocFileList(j)%timestamp)) then
+            Precedes = .true.
+        elseif (Before(LocFileList(j)%timestamp, LocFileList(i)%timestamp)) then
+            Precedes = .false.
+        else
+            Precedes = i < j
+        end if
+    end function Precedes
+
+    !> d1 before d2 comparing year, month, day, hour, minute in turn.
+    logical function Before(d1, d2)
+        type(DateType), intent(in) :: d1
+        type(DateType), intent(in) :: d2
+
+        if (d1%Year /= d2%Year) then
+            Before = d1%Year < d2%Year
+        elseif (d1%Month /= d2%Month) then
+            Before = d1%Month < d2%Month
+        elseif (d1%Day /= d2%Day) then
+            Before = d1%Day < d2%Day
+        elseif (d1%Hour /= d2%Hour) then
+            Before = d1%Hour < d2%Hour
+        else
+            Before = d1%Minute < d2%Minute
+        end if
+    end function Before
 end subroutine BPCF_Fratini12
 
 !subroutine SpectralCorrectionFactorsLaubach(Cosp, var, nf, nfreq, BPTF)

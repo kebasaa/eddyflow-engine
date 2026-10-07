@@ -53,6 +53,7 @@ module m_process_os
     private
 
     public :: ProcessSelfId, WatchParent, ParentGone, RequestFullSpeed
+    public :: ProcessAlive
 
     !> SYNCHRONIZE, the only right WaitForSingleObject needs. Asking for no
     !> more means it cannot be refused on a process the same user started.
@@ -110,6 +111,12 @@ module m_process_os
             integer(c_int32_t), value :: ms
             integer(c_int32_t) :: w_WaitForSingleObject
         end function w_WaitForSingleObject
+
+        function w_CloseHandle(h) bind(C, name = 'CloseHandle')
+            import :: c_intptr_t, c_int
+            integer(c_intptr_t), value :: h
+            integer(c_int) :: w_CloseHandle
+        end function w_CloseHandle
     end interface
 
 contains
@@ -149,6 +156,26 @@ contains
         if (parent_handle == 0_c_intptr_t) return
         ParentGone = w_WaitForSingleObject(parent_handle, 0_c_int32_t) == WAIT_OBJECT_0
     end function ParentGone
+
+    !***************************************************************************
+    !> \brief Is a process with this ID running now?
+    !>
+    !> For telling a folder a killed run left behind from one a run still uses.
+    !> A process that cannot be opened is taken as gone: the same user started
+    !> both, so a refusal means there is nothing to open.
+    !***************************************************************************
+    logical function ProcessAlive(pid)
+        integer, intent(in) :: pid
+        integer(c_intptr_t) :: h
+        integer(c_int) :: ok
+
+        ProcessAlive = .false.
+        if (pid <= 0) return
+        h = w_OpenProcess(SYNCHRONIZE_RIGHT, 0_c_int, int(pid, c_int32_t))
+        if (h == 0_c_intptr_t) return
+        ProcessAlive = w_WaitForSingleObject(h, 0_c_int32_t) /= WAIT_OBJECT_0
+        ok = w_CloseHandle(h)
+    end function ProcessAlive
 
     !***************************************************************************
     !> \brief Ask not to be run as background work.

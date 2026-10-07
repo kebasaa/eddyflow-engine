@@ -306,6 +306,12 @@ available_mean_spectra_cospectra.o: \
 basic_stats.o: \
 	basic_stats.f90 \
 	m_common_global_var.o
+batch_pool.o: \
+	batch_pool.f90 \
+	ghg_prefetch.o \
+	m_common_global_var.o \
+	m_process_os.o \
+	remote_source.o
 binned_frequency_vector.o: \
 	binned_frequency_vector.f90 \
 	m_rp_global_var.o
@@ -515,6 +521,8 @@ eddyflow-fcc_main.o: \
 	eddyflow-fcc_main.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	batch_pool.o \
+	fcc_parallel.o \
 	m_cec.o \
 	m_fx_global_var_mod.o \
 	remote_source.o \
@@ -527,6 +535,8 @@ eddyflow-rp_main.o: \
 	m_cec.o \
 	m_rp_global_var.o \
 	prepass_parallel.o \
+	production_parallel.o \
+	pwb_stream.o \
 	pwb_timelag_handle.o \
 	remote_source.o
 edit_ini_file.o: \
@@ -545,6 +555,13 @@ exception_handler.o: \
 extract_column_from_essentials.o: \
 	extract_column_from_essentials.f90 \
 	m_common_global_var.o
+fcc_parallel.o: \
+	fcc_parallel.f90 \
+	interfaces_1.inc \
+	batch_pool.o \
+	m_fx_global_var_mod.o \
+	remote_source.o \
+	sa_rates.o
 fcn.o: \
 	fcn.f90 \
 	m_common_global_var.o
@@ -898,11 +915,20 @@ power_of_two.o: \
 	power_of_two.f90
 prepass_parallel.o: \
 	prepass_parallel.f90 \
-	ghg_prefetch.o \
-	m_process_os.o \
+	batch_pool.o \
 	m_rp_global_var.o \
+	pwb_timelag_handle.o
+production_parallel.o: \
+	production_parallel.f90 \
+	batch_pool.o \
+	m_rp_global_var.o \
+	pwb_stream.o \
 	pwb_timelag_handle.o \
 	remote_source.o
+pwb_stream.o: \
+	pwb_stream.f90 \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 pwb_timelag_handle.o: \
 	pwb_timelag_handle.f90 \
 	m_index_parameters.o \
@@ -1131,6 +1157,7 @@ timelag_handle.o: \
 	m_common_global_var.o \
 	m_covmax_core.o \
 	m_rp_global_var.o \
+	pwb_stream.o \
 	pwb_timelag_handle.o
 timestamp.o: \
 	timestamp.f90 \

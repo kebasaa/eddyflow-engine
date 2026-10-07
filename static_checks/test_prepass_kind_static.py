@@ -30,7 +30,9 @@ def code(rel):
 
 
 MAIN = code("src/src_rp/eddyflow-rp_main.f90")
-PARALLEL = code("src/src_rp/prepass_parallel.f90")
+# The worker pool itself moved to src_common/batch_pool.f90, shared with FCC;
+# what is checked here is read from both.
+PARALLEL = code("src/src_rp/prepass_parallel.f90") + code("src/src_common/batch_pool.f90")
 
 
 def body(name):

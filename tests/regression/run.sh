@@ -32,6 +32,11 @@ BIN="${BIN:-/c/Users/jonmuell/Documents/GitHub/build/eddyflow-engine-win-release
 # then diff out_ref against out_chk. The run log legitimately differs - the
 # parent concatenates each worker's own log into it - so compare the rest.
 RP_EXTRA="${RP_EXTRA:-}"
+# Extra arguments for FCC. FCC splits its flux computation across workers
+# too, and its default is every core like RP's; it runs serially here unless
+# asked, so the stored references stay serial runs. check_parallel.sh
+# PAR_KIND=fx sets it to compare the two.
+FCC_EXTRA="${FCC_EXTRA:--j 1}"
 # The engine links the gfortran runtime dynamically and the build does not
 # copy it next to the binaries.
 export PATH="/c/Users/jonmuell/mingw64/bin:$PATH"
@@ -131,7 +136,7 @@ if grep -q '^sa_full_spectra=SELF' "$PRJ"; then
 fi
 
 echo "== FCC =="
-"$BIN/eddyflow_fcc.exe" "$(cygpath -w "$PRJ")" -e "$(cygpath -w "$HOME_DIR")/" > "$OUT/_fcc.log" 2>&1 \
+"$BIN/eddyflow_fcc.exe" "$(cygpath -w "$PRJ")" -e "$(cygpath -w "$HOME_DIR")/" ${FCC_EXTRA:-} > "$OUT/_fcc.log" 2>&1 \
     || { echo "FCC FAILED"; tail -30 "$OUT/_fcc.log"; exit 1; }
 
 # Normalise: strip the run timestamp from names and from file contents.

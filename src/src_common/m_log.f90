@@ -56,7 +56,7 @@ module m_log
     private
 
     public :: LogStart, LogInit, LogSay, LogSayList, LogSayNoAdv, LogClose, &
-              LogIsOpen, LogFlush
+              LogIsOpen, LogFlush, LogOpenLine, LogEndLine
 
     !> Long enough for the widest message the engine emits.
     integer, parameter :: LogLineLen = 2048
@@ -66,6 +66,11 @@ module m_log
 
     logical :: Connected = .false.
     logical :: Named = .false.
+    !> A progress line opened by LogOpenLine and not yet ended. A message
+    !> said meanwhile ends it first, so the message keeps its own line - it
+    !> used to be written onto the progress text, where the interface took
+    !> the whole line for progress and dropped the message's first line.
+    logical :: LineOpen = .false.
 
 contains
 
@@ -149,6 +154,14 @@ contains
     subroutine LogSay(text)
         character(*), intent(in) :: text
 
+        !> LogSay('') is how a caller ends an open line before a message; on
+        !> a line opened here that is all it has to do.
+        if (LineOpen .and. len_trim(text) == 0) then
+            call EndOpenLine()
+            call LogFlush()
+            return
+        end if
+        call EndOpenLine()
         write(*, '(a)') text
         if (Connected) write(ulog, '(a)') text
         call LogFlush()
@@ -166,6 +179,7 @@ contains
     subroutine LogSayList(text)
         character(*), intent(in) :: text
 
+        call EndOpenLine()
         write(*, *) text
         if (Connected) write(ulog, *) text
         call LogFlush()
@@ -193,6 +207,37 @@ contains
     !> in blocks, and a worker's file stayed empty for an hour of a parallel
     !> run while its parent's progress arrived in bursts. A handful of lines a
     !> period costs nothing to flush.
+    !> Starts a progress line - "  Calculating storage terms.." - that
+    !> LogEndLine finishes. Only lines a message can interrupt need it; the
+    !> rest keep LogSayNoAdv.
+    subroutine LogOpenLine(text)
+        character(*), intent(in) :: text
+
+        call EndOpenLine()
+        write(*, '(a)', advance = 'no') text
+        if (Connected) write(ulog, '(a)', advance = 'no') text
+        LineOpen = .true.
+        call LogFlush()
+    end subroutine LogOpenLine
+
+    !> Finishes the progress line with `text` - " Done." - or, when a message
+    !> has ended it meanwhile, writes `text` on a line of its own.
+    subroutine LogEndLine(text)
+        character(*), intent(in) :: text
+
+        write(*, '(a)') text
+        if (Connected) write(ulog, '(a)') text
+        LineOpen = .false.
+        call LogFlush()
+    end subroutine LogEndLine
+
+    subroutine EndOpenLine()
+        if (.not. LineOpen) return
+        write(*, '(a)') ''
+        if (Connected) write(ulog, '(a)') ''
+        LineOpen = .false.
+    end subroutine EndOpenLine
+
     subroutine LogFlush()
         flush(output_unit)
         if (Named) flush(ulog)

@@ -56,6 +56,9 @@ def body_of(source, opener, closer):
 MAIN = code("src/src_rp/eddyflow-rp_main.f90")
 PWB = code("src/src_rp/pwb_timelag_handle.f90")
 TLH = code("src/src_rp/timelag_handle.f90")
+#> Where TimeLagHandle's classifier went, so a split production pass can
+#> classify in time order what its workers gathered.
+STREAM = code("src/src_rp/pwb_stream.f90")
 FLUX = code("src/src_rp/flux_params.f90")
 OPT = code("src/src_rp/optimize_timelags.f90")
 FIX = code("src/src_rp/fix_timelag_opt_dataset.f90")
@@ -93,8 +96,8 @@ class TheHumidityIsThisPeriods(unittest.TestCase):
 class ThePrePassHumidityHasNoHistory(unittest.TestCase):
 
     def test_own_evidence_lags_are_captured_in_pass_one(self):
-        self.assertIn("pwb_raw_OwnRowLags(j) = lPwbResult%row_lag", TLH)
-        self.assertIn("pwb_raw_OwnRowLags(j) = mc_row", TLH)
+        self.assertIn("pwb_raw_OwnRowLags(j) = lPwbResult%row_lag", STREAM)
+        self.assertIn("pwb_raw_OwnRowLags(j) = ev%mc_row(j)", STREAM)
 
     def test_the_pre_pass_apply_uses_them_and_production_does_not(self):
         self.assertIn("if (PwbCacheGenerate .and. InTimelagOpt) then", TLH)

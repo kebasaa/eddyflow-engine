@@ -57,7 +57,7 @@ def code(path):
                           if not ln.lstrip().startswith("!"))
 
 
-PAR = code(PARALLEL)
+PAR = code(PARALLEL) + code("src/src_common/batch_pool.f90")
 MAIN = code(RP_MAIN)
 GLOB = code(GLOBALS)
 

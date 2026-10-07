@@ -20,6 +20,19 @@ Whether splitting a pre-pass across worker processes changes the answer:
     bash check_parallel.sh base_other.eddyflow
     PAR_JOBS=3 bash check_parallel.sh base_gappy_tlag.eddyflow
 
+And whether splitting the production pass - the main loop that computes the
+fluxes - does:
+
+    PAR_KIND=pr bash check_parallel.sh            # base_prod_par by default
+    EDDYFLOW_PROD_PIECE_PERIODS=1 PAR_KIND=pr PAR_JOBS=3 bash check_parallel.sh base_rec.eddyflow
+
+The second form cuts at nearly every half-hour, whatever the core count, so
+everything a half-hour inherits from the one before is exercised at every
+cut; most fixtures span three hours and would otherwise be cut once or not
+at all. Since `run.sh` passes no `-j` and the engine's default is every
+core, a plain run is a split one wherever the range allows; pass
+`RP_EXTRA="-j 1"` for a serial reference.
+
 That runs the fixture twice through `run.sh`, once `-j 1` and once
 `-j $PAR_JOBS` (default 0, one worker per core), and diffs the trees. The job
 count also sets how the range is cut - about four pieces per worker - so a
@@ -191,6 +204,7 @@ re-baselining table below.
 | `base_ghg_mixed_60.eddyflow` | the same archives in **60-minute periods**, so 02:00-03:00 holds a 5 Hz file and a 10 Hz one. Joining them would give one time series with two meanings of a sample, so that period is **skipped with Warning(116)**, and the next one starts at the 10 Hz file. The gate is that 01:00-02:00 (5 Hz, 18000 records) and 03:00-04:00 (10 Hz, 36000) are both processed. |
 | `base_ghg_mixed_sa.eddyflow` | `base_ghg_mixed` with `sa_min_smpl=2`, so three periods per rate are enough for a **spectral assessment at each acquisition rate** - the only fixture where one is fitted at all; the others hold too few periods. The fits are statistically meaningless and the fixture is about the machinery: one assessment pass per rate, **one assessment file** carrying a `rates=10.000,5.000` token on each gas block and one `Fn fc` pair per rate on each row, Warning(119), and each period corrected with its own rate's result. On the day it was built CO2 got fc 0.808 Hz at 10 Hz and 0.481 Hz at 5 Hz, and the same archive's CO2 flux became 8.10 at 5 Hz against 7.51 at 10 Hz. Read back with `sa_mode=0` the file reproduces those fluxes; altering only its 5 Hz columns moves only the 5 Hz periods; and a build that predates the format reads the first - fastest - column for every period. |
 | `base_ghg_mixed_instr.eddyflow` | all six at 10 Hz, but from 02:30 on the archives say the **LI-7700 runs at 1 Hz** (`instr_3_ac_freq=1.0`). The row rate never changes, so only the per-instrument comparison can see it. 60-minute periods: 02:00-03:00 is skipped with Warning(116), naming `li7700_2`, and the other two are processed. Built into `data_ghg_mixed_instr/`. |
+| `base_prod_par.eddyflow` | `base_rec` over **two days** (96 half-hours) instead of three hours: live PWB, cut the way a real run is - by core count, not forced. The default fixture for `PAR_KIND=pr bash check_parallel.sh`, and not in the sweep, where it would add a quarter of an hour. |
 | `base_tlag_par.eddyflow` | `base_tlag_opt` with a **two-day** time-lag optimisation window in place of its three-hour one, and the only fixture whose pre-pass the engine will split across worker processes. Every other fixture's pre-pass covers too few averaging periods to be worth starting a process for, so `-j` had no gate here at all until this was added. The gate is the ordinary one - the run completes and every row matches its header - because the point is that a pre-pass computed in slices and reassembled is indistinguishable from one computed in a single loop. For the stronger claim, run it twice with `-j 1` and `-j 8` and diff `*_timelag_opt_*.txt`: it is byte-identical. Costs about a minute. |
 | `base_pwb_cache.eddyflow` | `base_rec` with `to_mode=1`, which is PWB **cache generation**: walk every averaging period first, then settle every time lag at once from the finished table. 39 fixtures configure PWB and not one of them set `to_mode=1`, so `PostProcessPwbTimelagCache` - the routine that decides every lag, and the S1/S2 / instrument-share / interpolate / back-fill / carry-forward / median ladder inside it - had **no coverage at all**. Three hours is enough to work the ladder: co2 and h2o carry forward, cos borrows across the analyser, and the aggregate summary picks a lender by donor count. Not long enough to split, so it is not a substitute for `check_parallel.sh`. |
 | `base_pwb_prefilt.eddyflow` | `base_pwb_cache` with the HDI pre-filter at **0.10 s**, which discards every detection every gas made and so drives all 21 rows into the terminal arm of `PostProcessPwbTimelagCache` - the one labelled `maxcov_default`. Nothing else in the suite reaches it: on `base_pwb_cache` every gas reports `fallback=0`. It is the case that tells a per-period covariance maximum apart from a carried lag wearing its label - before that was fixed, h2o came back with 18.8 s for three periods running, which a per-period maximum cannot do. |

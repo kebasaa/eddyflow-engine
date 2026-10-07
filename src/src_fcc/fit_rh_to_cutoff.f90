@@ -242,6 +242,8 @@ subroutine FitRh2Fco()
         end if
     end if
 
+    !> One line per hygrometer; a second one's used to continue the first's.
+    call LogSay('Done.')
     end do
 
     !> The primary's coefficients are also the project's.
@@ -257,6 +259,4 @@ subroutine FitRh2Fco()
     if (allocated(xFit)) deallocate(xFit)
     if (allocated(yFit)) deallocate(yFit)
     if (allocated(ddum)) deallocate(ddum)
-
-    call LogSay('Done.')
 end subroutine FitRh2Fco

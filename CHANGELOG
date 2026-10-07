@@ -1,8 +1,311 @@
-8.1.2 (2026-10-02)
+8.1.2 (2026-10-07)
 
     Engine:
-	- Version bump to 8.1.2, to match EddyFlow GUI 8.1.2. No change to the
-	  computation.
+	- Version bump to 8.1.2, to match EddyFlow GUI 8.1.2.
+	- New feature: The production pass - the main loop over the averaging
+	               periods, which computes the fluxes - is split across worker
+	               processes, as the pre-passes already were. After the first
+	               fully processed period, which fixes the layout of every
+	               output file, the rest of the range is cut into pieces, one
+	               per worker, or two once each would hold sixteen periods or
+	               more, and the run's own process takes the first. Every
+	               output is byte-identical to a single pass: nothing a period
+	               inherits from the ones before it is passed along, a worker
+	               rebuilds it. It processes the first period again silently,
+	               applies on its way only the dynamic metadata records a
+	               single pass would have applied, and processes the period
+	               before its piece, so that the piece's first storage terms
+	               see their predecessor; cuts are placed only where that
+	               period begins with a raw file of its own. Continuous output
+	               files are put together piece by piece in time order;
+	               per-period files go straight into the output folders.
+	               With PWB time lags, which are classified against the last
+	               lag each gas settled on, every piece is read twice: workers
+	               first gather each piece's evidence, the run's own process
+	               classifies it in time order, and workers then compute the
+	               fluxes with the lags it settled. That exchange takes about
+	               1.2 KB per period each way, and the run's own process holds
+	               one classified period at a time, however long the run.
+	               Raw data from a shared link are split too. Each process
+	               deletes only the downloaded files its own piece alone reads
+	               and fetches ahead only within its piece, so every file is
+	               still downloaded once; the files of the first period and of
+	               the periods either side of a cut stay until the end of the
+	               run.
+	               On a Yatir day (47 periods, 8 workers) RP took 262 s
+	               instead of 591 s with PWB lags from its pre-pass, and 209 s
+	               instead of 425 s with live PWB. The production pass runs
+	               serially, with a line in the log saying why, with the
+	               Billesbach random error (one random stream), in embedded
+	               mode, and when the first period leaves an output file still
+	               to be opened.
+	               A stopped run takes its workers with it: a worker notices
+	               within a period that the run's own process has gone and
+	               removes its folder, and folders left by runs killed from
+	               the interface are removed by the next split run.
+	- New feature: A slow gas's time lag is detected at its own rate, then
+	               refined at the file's. A laser at 1 Hz on a 20 Hz sonic
+	               grid, with the other nineteen rows empty, failed the
+	               PWB validity test on every period - completeness was
+	               counted against the row grid, 5 % - and every such gas,
+	               COS among them, ended in the covariance-maximisation
+	               fallback. A gas whose instrument is slower than the
+	               file now has its completeness counted against what its
+	               own instrument owes. Stage 1 runs the pre-whitening
+	               chain on the gas's real samples, found by walking the
+	               column rather than assuming a fixed stride, since a
+	               drifting laser passes through every row position in a
+	               half-hour; w and Ts are taken at the same rows. Stage 2
+	               evaluates every row lag within one gas interval of the
+	               coarse peak, so the lag and its HDI come out at the
+	               file's resolution and leave in file rows. Where stage
+	               1's replicates spread over more than an interval and a
+	               half, the HDI covers both stages. A gas at the file's
+	               rate takes the old path bit for bit. On a drifting
+	               0.987 Hz fixture with COS delayed by exactly 3.35 s
+	               every period reports 3.3 or 3.4 s, class S1, with the
+	               HDI around 3.35; the previous build reported 8.1 or
+	               10.0 s. base_slow and base_slow_integr change by
+	               design: the MIRO's CO2 and H2O now settle in 3 and 5 of
+	               6 periods, its COS and N2O borrow from them, and the
+	               four agree at about 8 s where they scattered from 8 to
+	               21 s. The QCLS gases of the Yatir record still settle
+	               no period - their 1 Hz series are noise-dominated, so
+	               no covariance peak with w exists - and fall back as
+	               they should.
+	- Fix: A slower column's (co)spectrum is rebuilt from its real sample
+	       rows. The rebuild took one phase per column - the commonest
+	       offset in the first twenty intervals - and the nominal stride.
+	       The phase was recorded before the gaps were interpolated, which
+	       shifts a column that opens with empty rows, so every sample was
+	       read up to an interval from where it sat and paired with w out
+	       of step: white noise at 0.987 Hz kept 0.36 of its low-frequency
+	       density near Nyquist. A period opening in a gap longer than
+	       twenty intervals had no phase, and one sample too few was
+	       counted. The real sample rows and the shift are now recorded, w
+	       is read at the instant the sample was taken, every real sample
+	       is used, and the set is decimated at the measured rate, which
+	       on the Yatir laser keeps the frequency axis from stretching by
+	       1.35 %. White noise on the drifting grid keeps 0.94 and 0.99 of
+	       its low-frequency density where it kept 0.44 and 0.36. Fluxes
+	       and time lags do not move; the only other change in the
+	       regression fixtures is the CH4 spectrum of base_ghg_mixed_instr
+	       in the one period its LI-7700 runs at 1 Hz.
+	- Fix: A planar-fit pre-pass worker no longer runs the time-lag pre-
+	       pass. With both on the fly a worker walked its planar-fit slice
+	       as time-lag periods and wrote time-lag records under the
+	       planar-fit dump name; the parent read them as wind means, the
+	       speed filter threw them out, and every sector of the fit came
+	       out -9999 where a serial run fitted. A worker now skips the
+	       time-lag pre-pass unless it was launched for it, and every dump
+	       records its pre-pass kind (format 05): a worker refuses to
+	       write a dump for another pre-pass and the merges refuse to read
+	       one.
+	- Change: Pre-pass work is handed to whichever worker is free. A
+	          parallel pre-pass cut its range into one slice per worker,
+	          so on the Yatir run one slice held 801 raw files, another
+	          none, and the run waited on the heaviest. The range is now
+	          cut into about four pieces per worker at equal shares of
+	          estimated work - a period weighs 1 if a raw file covers it,
+	          0.05 if none does - a fixed number of workers run at once,
+	          and each that finishes makes room for the next piece. The
+	          run's own process runs piece 1 and reports how many pieces
+	          are done. Pieces tile the range, merge in piece order, and a
+	          failed piece stops the run at once. This covers the time-lag
+	          pre-pass, PWB cache generation and the planar fit; outputs
+	          are byte-identical.
+	- Change: PWB is faster, with byte-identical output. The cross-
+	          correlation, which PWB runs 396 times per gas per period,
+	          accumulates 32 lags at a time in the same order of
+	          additions: 0.66 s instead of 3.85 s for those calls at the
+	          production shape. CovMax computes the one covariance it
+	          reads instead of the full 2x2 matrix for every lag: 0.038 s
+	          instead of 0.27 s for a gas of a period. The PWB table
+	          stores rows with doubling spare capacity and finds a
+	          period's rows by bisection instead of scanning from row 1:
+	          for a year of half-hours and four gases, storing took 1.5 s
+	          instead of 172 s and looking every key up 0.8 s instead of
+	          3.0 s. The parent of a split PWB run now streams each
+	          verdict into the file of the piece it belongs to instead of
+	          holding the whole run in memory, and the records are
+	          smaller, so memory no longer grows with the run: evidence
+	          1.2 KB per half-hour instead of 2.7, verdicts 1.2 KB instead
+	          of 3.7.
+	- Change: Every engine process opts out of Windows' execution-speed
+	          throttling. A windowless program is classed as background
+	          work, which on a hybrid processor stays on the efficiency
+	          cores; on the Yatir run every engine process sat at 100 % on
+	          four low-power cores while the performance cores idled. It
+	          changes where the program runs, never what it computes.
+	          Linux and macOS are unchanged, and what it buys when Windows
+	          does contain the engine is not yet measured.
+	- Change: Progress reaches the console as it is written. gfortran
+	          buffers a unit that is not a terminal in blocks, so the
+	          interface reading the engine through a pipe, and a pre-pass
+	          worker writing to its .out file, showed nothing for an hour.
+	          Every log routine and the daily progress line now flush the
+	          console. Content is unchanged.
+	- Tested: The regression suite reads the preprocessed 10 Hz files of
+	          the Laegern above-canopy station for June 2025 in place of
+	          the Data_202506 copy that is no longer considered good, with
+	          the site metadata files rewritten from CH-LAE_above.metadata
+	          and every fixture's column references remapped. gen_gappy.py
+	          builds 36 hours of it with 28 of 72 files left out:
+	          base_gappy_tlag (time-lag optimisation and an on-the-fly
+	          planar fit) and base_gappy_pwb, which found the planar-fit
+	          worker fault above; check_parallel.sh on base_gappy_tlag at
+	          -j 3 went from 7 files different to byte-identical across
+	          28. gen_slow_drift.py and check_slow_lag.sh hold the slow-
+	          gas lag to a known delay on a drifting grid.
+	- Change: The mode of the PWB bootstrap's replicate lags is now dyco's
+	          estimator: scipy's gaussian_kde with Scott's bandwidth on a
+	          512-point grid, rounded half to even, without the small jitter
+	          dyco draws. It was a kernel density on the integer lags with
+	          bandwidth max(1, 1.06 sd n^-0.2), and on identical resamples the
+	          two put the final lag a record apart in 6 of 40 real periods. At
+	          full rate the settled lag moves by one record in at most three
+	          rows per regression fixture and no reliability class changes;
+	          slow gases' lags move more, while COS still recovers 3.3 or 3.4
+	          seconds in every period.
+	- Fix: The aggregate time-lag summary binned each period's water lag by
+	       the previous period's relative humidity - its row was added before
+	       FluxParams, which sets the humidity - and the first period by
+	       whatever the pre-pass had left, from the far end of the run. Each
+	       row now gets its own period's humidity. The PWB cache-generation
+	       pre-pass also shifts every gas by its own evidence rather than by
+	       the streaming classifier's lag, so nothing it records depends on an
+	       earlier period.
+	- New feature: Every closed-path hygrometer's water lag is classed by its
+	               own humidity - the biomet RH where the site has a valid
+	               one, else its own - gated on its own latent heat, and
+	               written as its own RH table after the designated
+	               hygrometer's, titled
+	               H2O_timelag_determinations_as_a_function_of_relative_humidity_for_<gas>
+	               after a blank row, and read back per hygrometer. Only the
+	               designated hygrometer was classed before; a second one took
+	               a plain window, and its determinations were dropped
+	               whenever the first one had no humidity. The designated
+	               hygrometer's table keeps its title, columns and place, so a
+	               one-hygrometer project is classed exactly as before. With
+	               RH classing off, an empty table no longer switches the run
+	               to covariance maximisation. The pre-pass dump format moves
+	               to 06.
+	- Fix: A gas whose moisture reference is the biomet humidity was diluted
+	       by the previous period's humidity, and the first period of the main
+	       pass by the time-lag pre-pass's last: MoleFractionsAndMixingRatios
+	       ran before FluxParams computed it. It is now computed for the
+	       period first. Mole fractions, molar densities, advection and
+	       storage of such gases change in every period; fluxes do not. In
+	       base_biomet_water the first period's CO2 was 421.99 umol/mol and is
+	       now 414.81, in line with the periods after it, and the second
+	       period's CO2 storage -0.11 instead of -7.49.
+	- Fix: Values no longer carry from one period into later ones for no
+	       physical reason. ET storage is now -9999 where a period has no
+	       consecutive predecessor, as H and LE storage are - it was 0 in a
+	       run's first period and the stale last value after a gap. The Burba
+	       correction is decided per period from the project's setting; it was
+	       switched off for the rest of the run the first time a period had no
+	       LI-7500. A skipped period's FLUXNET row no longer takes the NIGHT
+	       flag, or with embedded biomet the biomet values, of the last
+	       processed period. An unset sonic output rate is no longer defaulted
+	       once from whichever period first needed it. The main pass starts
+	       from the run's own settings, not from what the last dynamic
+	       metadata record and the PWB classifier left at the end of the
+	       pre-passes, and pre-pass workers no longer truncate the biomet and
+	       custom-variable output files.
+	- Fix: Periods skipped before the FLUXNET header was written - every
+	       period before the first raw file, for a start - were sent to a file
+	       named fort.132 in the working directory instead of the FLUXNET
+	       file. Their rows are now written straight after the header, ahead
+	       of the first period with data.
+	- Fix: A skipped period's FLUXNET row is padded to the custom variables
+	       the header names, not to the count of the period being skipped.
+	       Where each raw file brings its own metadata, as LI-COR GHG archives
+	       do, the two can differ, and the row came out short, with every
+	       column after the custom block under the wrong name. FCC was not
+	       affected.
+	- Change: The dynamic metadata file is read once per run instead of
+	          scanned from the top for every period - twice per period in the
+	          main pass, some 35 000 times for a year. A year of half-hourly
+	          rows cost about three hours in a serial run. Outputs are
+	          unchanged.
+	- Change: FCC finds each period's full-cospectra file for the Fratini
+	          correction by a binary search instead of walking the whole list,
+	          which was quadratic in the length of the run - some 300 million
+	          steps over a year. Outputs are unchanged.
+	- Tested: tests/pwb_dyco/compare.py runs dyco's PreWhiteningBootstrap and
+	          the engine's PWB chain (pwb_compare, built with `mingw32-make
+	          pwbcmp`) on exactly the same bootstrap resamples and compares
+	          every number both produce, then the PWB table's detections
+	          through dyco's HDI prefilter and PWBopt. On the 268 test periods
+	          every number is identical except 11, each a documented
+	          departure: the engine prefers a combination whose mode is off
+	          the window edge.
+	- Tested: check_parallel.sh PAR_KIND=pr, cutting at nearly every period,
+	          is byte-identical to a single pass on every regression fixture
+	          that splits, 47 with PWB and 54 without; base_prod_par covers
+	          two days cut as a real run is, and check_remote.sh a split run
+	          from a Google Drive and a Dropbox link.
+	- New feature: FCC splits its work across worker processes too, with -j as
+	               for RP (0 or absent: every core; 1: serial). The flux
+	               computation: after the first record written, which opens
+	               the output files, the rest of the essentials file is cut
+	               into pieces; a worker takes the spectral assessment from
+	               the run's own process rather than repeating it, processes
+	               its piece, and its rows are appended to the output files in
+	               record order, so they hold what one process would have
+	               written and the post-flux despiking and the datasets run on
+	               them unchanged. The import of the binned (co)spectra:
+	               workers read the files and the run's own process takes
+	               their bins in file order, so the essentials lookup, the
+	               screening and the sums, which depend on that order, are
+	               unchanged. Both run serially, with a line in the log saying
+	               why, in embedded mode and when FCC's inputs come from a
+	               shared link.
+	               On the Yatir day's RP output repeated over 120 days (5760
+	               periods, 8 cores) FCC took 57 s, against 112 s on one core
+	               and 301 s before this release's changes; the import 7 s
+	               against 13 s and 50 s. Every output is byte-identical.
+	- Change: FCC is 2.7 times faster on one core, with byte-identical output.
+	          ReadExRecord turns the error label into -9999 in every
+	          essentials row, FCC reads that file about four times, and the
+	          replacement rebuilt a buffer ten times the row for every match -
+	          some 150 a row - even with the default label, where nothing
+	          changes. It now returns at once when there is nothing to
+	          replace. The post-flux despiking cache is no longer copied whole
+	          to add each period, and the cospectra fit dataset is no longer
+	          allocated and cleared for every period of the assessment range,
+	          about a GB per stability regime for a year. On 120 days of the
+	          Yatir record the flux computation took 0.65 s a day instead of
+	          1.30 s, flat from the first day to the last.
+	- Change: The run's own process hands a worker that has finished the next
+	          piece between its own periods, not only once its own piece is
+	          done, so no core waits for it. It matters when workers finish
+	          first, as they did in the time-lag pre-pass of a Yatir day; with
+	          pieces of equal work they rarely do.
+	- Fix: Warning(109), for a gas with no absolute limits, was written onto
+	       the open "Absolute limits test.." line, so its first line read as
+	       part of the test's and the interface left it out of the warning
+	       panel. It is now raised after the test's " Done.". The same was
+	       possible for a borrowed time lag, a planar-fit sector excluded or
+	       without a matrix, the alternative metadata file's format note and
+	       the CEC pairing warnings: those progress lines now end before a
+	       message is written. The storage-terms line of a period without a
+	       predecessor, and the in-situ RH fit line of a second hygrometer,
+	       were never ended and ran on into the next one.
+	- Fix: With a spectral assessment per acquisition rate, a gas whose rate
+	       has no usable assessment kept the RH exponential the previous
+	       period had loaded, so its in-situ correction could depend on the
+	       period before. It is now reset with the rest. No regression fixture
+	       reaches this case.
+	- Tested: check_parallel.sh PAR_KIND=fx compares FCC split against serial,
+	          with EDDYFLOW_FCC_PIECE_PERIODS and EDDYFLOW_FCC_PIECE_FILES
+	          forcing pieces of one record or file; byte-identical on 26 runs
+	          of the spectral-assessment fixtures and base_prod_par, on the
+	          120-day record, and on 30 days of it with an empty binned file
+	          and with the essentials file cut to half.
+	          tests/regression/run.sh passes FCC_EXTRA to FCC, -j 1 unless
+	          set.
 
 8.1.1 (2026-09-25)
 

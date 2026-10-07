@@ -1308,6 +1308,7 @@ subroutine CecPairs(pairs, npairs)
     integer :: occurrence
     integer :: repeat
     character(48) :: base
+    character(160) :: pairLine
     integer, external :: PrimaryCarbonSlot
     integer, external :: CecWaterOnAnalyserOf
     character(32), external :: GasOutputLabel
@@ -1387,12 +1388,10 @@ subroutine CecPairs(pairs, npairs)
         if (CecSameAnalyser(pairs(i)%carbon_slot, pairs(i)%water_slot)) cycle
         if (crossPairWarned(i)) cycle
         crossPairWarned(i) = .true.
-        write(*, '(a,i0,a)') '  Warning(113)> CEC pairing ', i, ': ' &
+        write(pairLine, '(a,i0,a)') '  Warning(113)> CEC pairing ', i, ': ' &
             // trim(GasOutputLabel(pairs(i)%carbon_slot)) // ' with the water on ' &
             // trim(GasOutputLabel(pairs(i)%water_slot)) // '.'
-        write(ulog, '(a,i0,a)') '  Warning(113)> CEC pairing ', i, ': ' &
-            // trim(GasOutputLabel(pairs(i)%carbon_slot)) // ' with the water on ' &
-            // trim(GasOutputLabel(pairs(i)%water_slot)) // '.'
+        call LogSay(trim(pairLine))
         call ExceptionHandler(113)
     end do
 

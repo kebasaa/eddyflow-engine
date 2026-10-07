@@ -47,6 +47,7 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     integer :: cnt2 = 0
     integer :: hflags(GHGNumVar)
     real(kind = dbl) :: HorVel
+    logical :: warnNoLimits
     !> Molar-density scale and rough outlier ceiling of the gas under test.
     !> Water differs from every other gas in both, because its mole fraction
     !> is reported in mmol mol-1 rather than umol mol-1.
@@ -60,6 +61,7 @@ subroutine TestAbsoluteLimits(Set, N, printout)
 
     !> initializations
     hflags = 0
+    warnNoLimits = .false.
 
     !> Flag and filter wind components
     cnt1 = 0
@@ -144,11 +146,10 @@ subroutine TestAbsoluteLimits(Set, N, printout)
             hflags(i) = 9
             !> Said out loud, once for the run. A digit of 9 in a flag string is
             !> the only trace this leaves otherwise, and someone reading a
-            !> suspect flux will not find it there.
-            if (.not. AlLimitsWarned) then
-                call ExceptionHandler(109)
-                AlLimitsWarned = .true.
-            end if
+            !> suspect flux will not find it there. Said after ' Done.', not
+            !> here: the progress line is still open, and the warning's first
+            !> line would be written onto it.
+            if (.not. AlLimitsWarned) warnNoLimits = .true.
             cycle
         end if
         if (GasSlotIsWater(i)) then
@@ -199,4 +200,9 @@ subroutine TestAbsoluteLimits(Set, N, printout)
 
     if (printout) write(*,'(a)') ' Done.'
     if (printout) write(ulog,'(a)') ' Done.'
+
+    if (warnNoLimits) then
+        call ExceptionHandler(109)
+        AlLimitsWarned = .true.
+    end if
 end subroutine TestAbsoluteLimits

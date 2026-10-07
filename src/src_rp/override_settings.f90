@@ -40,6 +40,10 @@ subroutine OverrideSettings()
     !> local variables
     integer :: gas
     logical :: has_li7500
+    !> The Burba choice the project made, taken the first time through - before
+    !> any period has had a say in it.
+    character(32), save :: project_bu_corr = ''
+    logical, save :: project_bu_corr_known = .false.
 
     !> If biomet measurements are not to be used, they are also not to be output
     if (EddyFlowProj%biomet_data == 'none') EddyFlowProj%out_biomet = .false.
@@ -48,6 +52,17 @@ subroutine OverrideSettings()
     !> calculated. "Among the instruments" means all of them: this asked slots
     !> five and six, so a site carrying its LI-7500 on any other record had
     !> the Burba correction silently switched off.
+    !>
+    !> Decided for each period from that period's instruments, starting from
+    !> the project's own choice every time. It used to overwrite the setting
+    !> itself, so the first period without an LI-7500 - one file missing a
+    !> record - switched the Burba correction off for the rest of the run,
+    !> and a run's results depended on where it began.
+    if (.not. project_bu_corr_known) then
+        project_bu_corr = RPsetup%bu_corr
+        project_bu_corr_known = .true.
+    end if
+    RPsetup%bu_corr = project_bu_corr
     has_li7500 = .false.
     do gas = firstGas, lastGas
         if (index(E2Col(gas)%Instr%model, 'li7500') /= 0) has_li7500 = .true.

@@ -129,6 +129,10 @@ module m_common_global_var
     !> stopping a run - from the interface, Task Manager, or an error in the
     !> parent - does not leave the slices computing for nobody.
     integer :: BatchParentPid = 0
+    !> A production worker's own output folder. Its parent reads what the
+    !> worker's piece wrote there and removes it; a worker stopping because
+    !> its parent has gone removes it itself, since nobody else will.
+    character(PathLen) :: BatchOwnOutDir = ''
 
     character(19), parameter :: PrjFile   = 'processing.eddyflow'
     character(6), parameter :: licor_appdata = '.licor'

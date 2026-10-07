@@ -87,6 +87,8 @@ module m_remote_source
     public :: RemoteOwnsDir, RemoteWriteFileList
     public :: RemoteEnsure, RemoteIsLocal, RemoteSizeOf
     public :: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
+    public :: RemoteSetWindow, RemoteClearWindow, RemotePositionOf
+    public :: RemoteFetchedAny
 
     type :: RemoteEntry
         !> Full local path the file has, or will have, under the staging dir
@@ -129,6 +131,20 @@ module m_remote_source
     logical :: MainPass = .false.
     !> Processing positions up to here have been deleted by the main pass
     integer :: EvictedUpTo = 0
+    !> A file or folder setting was a link and was downloaded. FCC does not
+    !> split its flux computation then: every worker would download it again.
+    logical :: FetchedAny = .false.
+
+    !> A production pass split across processes: each deletes only positions
+    !> in (EvictLo, EvictHi] - the files no other process will read - and
+    !> fetches ahead only within [FetchLo, FetchHi], so it never downloads a
+    !> file another process has already finished with. Unset, a process
+    !> deletes and fetches ahead as a single pass always did.
+    logical :: Windowed = .false.
+    integer :: EvictLo = 0
+    integer :: EvictHi = 0
+    integer :: FetchLo = 0
+    integer :: FetchHi = 0
 
     !> Every file downloaded in this run, by the URL it came from, so a file
     !> two settings name - or a setting and the raw listing - crosses the
@@ -149,6 +165,47 @@ module m_remote_source
     logical :: CurlChecked = .false.
 
 contains
+
+    !***************************************************************************
+    !> \brief Confine deletion and fetching ahead to what this process alone
+    !>        reads, in a production pass split across processes.
+    !>
+    !> Staging is shared by every process of a run, and the main pass deletes a
+    !> file once it is behind it - behind one process, while another may still
+    !> need it: every worker re-reads the head, and the half-hour before each
+    !> cut is read by the pieces on both sides. So each process deletes only
+    !> positions in (lo, hi] - lo >= hi deletes nothing - and fetches ahead
+    !> only positions in [flo, fhi]. What no window covers stays until
+    !> RemoteCleanup, at the end of the run.
+    !***************************************************************************
+    subroutine RemoteSetWindow(lo, hi, flo, fhi)
+        integer, intent(in) :: lo
+        integer, intent(in) :: hi
+        integer, intent(in) :: flo
+        integer, intent(in) :: fhi
+
+        Windowed = .true.
+        EvictLo = lo
+        EvictHi = hi
+        FetchLo = flo
+        FetchHi = fhi
+    end subroutine RemoteSetWindow
+
+    !> Back to a single pass's rule: delete what is behind, fetch what is ahead.
+    subroutine RemoteClearWindow()
+        Windowed = .false.
+    end subroutine RemoteClearWindow
+
+    !> A raw file's processing position; 0 when it does not come from a link.
+    integer function RemotePositionOf(path)
+        character(*), intent(in) :: path
+        integer :: e
+
+        RemotePositionOf = 0
+        if (.not. Active) return
+        e = Lookup(path)
+        if (e > 0) RemotePositionOf = Raw(e)%pos
+    end function RemotePositionOf
 
     !***************************************************************************
     !> \brief Whether a setting holds a link rather than a local path.
@@ -193,8 +250,14 @@ contains
         character(*), intent(inout) :: path
 
         if (.not. IsRemotePath(path)) return
+        FetchedAny = .true.
         call FetchSingle(setting, path, setting)
     end subroutine RemoteFetchFile
+
+    !> Whether any input of this run was downloaded from a shared link.
+    logical function RemoteFetchedAny()
+        RemoteFetchedAny = FetchedAny
+    end function RemoteFetchedAny
 
     !***************************************************************************
     !> \brief If the setting links to a folder, download it whole.
@@ -210,6 +273,7 @@ contains
         logical, intent(in) :: recursive
 
         if (.not. IsRemotePath(dir)) return
+        FetchedAny = .true.
         call FetchFolder(setting, dir, tail, recursive)
     end subroutine RemoteFetchFolder
 
@@ -361,6 +425,7 @@ contains
 
         if (FetchAhead .and. Ahead > 0) then
             do p = Raw(e)%pos + 1, min(Raw(e)%pos + Ahead, NumRaw)
+                if (Windowed .and. (p < FetchLo .or. p > FetchHi)) cycle
                 call StartBackground(ByPos(p))
             end do
         end if
@@ -1052,6 +1117,8 @@ contains
 
         if (.not. MainPass) return
         do p = EvictedUpTo + 1, Raw(e)%pos - 2
+            !> Outside this process's window: another process may read it.
+            if (Windowed .and. (p <= EvictLo .or. p > EvictHi)) cycle
             i = ByPos(p)
             if (Raw(i)%state /= stFetching) then
                 inquire(file = trim(Raw(i)%local), exist = ex)

@@ -55,15 +55,21 @@ subroutine StorePfdCache(date, time, nee, h, le)
     real(kind = dbl), intent(in) :: nee, h, le
     type(PfdCacheEntryType), allocatable :: tmp(:)
 
-    allocate(tmp(PfdCacheN + 1))
-    if (PfdCacheN > 0) tmp(1:PfdCacheN) = PfdCache(1:PfdCacheN)
-    tmp(PfdCacheN + 1)%date = date
-    tmp(PfdCacheN + 1)%time = time
-    tmp(PfdCacheN + 1)%nee = nee
-    tmp(PfdCacheN + 1)%h = h
-    tmp(PfdCacheN + 1)%le = le
-    call move_alloc(tmp, PfdCache)
+    !> Room for twice as many when full, rather than one more every period:
+    !> copying the whole cache for each period made the run quadratic in its
+    !> length. Only PfdCache(1:PfdCacheN) is ever read.
+    if (.not. allocated(PfdCache)) allocate(PfdCache(1024))
+    if (PfdCacheN >= size(PfdCache)) then
+        allocate(tmp(2 * size(PfdCache)))
+        tmp(1:PfdCacheN) = PfdCache(1:PfdCacheN)
+        call move_alloc(tmp, PfdCache)
+    end if
     PfdCacheN = PfdCacheN + 1
+    PfdCache(PfdCacheN)%date = date
+    PfdCache(PfdCacheN)%time = time
+    PfdCache(PfdCacheN)%nee = nee
+    PfdCache(PfdCacheN)%h = h
+    PfdCache(PfdCacheN)%le = le
 end subroutine StorePfdCache
 
 

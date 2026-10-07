@@ -54,7 +54,9 @@ def read(rel):
     return (SRC / rel).read_text(encoding="utf-8", errors="replace")
 
 
-PARALLEL = read("src_rp/prepass_parallel.f90")
+# The worker pool itself moved to src_common/batch_pool.f90, shared with FCC;
+# what is checked here is read from both.
+PARALLEL = read("src_rp/prepass_parallel.f90") + read("src_common/batch_pool.f90")
 MAIN = read("src_rp/eddyflow-rp_main.f90")
 ENV = read("src_common/init_env.f90")
 RUNLOG = read("src_common/init_run_log.f90")
@@ -319,29 +321,29 @@ class AFailedWorkerStopsTheRun(unittest.TestCase):
     """A partial fit is a wrong answer that looks like a right one."""
 
     def test_a_non_zero_return_code_is_fatal(self):
-        body = PARALLEL[PARALLEL.index("subroutine WaitPrepassBatches"):
-                        PARALLEL.index("end subroutine WaitPrepassBatches")]
+        body = PARALLEL[PARALLEL.index("subroutine PollPrepassPool"):
+                        PARALLEL.index("end subroutine PollPrepassPool")]
         self.assertIn("if (rc /= 0) then", body)
         self.assertIn("error stop 'A parallel pre-pass worker failed.'", body)
 
     def test_a_missing_dump_is_fatal(self):
-        body = PARALLEL[PARALLEL.index("subroutine WaitPrepassBatches"):
-                        PARALLEL.index("end subroutine WaitPrepassBatches")]
+        body = PARALLEL[PARALLEL.index("subroutine PollPrepassPool"):
+                        PARALLEL.index("end subroutine PollPrepassPool")]
         self.assertIn("exited cleanly but wrote no records", body)
 
     def test_the_diagnostic_points_at_what_is_actually_there(self):
         """A worker that died never closed its log, so the console capture is"""
         """the only record of what it managed to say - and it follows, not"""
         """precedes, the message."""
-        body = PARALLEL[PARALLEL.index("subroutine WaitPrepassBatches"):
-                        PARALLEL.index("end subroutine WaitPrepassBatches")]
+        body = PARALLEL[PARALLEL.index("subroutine PollPrepassPool"):
+                        PARALLEL.index("end subroutine PollPrepassPool")]
         self.assertNotIn("is above", body)
         i = body.index("before it stopped:")
         self.assertLess(i, body.index("call DumpWorkerStdout(", i - 400))
 
     def test_the_failing_worker_s_output_is_shown(self):
-        body = PARALLEL[PARALLEL.index("subroutine WaitPrepassBatches"):
-                        PARALLEL.index("end subroutine WaitPrepassBatches")]
+        body = PARALLEL[PARALLEL.index("subroutine PollPrepassPool"):
+                        PARALLEL.index("end subroutine PollPrepassPool")]
         self.assertEqual(body.count("call DumpWorkerStdout("), 2)
 
     def test_a_foreign_dump_is_refused(self):

@@ -36,6 +36,9 @@ WIN = ROOT / "src" / "src_os" / "win" / "m_process_os.f90"
 POSIX = ROOT / "src" / "src_os" / "posix" / "m_process_os.f90"
 INIT = ROOT / "src" / "src_common" / "init_env.f90"
 PARALLEL = ROOT / "src" / "src_rp" / "prepass_parallel.f90"
+# The worker pool itself moved to src_common/batch_pool.f90, shared with FCC;
+# what is checked here is read from both.
+POOL = ROOT / "src" / "src_common" / "batch_pool.f90"
 MAIN = ROOT / "src" / "src_rp" / "eddyflow-rp_main.f90"
 MAKEFILE = ROOT / "prj" / "Makefile"
 
@@ -85,8 +88,8 @@ class TheTwoPlatformFilesAgree(unittest.TestCase):
 class TheParentIsNamedAndWatched(unittest.TestCase):
 
     def test_the_parent_passes_its_id(self):
-        self.assertIn("// ' --batch-parent ' // trim(parentId)", code(PARALLEL))
-        self.assertIn("write(parentId, '(i0)') ProcessSelfId()", code(PARALLEL))
+        self.assertIn("// ' --batch-parent ' // trim(parentId)", (code(PARALLEL) + code(POOL)))
+        self.assertIn("write(parentId, '(i0)') ProcessSelfId()", (code(PARALLEL) + code(POOL)))
 
     def test_the_switch_is_read_and_takes_a_value(self):
         init = code(INIT)
@@ -112,7 +115,7 @@ class TheParentIsNamedAndWatched(unittest.TestCase):
 class AnOrphanLeavesNothingBehind(unittest.TestCase):
 
     def stop(self):
-        par = code(PARALLEL)
+        par = (code(PARALLEL) + code(POOL))
         return par[par.index("subroutine StopIfParentGone"):
                    par.index("end subroutine StopIfParentGone")]
 

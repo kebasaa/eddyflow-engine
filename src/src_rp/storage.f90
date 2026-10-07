@@ -23,12 +23,22 @@ subroutine Storage(PrevStats, prevAmbient)
 
     call LogSayNoAdv('  Calculating storage terms..')
 
+    !> ET storage is set only below, from the primary water record. Every
+    !> other path - periods not consecutive, no water record - must leave it
+    !> at error rather than at whatever an earlier period computed: it was
+    !> never reset, so a run carried the last consecutive pair's ET storage
+    !> into every later period that had none of its own, however far back
+    !> that pair was.
+    Stor%ET = error
+
     !> Check that time periods are consecutive. If not, set storage to error and exit
     call AddDateStep(PrevStats%date, PrevStats%time, tmp_date, tmp_time, DateStep)
     if (tmp_date /= Stats%date .or. tmp_time /= Stats%time) then
         Stor%H  = error
         Stor%LE = error
         Stor%of(firstGas:lastGas)  = error
+        !> Ends the line, which the next step's would otherwise continue.
+        call LogSay(' Done.')
         return
     end if
 

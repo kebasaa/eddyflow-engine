@@ -43,14 +43,23 @@ program EddyFlowRP
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary, &
         SetPwbTimelagSummaryRH
     use m_ghg_prefetch, only: GhgPrefetchCleanup
-    use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup
+    use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup, &
+        RemoteClearWindow
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
         FinishBatchWorker, &
         StopIfParentGone, &
-        StartPrepassBatches, WaitPrepassBatches, &
+        StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
         WritePfBatchDump, MergePfBatchDumps
+    use m_production_parallel, only: ProdForcedPieceLength, PlanProdCuts, &
+        AdoptProdWorkerOutput, CaptureProdContext, WriteProdContext, &
+        ReadProdContext, ProdPieceBegins, FinishProdWorker, MergeProdPieces, &
+        KeepPwbEvidence, FinishEvidenceWorker, KeepPwbVerdict, &
+        ReplayProdEvidence, ReadProdVerdicts, FindProdVerdict, &
+        RemoveStaleWorkerRoots, SetProdRemoteWindow
+    use m_pwb_stream, only: PwbVerdictType, PwbTakeVerdict, PwbApplyVerdict, &
+        PwbEvidenceOnly, PwbLastEvidence
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -58,6 +67,29 @@ program EddyFlowRP
 
     !> Local variables
     integer :: NumberOfOkPeriods = 0
+    !> The production pass split across workers - see production_parallel.f90.
+    !> ProdSplitArmed: the parent has yet to decide, which it does once the
+    !> head (the first fully processed period) is behind it. ProdSplit: it did
+    !> split, and processes the periods before ProdParentEnd itself.
+    !> ProdHeadEnd: in a worker, the last period of its parent's head.
+    logical :: ProdSplitArmed = .false.
+    logical :: ProdSplit = .false.
+    integer :: ProdParentEnd = 0
+    integer :: ProdHeadEnd = 0
+    integer :: ProdWorkers = 1
+    integer :: ProdNCuts = 0
+    integer :: ProdCuts(99)
+    character(32) :: SectorLine
+    !> With PWB time lags the split runs in three phases: detection workers
+    !> ('pd') gather each period's evidence, this process classifies it in time
+    !> order, and production workers ('pr') compute the fluxes with the lags it
+    !> settled. ProdPwb says this run does that.
+    logical :: ProdPwb = .false.
+    integer :: ProdStarts(100)
+    integer :: ProdEnds(100)
+    type(PwbVerdictType) :: ProdVerdict
+    !> Stands in for the PWB summary rows in a run without PWB.
+    type(TimeLagOptType) :: NoPwbRows(1)
     integer :: PeriodRecords = 0
     integer :: N2 = 0
     integer :: pcount = 0
@@ -215,6 +247,12 @@ program EddyFlowRP
     type (DateType) :: SelectedEndTimestamp
     type (StatsType) :: PrevStats
     type (AmbientStateType) :: prevAmbient
+    !> What the dynamic metadata merge may overwrite, as start-up left it: the
+    !> main pass begins from these rather than from the pre-passes' last record.
+    type (MetadataType) :: StartupMetadata
+    integer :: StartupWdfNumSecs
+    real(kind = dbl) :: StartupWdfStart(MaxNumWdfSectors)
+    real(kind = dbl) :: StartupWdfEnd(MaxNumWdfSectors)
     type (QCType) :: StDiff
     type (QCType) :: DtDiff
     type (ColType) :: BypassCol(MaxNumCol)
@@ -325,6 +363,10 @@ program EddyFlowRP
     if (EddyFlowProj%run_env == 'embedded') call ConfigureForEmbedded()
     if (EddyFlowProj%run_env == 'embedded') RPsetup%out_st = .false.
 
+    !> A production worker writes into a folder of its own, under its parent's
+    !> file names; its parent takes from there what the worker's piece wrote.
+    if (BatchKind == 'pr' .or. BatchKind == 'pd') call AdoptProdWorkerOutput()
+
     !> Create output directory if it does not exist, otherwise is silent
     mkdir_status = CreateDir('"' //trim(adjustl(Dir%main_out)) // '"')
 
@@ -356,14 +398,11 @@ program EddyFlowRP
         !> If requested, read external metadata file \n
         !> This is the case with non-GHG files or with GHG files if user \n
         !> explicitly selects an alternative metadata file
-        write(*,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
-            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
-        write(ulog,'(a)', advance = 'no') ' Reading alternative metadata file: "' &
-            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..'
+        call LogOpenLine(' Reading alternative metadata file: "' &
+            // AuxFile%metadata(1:len_trim(AuxFile%metadata)) // '"..')
         call ReadMetadataFile(Col, AuxFile%metadata, IniFileNotFound, .true.)
         if (IniFileNotFound) then
-            write(*, *)
-            write(ulog, *)
+            call LogSay('')
             call ExceptionHandler(22)
         end if
         !> Retrieve variables to be used (from EddyFlow project file) \n
@@ -372,12 +411,11 @@ program EddyFlowRP
         MetaIsNeeded = .false.
         call MetadataFileValidation(Col, passed, faulty_col)
         if (.not. passed(1)) then
-            write(*, *)
-            write(ulog, *)
+            call LogSay('')
             call InformOfMetadataProblem(passed, faulty_col)
             call ExceptionHandler(23)
         end if
-        call LogSay(' Done.')
+        call LogEndLine(' Done.')
     else
         !> In case of standard GHG processing, without alternative metadata \n
         !> file one GHG file must be opened to read the metadata content for \n
@@ -461,8 +499,11 @@ program EddyFlowRP
         allocate(bFileList(1))
     end if
 
-    !> Open biomet output file
-    if (index(EddyFlowProj%biomet_data, 'ext_') /= 0 .and. nbVars > 0) &
+    !> Open biomet output file. Not in a pre-pass worker: it writes no output,
+    !> and opening this one - the parent's own name, same run stamp - would
+    !> truncate the parent's file, or leave a stray one beside it.
+    if (index(EddyFlowProj%biomet_data, 'ext_') /= 0 .and. nbVars > 0 &
+        .and. (BatchIndex == 0 .or. BatchKind == 'pr' .or. BatchKind == 'pd')) &
         call InitBiometOut()
 
     !> Initialize dynamic metadata by reading the file
@@ -473,8 +514,10 @@ program EddyFlowRP
     PotRad = PotentialRadiation(Metadata%lat)
 
     !> Initialize output files for "user" variables (non-sensitive variables)
-    !> if at least one such variable exists
-    if (NumUserVar > 0) call InitUserOutFiles()
+    !> if at least one such variable exists. Not in a pre-pass worker, for the
+    !> same reason as the biomet file above.
+    if (NumUserVar > 0 .and. (BatchIndex == 0 .or. BatchKind == 'pr' &
+        .or. BatchKind == 'pd')) call InitUserOutFiles()
 
     !> Retrieve timestamp array in chronological order and
     !> order RawFileList, also in chronological order
@@ -535,6 +578,13 @@ program EddyFlowRP
     !> rows: all rows potentially needed for current period
     !> columns: all except ignored ones and flag columns
     if (.not. allocated(Raw)) allocate(Raw(MaxPeriodNumRecords, NumAllVar))
+
+    !> Kept before any pre-pass applies a dynamic metadata record - see where
+    !> the main pass starts.
+    StartupMetadata = Metadata
+    StartupWdfNumSecs = RPsetup%wdf_num_secs
+    StartupWdfStart = RPsetup%wdf_start
+    StartupWdfEnd = RPsetup%wdf_end
 
     !***************************************************************************
     !***************************************************************************
@@ -698,6 +748,9 @@ program EddyFlowRP
                 !> A worker whose parent has gone stops here, between
                 !> periods, rather than finishing a slice nobody will read.
                 call StopIfParentGone()
+                !> A parent hands a worker that has finished the next piece now,
+                !> not once its own piece is done.
+                call TopUpPrepassBatches()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1023,6 +1076,7 @@ program EddyFlowRP
                 !***************************************************************
 
                 !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1]
+                call BiometWaterVapour()
                 call MoleFractionsAndMixingRatios()
 
                 !> Calculate parameters for flux computation
@@ -1159,8 +1213,11 @@ program EddyFlowRP
     !********************** PLANAR FIT IF REQUESTED ****************************
     !***************************************************************************
     !***************************************************************************
+    !> A production worker takes the fit from its parent, with the rest of
+    !> what the pre-passes worked out - see ReadProdContext.
     if (index(Meth%rot(1:len_trim(Meth%rot)), 'planar_fit') /= 0 .and. &
-        (.not. AssessmentOnly .or. RPsetup%pf_assessment_only)) then
+        (.not. AssessmentOnly .or. RPsetup%pf_assessment_only) .and. &
+        BatchKind /= 'pr' .and. BatchKind /= 'pd') then
         if (.not. RPsetup%pf_onthefly) then
             call ReadPlanarFitFile()
             if (.not. allocated(GoPlanarFit)) &
@@ -1263,6 +1320,9 @@ program EddyFlowRP
                 !> A worker whose parent has gone stops here, between
                 !> periods, rather than finishing a slice nobody will read.
                 call StopIfParentGone()
+                !> A parent hands a worker that has finished the next piece now,
+                !> not once its own piece is done.
+                call TopUpPrepassBatches()
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1527,8 +1587,8 @@ program EddyFlowRP
             !> Loop over wind sectors
             GoPlanarFit = .true.
             secloop: do sec = 1, PFSetup%num_sec
-                write(*, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
-                write(ulog, '(a, i2, a)', advance = 'no') '  Sector n.', sec, '..'
+                write(SectorLine, '(a, i2, a)') '  Sector n.', sec, '..'
+                call LogOpenLine(trim(SectorLine))
                 if (PFSetup%wsect_exclude(sec)) then
                     GoPlanarFit(sec) = .false.
                     PFb(:, sec) = error
@@ -1607,7 +1667,7 @@ program EddyFlowRP
                 !> Update sector-wise rotation matrix
                 PFMat(:, :, sec) = PP
 
-                call LogSay(' Done.')
+                call LogEndLine(' Done.')
             end do secloop
 
             !> Fix sectors without calculations, using closest
@@ -1687,6 +1747,9 @@ program EddyFlowRP
         loggedDate = 'none'
         drift_loop: do
             pcount = pcount + 1
+            !> A production worker repeats this walk; a stopped run should not
+            !> wait for it to finish.
+            call StopIfParentGone()
 
             !> If embedded metadata are to be used,
             !> reinitialize column information to null
@@ -1852,6 +1915,59 @@ program EddyFlowRP
     DynamicMetadata = ErrDynamicMetadata
     InitGasCalRefCol = GasCalRefCol
 
+    !> Start from the settings the run began with, not from what the
+    !> pre-passes left behind. A dynamic metadata record overwrites a setting
+    !> only where its own field is valid, and the pre-passes walk the run to its
+    !> end - so the main pass's first periods used to inherit, wherever their
+    !> record left a field blank, the value of a record from the end of the run.
+    !> Over GHG files read with their own metadata the merge leaves the rate and
+    !> file length alone, and so does this: each file sets those on import.
+    if (EddyFlowProj%use_dynmd_file) then
+        Metadata%lat = StartupMetadata%lat
+        Metadata%lon = StartupMetadata%lon
+        Metadata%alt = StartupMetadata%alt
+        Metadata%canopy_height = StartupMetadata%canopy_height
+        Metadata%d = StartupMetadata%d
+        Metadata%z0 = StartupMetadata%z0
+        if (.not. (EddyFlowProj%ftype == 'licor_ghg' &
+            .and. .not. EddyFlowProj%use_extmd_file)) then
+            Metadata%ac_freq = StartupMetadata%ac_freq
+            Metadata%file_length = StartupMetadata%file_length
+        end if
+        RPsetup%wdf_num_secs = StartupWdfNumSecs
+        RPsetup%wdf_start = StartupWdfStart
+        RPsetup%wdf_end = StartupWdfEnd
+    end if
+
+    !> Likewise the PWB streaming classifier: the time-lag pre-pass runs it
+    !> too, and its last settled lag - from the end of the run - used to be
+    !> what the main pass's first periods carried forward.
+    pwb_last_optimal_lag = error
+    pwb_last_optimal_origin = 0
+    pwb_has_previous = .false.
+
+    !> The production pass may be split once its head is behind it - see
+    !> TryProdSplit. What the pass starts from is kept now, for the workers. A
+    !> worker takes it up: the time-lag windows and planar fit its parent's
+    !> pre-passes worked out, and the spectral grid only its parent surveyed.
+    ProdSplit = .false.
+    ProdSplitArmed = BatchIndex == 0 .and. NumJobs /= 1
+    if (ProdSplitArmed) call CaptureProdContext(GoPlanarFit, bf)
+    if (BatchKind == 'pr' .or. BatchKind == 'pd') &
+        call ReadProdContext(ProdHeadEnd, GoPlanarFit, bf)
+    if (BatchKind == 'pr' .and. Meth%tlag == 'pwb') call ReadProdVerdicts()
+
+    !> Raw data from a shared link: in a pass that may be split, the parent
+    !> deletes nothing until it knows whether it did - every worker re-reads
+    !> the head - and a worker deletes only what its own piece alone reads.
+    !> See SetProdRemoteWindow.
+    if (ProdSplitArmed) call SetProdRemoteWindow('head', 0, 0, .false., 0, &
+        MasterTimeSeries, size(MasterTimeSeries), RawFileList, NumRawFiles)
+    if (BatchKind == 'pr' .or. BatchKind == 'pd') &
+        call SetProdRemoteWindow(BatchKind, BatchSliceStart, BatchSliceEnd, &
+            BatchIndex == BatchCount, ProdHeadEnd, &
+            MasterTimeSeries, size(MasterTimeSeries), RawFileList, NumRawFiles)
+
     !> Raw files from a shared link that the survey and the pre-passes
     !> downloaded are kept for this pass; from here on each is deleted once
     !> this pass is behind it
@@ -1908,6 +2024,14 @@ program EddyFlowRP
 
         !> Initialize biomet variables to be used in computations
         biomet%val = error
+        !> Embedded biomet is aggregated only when a period is imported, so a
+        !> period skipped before that - no file, or files exhausted - would
+        !> otherwise write the previous period's values into its FLUXNET row.
+        if (EddyFlowProj%biomet_data == 'embedded') then
+            if (allocated(bAggr)) bAggr = error
+            if (allocated(bAggrFluxnet)) bAggrFluxnet = error
+            if (allocated(bAggrEddyFlow)) bAggrEddyFlow = error
+        end if
 
         !> Normal exit instruction: either the last period was dealt with,
         !> or raw files are finished
@@ -1922,6 +2046,32 @@ program EddyFlowRP
         call DateTypeToDateTime(tsStart, Stats%start_date, Stats%start_time)
         call DateTypeToDateTime(tsEnd, Stats%date, Stats%time)
         call SetPwbPeriodTimestamp(Stats%date, Stats%time)
+
+        !> A split production pass. The parent stops where the first worker's
+        !> piece begins. A worker processes its parent's head again, so every
+        !> output layout latch fires as it did there; then skips to the period
+        !> before its piece, applying only the dynamic metadata records a
+        !> single pass would have applied on the way; processes that period, so
+        !> the storage terms of its first period see the one before; and then
+        !> its piece. All but the piece is dropped - see ProdPieceBegins.
+        if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop
+        if (ProdSplit) call TopUpPrepassBatches()
+        if (BatchKind == 'pr' .or. BatchKind == 'pd') then
+            if (pcount >= BatchSliceEnd) exit periods_loop
+            if (pcount > ProdHeadEnd .and. pcount < BatchSliceStart - 1) then
+                !> Cheap, but over a long run with dynamic metadata not short -
+                !> a stopped run should not wait for it.
+                call StopIfParentGone()
+                if (EddyFlowProj%use_dynmd_file) &
+                    call RetrieveDynamicMetadata(tsEnd, E2Col, size(E2Col))
+                cycle periods_loop
+            end if
+            if (pcount == BatchSliceStart .and. BatchKind == 'pr') then
+                call ProdPieceBegins(NumberOfOkPeriods)
+                PwbTimelagN = 0
+            end if
+            call StopIfParentGone()
+        end if
 
         !> Some logging
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
@@ -2399,11 +2549,40 @@ program EddyFlowRP
             if (Meth%tlag == 'pwb') then
                 call RetrieveSensorParams()
                 call SetTimelags()
-                pwb_detect_only_mode = .true.
-                call TimeLagHandle('pwb', E2Set, size(E2Set, 1), size(E2Set, 2), &
-                    pwb_raw_ActTLag, pwb_raw_TLag, pwb_raw_DefTlagUsed, .false.)
+                if (BatchKind == 'pr' .and. pcount >= BatchSliceStart - 1) then
+                    !> A production worker of a split run, from its lead-in on:
+                    !> the lags its parent settled, in place of the detection.
+                    call FindProdVerdict(pcount, ProdVerdict)
+                    call PwbApplyVerdict(ProdVerdict)
+                else
+                    !> A detection worker in its piece gathers the evidence and
+                    !> goes no further with the period.
+                    PwbEvidenceOnly = BatchKind == 'pd' .and. pcount >= BatchSliceStart
+                    pwb_detect_only_mode = .true.
+                    call TimeLagHandle('pwb', E2Set, size(E2Set, 1), size(E2Set, 2), &
+                        pwb_raw_ActTLag, pwb_raw_TLag, pwb_raw_DefTlagUsed, .false.)
+                    if (PwbEvidenceOnly) then
+                        PwbEvidenceOnly = .false.
+                        PwbLastEvidence%pcount = pcount
+                        call KeepPwbEvidence(PwbLastEvidence)
+                        if (allocated(E2Set)) deallocate(E2Set)
+                        if (allocated(E2Primes)) deallocate(E2Primes)
+                        if (allocated(UserSet)) deallocate(UserSet)
+                        if (allocated(UserPrimes)) deallocate(UserPrimes)
+                        if (allocated(UserCol)) deallocate(UserCol)
+                        if (allocated(DiagSet)) deallocate(DiagSet)
+                        call LogSay('  PWB evidence kept for the parent.')
+                        cycle periods_loop
+                    end if
+                end if
                 pwb_raw_Result = PWBResult
                 pwb_raw_detection_done = .true.
+                !> The parent of a split run keeps what it settled from the head
+                !> on: a production worker's lead-in may fall on any of it.
+                if (ProdSplit .and. ProdPwb) then
+                    call PwbTakeVerdict(pcount, E2Col(:)%present, ProdVerdict)
+                    call KeepPwbVerdict(ProdVerdict)
+                end if
             end if
 
             !> Remove the spectroscopic effect of water vapour, before the
@@ -2561,7 +2740,7 @@ program EddyFlowRP
                 call ResetCecFlux(CECFlux(cec_p))
             end do
             if (EddyFlowProj%do_cec > 0) then
-                call LogSayNoAdv('  Calculating CEC partitioning..')
+                call LogOpenLine('  Calculating CEC partitioning..')
                 call CecPairs(CecPairList, nCecPairs)
                 if (nCecPairs > 0) then
                     if (.not. allocated(CecPrimes)) &
@@ -2579,7 +2758,7 @@ program EddyFlowRP
                     end do
                     if (allocated(CecPrimes)) deallocate(CecPrimes)
                 end if
-                call LogSay(' Done.')
+                call LogEndLine(' Done.')
             end if
 
             !> ===== 7. DETRENDING =============================================
@@ -2703,7 +2882,10 @@ program EddyFlowRP
         !***********************************************************************
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
 
-            !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1]
+            !> Average mole fractions in [umol mol_a-1] and [mmol mol_a-1],
+            !> a gas named to the biomet humidity diluted by this period's
+            !> own - see BiometWaterVapour
+            call BiometWaterVapour()
             call MoleFractionsAndMixingRatios()
 
             !> Calculate parameters for flux computation
@@ -2916,6 +3098,7 @@ program EddyFlowRP
             if(InitializeStorage) then
                 Stor%H  = error
                 Stor%LE = error
+                Stor%ET = error
                 Stor%of = error
                 InitializeStorage = .false.
             else
@@ -2973,7 +3156,62 @@ program EddyFlowRP
         if (allocated(E2Primes)) deallocate(E2Primes)
         if (allocated(DiagSet))  deallocate(DiagSet)
         if (allocated(UserSet))  deallocate(UserSet)
+
+        !> The head is behind the parent once a period has been fully
+        !> processed: every output file is open and its layout fixed.
+        if (ProdSplitArmed .and. .not. InitializeStorage) then
+            ProdSplitArmed = .false.
+            call TryProdSplit()
+            if (ProdSplit) then
+                call SetProdRemoteWindow('p1', ProdStarts(1), ProdEnds(1), .false., &
+                    pcount, MasterTimeSeries, size(MasterTimeSeries), &
+                    RawFileList, NumRawFiles)
+            else
+                call RemoteClearWindow()
+            end if
+        end if
     end do periods_loop
+
+    !> A production worker's piece is done: it hands back where its rows begin
+    !> and what it counted, and stops before the end-of-run work, which is the
+    !> parent's.
+    if (BatchKind == 'pr') then
+        if (allocated(PwbTimelagOpt)) then
+            call FinishProdWorker(NumberOfOkPeriods, PwbTimelagOpt, PwbTimelagN)
+        else
+            call FinishProdWorker(NumberOfOkPeriods, NoPwbRows, 0)
+        end if
+        call LogSay(' Production pass piece finished.')
+        call FinishBatchWorker()
+        stop ''
+    end if
+    if (BatchKind == 'pd') then
+        call FinishEvidenceWorker()
+        call LogSay(' PWB detection piece finished.')
+        call FinishBatchWorker()
+        stop ''
+    end if
+    !> With PWB, the detection workers have been running beside this process's
+    !> own piece: collect their evidence, classify it in time order from where
+    !> this process's stream stands, and start the production workers with
+    !> the lags that settled. Then, either way, hand out the remaining pieces
+    !> and append what each wrote to this process's own files, in time order.
+    if (ProdSplit) then
+        if (ProdPwb) then
+            call WaitPrepassBatches('pd', ProdWorkers)
+            call ReplayProdEvidence(ProdStarts, ProdNCuts + 1)
+            call StartPrepassBatches('pr', ProdStarts(1), ProdEnds(ProdNCuts + 1), &
+                ProdWorkers, MasterTimeSeries, size(MasterTimeSeries), &
+                RawFileList, NumRawFiles, ProdCuts(1:ProdNCuts))
+        end if
+        call WaitPrepassBatches('pr', ProdWorkers)
+        if (allocated(PwbTimelagOpt)) then
+            call MergeProdPieces(NumberOfOkPeriods, PwbTimelagOpt, &
+                PwbTimelagOptSize, PwbTimelagN)
+        else
+            call MergeProdPieces(NumberOfOkPeriods, NoPwbRows, 1, PwbTimelagN)
+        end if
+    end if
     if (Test%stor_clean .and. StorCacheN > 0) call PostProcessStorClean()
     if (allocated(bf)) deallocate(bf)
     if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
@@ -3101,6 +3339,79 @@ program EddyFlowRP
     stop ''
 
 contains
+
+    !***************************************************************************
+    !> \brief Split the rest of the production pass across workers, if this run
+    !>        allows it.
+    !>
+    !> Called once, after the first fully processed period. On success the
+    !> workers are running and this process carries on with the first piece.
+    !***************************************************************************
+    subroutine TryProdSplit()
+        character(128) :: why
+        integer :: forced
+        integer :: nLeft
+        integer :: k
+        logical :: userStatsOpen
+
+        why = ''
+        inquire(unit = u_user_st1, opened = userStatsOpen)
+        if (.not. userStatsOpen) inquire(unit = u_user_st7, opened = userStatsOpen)
+        if (RUsetup%meth == 'billesbach_11') &
+            why = 'the Billesbach random uncertainty draws from one random stream'
+        if (EddyFlowProj%run_env == 'embedded') why = 'it runs in embedded mode'
+        if (EddyFlowProj%biomet_data == 'embedded' .and. initializeBiometOut) &
+            why = 'its biomet output file is not open yet'
+        if (AddUserStatsHeader .and. userStatsOpen) &
+            why = 'its custom-variable statistics have no header yet'
+        if (len_trim(why) > 0) then
+            call LogSay('  The production pass is not split: ' // trim(why) // '.')
+            return
+        end if
+
+        forced = ProdForcedPieceLength()
+        nLeft = rpEndTimestampIndx - (pcount + 1)
+        if (forced > 0) then
+            call PlanPrepassBatches(nLeft, .true., ProdWorkers, &
+                'production pass', 1)
+        else
+            call PlanPrepassBatches(nLeft, .true., ProdWorkers, 'production pass')
+        end if
+        if (ProdWorkers <= 1) return
+
+        call PlanProdCuts(pcount + 1, rpEndTimestampIndx, ProdWorkers, forced, &
+            MasterTimeSeries, size(MasterTimeSeries), RawFileList, NumRawFiles, &
+            ProdCuts, ProdNCuts)
+        if (ProdNCuts == 0) then
+            call LogSay('  No period to cut at - each needs the half-hour before')
+            call LogSay('  it to start with a raw file of its own. Not split.')
+            return
+        end if
+
+        ProdStarts(1) = pcount + 1
+        do k = 1, ProdNCuts
+            ProdEnds(k) = ProdCuts(k)
+            ProdStarts(k + 1) = ProdCuts(k)
+        end do
+        ProdEnds(ProdNCuts + 1) = rpEndTimestampIndx
+
+        call RemoveStaleWorkerRoots()
+        call WriteProdContext(pcount)
+        ProdPwb = Meth%tlag == 'pwb'
+        if (ProdPwb) then
+            call LogSay('  PWB time lags: each piece is first read for its evidence,')
+            call LogSay('  which is classified here in time order; the fluxes follow.')
+            call StartPrepassBatches('pd', pcount + 1, rpEndTimestampIndx, &
+                ProdWorkers, MasterTimeSeries, size(MasterTimeSeries), &
+                RawFileList, NumRawFiles, ProdCuts(1:ProdNCuts))
+        else
+            call StartPrepassBatches('pr', pcount + 1, rpEndTimestampIndx, &
+                ProdWorkers, MasterTimeSeries, size(MasterTimeSeries), &
+                RawFileList, NumRawFiles, ProdCuts(1:ProdNCuts))
+        end if
+        ProdParentEnd = ProdCuts(1)
+        ProdSplit = .true.
+    end subroutine TryProdSplit
 
     !***************************************************************************
     !> \brief Size everything that counts samples for acquisition frequency freq:
