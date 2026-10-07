@@ -1,4 +1,4 @@
-8.1.2 (2026-10-02)
+8.1.2 (2026-10-07)
 
     Engine:
 	- Version bump to 8.1.2, to match EddyFlow GUI 8.1.2.
@@ -43,6 +43,120 @@
 	               within a period that the run's own process has gone and
 	               removes its folder, and folders left by runs killed from
 	               the interface are removed by the next split run.
+	- New feature: A slow gas's time lag is detected at its own rate, then
+	               refined at the file's. A laser at 1 Hz on a 20 Hz sonic
+	               grid, with the other nineteen rows empty, failed the
+	               PWB validity test on every period - completeness was
+	               counted against the row grid, 5 % - and every such gas,
+	               COS among them, ended in the covariance-maximisation
+	               fallback. A gas whose instrument is slower than the
+	               file now has its completeness counted against what its
+	               own instrument owes. Stage 1 runs the pre-whitening
+	               chain on the gas's real samples, found by walking the
+	               column rather than assuming a fixed stride, since a
+	               drifting laser passes through every row position in a
+	               half-hour; w and Ts are taken at the same rows. Stage 2
+	               evaluates every row lag within one gas interval of the
+	               coarse peak, so the lag and its HDI come out at the
+	               file's resolution and leave in file rows. Where stage
+	               1's replicates spread over more than an interval and a
+	               half, the HDI covers both stages. A gas at the file's
+	               rate takes the old path bit for bit. On a drifting
+	               0.987 Hz fixture with COS delayed by exactly 3.35 s
+	               every period reports 3.3 or 3.4 s, class S1, with the
+	               HDI around 3.35; the previous build reported 8.1 or
+	               10.0 s. base_slow and base_slow_integr change by
+	               design: the MIRO's CO2 and H2O now settle in 3 and 5 of
+	               6 periods, its COS and N2O borrow from them, and the
+	               four agree at about 8 s where they scattered from 8 to
+	               21 s. The QCLS gases of the Yatir record still settle
+	               no period - their 1 Hz series are noise-dominated, so
+	               no covariance peak with w exists - and fall back as
+	               they should.
+	- Fix: A slower column's (co)spectrum is rebuilt from its real sample
+	       rows. The rebuild took one phase per column - the commonest
+	       offset in the first twenty intervals - and the nominal stride.
+	       The phase was recorded before the gaps were interpolated, which
+	       shifts a column that opens with empty rows, so every sample was
+	       read up to an interval from where it sat and paired with w out
+	       of step: white noise at 0.987 Hz kept 0.36 of its low-frequency
+	       density near Nyquist. A period opening in a gap longer than
+	       twenty intervals had no phase, and one sample too few was
+	       counted. The real sample rows and the shift are now recorded, w
+	       is read at the instant the sample was taken, every real sample
+	       is used, and the set is decimated at the measured rate, which
+	       on the Yatir laser keeps the frequency axis from stretching by
+	       1.35 %. White noise on the drifting grid keeps 0.94 and 0.99 of
+	       its low-frequency density where it kept 0.44 and 0.36. Fluxes
+	       and time lags do not move; the only other change in the
+	       regression fixtures is the CH4 spectrum of base_ghg_mixed_instr
+	       in the one period its LI-7700 runs at 1 Hz.
+	- Fix: A planar-fit pre-pass worker no longer runs the time-lag pre-
+	       pass. With both on the fly a worker walked its planar-fit slice
+	       as time-lag periods and wrote time-lag records under the
+	       planar-fit dump name; the parent read them as wind means, the
+	       speed filter threw them out, and every sector of the fit came
+	       out -9999 where a serial run fitted. A worker now skips the
+	       time-lag pre-pass unless it was launched for it, and every dump
+	       records its pre-pass kind (format 05): a worker refuses to
+	       write a dump for another pre-pass and the merges refuse to read
+	       one.
+	- Change: Pre-pass work is handed to whichever worker is free. A
+	          parallel pre-pass cut its range into one slice per worker,
+	          so on the Yatir run one slice held 801 raw files, another
+	          none, and the run waited on the heaviest. The range is now
+	          cut into about four pieces per worker at equal shares of
+	          estimated work - a period weighs 1 if a raw file covers it,
+	          0.05 if none does - a fixed number of workers run at once,
+	          and each that finishes makes room for the next piece. The
+	          run's own process runs piece 1 and reports how many pieces
+	          are done. Pieces tile the range, merge in piece order, and a
+	          failed piece stops the run at once. This covers the time-lag
+	          pre-pass, PWB cache generation and the planar fit; outputs
+	          are byte-identical.
+	- Change: PWB is faster, with byte-identical output. The cross-
+	          correlation, which PWB runs 396 times per gas per period,
+	          accumulates 32 lags at a time in the same order of
+	          additions: 0.66 s instead of 3.85 s for those calls at the
+	          production shape. CovMax computes the one covariance it
+	          reads instead of the full 2x2 matrix for every lag: 0.038 s
+	          instead of 0.27 s for a gas of a period. The PWB table
+	          stores rows with doubling spare capacity and finds a
+	          period's rows by bisection instead of scanning from row 1:
+	          for a year of half-hours and four gases, storing took 1.5 s
+	          instead of 172 s and looking every key up 0.8 s instead of
+	          3.0 s. The parent of a split PWB run now streams each
+	          verdict into the file of the piece it belongs to instead of
+	          holding the whole run in memory, and the records are
+	          smaller, so memory no longer grows with the run: evidence
+	          1.2 KB per half-hour instead of 2.7, verdicts 1.2 KB instead
+	          of 3.7.
+	- Change: Every engine process opts out of Windows' execution-speed
+	          throttling. A windowless program is classed as background
+	          work, which on a hybrid processor stays on the efficiency
+	          cores; on the Yatir run every engine process sat at 100 % on
+	          four low-power cores while the performance cores idled. It
+	          changes where the program runs, never what it computes.
+	          Linux and macOS are unchanged, and what it buys when Windows
+	          does contain the engine is not yet measured.
+	- Change: Progress reaches the console as it is written. gfortran
+	          buffers a unit that is not a terminal in blocks, so the
+	          interface reading the engine through a pipe, and a pre-pass
+	          worker writing to its .out file, showed nothing for an hour.
+	          Every log routine and the daily progress line now flush the
+	          console. Content is unchanged.
+	- Tested: The regression suite reads the preprocessed 10 Hz files of
+	          the Laegern above-canopy station for June 2025 in place of
+	          the Data_202506 copy that is no longer considered good, with
+	          the site metadata files rewritten from CH-LAE_above.metadata
+	          and every fixture's column references remapped. gen_gappy.py
+	          builds 36 hours of it with 28 of 72 files left out:
+	          base_gappy_tlag (time-lag optimisation and an on-the-fly
+	          planar fit) and base_gappy_pwb, which found the planar-fit
+	          worker fault above; check_parallel.sh on base_gappy_tlag at
+	          -j 3 went from 7 files different to byte-identical across
+	          28. gen_slow_drift.py and check_slow_lag.sh hold the slow-
+	          gas lag to a known delay on a drifting grid.
 	- Change: The mode of the PWB bootstrap's replicate lags is now dyco's
 	          estimator: scipy's gaussian_kde with Scott's bandwidth on a
 	          512-point grid, rounded half to even, without the small jitter
