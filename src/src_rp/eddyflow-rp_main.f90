@@ -37,6 +37,7 @@ program EddyFlowRP
     use m_rp_global_var
     use m_cec
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
+        ResetPwbOutsideWindow, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
@@ -2070,6 +2071,8 @@ program EddyFlowRP
                 call ProdPieceBegins(NumberOfOkPeriods)
                 PwbTimelagN = 0
             end if
+            if (pcount == BatchSliceStart .and. BatchKind == 'pd') &
+                call ResetPwbOutsideWindow()
             call StopIfParentGone()
         end if
 

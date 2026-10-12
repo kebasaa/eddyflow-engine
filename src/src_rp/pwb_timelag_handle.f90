@@ -44,6 +44,7 @@ module m_pwb_timelag
     public :: ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary
     public :: RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache
     public :: SetPwbTimelagSummaryRH
+    public :: ResetPwbOutsideWindow, PwbOutsideWindowCounts, AddPwbOutsideWindow
 
     integer :: pwb_attempts(E2NumVar) = 0
     integer :: pwb_successes(E2NumVar) = 0
@@ -89,6 +90,24 @@ subroutine ResetPwbDiagnostics()
     pwb_unclassified = 0
     pwb_bounds_warned = .false.
 end subroutine ResetPwbDiagnostics
+
+!> A detection worker counts the peaks outside the window in its own piece
+!> only - it starts counting there - and hands the counts back with its
+!> evidence. The parent adds them: replaying the evidence detects nothing, so
+!> nothing it does counts them again.
+subroutine ResetPwbOutsideWindow()
+    pwb_outside_window = 0
+end subroutine ResetPwbOutsideWindow
+
+subroutine PwbOutsideWindowCounts(counts)
+    integer, intent(out) :: counts(E2NumVar)
+    counts = pwb_outside_window
+end subroutine PwbOutsideWindowCounts
+
+subroutine AddPwbOutsideWindow(counts)
+    integer, intent(in) :: counts(E2NumVar)
+    pwb_outside_window = pwb_outside_window + counts
+end subroutine AddPwbOutsideWindow
 
 subroutine ResetPwbAggregateSummary()
     PwbSummaryDonorCount = 0
