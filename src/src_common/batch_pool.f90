@@ -97,6 +97,13 @@ module m_batch_pool
     integer :: PoolDone = 0
     logical, allocatable :: Running(:)
 
+    !> When each piece's worker was started, and when it was found to have
+    !> ended with no return code to show for it (0 if it has not), in
+    !> system_clock counts; and when the workers were last looked for.
+    integer(8), allocatable :: LaunchedAt(:)
+    integer(8), allocatable :: SuspectAt(:)
+    integer(8) :: LastLivenessCheck = 0
+
 contains
 
     !***************************************************************************
@@ -408,9 +415,14 @@ contains
         call LogSay('  comes free.')
 
         !> A stale return code from an earlier attempt would be read as a worker
-        !> that had already finished.
+        !> that had already finished, and a stale process id as one that has
+        !> ended without reporting.
         do k = 2, NumChunks
             rcPath = ReturnCodePath(kind, k)
+            inquire(file = trim(rcPath), exist = ex)
+            if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
+                // comm_err_redirect)
+            rcPath = PidPath(kind, k)
             inquire(file = trim(rcPath), exist = ex)
             if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
                 // comm_err_redirect)
@@ -431,6 +443,11 @@ contains
         if (allocated(Running)) deallocate(Running)
         allocate(Running(NumChunks))
         Running = .false.
+        if (allocated(LaunchedAt)) deallocate(LaunchedAt, SuspectAt)
+        allocate(LaunchedAt(NumChunks), SuspectAt(NumChunks))
+        LaunchedAt = 0
+        SuspectAt = 0
+        LastLivenessCheck = 0
         NextChunk = 2
         call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))
         Running(2:NextChunk - 1) = .true.
@@ -451,12 +468,29 @@ contains
         integer :: k
         integer :: u
         integer :: io_status
+        integer(8) :: now
+        logical :: ex
         character(PathLen) :: masterPath
         character(PathLen) :: childPath
         character(16) :: tag
         character(2048) :: cmd
 
         if (n <= 0) return
+
+        !> Each piece's script was written when the pass began. One that is
+        !> gone was removed from under this run, and cmd would only say it is
+        !> "not recognized" while this process waited for a worker that never
+        !> started.
+        do k = NextChunk, NextChunk + n - 1
+            write(tag, '(a,a,i2.2)') trim(kind), '_b', k
+            if (OS == 'win') then
+                childPath = trim(TmpDir) // 'batch_' // trim(tag) // '.bat'
+            else
+                childPath = trim(TmpDir) // 'batch_' // trim(tag) // '.sh'
+            end if
+            inquire(file = trim(childPath), exist = ex)
+            if (.not. ex) call WorkerFilesGone(kind, k, .false.)
+        end do
 
         if (OS == 'win') then
             masterPath = trim(TmpDir) // 'batch_' // trim(kind) // '_run.bat'
@@ -487,6 +521,11 @@ contains
             end if
         end do
         close(u)
+        if (allocated(LaunchedAt)) then
+            call system_clock(now)
+            LaunchedAt(NextChunk:NextChunk + n - 1) = now
+            SuspectAt(NextChunk:NextChunk + n - 1) = 0
+        end if
         NextChunk = NextChunk + n
 
         !> On Windows this returns as soon as the workers are started. On the
@@ -567,7 +606,7 @@ contains
                 error stop 'Parallel pre-pass timed out.'
             end if
         end do
-        deallocate(Running)
+        deallocate(Running, LaunchedAt, SuspectAt)
         PoolActive = .false.
 
         !> Every worker's log, in piece order, so the run log reads as one walk
@@ -628,6 +667,8 @@ contains
             if (.not. quiet) call SayPiecesDone()
         end do
 
+        call CheckWorkersAlive(quiet)
+
         !> Keep `slots` workers busy while pieces are left.
         nRunning = count(Running)
         if (nRunning < slots .and. NextChunk <= NumChunks) then
@@ -636,6 +677,102 @@ contains
             Running(k:NextChunk - 1) = .true.
         end if
     end subroutine PollPrepassPool
+
+    !***************************************************************************
+    !> \brief Every ten seconds, look at each running piece that has not
+    !>        reported: is its worker still there?
+    !>
+    !> A worker's script writes the return code once the worker has exited,
+    !> and cmd reads a script line by line as it runs it. With the script
+    !> removed while the worker ran - everything in the temporary folder that
+    !> nobody held open went when another session's run was stopped - the
+    !> worker finished, its code was never written, and this process waited
+    !> a day for it. Each worker writes its process id beside its return code
+    !> as it starts (InitEnv). A worker that has exited and still shows no
+    !> return code ten seconds later - time enough for its script to write
+    !> one - has ended without reporting; so has one with neither a process
+    !> id nor its script a minute after it was started.
+    !***************************************************************************
+    subroutine CheckWorkersAlive(quiet)
+        logical, intent(in) :: quiet
+        integer :: k
+        integer :: u
+        integer :: pid
+        integer :: io_status
+        integer(8) :: now
+        integer(8) :: rate
+        logical :: ex
+        character(16) :: tag
+        character(PathLen) :: script
+
+        if (.not. allocated(LaunchedAt)) return
+        call system_clock(now, rate)
+        if (now - LastLivenessCheck < 10 * rate) return
+        LastLivenessCheck = now
+
+        do k = 2, NextChunk - 1
+            if (.not. Running(k)) cycle
+            if (SuspectAt(k) > 0) then
+                if (now - SuspectAt(k) >= 10 * rate) &
+                    call WorkerFilesGone(PoolKind, k, quiet)
+                cycle
+            end if
+            pid = 0
+            open(newunit = u, file = trim(PidPath(PoolKind, k)), status = 'old', &
+                action = 'read', iostat = io_status)
+            if (io_status == 0) then
+                read(u, *, iostat = io_status) pid
+                close(u)
+                if (io_status /= 0) pid = 0
+            end if
+            if (pid > 0) then
+                if (.not. ProcessAlive(pid)) SuspectAt(k) = now
+                cycle
+            end if
+            if (now - LaunchedAt(k) < 60 * rate) cycle
+            write(tag, '(a,a,i2.2)') trim(PoolKind), '_b', k
+            if (OS == 'win') then
+                script = trim(TmpDir) // 'batch_' // trim(tag) // '.bat'
+            else
+                script = trim(TmpDir) // 'batch_' // trim(tag) // '.sh'
+            end if
+            inquire(file = trim(script), exist = ex)
+            if (.not. ex) call WorkerFilesGone(PoolKind, k, quiet)
+        end do
+    end subroutine CheckWorkersAlive
+
+    !> Stop the run: piece k's worker cannot report, because what it needed in
+    !> the temporary folder was removed while this run used it.
+    subroutine WorkerFilesGone(kind, k, quiet)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        logical, intent(in) :: quiet
+        character(64) :: LogString
+
+        !> Ends the progress line the period loop may have left open.
+        if (quiet) call LogSay('')
+        write(LogString, '(i6)') k
+        call LogSay(' Worker ' // trim(adjustl(LogString)) // ' of this run cannot report back:')
+        call LogSay(' files it needs in the temporary folder')
+        call LogSay('   ' // trim(TmpDir))
+        call LogSay(' were removed while the run was using them. That happens when')
+        call LogSay(' another EddyFlow run of this version is stopped from an older')
+        call LogSay(' interface, or when another program cleans that folder. The')
+        call LogSay(' output files written so far are left with a .tmp extension.')
+        call LogSay(' The last the worker printed:')
+        call DumpWorkerStdout(kind, k, 15)
+        error stop 'A parallel worker ended without reporting back.'
+    end subroutine WorkerFilesGone
+
+    !> Where piece k's worker writes its process id: beside its return code.
+    character(PathLen) function PidPath(kind, k)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        character(16) :: tag
+
+        write(tag, '(a,a,i2.2)') trim(kind), '_b', k
+        PidPath = trim(TmpDir) // 'batch_' // trim(tag) // '.pid'
+    end function PidPath
 
     subroutine SayPiecesDone()
         character(64) :: LogString
@@ -705,7 +842,7 @@ contains
                 error stop 'Parallel pass timed out.'
             end if
         end do
-        deallocate(Running)
+        deallocate(Running, LaunchedAt, SuspectAt)
         PoolActive = .false.
     end subroutine CancelBatchPool
 
@@ -877,11 +1014,15 @@ contains
     !***************************************************************************
     !> \brief Echo what a failed worker printed, which is where a crash lands.
     !***************************************************************************
-    subroutine DumpWorkerStdout(kind, k)
+    subroutine DumpWorkerStdout(kind, k, lastLines)
         character(*), intent(in) :: kind
         integer, intent(in) :: k
+        !> Only this many lines from its end; all of it when absent.
+        integer, intent(in), optional :: lastLines
         integer :: u
         integer :: io_status
+        integer :: n
+        integer :: skip
         logical :: ex
         character(1024) :: dataline
 
@@ -890,10 +1031,23 @@ contains
         open(newunit = u, file = trim(StdoutPath(kind, k)), status = 'old', &
             iostat = io_status)
         if (io_status /= 0) return
+        skip = 0
+        if (present(lastLines)) then
+            n = 0
+            do
+                read(u, '(a)', iostat = io_status) dataline
+                if (io_status /= 0) exit
+                n = n + 1
+            end do
+            skip = max(0, n - lastLines)
+            rewind(u)
+        end if
+        n = 0
         do
             read(u, '(a)', iostat = io_status) dataline
             if (io_status /= 0) exit
-            call LogSay('   ' // trim(dataline))
+            n = n + 1
+            if (n > skip) call LogSay('   ' // trim(dataline))
         end do
         close(u)
     end subroutine DumpWorkerStdout

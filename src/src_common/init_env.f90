@@ -36,7 +36,7 @@
 subroutine InitEnv()
     use m_common_global_var
     use m_eddypro_import
-    use m_process_os, only: WatchParent, RequestFullSpeed
+    use m_process_os, only: WatchParent, RequestFullSpeed, ProcessSelfId
     use, intrinsic :: iso_fortran_env, only: error_unit
     implicit none
     include 'version_and_date.inc'
@@ -50,12 +50,14 @@ subroutine InitEnv()
     character(256) :: switch
     character(PathLen) :: projPath
     character(256) :: arg
-    character(32) :: tmpDirPadding
+    character(48) :: tmpDirPadding
     character(3), parameter :: OS_default = 'win'
     integer, external :: CreateDir
     logical, external :: SwitchTakesValue
     character(PathLen) :: lowerPath
     character(8) :: batchPadding
+    character(16) :: pidPadding
+    integer :: upid
     integer :: jobs_status
     integer :: parent_status
 
@@ -239,6 +241,11 @@ subroutine InitEnv()
         write(batchPadding, '(a,i2.2)') '_b', BatchIndex
         tmpDirPadding = trim(tmpDirPadding) // trim(batchPadding)
     end if
+    !> And the process id: two runs of different sessions started in the
+    !> same millisecond would otherwise share one, and the first to finish
+    !> would remove the other's.
+    write(pidPadding, '(a,i0)') '_p', ProcessSelfId()
+    tmpDirPadding = trim(tmpDirPadding) // trim(pidPadding)
 
     !> Default values if args are not passed
     if (len_trim(homedir) == 0) homedir = '..'
@@ -279,6 +286,34 @@ subroutine InitEnv()
 
     !> Create TmpDir in case it doesn't exist (for use from command line)
     make_dir = CreateDir('"' // trim(TmpDir) // '"')
+
+    !> Who owns this temporary directory. Every run of every session on one
+    !> version shares the tmp folder above it, and the interface, cleaning up
+    !> after a Stop, removes only the directories whose owner is no longer
+    !> running - not another session's run that is. Not in embedded mode,
+    !> where TmpDir is that shared folder itself.
+    if (EddyFlowProj%run_env == 'desktop') then
+        open(newunit = upid, file = trim(TmpDir) // 'owner.pid', status = 'replace', &
+            iostat = io_status)
+        if (io_status == 0) then
+            write(upid, '(i0)') ProcessSelfId()
+            close(upid)
+        end if
+    end if
+
+    !> A worker says which process it is, beside the return code its script
+    !> will write, so its parent can tell a worker that has ended without
+    !> reporting - its script deleted from under it - from one still working.
+    if (BatchIndex > 0 .and. len_trim(BatchTmpDir) > 0) then
+        write(batchPadding, '(a,i2.2)') '_b', BatchIndex
+        open(newunit = upid, file = trim(BatchTmpDir) // slash // 'batch_' &
+            // trim(BatchKind) // trim(batchPadding) // '.pid', &
+            status = 'replace', iostat = io_status)
+        if (io_status == 0) then
+            write(upid, '(i0)') ProcessSelfId()
+            close(upid)
+        end if
+    end if
 end subroutine InitEnv
 
 !***************************************************************************

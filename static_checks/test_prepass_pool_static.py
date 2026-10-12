@@ -101,7 +101,7 @@ class AFreeWorkerTakesTheNextPiece(unittest.TestCase):
         self.assertIn("call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))", START)
 
     def test_the_wait_keeps_neff_workers_running_while_pieces_are_left(self):
-        loop = WAIT[WAIT.index("        do\n"):WAIT.index("deallocate(Running)")]
+        loop = WAIT[WAIT.index("        do\n"):WAIT.index("deallocate(Running")]
         self.assertIn("call PollPrepassPool(nEff, .false., progressed)", loop)
         self.assertIn("nRunning = count(Running)", POLL)
         self.assertIn("if (nRunning < slots .and. NextChunk <= NumChunks) then", POLL)
@@ -138,7 +138,7 @@ class AFailureStillStopsTheRun(unittest.TestCase):
                         POLL.index("call AppendWorkerLog(PoolKind, k)", i))
 
     def test_worker_logs_join_the_run_log_in_piece_order(self):
-        tail = WAIT[WAIT.index("deallocate(Running)"):]
+        tail = WAIT[WAIT.index("deallocate(Running"):]
         self.assertIn("do k = 2, NumChunks", tail)
         self.assertIn("call AppendWorkerLog(kind, k)", tail)
 
