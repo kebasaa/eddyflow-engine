@@ -1,8 +1,43 @@
 8.1.3 (2026-10-07)
 
     Engine:
-	- Version bump to 8.1.3, to match EddyFlow GUI 8.1.3. No change to the
-	  computation.
+	- Version bump to 8.1.3, to match EddyFlow GUI 8.1.3.
+	- Change: The time-lag optimisation and PWB time-lag summaries list every
+	          gas the run had, not only the gases its last half-hour had. A
+	          gas with no data in the final half-hour was left out, as if
+	          never measured, although its lags from every other period were
+	          in the dataset - and a later run reading the summary got no
+	          window for it. So were the optimiser's window for it, its donor
+	          and the storage cleaning of it. Such a gas is now put back as
+	          the last half-hour that had it left it; a gas the last half-hour
+	          has is unchanged.
+	- Fix: A production pass split across workers took what the end of the run
+	       reads from the run's last period - which gases were present, their
+	       instruments - from the last period of the parent's own piece
+	       instead. A Yatir run split four ways left co_2 out of its PWB
+	       summary although co_2 had data in 2074 periods, the last among
+	       them. It is now taken from the last piece, and split runs are
+	       byte-identical to serial ones again in this.
+	- Fix: A split run that lost its workers' files waited a day and then gave
+	       up. Stopping a run in one EddyFlow window wiped the temporary
+	       folder every run of the version shares, the workers' scripts among
+	       them, and a worker whose script is gone finishes without being able
+	       to say so. The interface no longer does that (see the GUI), and a
+	       run whose worker has ended without reporting now stops within about
+	       a minute with a message saying what happened. Each run's temporary
+	       folder carries its process id and an owner.pid file.
+	- Fix: In a split run the shared-link summary "N raw file(s) could not be
+	       downloaded" counted only the parent's failures, and each worker
+	       printed a partial total of its own. Every failed file is now
+	       counted once, by the parent, whichever process failed it.
+	- Fix: The PWB warning that a gas's peak keeps falling outside its lag
+	       window undercounted in a split run: the peaks found by the
+	       detection workers were not counted.
+	- Tested: base_lastgas, built by gen_lastgas.py, is base_rec with COS
+	          missing in its last half-hour - the only fixture with a gas
+	          absent at the end. check_parallel.sh PAR_KIND=pr is
+	          byte-identical to -j 1 on it; with the previous build it was
+	          not.
 
 8.1.2 (2026-10-07)
 
