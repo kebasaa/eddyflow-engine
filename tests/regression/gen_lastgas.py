@@ -8,7 +8,8 @@ that from the parent's own last period instead, and a Yatir run split four ways
 left a gas out of its summary that the serial run listed. Every other fixture
 has every gas in every period, so nothing caught it. Here COS has no data in the
 last half-hour; check_parallel.sh PAR_KIND=pr on this fixture must still be
-byte-identical to -j 1.
+byte-identical to -j 1. The summary lists every gas the run had, so COS is in
+it all the same.
 
 What it builds, from CH-LAE 2025-06-01 00:00-03:00 (base_rec's range):
   * a copy of the raw files in data_lastgas/, with the COS_DRY column emptied

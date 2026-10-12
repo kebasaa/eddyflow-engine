@@ -423,7 +423,7 @@ class ThePwbCachePrepassIsSplitToo(unittest.TestCase):
         header. A dump left by an older build has a different layout and must
         be refused rather than read short."""
         #> 06: TimeLagOptType carries a humidity per slot.
-        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_06 '", PARALLEL)
+        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_07 '", PARALLEL)
 
 
 if __name__ == "__main__":

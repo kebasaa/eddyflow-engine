@@ -538,7 +538,8 @@ eddyflow-rp_main.o: \
 	production_parallel.o \
 	pwb_stream.o \
 	pwb_timelag_handle.o \
-	remote_source.o
+	remote_source.o \
+	run_columns.o
 edit_ini_file.o: \
 	edit_ini_file.f90 \
 	m_common_global_var.o
@@ -917,14 +918,16 @@ prepass_parallel.o: \
 	prepass_parallel.f90 \
 	batch_pool.o \
 	m_rp_global_var.o \
-	pwb_timelag_handle.o
+	pwb_timelag_handle.o \
+	run_columns.o
 production_parallel.o: \
 	production_parallel.f90 \
 	batch_pool.o \
 	m_rp_global_var.o \
 	pwb_stream.o \
 	pwb_timelag_handle.o \
-	remote_source.o
+	remote_source.o \
+	run_columns.o
 pwb_stream.o: \
 	pwb_stream.f90 \
 	m_rp_global_var.o \
@@ -1034,6 +1037,9 @@ rffti.o: \
 ridders_diff.o: \
 	ridders_diff.f90 \
 	m_common_global_var.o
+run_columns.o: \
+	run_columns.f90 \
+	m_rp_global_var.o
 sa_rates.o: \
 	sa_rates.f90 \
 	m_fx_global_var_mod.o

@@ -90,6 +90,7 @@ module m_production_parallel
         RemoveStaleWorkerRoots, WorkerRoot, RemoveWorkerRoots, NoSlashEnd, &
         AppendBytes, FileBytes
     use m_remote_source, only: RemoteSetWindow, RemotePositionOf
+    use m_run_columns, only: ResetRunColumns, WriteRunColumns, MergeRunColumns
     use m_pwb_timelag, only: InitPwbTimelagCache, AppendPwbCacheRows, &
         PwbOutsideWindowCounts, AddPwbOutsideWindow
     use m_pwb_stream, only: PwbEvidenceType, PwbVerdictType, PwbReplayEvidence, &
@@ -605,6 +606,7 @@ contains
         character(PathLen) :: nm
 
         nOk = 0
+        call ResetRunColumns()
         StorCacheN = 0
         if (allocated(StorCache)) deallocate(StorCache)
         !> Which gas lent each PWB lag, tallied per period for the aggregate
@@ -681,6 +683,7 @@ contains
         !> The variables as the piece's last period left them: the end of the
         !> run reads them from the run's last period, which is this piece's.
         write(ud) E2Col
+        call WriteRunColumns(ud)
         write(ud) DumpMagic
         close(ud)
     end subroutine FinishProdWorker
@@ -784,6 +787,7 @@ contains
             read(ud) wDonors
             PwbSummaryDonorCount = PwbSummaryDonorCount + wDonors
             read(ud) wE2Col
+            call MergeRunColumns(ud)
             read(ud, iostat = io_status) magic
             close(ud)
             if (io_status /= 0 .or. magic /= DumpMagic) &

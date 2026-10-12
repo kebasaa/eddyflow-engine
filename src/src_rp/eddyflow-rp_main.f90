@@ -44,6 +44,7 @@ program EddyFlowRP
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary, &
         SetPwbTimelagSummaryRH
     use m_ghg_prefetch, only: GhgPrefetchCleanup
+    use m_run_columns, only: ResetRunColumns, NoteRunColumns, UseRunColumns
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup, &
         RemoteClearWindow
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
@@ -745,6 +746,9 @@ program EddyFlowRP
                 pcount = toStartTimestampIndx - 1
             end if
 
+            !> Which gases the pre-pass had, over its whole range - see
+            !> m_run_columns. A worker notes only its own slice.
+            call ResetRunColumns()
             to_periods_loop: do
                 !> A worker whose parent has gone stops here, between
                 !> periods, rather than finishing a slice nobody will read.
@@ -1105,6 +1109,7 @@ program EddyFlowRP
                         error stop 'Time-lag optimization dataset is not allocated safely.'
                     call AddToTimelagOptDataset(TimelagOpt, TimelagOptSize, ton)
                 end if
+                call NoteRunColumns()
 
             end do to_periods_loop
             write(*, '(a)')
@@ -1147,6 +1152,10 @@ program EddyFlowRP
             !**** RAW DATA REDUCTION FINISHES HERE.    *************************
             !**** NOW STARTS TIME LAG OPT CALCULATIONS *************************
             !*******************************************************************
+
+            !> Every gas the pre-pass had, not only those its last period had,
+            !> is optimised and written to the summary.
+            call UseRunColumns()
 
             if (PwbCacheGenerate) then
                 !> Every period has been read, so the gap-filling can look
@@ -1975,6 +1984,9 @@ program EddyFlowRP
     call RemoteBeginMainPass()
 
     pwbRowWantsRH = .false.
+    !> Which gases the main pass had, over its whole range - see
+    !> m_run_columns. A production worker starts again at its piece.
+    call ResetRunColumns()
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
@@ -3145,6 +3157,7 @@ program EddyFlowRP
             call WriteOutMetadata(suffixOutString)
             if (EddyFlowProj%out_fluxnet) &
                 call WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
+        call NoteRunColumns()
 
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
             call hms_delta_print('  Flux averaging period processing time: ','')
@@ -3215,6 +3228,10 @@ program EddyFlowRP
             call MergeProdPieces(NumberOfOkPeriods, NoPwbRows, 1, PwbTimelagN)
         end if
     end if
+    !> Every gas the run had, not only those its last period had, is in what
+    !> the end of the run writes: the time-lag windows and summaries, the
+    !> donors, the storage cleaning.
+    call UseRunColumns()
     if (Test%stor_clean .and. StorCacheN > 0) call PostProcessStorClean()
     if (allocated(bf)) deallocate(bf)
     if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()
