@@ -176,6 +176,18 @@
 	          base_tlag_opt are byte-identical to the dynamically linked
 	          build, logs included, 232 files. pwb_table_check: 65 clean
 	          runs, 48 of them eight at a time.
+	- Fix: An engine started with -e "C:\dir\" - a path ending in a
+	       backslash inside quotes - created stray folders such as -j, 2
+	       and 3\tmp\tmp_<ts> in the directory it was started from. The
+	       backslash escapes the closing quote, every argument after it is
+	       folded into the home directory, and the mkdir for the temporary
+	       folder then names each word as a folder. A home directory or
+	       project path with a double quote in it now stops the run, before
+	       anything is created, with a message saying why. The interface
+	       passes its arguments quoted correctly and never hit this.
+	- Tested: -e with a trailing backslash exits with code 3 and creates
+	          nothing; without it the run proceeds. base_ghg_licor runs
+	          through run.sh as before.
 
 8.1.2 (2026-10-07)
 
