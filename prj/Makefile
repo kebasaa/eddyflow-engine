@@ -413,6 +413,9 @@ configure_for_fluxnet.o: \
 configure_for_md_retrieval.o: \
 	configure_for_md_retrieval.f90 \
 	m_rp_global_var.o
+configure_project_for_express.o: \
+	configure_project_for_express.f90 \
+	m_common_global_var.o
 copy_file.o: \
 	copy_file.f90 \
 	m_common_global_var.o

@@ -91,6 +91,22 @@
 	          absent at the end. check_parallel.sh PAR_KIND=pr is
 	          byte-identical to -j 1 on it; with the previous build it was
 	          not.
+	- Fix: FCC ignored express mode. RP applied the express settings - WPL
+	       on, Moncrieff et al. (1997) spectral corrections, the Mauder and
+	       Foken (2004) QC flags, the Kljun et al. (2004) footprint - and FCC,
+	       reading the same project file, took every one of them as written.
+	       An express project carrying wpl_meth=0 was converted to mixing
+	       ratios point by point by RP with WPL on, and its fluxes finished by
+	       FCC with WPL off: LE came out about 22 times EddyPro's, which
+	       ignores the 0 in express mode. The settings FCC reads are now
+	       applied where both programs read the project file. The interface
+	       never runs FCC in express mode, so this concerned command-line and
+	       scripted runs only.
+	- Tested: base_ep_licor (express) with wpl_meth=0 and wpl_meth=1 give
+	          byte-identical output; with the previous build LE was 3.588
+	          against 0.158 W m-2 in the first half-hour, co2_flux and
+	          ch4_flux off too. With wpl_meth=1 the output is byte-identical
+	          to the previous build's.
 
 8.1.2 (2026-10-07)
 

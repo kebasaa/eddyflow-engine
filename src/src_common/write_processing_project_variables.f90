@@ -561,6 +561,13 @@ subroutine WriteProcessingProjectVariables()
     call AdjFilePath(AuxFile%metadata, slash)
     call AdjFilePath(AuxFile%biomet, slash)
     call AdjDir(Dir%biomet, slash)
+
+    !> Express fixes what the final fluxes are, and FCC computes those as
+    !> much as RP does. Applied here, the one reader both programs share,
+    !> so neither can take a value Express overrides from the file - FCC
+    !> used to, and finished an express project with WPL off when it said
+    !> wpl_meth=0 while RP had run with it on.
+    if (EddyFlowProj%run_mode == 'express') call ConfigureProjectForExpress()
 contains
 
 !***************************************************************************

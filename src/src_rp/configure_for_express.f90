@@ -44,18 +44,16 @@ subroutine ConfigureForExpress
     include '../src_common/interfaces.inc'
 
 
+    !> The settings FCC reads too - WPL, spectral corrections, QC and
+    !> footprint methods, output files. Already applied when the project
+    !> file was read; repeated here so nothing RP derived in between can
+    !> stand against them.
+    call ConfigureProjectForExpress()
+
     !> raw data processing methods
     Meth%tlag = 'maxcov&default'
     Meth%det = 'ba'
     Meth%rot = 'double_rotation'
-    Meth%qcflag = 'mauder_foken_04'
-    Meth%foot = 'kljun_04'
-    EddyFlowProj%hf_meth = 'moncrieff_97'
-    !> Express is a fixed configuration, so it states the cospectral
-    !> shape rather than inheriting whatever the project asked for.
-    EddyFlowProj%cosp_model = 'moncrieff_97'
-    EddyFlowProj%wpl  = .true.
-    RUsetup%meth = 'none'
     RPsetup%bu_corr = 'none'
     RPsetup%bu_multi = .false.
     RPsetup%filter_sr = .true.
@@ -153,7 +151,7 @@ subroutine ConfigureForExpress
 
     !> Output files and other settings
     ! EddyFlowProj%out_fluxnet  = .false.
-    EddyFlowProj%out_full     = .true.
+    !> Not in ConfigureProjectForExpress: see its note.
     EddyFlowProj%out_md       = .true.
     RPsetup%out_st        = .true.
     RPsetup%out_qc_details = .false.
@@ -162,10 +160,7 @@ subroutine ConfigureForExpress
     RPsetup%out_bin_og     = .false.
     RPsetup%out_full_sp    = .false.
     RPsetup%out_full_cosp  = .false.
-    EddyFlowProj%out_avrg_cosp = .false.
-    EddyFlowProj%out_avrg_spec = .false.
     EddyFlowProj%fcc_follows  = .false.
-    EddyFlowProj%make_dataset = .true.
 
     if (EddyFlowProj%biomet_data /= 'none') then
         EddyFlowProj%out_biomet = .true.
