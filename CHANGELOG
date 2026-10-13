@@ -107,6 +107,25 @@
 	          against 0.158 W m-2 in the first half-hour, co2_flux and
 	          ch4_flux off too. With wpl_meth=1 the output is byte-identical
 	          to the previous build's.
+	- Fix: The metadata file came out in two layouts, depending only on
+	       whether FCC follows RP (an in-situ spectral correction or ensemble
+	       spectra). RP's had a DOY column after time and FCC's did not, so
+	       every column after time sat under the wrong name in one of them;
+	       RP wrote lengths in cm, tube diameter in mm and flow rate in
+	       l min-1, as the .metadata file states them, and FCC the SI values
+	       it had read back: 0.25 where RP wrote 25. FCC now writes RP's
+	       header, DOY and units. EddyPro 7 has the same split.
+	- Fix: RP's metadata file scaled the error code with the value it
+	       stands for: a missing tube length came out as -999900, a missing
+	       tube diameter as -9999000 and a missing flow rate as -599940000.
+	       They are now -9999.
+	- Known: Latitude, longitude and a few lengths in FCC's metadata file
+	         still agree with RP's only to about 1e-6: FCC reads them back
+	         from the essentials file, which carries six significant digits.
+	- Tested: base_ep_native, where both programs write the file: same
+	          header and 63 columns, every value equal to 1e-6 relative.
+	          base_ghg_licor, base_ep_native, base_n_gas and base_5gas pass
+	          check_columns.py.
 
 8.1.2 (2026-10-07)
 

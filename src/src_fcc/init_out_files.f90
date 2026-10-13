@@ -439,7 +439,9 @@ subroutine InitOutFiles(lEx)
         Metadata_Path = Test_Path(1:dot) // CsvTmpExt
         open(umd, file = Metadata_Path, iostat = open_status, encoding = 'utf-8')
         call Clearstr(header1)
-        call AddDatum(header1,'filename,date,time,latitude,longitude,altitude,canopy_height,displacement_height,&
+        !> The same header as RP's metadata file, DOY included: which of the
+        !> two programs writes this file depends only on whether FCC follows.
+        call AddDatum(header1,'filename,date,time,DOY,latitude,longitude,altitude,canopy_height,displacement_height,&
             &roughness_length,file_length,acquisition_frequency,&
             &master_sonic_manufacturer,master_sonic_model,master_sonic_height,&
             &master_sonic_wformat,master_sonic_wref,master_sonic_north_offset,&

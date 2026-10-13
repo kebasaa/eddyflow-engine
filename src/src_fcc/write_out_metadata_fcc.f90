@@ -52,6 +52,13 @@ subroutine WriteOutMetadataFcc(lEx)
     call AddDatum(csv_row, field_val, separator)
     write(field_val, *) lEx%end_time(1:5)
     call AddDatum(csv_row, field_val, separator)
+    !> DOY as RP writes it in its own metadata file: four decimals, cut
+    !> rather than rounded. The two files are one file - which program
+    !> writes it depends only on whether FCC follows - so they share a
+    !> layout; without this every column after time was off by one.
+    write(field_val, *) float_doy
+    call ShrinkString(field_val)
+    call AddDatum(csv_row, field_val(1:index(field_val, '.') + 4), separator)
 
     !> Site location and characteristics
     write(field_val, *) lEx%lat
@@ -85,9 +92,13 @@ subroutine WriteOutMetadataFcc(lEx)
     call AddDatum(csv_row, field_val, separator)
     write(field_val, *) lEx%instr(sonic)%north_offset
     call AddDatum(csv_row, field_val, separator)
-    write(field_val, *) lEx%instr(sonic)%hpath_length
+    !> Lengths in the units RP writes and the .metadata file states: the
+    !> ex reader converted them to SI, so they go back here. They used to
+    !> be written as read, so the same project's metadata said 0.25 when
+    !> FCC wrote it and 25.0 when RP did.
+    write(field_val, *) OutUnits(lEx%instr(sonic)%hpath_length, 1d2)
     call AddDatum(csv_row, field_val, separator)
-    write(field_val, *) lEx%instr(sonic)%vpath_length
+    write(field_val, *) OutUnits(lEx%instr(sonic)%vpath_length, 1d2)
     call AddDatum(csv_row, field_val, separator)
     write(field_val, *) lEx%instr(sonic)%tau
     call AddDatum(csv_row, field_val, separator)
@@ -108,29 +119,42 @@ subroutine WriteOutMetadataFcc(lEx)
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) lEx%measure_type(gas)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%nsep
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%nsep, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%esep
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%esep, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%vsep
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%vsep, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%tube_l
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%tube_l, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%tube_d
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%tube_d, 1d3)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%tube_f
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%tube_f, 6d4)
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) lEx%gas_instr(gas)%kw
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) lEx%gas_instr(gas)%ko
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%hpath_length
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%hpath_length, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) lEx%gas_instr(gas)%vpath_length
+            write(field_val, *) OutUnits(lEx%gas_instr(gas)%vpath_length, 1d2)
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) lEx%gas_instr(gas)%tau
             call AddDatum(csv_row, field_val, separator)
         end if
     end do
-    write(umd,*) csv_row(1:len_trim(csv_row) - 1)
+    !> '(a)', as RP writes it: list-directed output is free to lead with a
+    !> blank, which then becomes part of the filename field.
+    write(umd, '(a)') csv_row(1:len_trim(csv_row) - 1)
+
+contains
+
+    !> SI to the file's units, the error code passing through unscaled.
+    !> The same function as WriteOutMetadata's; the two move together.
+    real(kind = dbl) function OutUnits(si, gain)
+        real(kind = dbl), intent(in) :: si
+        real(kind = dbl), intent(in) :: gain
+
+        OutUnits = merge(si * gain, si, si /= error)
+    end function OutUnits
 end subroutine WriteOutMetadataFcc
