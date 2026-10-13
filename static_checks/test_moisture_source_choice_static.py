@@ -145,8 +145,11 @@ class EveryConsumerDecidesDeliberately(unittest.TestCase):
                          "the referenced slot directly")
 
     def test_the_li7700_multipliers_use_them(self):
+        """Through RHO%w, the site density MoistTerms also uses, which is the
+        biomet's whenever the biomet has an RH - see
+        test_li7700_biomet_water_static for why not chi_biomet itself."""
         body = code(RP_MAIN)
-        self.assertIn("chi_moist = Ambient%chi_biomet", body)
+        self.assertIn("chi_moist = RHO%w * Ambient%Va / MW_H2O * 1d3", body)
         self.assertNotIn("Multipliers7700(Stats%Pr, Ambient%Ta, &\n"
                          "                    Stats%chi(msl), &", body)
 

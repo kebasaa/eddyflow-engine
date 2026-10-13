@@ -2952,9 +2952,21 @@ program EddyFlowRP
                 !> measurement of the air the analyser is sampling from,
                 !> which another instrument's cell is not - and it is what
                 !> the user asked for by naming it.
+                !>
+                !> For the biomet, the site's water density RHO%w - what
+                !> MoistTerms hands the same gas's WPL - not
+                !> Ambient%chi_biomet. With a usable biomet RH the two are
+                !> the same number by the same arithmetic (FluxParams forms
+                !> chi_biomet from RHO%w and Ambient%Va). Without one - a gap
+                !> in the biomet, an RH out of range, or biom_rh naming a
+                !> column that is not an RH - chi_biomet is error while
+                !> RHO%w has fallen back to the hygrometer, so the WPL went
+                !> ahead and the multipliers did not, and Level2GasFlux then
+                !> dropped the methane flux for want of them.
                 msl = E2Col(j)%moist_ref
                 if (msl == biometMoistRef) then
-                    chi_moist = Ambient%chi_biomet
+                    if (RHO%w == error .or. Ambient%Va == error) cycle
+                    chi_moist = RHO%w * Ambient%Va / MW_H2O * 1d3
                 elseif (msl >= firstGas .and. msl <= lastGas) then
                     chi_moist = Stats%chi(msl)
                 else
