@@ -768,7 +768,9 @@ module m_typedef
         character(32) :: instr      !< canonical instrument id, or 'other'/'none'
         integer :: col              !< 1-based raw-file column; <=0 when unset
         integer :: moist            !< index into the gas records supplying H2O;
-                                    !< 0 = auto (same instrument, else the first)
+                                    !< 0 = auto (same instrument, else the
+                                    !< biomet RH, else the designated
+                                    !< hygrometer); -1 = the biomet RH
         integer :: cell             !< index into the cell records; 0 = auto
         real(kind = dbl) :: mw      !< molecular weight override; error = default
         real(kind = dbl) :: diff    !< diffusivity override; error = default
@@ -2095,6 +2097,11 @@ module m_typedef
         !> the header.
         integer :: n_gas_moist
         integer :: gas_moist_slot(GHGNumVar)
+        !> Which H2O each gas's terms above belong to, as RP resolved it:
+        !> E2Col(gas)%moist_ref, so a slot, biometMoistRef, or 0 for none. FCC
+        !> has no E2Col, and needs it to take a gas's WPL water flux from the
+        !> hygrometer the gas names rather than always the designated one.
+        integer :: moist_ref_at(GHGNumVar)
         !> Which rule supplied each gas's PWB timelag. Read rather than
         !> discarded so FCC can echo it: FCC rewrites every row, and dropping
         !> these four columns shifted everything after them out of step with

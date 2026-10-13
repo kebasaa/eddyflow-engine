@@ -1003,6 +1003,12 @@ subroutine JudgeExHeader(header)
     !> parse one field short per target from there to the end of the row.
     if (index(header, 'CEC_METH') > 0 .and. index(header, 'CEC_NS_') <= 0) &
         call ExceptionHandler(107)
+
+    !> The fourth, conditional for the same reason: a project with no gas has
+    !> no moisture records. One that has them without _MOIST_REF was written
+    !> before each record named its H2O, and reads one field short per gas.
+    if (index(header, '_MOIST_SLOT') > 0 .and. index(header, '_MOIST_REF') <= 0) &
+        call ExceptionHandler(107)
 end subroutine JudgeExHeader
 
 end program EddyFlowFCC

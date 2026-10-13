@@ -216,12 +216,14 @@ class TheMoistureBlockCarriesTheWholeRegime(unittest.TestCase):
     heat needs the air that hygrometer implies, and the spectral corrections
     need its humidity."""
 
-    def test_the_ex_record_carries_seven_fields_per_gas(self):
-        self.assertIn("nGasMoistFields = 7", code(READER))
+    def test_the_ex_record_carries_eight_fields_per_gas(self):
+        """Seven, and then which H2O they belong to, so that FCC can take a
+        gas's WPL water flux from the hygrometer the gas names."""
+        self.assertIn("nGasMoistFields = 8", code(READER))
 
-    def test_writer_and_header_carry_the_same_seven(self):
+    def test_writer_and_header_carry_the_same_eight(self):
         hdr = code(FLX_HDR)
-        for term in ("_MOIST_SLOT", "_MOIST_RHOW", "_MOIST_SIGMA",
+        for term in ("_MOIST_SLOT", "_MOIST_REF", "_MOIST_RHOW", "_MOIST_SIGMA",
                      "_MOIST_Q", "_MOIST_RHOA", "_MOIST_RHOCP", "_MOIST_RH"):
             self.assertIn(term, hdr)
 

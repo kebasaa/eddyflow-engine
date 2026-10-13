@@ -636,6 +636,7 @@ subroutine WriteOutFluxnetFcc(lEx)
     do i = 1, lEx%n_gas_moist
         gas = lEx%gas_moist_slot(i)
         call AddIntDatumToDataline(gas, csv_row, EddyFlowProj%err_label)
+        call AddIntDatumToDataline(lEx%moist_ref_at(gas), csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%rhow_at(gas), csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%sigma_at(gas), csv_row, EddyFlowProj%err_label)
         call AddFloatDatumToDataline(lEx%q_at(gas), csv_row, EddyFlowProj%err_label)

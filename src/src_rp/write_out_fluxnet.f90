@@ -1041,6 +1041,11 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         !> RHO%w_at is only populated for H2O slots, so writing it directly
         !> would send nothing but error for every non-H2O gas.
         indx = E2Col(var)%moist_ref
+        !> And which H2O that is: the slot, biometMoistRef for the biomet, 0
+        !> for none. The terms alone do not say, and FCC needs to know whose
+        !> evapotranspiration the gas's WPL takes - its own record's
+        !> hygrometer, not always the designated one.
+        call AddIntDatumToDataline(indx, csv_row, EddyFlowProj%err_label)
         if (indx == biometMoistRef) then
             !> The gas names the biomet. Its terms are the site's, and they
             !> are written out here rather than left as error.

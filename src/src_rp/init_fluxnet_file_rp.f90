@@ -469,6 +469,8 @@ subroutine InitFluxnetFile_rp()
     do j = 1, nFluxnetGasSlots
         i = FluxnetGasSlots(j)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SLOT', separator)
+        !> Which H2O corrects this gas - see WriteOutFluxnet.
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_REF', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RHOW', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SIGMA', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_Q', separator)

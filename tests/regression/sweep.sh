@@ -241,6 +241,7 @@ base_pwb_prefilt
 base_pwb_par
 base_ghg
 base_ghg_licor
+base_ghg_licor_nowpl
 base_ghg_ext
 base_ghg_campbell
 base_ghg_burba
@@ -317,7 +318,7 @@ for f in $FIXTURES; do
     #> produces nothing, which would read as a code failure - so they are
     #> skipped rather than failed, and said out loud.
     case "$f" in
-        base_ghg|base_ghg_licor|base_ghg_ext|base_ghg_campbell|base_ghg_burba|base_ep_licor|base_ghg_mixed*)
+        base_ghg|base_ghg_licor|base_ghg_licor_nowpl|base_ghg_ext|base_ghg_campbell|base_ghg_burba|base_ep_licor|base_ghg_mixed*)
             if ! command -v 7z >/dev/null 2>&1 \
                     && ! command -v 7za >/dev/null 2>&1; then
                 printf '%-22s SKIP  (7-Zip not on PATH)\n' "$f"; continue

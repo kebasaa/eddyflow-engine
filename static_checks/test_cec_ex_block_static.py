@@ -182,9 +182,12 @@ class TheSkippedPeriodRowIsTheSameWidth(unittest.TestCase):
 
     def test_the_per_gas_moisture_block_is_full_width(self):
         want = param(self.reader, "nGasMoistFields")
-        self.assertEqual(want, 7)
-        #> The slot is real so the row stays parseable; the rest are error.
-        self.assertIn("do indx = 1, %d" % (want - 1), self.skipped)
+        self.assertEqual(want, 8)
+        #> The slot is real so the row stays parseable, and the moisture
+        #> reference is a literal 0 because it is read as an integer and the
+        #> error label need not be one; the rest are error.
+        self.assertIn("AddIntDatumToDataline(0, csv_row", self.skipped)
+        self.assertIn("do indx = 1, %d" % (want - 2), self.skipped)
 
     def test_the_per_analyser_block_is_full_width(self):
         want = param(self.reader, "nGasInstrFields")
