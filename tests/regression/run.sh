@@ -114,6 +114,14 @@ EXFILE="$(find "$OUT" -name "*fluxnet*.csv" | head -1)"
 # comparison at all, and RP periods FCC does not carry over, such as skipped
 # ones ahead of the first raw file, were visible to nothing.
 cp "$EXFILE" "${EXFILE%.csv}_rp.csv"
+# And RP's metadata file, when it wrote one, for the same reason: FCC writes
+# its own whenever the project asks for metadata, under the same normalised
+# name. The two are meant to be one file in one layout, and with only FCC's
+# kept nothing could show they were not.
+for rpmd in "$OUT"/*_metadata_*.csv; do
+    [ -e "$rpmd" ] || continue
+    mv "$rpmd" "${rpmd%.csv}_rp.csv"
+done
 sed -i "s|^ex_file=.*|ex_file=$(cygpath -w "$EXFILE" | sed 's|\\|/|g')|" "$PRJ"
 
 # SELF means "the (co)spectra this run just wrote", which is the only way to
