@@ -43,7 +43,11 @@ ifeq ($(OS), Windows_NT)
 	FC = gfortran.exe
 	MAKE_DIR = if not exist DIR mkdir DIR
 	PATHSEP2 = \\
-	LDFLAGS = -shared-libgcc
+	#> libgfortran linked in, not loaded as libgfortran-5.dll: only then does
+	#> src_os/win/setlocale_override.f90 replace the setlocale it calls around
+	#> every formatted READ and WRITE, whose saved locale string the UCRT has
+	#> freed by the time it is restored. See that file.
+	LDFLAGS = -shared-libgcc -static-libgfortran -static-libquadmath
 else
 	#Unix
 	RM = rm -f FILE
@@ -1056,6 +1060,8 @@ set_timelags.o: \
 	set_timelags.f90 \
 	interfaces_1.inc \
 	m_rp_global_var.o
+setlocale_override.o: \
+	setlocale_override.f90
 show_daily_advancement.o: \
 	show_daily_advancement.f90 \
 	m_common_global_var.o \

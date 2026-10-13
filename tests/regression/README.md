@@ -389,8 +389,9 @@ formula, untested for want of a dataset.
 - **"Nothing moved" is not a pass.** Perturbing `gas_N_mw` moves nothing
   for a gas reported as a ppb mole fraction - the molecular weight is only
   consulted for the `g_m3`/`mg_m3`/`ug_m3` arms. Use `ug_m3` to exercise it.
-- The engine links `libgfortran-5.dll` dynamically; `PATH` needs the MinGW
-  bin directory.
+- The engine links libgfortran statically (see
+  `src/src_os/win/setlocale_override.f90` for why) but `libgcc_s_seh-1.dll`
+  dynamically; `PATH` needs the MinGW bin directory.
 
 ## Per-instrument cell T/P: found, fixed, and what it exposed
 
