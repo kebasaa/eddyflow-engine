@@ -80,6 +80,7 @@ module m_prepass_parallel
     !> program's calls did not have to change.
     public :: PlanPrepassBatches, PrepassChunk, PrepassChunkCount
     public :: StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches
+    public :: ProgressBegin, ProgressEnd
     public :: BatchDumpPath
     public :: FinishBatchWorker, StopIfParentGone
     public :: WriteTlagBatchDump, MergeTlagBatchDumps

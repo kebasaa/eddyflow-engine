@@ -80,7 +80,7 @@ class ThePiecesAreCutAfterTheHead(unittest.TestCase):
         i = MAIN.index("ex_loop: do i = 1, NumExRecords")
         loop = MAIN[i:MAIN.index("call ReadExRecord('', uex, -1,", i)]
         self.assertIn("if (i >= FccParentEnd) exit ex_loop", loop)
-        self.assertIn("call TopUpPrepassBatches()", loop)
+        self.assertIn("call TopUpPrepassBatches(i)", loop)
 
 
 class TheRowsAreAppendedInOrder(unittest.TestCase):

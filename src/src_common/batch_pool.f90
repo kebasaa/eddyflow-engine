@@ -55,6 +55,7 @@ module m_batch_pool
     public :: ForcedPieceLength, RemoveStaleWorkerRoots, WorkerRoot
     public :: RemoveWorkerRoots, NoSlashEnd, AppendBytes, FileBytes
     public :: MaxChunks
+    public :: ProgressBegin, ProgressAt, ProgressEnd
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
@@ -103,6 +104,24 @@ module m_batch_pool
     integer(8), allocatable :: LaunchedAt(:)
     integer(8), allocatable :: SuspectAt(:)
     integer(8) :: LastLivenessCheck = 0
+
+    !> How far each running piece's worker has got, as it last said; never
+    !> less than before, so a file caught mid-write costs nothing.
+    integer, allocatable :: PieceProg(:)
+
+    !> The pass whose progress the interface is shown - see ProgressBegin -
+    !> over [ProgFirst, ProgEnd), with this process at ProgOwnNext.
+    logical :: ProgOn = .false.
+    character(2) :: ProgStage = ''
+    character(8) :: ProgUnit = ''
+    integer :: ProgFirst = 0
+    integer :: ProgEnd = 0
+    integer :: ProgOwnNext = 0
+    integer :: ProgLastDone = -1
+    integer(8) :: ProgLastSay = 0
+
+    !> A worker's own, for its piece's progress file.
+    integer(8) :: PieceLastNote = 0
 
 contains
 
@@ -426,6 +445,10 @@ contains
             inquire(file = trim(rcPath), exist = ex)
             if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
                 // comm_err_redirect)
+            rcPath = ProgPath(kind, k)
+            inquire(file = trim(rcPath), exist = ex)
+            if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
+                // comm_err_redirect)
         end do
 
         !> One script per piece, written now, started when its turn comes. The
@@ -447,6 +470,9 @@ contains
         allocate(LaunchedAt(NumChunks), SuspectAt(NumChunks))
         LaunchedAt = 0
         SuspectAt = 0
+        if (allocated(PieceProg)) deallocate(PieceProg)
+        allocate(PieceProg(NumChunks))
+        PieceProg = 0
         LastLivenessCheck = 0
         NextChunk = 2
         call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))
@@ -550,13 +576,183 @@ contains
     !> for return-code files, so it costs nothing a period would notice. Quiet:
     !> the period loop may have a progress line open, and the pieces finished
     !> are counted when the parent starts waiting.
+    !>
+    !> `next` is the period (or record) about to be dealt with. Every process
+    !> walking a pass calls this at the top of its loop, split or not: a
+    !> worker notes how far it has got, and the parent tells the interface
+    !> how far the whole pass has - see ProgressBegin.
     !***************************************************************************
-    subroutine TopUpPrepassBatches()
+    subroutine TopUpPrepassBatches(next)
+        integer, intent(in) :: next
         logical :: progressed
 
-        if (.not. PoolActive) return
-        call PollPrepassPool(PoolEff - 1, .true., progressed)
+        if (BatchIndex > 0) then
+            call NotePieceProgress(next)
+            return
+        end if
+        if (PoolActive) call PollPrepassPool(PoolEff - 1, .true., progressed)
+        call ProgressAt(next)
     end subroutine TopUpPrepassBatches
+
+    !***************************************************************************
+    !> \brief Parent: start telling the interface how far pass `stage` has
+    !>        got, over the periods (or records, or files) [iFirst, iEnd).
+    !>
+    !> The interface estimates the time left from it. It could not from what
+    !> the run printed before: a split pass prints the periods of its own
+    !> first piece only, then waits, saying no more than how many pieces are
+    !> done - so the estimate was the serial time while the parent was on its
+    !> piece, and then stood still. This counts every process's periods:
+    !> pieces whose worker has returned in full, running ones as far as their
+    !> worker last noted (NotePieceProgress), and the parent's own.
+    !>
+    !> Only for the interface (-c gui), only in the parent, at most every five
+    !> seconds, and never in the run log:
+    !>   "  Progress [rp]: 1234 of 17520 periods done."
+    !> The tag says which pass: to, pf, rp, sa or fx - and pd while a split
+    !> production pass with PWB time lags is reading its pieces for evidence,
+    !> before it computes their fluxes.
+    !***************************************************************************
+    subroutine ProgressBegin(stage, iFirst, iEnd, unit)
+        character(*), intent(in) :: stage
+        integer, intent(in) :: iFirst
+        integer, intent(in) :: iEnd
+        character(*), intent(in) :: unit
+
+        ProgOn = BatchIndex == 0 .and. EddyFlowProj%caller == 'gui' &
+            .and. iEnd > iFirst
+        if (.not. ProgOn) return
+        ProgStage = stage
+        ProgUnit = unit
+        ProgFirst = iFirst
+        ProgEnd = iEnd
+        ProgOwnNext = iFirst
+        ProgLastDone = -1
+        ProgLastSay = 0
+        call ProgressSay(.true.)
+    end subroutine ProgressBegin
+
+    !> Parent: it is about to deal with period `next` of the pass under way.
+    subroutine ProgressAt(next)
+        integer, intent(in) :: next
+
+        if (.not. ProgOn) return
+        ProgOwnNext = max(ProgOwnNext, min(next, ProgEnd))
+        call ProgressSay(.false.)
+    end subroutine ProgressAt
+
+    !> Parent: the pass is done, all of it - said unless it already was.
+    subroutine ProgressEnd()
+        if (.not. ProgOn) return
+        ProgOwnNext = ProgEnd
+        if (ProgLastDone /= ProgEnd - ProgFirst) call ProgressSay(.true.)
+        ProgOn = .false.
+    end subroutine ProgressEnd
+
+    !> Whether the pool under way is working on the pass being reported.
+    logical function ProgressUsesPool()
+        ProgressUsesPool = .false.
+        if (.not. PoolActive) return
+        select case (ProgStage)
+            case ('rp')
+                ProgressUsesPool = PoolKind == 'pd' .or. PoolKind == 'pr'
+            case ('to', 'pf', 'fx')
+                ProgressUsesPool = PoolKind == ProgStage
+        end select
+    end function ProgressUsesPool
+
+    !> How many of the pass's periods are done, across every process.
+    integer function ProgressDone()
+        integer :: k
+
+        if (.not. ProgressUsesPool()) then
+            ProgressDone = ProgOwnNext - ProgFirst
+            return
+        end if
+        !> The parent's share is everything before the first worker's piece:
+        !> its own piece, and in a production pass the head before it.
+        ProgressDone = min(ProgOwnNext, ChunkEnd(1)) - ProgFirst
+        do k = 2, min(NextChunk - 1, NumChunks)
+            if (.not. Running(k)) then
+                ProgressDone = ProgressDone + (ChunkEnd(k) - ChunkStart(k))
+            else
+                call ReadPieceProgress(k)
+                ProgressDone = ProgressDone + PieceProg(k)
+            end if
+        end do
+        ProgressDone = max(0, min(ProgressDone, ProgEnd - ProgFirst))
+    end function ProgressDone
+
+    !> The progress line, if five seconds have passed since the last - or at
+    !> once, when `force`.
+    subroutine ProgressSay(force)
+        logical, intent(in) :: force
+        integer :: done
+        integer(8) :: now
+        integer(8) :: rate
+        character(16) :: tag
+        character(16) :: DoneString
+        character(16) :: TotalString
+
+        if (.not. ProgOn) return
+        call system_clock(now, rate)
+        if (.not. force .and. ProgLastSay > 0 .and. now - ProgLastSay < 5 * rate) return
+        done = ProgressDone()
+        if (.not. force .and. done == ProgLastDone) return
+        ProgLastSay = now
+        ProgLastDone = done
+
+        tag = ProgStage
+        if (ProgStage == 'rp' .and. ProgressUsesPool()) then
+            if (PoolKind == 'pd') tag = 'pd'
+        end if
+        write(DoneString, '(i0)') done
+        write(TotalString, '(i0)') ProgEnd - ProgFirst
+        call ConsoleSay('  Progress [' // trim(tag) // ']: ' // trim(DoneString) &
+            // ' of ' // trim(TotalString) // ' ' // trim(ProgUnit) // ' done.')
+    end subroutine ProgressSay
+
+    !> Parent: what piece k's worker last noted, if it can be read now.
+    subroutine ReadPieceProgress(k)
+        integer, intent(in) :: k
+        integer :: u
+        integer :: n
+        integer :: io_status
+
+        open(newunit = u, file = trim(ProgPath(PoolKind, k)), status = 'old', &
+            action = 'read', iostat = io_status)
+        if (io_status /= 0) return
+        read(u, *, iostat = io_status) n
+        close(u)
+        if (io_status /= 0) return
+        PieceProg(k) = max(PieceProg(k), min(n, ChunkEnd(k) - ChunkStart(k)))
+    end subroutine ReadPieceProgress
+
+    !> Worker: how far into its piece it has got, for its parent to add up,
+    !> beside its return code - at most every two seconds, so that a stretch
+    !> of periods without data, which go by many a second, costs nothing.
+    subroutine NotePieceProgress(next)
+        integer, intent(in) :: next
+        integer :: u
+        integer :: io_status
+        integer(8) :: now
+        integer(8) :: rate
+        character(16) :: tag
+
+        if (len_trim(BatchTmpDir) == 0 .or. BatchSliceEnd <= BatchSliceStart) return
+        if (next <= BatchSliceStart) return
+        call system_clock(now, rate)
+        if (PieceLastNote > 0 .and. now - PieceLastNote < 2 * rate) return
+        PieceLastNote = now
+
+        write(tag, '(a,a,i2.2)') trim(BatchKind), '_b', BatchIndex
+        open(newunit = u, file = trim(BatchTmpDir) // slash // 'batch_' &
+            // trim(tag) // '.prog', status = 'replace', action = 'write', &
+            iostat = io_status)
+        if (io_status /= 0) return
+        write(u, '(i0)', iostat = io_status) min(next, BatchSliceEnd) - BatchSliceStart
+        close(u)
+    end subroutine NotePieceProgress
 
     !***************************************************************************
     !> \brief Hand out the remaining pieces as workers come free, and fail
@@ -591,12 +787,14 @@ contains
         !> the parent was on it.
         PoolDone = PoolDone + 1
         if (PoolDone > 1) call SayPiecesDone()
+        if (ProgressUsesPool()) ProgOwnNext = max(ProgOwnNext, ChunkEnd(1))
         ticks = 0
         do
             if (PoolDone >= NumChunks) exit
             call PollPrepassPool(nEff, .false., progressed)
             if (progressed) ticks = 0
             if (PoolDone >= NumChunks) exit
+            call ProgressSay(.false.)
 
             call system(comm_sleep)
             ticks = ticks + 1
@@ -606,6 +804,12 @@ contains
                 error stop 'Parallel pre-pass timed out.'
             end if
         end do
+        !> Every piece is in, so is the pass's every period - except that the
+        !> detection round of a production pass is followed by its fluxes.
+        if (ProgressUsesPool() .and. kind /= 'pd') then
+            ProgOwnNext = ProgEnd
+            call ProgressSay(.true.)
+        end if
         deallocate(Running, LaunchedAt, SuspectAt)
         PoolActive = .false.
 
@@ -773,6 +977,16 @@ contains
         write(tag, '(a,a,i2.2)') trim(kind), '_b', k
         PidPath = trim(TmpDir) // 'batch_' // trim(tag) // '.pid'
     end function PidPath
+
+    !> Where piece k's worker notes how far it has got: beside its process id.
+    character(PathLen) function ProgPath(kind, k)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        character(16) :: tag
+
+        write(tag, '(a,a,i2.2)') trim(kind), '_b', k
+        ProgPath = trim(TmpDir) // 'batch_' // trim(tag) // '.prog'
+    end function ProgPath
 
     subroutine SayPiecesDone()
         character(64) :: LogString

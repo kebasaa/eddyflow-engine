@@ -56,7 +56,7 @@ module m_log
     private
 
     public :: LogStart, LogInit, LogSay, LogSayList, LogSayNoAdv, LogClose, &
-              LogIsOpen, LogFlush, LogOpenLine, LogEndLine
+              LogIsOpen, LogFlush, LogOpenLine, LogEndLine, ConsoleSay
 
     !> Long enough for the widest message the engine emits.
     integer, parameter :: LogLineLen = 2048
@@ -230,6 +230,17 @@ contains
         LineOpen = .false.
         call LogFlush()
     end subroutine LogEndLine
+
+    !> A line for the interface only - the progress it reads its estimate of
+    !> the time left from, every few seconds of a run. On the console, not in
+    !> the run log: a day's run would gain thousands of lines nobody reads.
+    subroutine ConsoleSay(text)
+        character(*), intent(in) :: text
+
+        call EndOpenLine()
+        write(*, '(a)') text
+        call LogFlush()
+    end subroutine ConsoleSay
 
     subroutine EndOpenLine()
         if (.not. LineOpen) return

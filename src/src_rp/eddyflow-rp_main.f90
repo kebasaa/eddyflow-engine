@@ -51,6 +51,7 @@ program EddyFlowRP
         FinishBatchWorker, &
         StopIfParentGone, &
         StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches, &
+        ProgressBegin, ProgressEnd, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
         WritePfBatchDump, MergePfBatchDumps
@@ -155,6 +156,9 @@ program EddyFlowRP
     integer :: toEndTimestampIndx
     integer :: rpStartTimestampIndx
     integer :: rpEndTimestampIndx
+    integer :: planFirst
+    integer :: planLast
+    character(32) :: RunPlan
     integer :: tlagn(E2NumVar)
     integer :: MaxNumFileRecords
     integer :: NextRawFileIndx
@@ -624,6 +628,40 @@ program EddyFlowRP
         call InitPwbTimelagCache()
         call LogSay(' PWB mode: live detection during production processing.')
     end if
+
+    !> The passes ahead and roughly how many periods each walks, for the
+    !> interface's estimate of the time left: it cannot tell from the project
+    !> alone whether a time-lag or planar-fit file will be made or read. Each
+    !> pass says its own exact count when it starts - see ProgressBegin.
+    if (BatchIndex == 0 .and. EddyFlowProj%caller == 'gui') then
+        RunPlan = ''
+        if (RPsetup%to_onthefly .and. &
+            (trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
+            (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only)) &
+            RunPlan = trim(RunPlan) // ' to'
+        if (RPsetup%pf_onthefly .and. &
+            index(Meth%rot(1:len_trim(Meth%rot)), 'planar_fit') /= 0 .and. &
+            (.not. AssessmentOnly .or. RPsetup%pf_assessment_only)) &
+            RunPlan = trim(RunPlan) // ' pf'
+        if (.not. AssessmentOnly) RunPlan = trim(RunPlan) // ' rp'
+        planFirst = 1
+        planLast = size(RawTimeSeries)
+        if (EddyFlowProj%subperiod) then
+            call DateTimeToDateType(EddyFlowProj%start_date, EddyFlowProj%start_time, auxStartTimestamp)
+            call DateTimeToDateType(EddyFlowProj%end_date, EddyFlowProj%end_time, auxEndTimestamp)
+            call tsExtractSubperiodIndexes(RawTimeSeries, size(RawTimeSeries), auxStartTimestamp, &
+                auxEndTimestamp, planFirst, planLast)
+            if (planFirst == nint(error) .or. planLast == nint(error)) then
+                planFirst = 1
+                planLast = size(RawTimeSeries)
+            else
+                planLast = planLast + 1
+            end if
+        end if
+        write(TmpString1, '(i0)') max(0, planLast - planFirst)
+        call ConsoleSay('  Run plan:' // trim(RunPlan) // ' (' // trim(TmpString1) // ' periods)')
+    end if
+
     if (Meth%tlag == 'pwb') then
         PwbTimelagOptSize = size(RawTimeSeries) - 1
         allocate(PwbTimelagOpt(PwbTimelagOptSize))
@@ -735,6 +773,7 @@ program EddyFlowRP
             !> piece rather than waiting: the code after the loop reads state
             !> the loop establishes, and a parent that had skipped it would
             !> reach that code with the state unset.
+            call ProgressBegin('to', toStartTimestampIndx, toEndTimestampIndx, 'periods')
             toParallel = toWorkers > 1
             if (toParallel) then
                 call StartPrepassBatches('to', toStartTimestampIndx, &
@@ -755,7 +794,7 @@ program EddyFlowRP
                 call StopIfParentGone()
                 !> A parent hands a worker that has finished the next piece now,
                 !> not once its own piece is done.
-                call TopUpPrepassBatches()
+                call TopUpPrepassBatches(pcount + 1)
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1130,6 +1169,7 @@ program EddyFlowRP
                         TimelagOpt, TimelagOptSize, ton)
                 end if
             end if
+            call ProgressEnd()
 
             !> A worker's job ends here: it hands back the records its slice
             !> produced and stops. The fit itself - OptimizeTimelags, the
@@ -1315,6 +1355,7 @@ program EddyFlowRP
                 pcount = pfStartTimestampIndx - 1
             end if
 
+            call ProgressBegin('pf', pfStartTimestampIndx, pfEndTimestampIndx, 'periods')
             pfParallel = pfWorkers > 1
             if (pfParallel) then
                 call StartPrepassBatches('pf', pfStartTimestampIndx, &
@@ -1332,7 +1373,7 @@ program EddyFlowRP
                 call StopIfParentGone()
                 !> A parent hands a worker that has finished the next piece now,
                 !> not once its own piece is done.
-                call TopUpPrepassBatches()
+                call TopUpPrepassBatches(pcount + 1)
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1540,6 +1581,7 @@ program EddyFlowRP
                 call MergePfBatchDumps(PrepassChunkCount(), pfWind, &
                     size(pfWind, 1), pfn)
             end if
+            call ProgressEnd()
 
             !> As above: a worker hands back its slice of the wind means and
             !> stops. The sector regressions are the parent's job.
@@ -2024,6 +2066,7 @@ program EddyFlowRP
                 // trim(adjustl(TmpString1))
             write(*, '(a)')
             write(ulog, '(a)')
+            call ProgressBegin('rp', rpStartTimestampIndx, rpEndTimestampIndx, 'periods')
         end if
         pcount = pcount + 1
 
@@ -2068,7 +2111,7 @@ program EddyFlowRP
         !> the storage terms of its first period see the one before; and then
         !> its piece. All but the piece is dropped - see ProdPieceBegins.
         if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop
-        if (ProdSplit) call TopUpPrepassBatches()
+        call TopUpPrepassBatches(pcount)
         if (BatchKind == 'pr' .or. BatchKind == 'pd') then
             if (pcount >= BatchSliceEnd) exit periods_loop
             if (pcount > ProdHeadEnd .and. pcount < BatchSliceStart - 1) then
@@ -3240,6 +3283,7 @@ program EddyFlowRP
             call MergeProdPieces(NumberOfOkPeriods, NoPwbRows, 1, PwbTimelagN)
         end if
     end if
+    call ProgressEnd()
     !> Every gas the run had, not only those its last period had, is in what
     !> the end of the run writes: the time-lag windows and summaries, the
     !> donors, the storage cleaning.

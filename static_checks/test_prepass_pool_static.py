@@ -161,15 +161,15 @@ class NoCoreIdlesWhileTheParentWorks(unittest.TestCase):
     the next piece then, not when the parent reaches the wait."""
 
     def test_the_parent_tops_up_quietly_leaving_its_own_core(self):
-        self.assertIn("if (.not. PoolActive) return", TOPUP)
-        self.assertIn("call PollPrepassPool(PoolEff - 1, .true., progressed)", TOPUP)
+        self.assertIn("if (PoolActive) call PollPrepassPool(PoolEff - 1, .true., progressed)", TOPUP)
 
     def test_every_loop_the_parent_shares_tops_up_once_a_period(self):
+        # Every process walking the pass calls it - see test_run_progress_static.
         for loop in ("to_periods_loop: do", "pf_periods_loop: do"):
             i = MAIN.index(loop)
-            self.assertIn("call TopUpPrepassBatches()", MAIN[i:i + 600], loop)
+            self.assertIn("call TopUpPrepassBatches(pcount + 1)", MAIN[i:i + 600], loop)
         i = MAIN.index("if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop")
-        self.assertIn("if (ProdSplit) call TopUpPrepassBatches()", MAIN[i:i + 200])
+        self.assertIn("call TopUpPrepassBatches(pcount)", MAIN[i:i + 200])
 
     def test_the_pool_is_set_up_when_the_workers_start(self):
         self.assertLess(START.index("allocate(Running(NumChunks))"),

@@ -29,7 +29,8 @@ Program EddyFlowFCC
     use m_sa_rates
     use m_remote_source, only: RemoteCleanup
     use m_batch_pool, only: WaitPrepassBatches, TopUpPrepassBatches, &
-        StopIfParentGone, FinishBatchWorker
+        StopIfParentGone, FinishBatchWorker, ProgressBegin, ProgressAt, &
+        ProgressEnd
     use m_fcc_parallel, only: CaptureFccContext, TryFccFluxSplit, &
         FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces, &
         StartBinnedSplit, GetBinnedFile, FinishBinnedSplit, RunBinnedReadWorker
@@ -168,6 +169,15 @@ Program EddyFlowFCC
         call ConfigureForEmbedded('EddyFlow-FCC')
 
     if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
+
+    !> The passes ahead, for the interface's estimate of the time left
+    if (BatchIndex == 0 .and. EddyFlowProj%caller == 'gui') then
+        if (FCCsetup%pass_thru_spectral_assessment) then
+            call ConsoleSay('  Run plan: sa fx')
+        else
+            call ConsoleSay('  Run plan: fx')
+        end if
+    end if
 
     !> A worker of a split binned import only reads its files, which needs
     !> the project and nothing from the essentials file - so it starts here,
@@ -392,9 +402,11 @@ Program EddyFlowFCC
         !> Workers read the files after the first piece meanwhile
         call StartBinnedSplit(saStartTimestampIndx, saEndTimestampIndx, &
             BinnedFileList, size(BinnedFileList))
+        call ProgressBegin('sa', saStartTimestampIndx, saEndTimestampIndx + 1, 'files')
         binned_loop: do
             !> Update file counter
             fcount = fcount + 1
+            call ProgressAt(fcount)
 
             !> Normal exit instruction
             if (fcount > saEndTimestampIndx) exit binned_loop
@@ -489,6 +501,7 @@ Program EddyFlowFCC
             end if
         end do binned_loop
         call FinishBinnedSplit()
+        call ProgressEnd()
         close(uex)
         call LogSay('  Done.')
 
@@ -642,6 +655,7 @@ Program EddyFlowFCC
     month = 0
     day   = 0
     InitializeOuputFiles = .true.
+    call ProgressBegin('fx', 1, NumExRecords + 1, 'records')
     ex_loop: do i = 1, NumExRecords
 
         !> Split across workers: the parent stops where the first worker's
@@ -650,8 +664,8 @@ Program EddyFlowFCC
         !> did, skips the records up to its piece unread, and stops at its end.
         if (FccParentEnd > 0) then
             if (i >= FccParentEnd) exit ex_loop
-            call TopUpPrepassBatches()
         end if
+        call TopUpPrepassBatches(i)
         if (BatchKind == 'fx') then
             if (i >= BatchSliceEnd) exit ex_loop
             call StopIfParentGone()
@@ -857,6 +871,7 @@ Program EddyFlowFCC
         call WaitPrepassBatches('fx', FccWorkers)
         call MergeFccPieces()
     end if
+    call ProgressEnd()
     close(uex)
     close(uflx)
     close(ufnet_e)
