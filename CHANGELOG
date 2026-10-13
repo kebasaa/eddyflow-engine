@@ -67,10 +67,9 @@
 	- Fix: A closed-path hygrometer with no spectral correction factor had
 	       its LE, ET and water flux multiplied by the error code; they are
 	       now reported as missing.
-	- Fix: An LI-7700 gas whose LI-7700 multipliers are missing - as they are
-	       when its water is the biomet RH - had its flux multiplied by the
-	       error code, and methane was reported at about -8e8. It is now
-	       reported as missing.
+	- Fix: An LI-7700 gas whose LI-7700 multipliers are missing had its flux
+	       multiplied by the error code, and methane was reported at about
+	       -8e8. It is now reported as missing.
 	- Change: The essentials (ex) file names, for each gas, which H2O its
 	          moisture terms belong to (<GAS>_MOIST_REF). FCC refuses an ex
 	          file written before this with Error(107); re-run RP to
@@ -126,6 +125,35 @@
 	          header and 63 columns, every value equal to 1e-6 relative.
 	          base_ghg_licor, base_ep_native, base_n_gas and base_5gas pass
 	          check_columns.py.
+	- Fix: A gas that takes its water from the biomet RH lost its
+	       corrections in every half-hour without a usable biomet RH - a
+	       gap in the biomet, an RH out of range, or a biomet column that is
+	       not an RH. The site's humidity falls back to the designated
+	       hygrometer then, and the gas's WPL followed it, but its LI-7700
+	       multipliers, its dilution to mole fraction and the drift
+	       correction's band broadening read the biomet humidity alone. On
+	       an LI-7700 that came out as SPEC_CORR_LI7700_*_CH4 and FCH4
+	       missing; a CO2 went undiluted, its mole fraction equal to its
+	       mixing ratio and its molar density about 1.7 % high. All three
+	       now take the hygrometer the site's humidity fell back to. A
+	       half-hour with a usable biomet RH is unchanged.
+	- Fix: The drift correction's band broadening, for a CO2 that takes its
+	       water from the biomet RH, read the previous half-hour's biomet
+	       humidity, and the first half-hour that of wherever the time-lag
+	       pre-pass ended. It now reads its own.
+	- Note: Embedded (.ghg) biomet columns are counted with DATE and TIME as
+	        columns 1 and 2, so the n-th biomet variable is biom_<var>=n+2.
+	        biom_rh=15 on the GHG fixture selects P_RAIN_1_1_1, not
+	        RH_1_1_1 (17), which is how the first fix above was found.
+	- Tested: base_ghg_licor with CH4 taking its water from the biomet and
+	          biom_rh=15: FCH4 -18.537 and 75.827 where it was missing,
+	          multipliers 0.968, 1.415 and 1.330, every column equal to the
+	          run with CH4 on the LI-7500A's water but CH4_MOIST_REF. With
+	          biom_rh=17, and with the LI-7500A's water, byte-identical to
+	          the previous build. base_drift with CO2 on the biomet: CO2
+	          418.67 where it was 425.66 undiluted with no usable RH; with
+	          the RH, a change of 7e-3 ppm in the first half-hour and less
+	          after. base_drift and base_biomet_water byte-identical.
 
 8.1.2 (2026-10-07)
 
