@@ -252,6 +252,23 @@ subroutine InitEnv()
     if (len_trim(EddyFlowProj%run_env) == 0) EddyFlowProj%run_env = 'desktop'
     if (len_trim(EddyFlowProj%caller) == 0)  EddyFlowProj%caller  = 'console'
 
+    !> A double quote in the home directory or the project path is never a
+    !> real path. It is what the C runtime makes of `-e "C:\dir\"` from a
+    !> shell: the trailing backslash escapes the closing quote, and every
+    !> argument after it - the -j, the project path - is swallowed into the
+    !> home directory. CreateDir below then hands cmd a mkdir with a stray
+    !> quote in the middle, and cmd creates each word as a folder in whatever
+    !> directory the run was started from: -j, 3\tmp\tmp_<ts> and the like.
+    !> Stopped rather than defaulted, because the swallowed project path is
+    !> already gone and a default would run some other project instead.
+    if (index(homedir, '"') > 0 .or. index(projPath, '"') > 0) then
+        write(error_unit, '(a)') ' The home directory (-e) or project path contains a double'
+        write(error_unit, '(a)') ' quote. A path ending in a backslash inside quotes, such as'
+        write(error_unit, '(a)') ' -e "C:\dir\", swallows the arguments after it. Pass the'
+        write(error_unit, '(a)') ' path without a trailing separator.'
+        stop 3
+    end if
+
     !> Define default unit number (udf), run specific
     call hms_current_hms(aux, aux, aux, udf)
     if (udf < 200) udf = udf + 200
