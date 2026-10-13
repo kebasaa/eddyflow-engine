@@ -188,6 +188,18 @@
 	- Tested: -e with a trailing backslash exits with code 3 and creates
 	          nothing; without it the run proceeds. base_ghg_licor runs
 	          through run.sh as before.
+	- Change: For the interface (-c gui) the run says which passes lie ahead
+	          ("Run plan: to pf rp (17520 periods)", and FCC's "Run plan: sa
+	          fx") and, every five seconds at most, how far the pass under way
+	          has got over every process ("Progress [rp]: 1234 of 17520
+	          periods done.") - serial or split, time lags, planar fit, raw
+	          data processing, spectral assessment and fluxes. A split pass
+	          printed the parent's own piece only, about one period in every
+	          few, and then just how many pieces were done, so the interface's
+	          estimate of the time left was the serial time and then stood
+	          still. Each worker notes how far it has got beside its return
+	          code, and the parent adds that up. None of it goes into the run
+	          log, a console run prints none of it, and no output changes.
 
 8.1.2 (2026-10-07)
 
