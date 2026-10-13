@@ -154,6 +154,28 @@
 	          418.67 where it was 425.66 undiluted with no usable RH; with
 	          the RH, a change of 7e-3 ppm in the first half-hour and less
 	          after. base_drift and base_biomet_water byte-identical.
+	- Fix: On Windows, every formatted READ and WRITE restored the numeric
+	       locale from a string the C runtime had already freed. libgfortran
+	       saves the pointer setlocale(LC_NUMERIC, NULL) returns, switches to
+	       "C" - which under the UCRT frees that string - and restores from
+	       the pointer when the transfer ends. Usually the freed memory
+	       still read "C"; when it had been reused, setlocale faulted inside
+	       ucrtbase.dll. pwb_table_check crashed so about one run in eight,
+	       in PeriodMinutes's internal READ; RP and FCC carried the same
+	       fault on every formatted transfer. setlocale is now the engine's
+	       own (src_os/win/setlocale_override.f90): the program never leaves
+	       "C", so a query answers "C" from storage that is never freed and
+	       nothing is switched. Formatted I/O no longer allocates locale data
+	       per transfer either: storing a year of PWB rows went from 3.1 s
+	       to 0.6 s.
+	- Change: RP and FCC link libgfortran statically on Windows, so the
+	          override reaches it; libgfortran-5.dll is no longer needed by
+	          them. libgcc_s_seh-1.dll and libwinpthread-1.dll still are.
+	- Tested: base_rec, base_n_gas, base_cec_cos, base_ghg_licor,
+	          base_ghg_mixed, base_lead_gap, base_pwb_cache and
+	          base_tlag_opt are byte-identical to the dynamically linked
+	          build, logs included, 232 files. pwb_table_check: 65 clean
+	          runs, 48 of them eight at a time.
 
 8.1.2 (2026-10-07)
 
