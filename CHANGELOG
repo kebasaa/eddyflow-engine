@@ -33,6 +33,59 @@
 	- Fix: The PWB warning that a gas's peak keeps falling outside its lag
 	       window undercounted in a split run: the peaks found by the
 	       detection workers were not counted.
+	- Change: Every hygrometer's evapotranspiration is WPL-corrected after
+	          its own path type - Webb et al. (1980) with the Burba terms of
+	          an LI-7500 on an open path, Ibrom et al. (2007) on a closed one
+	          - with its own air and its own analyser's cell. Only the
+	          designated hygrometer had that; a second one went through the
+	          trace-gas formula, which on a closed path left out the
+	          (1 + mu*sigma) dilution of the flux itself and on an open path
+	          used the designated hygrometer's evapotranspiration for its own.
+	          Its numbered LE_<n>, ET_<n> and water flux move where that made a
+	          difference: on a closed path whose series could not be converted
+	          to mixing ratio, and on an open path whose flux differs from the
+	          designated hygrometer's. A closed path converted point by point
+	          does not move. The bare LE and ET never do.
+	- Change: Each gas's WPL takes its water flux from the hygrometer its
+	          record names for its water, as its humidity terms already did.
+	          It was always the designated hygrometer's: with a MIRO and an
+	          LI-7550 side by side, the MIRO's open-path gases were corrected
+	          with the MIRO's humidity and the LI-7550's evapotranspiration.
+	          A gas that takes its water from the biomet RH, which has no
+	          flux, still uses the designated hygrometer's, and the run log
+	          says so once per gas. A closed-path gas is unaffected: it reads
+	          its own lagged water covariance.
+	- Fix: The WPL switch did not reach the gases. Only the designated
+	       hygrometer and the point-by-point mixing ratios obeyed it, so with
+	       WPL off every other gas was still density-corrected - open-path
+	       ones against an evapotranspiration the switch had left
+	       uncorrected. With WPL off each gas now keeps its level 1 flux, as
+	       in EddyPro 7, before the closed-path spectral correction. The
+	       EddyPro 6.2.2 fork this engine came from never had that reset.
+	- Fix: The numbered H_<n> of a second hygrometer lacked the sensible heat
+	       spectral correction factor that the bare H carries.
+	- Fix: A closed-path hygrometer with no spectral correction factor had
+	       its LE, ET and water flux multiplied by the error code; they are
+	       now reported as missing.
+	- Fix: An LI-7700 gas whose LI-7700 multipliers are missing - as they are
+	       when its water is the biomet RH - had its flux multiplied by the
+	       error code, and methane was reported at about -8e8. It is now
+	       reported as missing.
+	- Change: The essentials (ex) file names, for each gas, which H2O its
+	          moisture terms belong to (<GAS>_MOIST_REF). FCC refuses an ex
+	          file written before this with Error(107); re-run RP to
+	          regenerate it.
+	- Tested: base_ghg_licor_nowpl, base_ghg_licor with WPL off. Every level
+	          2 flux equals its level 1 flux; with the previous build FC was
+	          17 % and FCH4 122 % away from it. Against EddyPro 7.0.9 on
+	          base_ep_licor with WPL off in advanced mode every gated column
+	          of check_engines.py agrees, where the previous build failed on
+	          co2_flux and ch4_flux. With WPL on, base_rec, base_ghg_licor,
+	          base_ghg_burba and base_ghg_mixed are byte-identical apart from
+	          the new columns; base_n_gas and base_cec_cos move only in H_2
+	          and the stability derived from it, by exactly H_SCF. A second
+	          H2O record reading the designated hygrometer's own column gives
+	          an H_<n> equal to H, and an LE_<n> within 5e-5 of LE.
 	- Tested: base_lastgas, built by gen_lastgas.py, is base_rec with COS
 	          missing in its last half-hour - the only fixture with a gas
 	          absent at the end. check_parallel.sh PAR_KIND=pr is
