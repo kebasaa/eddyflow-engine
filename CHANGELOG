@@ -200,6 +200,24 @@
 	          still. Each worker notes how far it has got beside its return
 	          code, and the parent adds that up. None of it goes into the run
 	          log, a console run prints none of it, and no output changes.
+	- Change: A preliminary time-lag assessment, for the interface's new
+	          "Timelag preliminary assessment" dialog. Four keys that only the
+	          throw-away project the dialog runs ever carries -
+	          to_sample_frac, to_sample_min_n, to_sample_seed and
+	          to_dump_lags - make an on-the-fly time-lag pre-pass walk a
+	          seeded random share of the periods with raw data (at least
+	          to_sample_min_n of them) and write <id>_tlag_preassess_<ts>.csv:
+	          every lag found, per period and gas, with its window, whether
+	          it sat at a window edge, and whether the flux cleared the
+	          optimiser's threshold - before the optimiser's gates drop
+	          anything, so a pile-up at an edge is shown. Covariance
+	          maximisation and PWB both write it. Every process of a split
+	          pre-pass draws the same sample, undrawn periods cost nothing,
+	          and the progress the interface is shown counts drawn periods.
+	          Absent, the keys change nothing.
+	- Tested: CH-LAE June 2025, 10 % of 1440 periods: 144 drawn, the table
+	          byte-identical serial (-j 1) and split four ways; a PWB copy of
+	          the same project writes the same layout.
 
 8.1.2 (2026-10-07)
 
