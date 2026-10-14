@@ -74,7 +74,6 @@ Program EddyFlowFCC
     integer :: NumBinnedFiles
     integer :: NumBinnedFilesNoRecurse
     integer :: fcount
-    integer :: nrow_full
     integer :: del_status
 
     character(10) :: sDate, eDate
@@ -250,9 +249,6 @@ Program EddyFlowFCC
         call FileListByExt(Dir%full, '.csv', .true., .false., &
             FullFilePrototype, .true., .true., .true., FullFilelist, &
             size(FullFilelist), .true., '')
-
-        !> Retrieve length of full cospectra for later allocation
-        call FullCospectraLength(FullFilelist(1)%path, nrow_full)
     end if
 
     !> A worker of a split flux computation does not repeat the spectral
@@ -757,7 +753,7 @@ Program EddyFlowFCC
                 lEx%disp_height, lEx%var_present, lEx%WS, lEx%Ta, iter_zL, &
                 lEx%ac_freq, nint(lEx%avrg_length), lEx%logger_swver, &
                 lEx%det_meth, nint(lEx%det_timec), .false., AuxInstrument, &
-                size(FullFileList), FullFileList, nrow_full, lEx, FCCsetup)
+                size(FullFileList), FullFileList, lEx, FCCsetup)
 
             !> Calculate fluxes at Level 1
             call Fluxes1(lEx)

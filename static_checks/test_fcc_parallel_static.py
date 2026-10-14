@@ -33,7 +33,8 @@ class AWorkerTakesTheParentsAssessment(unittest.TestCase):
     def test_it_branches_before_the_assessment_and_skips_it(self):
         i = MAIN.index("if (BatchKind == 'fx') then\n        call FccWorkerStart(FccHead)\n        goto 100")
         self.assertLess(i, MAIN.index("SPECTRAL ASSESSMENT SECTION"))
-        self.assertGreater(i, MAIN.index("call FullCospectraLength(FullFilelist(1)%path, nrow_full)"))
+        # After the full cospectra are listed: a worker corrects with them too.
+        self.assertGreater(i, MAIN.index("FullFilePrototype, .true., .true., .true., FullFilelist,"))
 
     def test_the_parent_keeps_the_state_where_the_flux_loop_starts(self):
         i = MAIN.index("100 continue")
