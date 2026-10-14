@@ -96,7 +96,7 @@ class TheMainPassStartsFromStartUpNotFromThePrepasses(unittest.TestCase):
 
     def test_dynamic_metadata_settings_are_kept_before_the_prepasses(self):
         self.assertLess(MAIN.index("StartupMetadata = Metadata"),
-                        MAIN.index("call PlanPrepassBatches(toEndTimestampIndx"))
+                        MAIN.index("call PlanPrepassBatches(toWalk"))
 
     def test_and_restored_when_the_main_pass_starts(self):
         start = main_pass_start()

@@ -198,6 +198,18 @@ FIXED_TAGS = {
         119: "tilt_arm_y",
         120: "tilt_arm_z",
         121: "tilt_lpf_s",
+        #: Preliminary time-lag assessment. Written by the interface only
+        #: into the throw-away copy of a project it runs from its "Timelag
+        #: preliminary assessment" dialog, never into the user's own file:
+        #: a seeded random share of the periods with raw data, at least
+        #: to_sample_min_n of them, and a per-period table of every lag the
+        #: detector found. 365-369 is what the instrument allowances left of
+        #: the never-assigned run at 357, below rpGasOriginN. Not 406-413:
+        #: those are the retired flat PWB lag bounds, kept unread.
+        365: "to_sample_frac",
+        366: "to_sample_min_n",
+        367: "to_sample_seed",
+        368: "to_dump_lags",
         61: "sr_step_u",
         62: "sr_step_v",
         63: "sr_step_w",

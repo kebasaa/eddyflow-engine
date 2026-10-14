@@ -746,6 +746,24 @@ subroutine WriteVariablesRP()
     RPsetup%tlag_assessment_only = RPsetup%tlag_assessment_only .and. &
         RPsetup%to_onthefly
 
+    !> Preliminary time-lag assessment: a random share of the pre-pass's
+    !> periods, and a table of every lag found in them. Present only in the
+    !> throw-away project the interface's assessment dialog runs, and only
+    !> meaningful for an on-the-fly pre-pass, which is the one that walks
+    !> periods; absent, every one of them is off.
+    TOSetup%sample_frac = 0d0
+    TOSetup%sample_min_n = 10
+    TOSetup%sample_seed = 1
+    TOSetup%dump_lags = .false.
+    if (RPsetup%to_onthefly) then
+        if (SNTagFound(365)) TOSetup%sample_frac = &
+            max(0d0, min(1d0, SNTags(365)%value))
+        if (SNTagFound(366)) TOSetup%sample_min_n = &
+            max(1, nint(SNTags(366)%value))
+        if (SNTagFound(367)) TOSetup%sample_seed = nint(SNTags(367)%value)
+        if (SNTagFound(368)) TOSetup%dump_lags = nint(SNTags(368)%value) == 1
+    end if
+
     !>  tapering window
     select case (SCTags(17)%value(1:1))
         case ('0')

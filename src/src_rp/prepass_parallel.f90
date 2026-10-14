@@ -100,7 +100,10 @@ module m_prepass_parallel
     !>
     !> 07: a slice's notes of the gases it had follow its records
     !> (m_run_columns).
-    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_07 '
+    !>
+    !> 08: TimeLagOptType carries the preliminary assessment's raw lag,
+    !> window and verdicts per slot, and the period's date and time.
+    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_08 '
 
 contains
 

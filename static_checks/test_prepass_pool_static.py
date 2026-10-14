@@ -65,11 +65,21 @@ class PiecesAreCutByWorkNotByCount(unittest.TestCase):
 
     def test_coverage_comes_from_the_file_list_in_one_sweep(self):
         """Files are in time order; a file covers a period if it starts
-        before the period ends and ends after it starts."""
-        self.assertIn("Files(j)%timestamp + DatafileDateStep > Series(p)", PLAN)
-        self.assertIn("Files(j)%timestamp < Series(p + 1)", PLAN)
-        self.assertEqual(PLAN.count("do p = iStart, iEnd - 1"), 1,
+        before the period ends and ends after it starts. The sweep is its
+        own routine now, because the preliminary time-lag assessment draws
+        its sample from the same periods."""
+        sweep = body("PeriodsWithFile")
+        self.assertIn("Files(j)%timestamp + DatafileDateStep > Series(p)", sweep)
+        self.assertIn("Files(j)%timestamp < Series(p + 1)", sweep)
+        self.assertEqual(sweep.count("do p = iStart, iEnd - 1"), 1,
                          "one pass over the periods, not one per file")
+        self.assertIn("call PeriodsWithFile(iStart, iEnd, Series, nSeries, Files, nFiles, has)", PLAN)
+
+    def test_under_a_sample_only_the_drawn_periods_weigh(self):
+        """The preliminary assessment skips undrawn periods before looking
+        for their file, so they cost nothing and must not attract a cut."""
+        self.assertIn("if (SampleOn) has(p) = PeriodSampled(p)", PLAN)
+        self.assertIn("SpanWork(iStart, iEnd) / 4", PLAN)
 
     def test_cuts_fall_at_equal_shares_of_the_total(self):
         self.assertIn("total = sum(weight)", PLAN)

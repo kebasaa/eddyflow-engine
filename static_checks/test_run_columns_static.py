@@ -81,7 +81,7 @@ class SplitPassesMergeTheNotesInOrder(unittest.TestCase):
             self.assertIn("call WriteRunColumns(u)", body(PRE, "subroutine", w), w)
         for m in ("MergeTlagBatchDumps", "MergePwbBatchDumps"):
             self.assertIn("call MergeRunColumns(u)", body(PRE, "subroutine", m), m)
-        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_07 '", PRE)
+        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_08 '", PRE)
 
     def test_a_later_piece_overrides_an_earlier_one(self):
         b = body(COLS, "subroutine", "MergeRunColumns")

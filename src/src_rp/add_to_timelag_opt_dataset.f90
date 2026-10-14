@@ -54,6 +54,16 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     wsl = PrimaryWaterOutSlot()
     TimelagOpt(n)%RH = error
 
+    !> What the preliminary time-lag assessment's table shows: every lag the
+    !> detector found, its window, and the two verdicts the gates below
+    !> reach, so a pile-up at a window edge is shown rather than dropped.
+    TimelagOpt(n)%RawLag = error
+    TimelagOpt(n)%WinMin = error
+    TimelagOpt(n)%WinMax = error
+    TimelagOpt(n)%Flux = error
+    TimelagOpt(n)%AtEdge = .false.
+    TimelagOpt(n)%FluxOk = .false.
+
     !> Passive gases. Three unrolled arms before, naming co2, ch4 and the
     !> fourth slot, so a fifth gas never contributed to the time-lag
     !> optimisation dataset however strong its flux.
@@ -82,6 +92,7 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
             .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
             .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
             TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        call NoteRawLag(gas, Flux0%gas(gas), flux_test > TOSetup%gas_min_flux(gas))
     end do
 
     !> Water vapour and RH, every hygrometer. Each is gated on its own latent
@@ -111,7 +122,34 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
             .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
             .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
             TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        call NoteRawLag(gas, le, le /= error .and. le > TOSetup%le_min_flux)
         rh = PeriodWaterRH(gas)
         if (rh >= 0d0 .and. rh <= 100d0) TimelagOpt(n)%RH(gas) = rh
     end do
+
+contains
+
+    !> The raw lag of one gas, with its window and verdicts. The edge test
+    !> allows half a sample, where the gate above compares exactly: a lag
+    !> is a whole number of samples, a window need not be.
+    subroutine NoteRawLag(gas, flux, fluxOk)
+        integer, intent(in) :: gas
+        real(kind = dbl), intent(in) :: flux
+        logical, intent(in) :: fluxOk
+        real(kind = dbl) :: lag
+        real(kind = dbl) :: halfSample
+
+        lag = Essentials%actual_timelag(gas)
+        if (lag == error) return
+        halfSample = 0d0
+        if (Metadata%ac_freq > 0d0) halfSample = 0.5d0 / Metadata%ac_freq
+        TimelagOpt(n)%RawLag(gas) = lag
+        TimelagOpt(n)%WinMin(gas) = E2Col(gas)%min_tl
+        TimelagOpt(n)%WinMax(gas) = E2Col(gas)%max_tl
+        TimelagOpt(n)%Flux(gas) = flux
+        TimelagOpt(n)%FluxOk(gas) = fluxOk
+        TimelagOpt(n)%AtEdge(gas) = &
+            dabs(lag - E2Col(gas)%min_tl) <= halfSample &
+            .or. dabs(lag - E2Col(gas)%max_tl) <= halfSample
+    end subroutine NoteRawLag
 end subroutine AddToTimelagOptDataset

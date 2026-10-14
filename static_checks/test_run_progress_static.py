@@ -80,8 +80,13 @@ class EveryProcessIsCounted(unittest.TestCase):
 
     def test_the_parent_adds_the_pieces_done_running_and_its_own(self):
         done = body(POOL, "function", "ProgressDone")
-        self.assertIn("ProgressDone = min(ProgOwnNext, ChunkEnd(1)) - ProgFirst", done)
-        self.assertIn("ProgressDone + (ChunkEnd(k) - ChunkStart(k))", done)
+        #> Counted in walked periods: all of them, or the preliminary
+        #> time-lag assessment's sample (SpanWork).
+        self.assertIn("ProgressDone = SpanWork(ProgFirst, min(ProgOwnNext, ChunkEnd(1)))", done)
+        self.assertIn("ProgressDone + SpanWork(ChunkStart(k), ChunkEnd(k))", done)
+        self.assertIn("SpanWork(ChunkStart(k), ChunkStart(k) + PieceProg(k))", done)
+        self.assertIn("write(TotalString, '(i0)') SpanWork(ProgFirst, ProgEnd)",
+                      body(POOL, "subroutine", "ProgressSay"))
         self.assertIn("call ReadPieceProgress(k)", done)
         # A file caught mid-write keeps the last value.
         self.assertIn("PieceProg(k) = max(PieceProg(k),", body(POOL, "subroutine", "ReadPieceProgress"))

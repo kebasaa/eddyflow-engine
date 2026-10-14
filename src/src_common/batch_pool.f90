@@ -56,6 +56,7 @@ module m_batch_pool
     public :: RemoveWorkerRoots, NoSlashEnd, AppendBytes, FileBytes
     public :: MaxChunks
     public :: ProgressBegin, ProgressAt, ProgressEnd
+    public :: PeriodsWithFile, SetPeriodSample, ClearPeriodSample, PeriodSampled
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
@@ -122,6 +123,16 @@ module m_batch_pool
 
     !> A worker's own, for its piece's progress file.
     integer(8) :: PieceLastNote = 0
+
+    !> The preliminary time-lag assessment walks a random sample of a
+    !> pre-pass's periods, not all of them (SetPeriodSample). While a sample is
+    !> set, the periods outside it cost nothing - the loop passes them without
+    !> looking for a file - so the cut into pieces and the progress the
+    !> interface is shown both count sampled periods only.
+    logical :: SampleOn = .false.
+    integer :: SampleFirst = 0
+    integer :: SampleLast = -1
+    logical, allocatable :: SampleKeep(:)
 
 contains
 
@@ -239,7 +250,6 @@ contains
         type(DateType), intent(in) :: Series(nSeries)
         type(FileListType), intent(in) :: Files(nFiles)
         integer :: p
-        integer :: j
         integer :: c
         integer :: want
         integer :: firstData
@@ -249,33 +259,32 @@ contains
         real(kind = dbl) :: total
         real(kind = dbl) :: cum
         real(kind = dbl), allocatable :: weight(:)
+        logical, allocatable :: has(:)
 
         if (allocated(ChunkStart)) deallocate(ChunkStart, ChunkEnd)
 
         !> No more pieces than periods a few to each, as for the slices
-        !> before: a piece still has to pay for starting a process.
-        want = min(ChunksPerWorker * nEff, MaxChunks, (iEnd - iStart) / 4)
-        want = max(want, min(nEff, iEnd - iStart))
+        !> before: a piece still has to pay for starting a process. Under a
+        !> sample, the periods that count are the sampled ones.
+        want = min(ChunksPerWorker * nEff, MaxChunks, SpanWork(iStart, iEnd) / 4)
+        want = max(want, min(nEff, SpanWork(iStart, iEnd)), 1)
 
-        !> Which periods a raw file covers. Files are in time order, so one
-        !> forward sweep: skip the files that end before the period starts,
-        !> then the period has data if the next file starts before it ends.
+        !> A period weighs 1 if it will be read and EmptyPeriodWeight if not.
+        !> With no sample, read means a raw file covers it; under one, that
+        !> it was drawn - and only periods with a file are drawn.
         allocate(weight(iStart:iEnd - 1))
+        allocate(has(iStart:iEnd - 1))
+        call PeriodsWithFile(iStart, iEnd, Series, nSeries, Files, nFiles, has)
         firstData = 0
-        j = 1
         do p = iStart, iEnd - 1
-            do while (j <= nFiles)
-                if (Files(j)%timestamp + DatafileDateStep > Series(p)) exit
-                j = j + 1
-            end do
+            if (SampleOn) has(p) = PeriodSampled(p)
             weight(p) = EmptyPeriodWeight
-            if (j <= nFiles) then
-                if (Files(j)%timestamp < Series(p + 1)) then
-                    weight(p) = 1d0
-                    if (firstData == 0) firstData = p
-                end if
+            if (has(p)) then
+                weight(p) = 1d0
+                if (firstData == 0) firstData = p
             end if
         end do
+        deallocate(has)
         total = sum(weight)
 
         !> Cut where the running total passes each equal share. A cut is the
@@ -313,6 +322,88 @@ contains
         end do
         ChunkEnd(NumChunks) = iEnd
     end subroutine PlanPrepassChunks
+
+    !***************************************************************************
+    !> \brief Which periods of [iStart, iEnd) a raw file covers.
+    !>
+    !> Files are in time order, so one forward sweep: skip the files that end
+    !> before the period starts, then the period has data if the next file
+    !> starts before it ends. Only an estimate - the file's time span from its
+    !> name, not whether it holds usable records.
+    !***************************************************************************
+    subroutine PeriodsWithFile(iStart, iEnd, Series, nSeries, Files, nFiles, has)
+        integer, intent(in) :: iStart
+        integer, intent(in) :: iEnd
+        integer, intent(in) :: nSeries
+        integer, intent(in) :: nFiles
+        type(DateType), intent(in) :: Series(nSeries)
+        type(FileListType), intent(in) :: Files(nFiles)
+        logical, intent(out) :: has(iStart:iEnd - 1)
+        integer :: p
+        integer :: j
+
+        j = 1
+        do p = iStart, iEnd - 1
+            do while (j <= nFiles)
+                if (Files(j)%timestamp + DatafileDateStep > Series(p)) exit
+                j = j + 1
+            end do
+            has(p) = .false.
+            if (j <= nFiles) has(p) = Files(j)%timestamp < Series(p + 1)
+        end do
+    end subroutine PeriodsWithFile
+
+    !***************************************************************************
+    !> \brief Walk only the periods `keep` marks, until ClearPeriodSample.
+    !>
+    !> keep(i) stands for period iFirst + i - 1, the loop's own counter. Parent
+    !> and workers each build the same mask from the same seed and range, so a
+    !> worker needs nothing from its parent to skip the same periods.
+    !***************************************************************************
+    subroutine SetPeriodSample(iFirst, keep)
+        integer, intent(in) :: iFirst
+        logical, intent(in) :: keep(:)
+
+        if (allocated(SampleKeep)) deallocate(SampleKeep)
+        SampleFirst = iFirst
+        SampleLast = iFirst + size(keep) - 1
+        allocate(SampleKeep(SampleFirst:SampleLast))
+        SampleKeep = keep
+        SampleOn = .true.
+    end subroutine SetPeriodSample
+
+    !> Every period again, as before SetPeriodSample.
+    subroutine ClearPeriodSample()
+        if (allocated(SampleKeep)) deallocate(SampleKeep)
+        SampleOn = .false.
+        SampleFirst = 0
+        SampleLast = -1
+    end subroutine ClearPeriodSample
+
+    !> Whether period p is walked: always with no sample, else if it was drawn.
+    logical function PeriodSampled(p)
+        integer, intent(in) :: p
+
+        PeriodSampled = .true.
+        if (.not. SampleOn) return
+        PeriodSampled = .false.
+        if (p < SampleFirst .or. p > SampleLast) return
+        PeriodSampled = SampleKeep(p)
+    end function PeriodSampled
+
+    !> How many periods of [a, b) are walked: all of them with no sample.
+    integer function SpanWork(a, b)
+        integer, intent(in) :: a
+        integer, intent(in) :: b
+
+        if (.not. SampleOn) then
+            SpanWork = max(0, b - a)
+            return
+        end if
+        SpanWork = 0
+        if (max(a, SampleFirst) > min(b - 1, SampleLast)) return
+        SpanWork = count(SampleKeep(max(a, SampleFirst):min(b - 1, SampleLast)))
+    end function SpanWork
 
     !***************************************************************************
     !> \brief The index range of piece k of the current pre-pass, half-open.
@@ -645,7 +736,7 @@ contains
     subroutine ProgressEnd()
         if (.not. ProgOn) return
         ProgOwnNext = ProgEnd
-        if (ProgLastDone /= ProgEnd - ProgFirst) call ProgressSay(.true.)
+        if (ProgLastDone /= SpanWork(ProgFirst, ProgEnd)) call ProgressSay(.true.)
         ProgOn = .false.
     end subroutine ProgressEnd
 
@@ -665,22 +756,25 @@ contains
     integer function ProgressDone()
         integer :: k
 
+        !> Counted in walked periods (SpanWork), which are all of them unless
+        !> the preliminary time-lag assessment set a sample.
         if (.not. ProgressUsesPool()) then
-            ProgressDone = ProgOwnNext - ProgFirst
+            ProgressDone = SpanWork(ProgFirst, ProgOwnNext)
             return
         end if
         !> The parent's share is everything before the first worker's piece:
         !> its own piece, and in a production pass the head before it.
-        ProgressDone = min(ProgOwnNext, ChunkEnd(1)) - ProgFirst
+        ProgressDone = SpanWork(ProgFirst, min(ProgOwnNext, ChunkEnd(1)))
         do k = 2, min(NextChunk - 1, NumChunks)
             if (.not. Running(k)) then
-                ProgressDone = ProgressDone + (ChunkEnd(k) - ChunkStart(k))
+                ProgressDone = ProgressDone + SpanWork(ChunkStart(k), ChunkEnd(k))
             else
                 call ReadPieceProgress(k)
-                ProgressDone = ProgressDone + PieceProg(k)
+                ProgressDone = ProgressDone &
+                    + SpanWork(ChunkStart(k), ChunkStart(k) + PieceProg(k))
             end if
         end do
-        ProgressDone = max(0, min(ProgressDone, ProgEnd - ProgFirst))
+        ProgressDone = max(0, min(ProgressDone, SpanWork(ProgFirst, ProgEnd)))
     end function ProgressDone
 
     !> The progress line, if five seconds have passed since the last - or at
@@ -707,7 +801,7 @@ contains
             if (PoolKind == 'pd') tag = 'pd'
         end if
         write(DoneString, '(i0)') done
-        write(TotalString, '(i0)') ProgEnd - ProgFirst
+        write(TotalString, '(i0)') SpanWork(ProgFirst, ProgEnd)
         call ConsoleSay('  Progress [' // trim(tag) // ']: ' // trim(DoneString) &
             // ' of ' // trim(TotalString) // ' ' // trim(ProgUnit) // ' done.')
     end subroutine ProgressSay

@@ -63,6 +63,9 @@ program EddyFlowRP
         RemoveStaleWorkerRoots, SetProdRemoteWindow
     use m_pwb_stream, only: PwbVerdictType, PwbTakeVerdict, PwbApplyVerdict, &
         PwbEvidenceOnly, PwbLastEvidence
+    use m_batch_pool, only: PeriodSampled, ClearPeriodSample
+    use m_tlag_preassess, only: DrawTlagSample, WriteTlagPreassessTable, &
+        WritePwbPreassessTable
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -122,6 +125,9 @@ program EddyFlowRP
     !> 1 for a serial run, which is every run that did not ask for workers,
     !> every run too short to be worth splitting, and every PWB cache pre-pass.
     integer :: toWorkers
+    !> How many periods the time-lag pre-pass walks: all of its range, or
+    !> the preliminary assessment's sample of it (DrawTlagSample).
+    integer :: toWalk
     integer :: pfWorkers
     integer :: sliceStart
     integer :: sliceEnd
@@ -755,8 +761,14 @@ program EddyFlowRP
             !> table, which is built once, by the parent, over every slice.
             !> What a worker produces is evidence, and evidence does not
             !> depend on where the walk began.
-            call PlanPrepassBatches(toEndTimestampIndx - toStartTimestampIndx, &
-                .true., toWorkers)
+            !> The preliminary time-lag assessment walks a random sample of
+            !> the range. Drawn here, over the whole range and before a
+            !> worker narrows it to its slice, so every process of the run
+            !> draws the same sample - see m_tlag_preassess.
+            call DrawTlagSample(toStartTimestampIndx, toEndTimestampIndx, &
+                RawTimeSeries, size(RawTimeSeries), RawFileList, NumRawFiles, &
+                toWalk)
+            call PlanPrepassBatches(toWalk, .true., toWorkers)
 
             !> A worker was handed its slice on the command line. Narrowed
             !> here rather than where the range was computed, so the arrays
@@ -809,6 +821,12 @@ program EddyFlowRP
                 !> dealt with, or raw files are finished
                 if (LatestRawFileIndx > NumRawFiles &
                     .or. pcount >= toEndTimestampIndx) exit to_periods_loop
+
+                !> A period the preliminary assessment did not draw is passed
+                !> before its file is even looked for: the search goes forward
+                !> from the latest file read, so it picks up from there at the
+                !> next drawn period. Always true with no sample.
+                if (.not. PeriodSampled(pcount)) cycle to_periods_loop
 
                 !> Define initial/final timestamps
                 !> of current period, say [8:00 - 8:30)
@@ -1147,6 +1165,8 @@ program EddyFlowRP
                         .or. ton > TimelagOptSize) &
                         error stop 'Time-lag optimization dataset is not allocated safely.'
                     call AddToTimelagOptDataset(TimelagOpt, TimelagOptSize, ton)
+                    TimelagOpt(ton)%date = tmpDate
+                    TimelagOpt(ton)%time = tmpTime
                 end if
                 call NoteRunColumns()
 
@@ -1170,6 +1190,7 @@ program EddyFlowRP
                 end if
             end if
             call ProgressEnd()
+            call ClearPeriodSample()
 
             !> A worker's job ends here: it hands back the records its slice
             !> produced and stops. The fit itself - OptimizeTimelags, the
@@ -1207,6 +1228,7 @@ program EddyFlowRP
                 call RebuildPwbTimelagOptFromCache(PwbTimelagOpt, &
                     PwbTimelagOptSize, PwbTimelagN)
                 call WritePwbTimelagCache()
+                call WritePwbPreassessTable()
                 if (PwbTimelagN > 0) then
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
                         .or. PwbTimelagN > PwbTimelagOptSize) &
@@ -1231,6 +1253,10 @@ program EddyFlowRP
                 call ResetPwbDiagnostics()
                 call LogSay(' PWB time-lag pre-pass finished.')
             else
+            !> The preliminary assessment's table, from the dataset before
+            !> FixTimelagOptDataset compacts it away.
+            call WriteTlagPreassessTable(TimelagOpt, TimelagOptSize, ton)
+
             !> Adjust time-lag opt dataset to eliminate errors,
             !> so that it's easier to treat them later
             allocate (toSet(ton))

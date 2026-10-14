@@ -538,6 +538,7 @@ eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	batch_pool.o \
 	ghg_prefetch.o \
 	m_cec.o \
 	m_rp_global_var.o \
@@ -546,7 +547,8 @@ eddyflow-rp_main.o: \
 	pwb_stream.o \
 	pwb_timelag_handle.o \
 	remote_source.o \
-	run_columns.o
+	run_columns.o \
+	tlag_preassess.o
 edit_ini_file.o: \
 	edit_ini_file.f90 \
 	m_common_global_var.o
@@ -1179,6 +1181,12 @@ timestamp.o: \
 	m_index_parameters.o \
 	m_log.o \
 	m_numeric_kinds.o
+tlag_preassess.o: \
+	tlag_preassess.f90 \
+	batch_pool.o \
+	m_log.o \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 ts_extract_subperiod_indexes.o: \
 	ts_extract_subperiod_indexes.f90 \
 	m_common_global_var.o
