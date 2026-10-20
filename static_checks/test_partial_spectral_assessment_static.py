@@ -112,6 +112,20 @@ class CorrectionTests(unittest.TestCase):
         self.assertIn("call ExceptionHandler(69)", body)
         self.assertIn("actual_hf_method = 'moncrieff_97'", body)
 
+    def test_a_period_without_gases_is_not_a_failed_assessment(self):
+        """insitu_ok starts as loc_var_present, so a period with no gas data
+        has every entry false and looked like one where no gas could be
+        corrected in situ. Jonkershoek printed Error(69) for each of its 111
+        gas-less periods, and the interface reported Fratini as failed."""
+        body = re.sub(r"&\s*\n\s*", " ", code(CORRECT))
+        switch = re.search(
+            r"if \((.*)\) then\s*\n\s*actual_hf_method = 'moncrieff_97'", body)
+        self.assertIsNotNone(switch, "the wholesale switch moved")
+        self.assertIn("any(loc_var_present(firstGas:lastGas))", switch.group(1),
+                      "a period with no gas present must not demote to "
+                      "Moncrieff or report Error(69)")
+        self.assertIn(".not. any(insitu_ok(firstGas:lastGas))", switch.group(1))
+
 
 class FixtureTests(unittest.TestCase):
     def test_the_partial_fixture_exists_and_is_partial(self):

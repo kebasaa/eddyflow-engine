@@ -11,6 +11,13 @@
 	          and the storage cleaning of it. Such a gas is now put back as
 	          the last half-hour that had it left it; a gas the last half-hour
 	          has is unchanged.
+	- Fix: A period with no gas data at all reported Error(69), "a problem
+	       with results of the spectral assessment ... switched to Moncrieff
+	       et al. (1997)", although there was no gas in it to correct. A
+	       Jonkershoek run printed it for its 111 gas-less periods, which
+	       read as Fratini et al. (2012) having failed, while every period
+	       with a gas flux had been corrected in situ. The switch and the
+	       message now need at least one gas present.
 	- Fix: A production pass split across workers took what the end of the run
 	       reads from the run's last period - which gases were present, their
 	       instruments - from the last period of the parent's own piece

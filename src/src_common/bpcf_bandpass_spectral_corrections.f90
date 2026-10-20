@@ -165,7 +165,13 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 end do
                 !> Nothing left for the in-situ method to do - say so with the
                 !> message that has always meant it, and switch wholesale.
-                if (.not. any(insitu_ok(firstGas:lastGas))) then
+                !> Only when some gas is there to be corrected: a period with
+                !> no gas data at all has every insitu_ok false too, and at
+                !> Jonkershoek those 111 periods each printed Error(69), which
+                !> the interface read as Fratini having failed for the whole
+                !> run when every period with a gas flux was corrected in situ.
+                if (any(loc_var_present(firstGas:lastGas)) .and. &
+                    .not. any(insitu_ok(firstGas:lastGas))) then
                     actual_hf_method = 'moncrieff_97'
                     n_analytic = 0
                     write(*,*)
