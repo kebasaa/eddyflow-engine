@@ -971,6 +971,10 @@ subroutine WriteVariablesRP()
         select case (nint(SNTags(55)%value))
             case (1)
                 RPSetup%detlim_meth = 'wienhold_94'
+            case (2)
+                !> Langford et al. (2015): the far-lag RMSE or SD, with the
+                !> window and statistic of the lod_* keys below.
+                RPSetup%detlim_meth = 'langford_15'
             case default
                 RPSetup%detlim_meth = 'none'
         end select
@@ -984,6 +988,29 @@ subroutine WriteVariablesRP()
         .or. RPSetup%detlim_window_s >= RPSetup%detlim_offset_s) then
         RPSetup%detlim_offset_s = 100d0
         RPSetup%detlim_window_s = 50d0
+    end if
+
+    !> Limit of detection after Langford et al. (2015), shared by the random
+    !> error method and the detection limit of that name. Literal defaults,
+    !> then guarded overrides; anything out of range falls back to them.
+    RUsetup%lod_window = 0
+    RUsetup%lod_stat = 'rmse'
+    RUsetup%lod_its_mult = 10d0
+    if (SNTagFound(65)) then
+        select case (nint(SNTags(65)%value))
+            case (1)
+                RUsetup%lod_window = 1
+            case (2)
+                RUsetup%lod_window = 2
+            case default
+                RUsetup%lod_window = 0
+        end select
+    end if
+    if (SNTagFound(66)) then
+        if (nint(SNTags(66)%value) == 1) RUsetup%lod_stat = 'sd'
+    end if
+    if (SNTagFound(67)) then
+        if (SNTags(67)%value > 0d0) RUsetup%lod_its_mult = SNTags(67)%value
     end if
 
     !> Closed-path spectroscopic correction, Peltola et al. (2014), applied

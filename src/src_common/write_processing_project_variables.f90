@@ -542,19 +542,45 @@ subroutine WriteProcessingProjectVariables()
             !> is a sampling error and a different paper - the shared name
             !> is the only thing they have in common.
             RUsetup%meth = 'lenschow_00'
+        case(6)
+            !> Langford et al. (2015): the scatter of the w-scalar
+            !> cross-covariance far from the applied lag, RMSE or SD.
+            RUsetup%meth = 'langford_15'
         case default
             RUsetup%meth = 'none'
     end select
+    !> Decoded whatever the method: the Langford detection limit's automatic
+    !> window measures the integral turbulence scale with these two even
+    !> when no random error is asked for.
+    select case (nint(EPPrjNTags(23)%value))
+        case(1)
+            RUsetup%its_meth = 'cross_0'
+        case(2)
+            RUsetup%its_meth = 'full_integral'
+        case default
+            RUsetup%its_meth = 'cross_e'
+    end select
     if (RUsetup%meth /= 'none') then
-        select case (nint(EPPrjNTags(23)%value))
-            case(1)
-                RUsetup%its_meth = 'cross_0'
-            case(2)
-                RUsetup%its_meth = 'full_integral'
-            case default
-                RUsetup%its_meth = 'cross_e'
-        end select
         RUsetup%tlag_max = nint(EPPrjNTags(25)%value)
+    else
+        !> Guarded here, where nothing used to read it: the interface's own
+        !> default when the key is absent or unusable.
+        RUsetup%tlag_max = 10
+        if (EPPrjNTagFound(25)) then
+            if (nint(EPPrjNTags(25)%value) > 0) RUsetup%tlag_max = nint(EPPrjNTags(25)%value)
+        end if
+    end if
+    !> Coverage factor of the Langford limit of detection. Read by both
+    !> applications, since FCC writes the LoD columns as well. Guarded: an
+    !> absent numeric tag keeps whatever the previous parse left.
+    !> Spectral correction of the reported random errors: off unless the
+    !> project says 1. EddyPro does not do it, and a project without the key -
+    !> every one written before it existed - keeps EddyPro's numbers.
+    RUsetup%spec_corr = .false.
+    if (EPPrjNTagFound(14)) RUsetup%spec_corr = nint(EPPrjNTags(14)%value) == 1
+    RUsetup%lod_alpha = 1.96d0
+    if (EPPrjNTagFound(11)) then
+        if (EPPrjNTags(11)%value > 0d0) RUsetup%lod_alpha = EPPrjNTags(11)%value
     end if
 
     !> Adjust paths

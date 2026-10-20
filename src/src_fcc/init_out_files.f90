@@ -139,6 +139,11 @@ subroutine InitOutFiles(lEx)
             call AddDatum(header2,'rand_err_Tau', separator)
             call AddDatum(header3,'[kg+1m-1s-2]', separator)
         end if
+        if (RUsetup%meth == 'langford_15') then
+            call AddDatum(header1, '', separator)
+            call AddDatum(header2,'lod_Tau', separator)
+            call AddDatum(header3,'[kg+1m-1s-2]', separator)
+        end if
 
         !> H
         call AddDatum(header1, ',', separator)
@@ -147,6 +152,11 @@ subroutine InitOutFiles(lEx)
         if (RUsetup%meth /= 'none') then
             call AddDatum(header1, '', separator)
             call AddDatum(header2, 'rand_err_H', separator)
+            call AddDatum(header3, '[W+1m-2]', separator)
+        end if
+        if (RUsetup%meth == 'langford_15') then
+            call AddDatum(header1, '', separator)
+            call AddDatum(header2, 'lod_H', separator)
             call AddDatum(header3, '[W+1m-2]', separator)
         end if
 
@@ -158,6 +168,11 @@ subroutine InitOutFiles(lEx)
             if (RUsetup%meth /= 'none') then
                 call AddDatum(header1, '', separator)
                 call AddDatum(header2, 'rand_err_LE', separator)
+                call AddDatum(header3, '[W+1m-2]', separator)
+            end if
+            if (RUsetup%meth == 'langford_15') then
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, 'lod_LE', separator)
                 call AddDatum(header3, '[W+1m-2]', separator)
             end if
         end if
@@ -197,6 +212,11 @@ subroutine InitOutFiles(lEx)
             if (RUsetup%meth /= 'none') then
                 call AddDatum(header1, '', separator)
                 call AddDatum(header2, 'rand_err_' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'flux', separator)
+                call AddDatum(header3, gas_full_flux_label(gas), separator)
+            end if
+            if (RUsetup%meth == 'langford_15') then
+                call AddDatum(header1, '', separator)
+                call AddDatum(header2, 'lod_' // e2sg(gas)(1:len_trim(e2sg(gas))) // 'flux', separator)
                 call AddDatum(header3, gas_full_flux_label(gas), separator)
             end if
         end do

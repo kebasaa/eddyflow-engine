@@ -34,6 +34,7 @@
 !***************************************************************************
 subroutine IntegralTurbulenceScale(Set, nrow, ncol)
     use m_rp_global_var
+    use m_covmax_core, only: IntegralScaleFromCorr
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow, ncol
@@ -76,58 +77,22 @@ subroutine IntegralTurbulenceScale(Set, nrow, ncol)
         end if
     end do
 
-    !> Integral turbulence scale function
+    !> Integral turbulence scale function, by the rule its_meth names. The
+    !> rules themselves live in m_covmax_core, which the Langford automatic
+    !> window shares.
     ITS = 0d0
-    select case(RUsetup%its_meth)
-        case('cross_0')
-            !> First crossing of y = 0
-            do var = u, lastGas
-                if (var /= w .and. E2Col(var)%present) then
-                    if (.not. w_cross_corr_failed(var)) then
-                        do lag = 0, LagMax
-                            if (w_cross_corr(lag, var) < 0d0) exit
-                            ITS(var) = ITS(var) + dt * dabs(w_cross_corr(lag, var))
-                        end do
-                    else
-                        ITS(var) = error
-                    end if
-
-                else
-                    ITS(var) = error
-                end if
-            enddo
-        case('cross_e')
-            !> First crossing of y = 1/e
-            do var = u, lastGas
-                if (var /= w .and. E2Col(var)%present) then
-                    if (.not. w_cross_corr_failed(var)) then
-                        do lag = 0, LagMax
-                            if (w_cross_corr(lag, var) <  1d0/exp(1d0)) exit
-                            ITS(var) = ITS(var) + dt * dabs(w_cross_corr(lag, var))
-                        end do
-                    else
-                        ITS(var) = error
-                    end if
-                else
-                    ITS(var) = error
-                end if
-            end do
-        case('full_integral')
-            !> Integrate over the full range of variation of time-lag
-            do var = u, lastGas
-                if (var /= w .and. E2Col(var)%present) then
-                    if (.not. w_cross_corr_failed(var)) then
-                        do lag = 0, LagMax
-                            ITS(var) = ITS(var) + dt * dabs(w_cross_corr(lag, var))
-                        end do
-                    else
-                        ITS(var) = error
-                    end if
-                else
-                    ITS(var) = error
-                end if
-            end do
-    end select
+    do var = u, lastGas
+        if (var /= w .and. E2Col(var)%present) then
+            if (.not. w_cross_corr_failed(var)) then
+                ITS(var) = IntegralScaleFromCorr(w_cross_corr(0:LagMax, var), &
+                    LagMax, dt, RUsetup%its_meth)
+            else
+                ITS(var) = error
+            end if
+        else
+            ITS(var) = error
+        end if
+    end do
     deallocate(w_cross_corr)
 
     !> Filter reasonable values of ITS, in case anything went wrong.

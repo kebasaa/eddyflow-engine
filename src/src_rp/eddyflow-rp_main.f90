@@ -114,6 +114,12 @@ program EddyFlowRP
     integer :: cec_slots(MaxNumCecTargets)
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
     real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    !> The random errors as reported, for the CEC significance test: tested
+    !> against the corrected total, so corrected like it when ru_spec_corr is on.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
+    logical, external :: FccFollowsProject
     real(kind = dbl), allocatable :: CecPrimes(:, :)
     logical :: cec_ok
     integer :: SpecRow
@@ -349,11 +355,8 @@ program EddyFlowRP
 
     !> Selects which files to output, considering the selected
     !> spectral correction method
-    if (EddyFlowProj%out_avrg_cosp &
-        .or. EddyFlowProj%out_avrg_spec &
-        .or. (EddyFlowProj%hf_meth /= 'none' &
-        .and. EddyFlowProj%hf_meth /= 'moncrieff_97' &
-        .and. EddyFlowProj%hf_meth /= 'massman_00')) then
+    !> The test lives in FccFollowsProject, which FCC evaluates as well.
+    if (FccFollowsProject()) then
         !> in this cases, passage is needed to FCC, so:
         !> don't output files, don't create dataset
         !> don't output metadata
@@ -3171,6 +3174,8 @@ program EddyFlowRP
             !> RP applies the CEC descriptors only when it owns the final
             !> corrected totals. Otherwise FCC applies them to FCC's Flux3.
             if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) then
+                call ReportedRandomErrors(.true., Essentials%rand_uncer, Essentials%rand_uncer_LE, &
+                    Essentials%rand_uncer_ET, rep_re, rep_le, rep_et)
                 do cec_p = 1, nCecPairs
                     call CecTargetSlots(CecPairList(cec_p), cec_slots, cec_ntarget)
                     cec_totals = error
@@ -3182,7 +3187,7 @@ program EddyFlowRP
                         !> From the same slot as the total beside it. Reading
                         !> either from a different one would test a flux
                         !> against another gas's error and say nothing.
-                        cec_errors(cec_k) = Essentials%rand_uncer(cec_slots(cec_k))
+                        cec_errors(cec_k) = rep_re(cec_slots(cec_k))
                     end do
                     call ApplyCecDescriptor(CECDescriptor(cec_p), cec_totals, &
                         cec_errors, EddyFlowProj%cec, CECFlux(cec_p))

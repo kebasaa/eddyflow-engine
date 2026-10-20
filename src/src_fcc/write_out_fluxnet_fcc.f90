@@ -33,10 +33,18 @@
 !***************************************************************************
 subroutine WriteOutFluxnetFcc(lEx)
     use m_fx_global_var
+    use m_covmax_core, only: LimitOfDetection
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
     character(LongOutstringLen) :: csv_row
+    !> The random errors as reported: spectrally corrected like their fluxes
+    !> when ru_spec_corr is on. See reported_random_errors.f90.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
+    !> Whether the Langford limits of detection are written or error-labelled.
+    logical :: lod_on
 
     !> local variables
     integer :: var
@@ -135,15 +143,30 @@ subroutine WriteOutFluxnetFcc(lEx)
             gain=FluxnetGasScale(gas), offset=0d0)
     end do
 
+    call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer, lEx%rand_uncer_LE, &
+        lEx%rand_uncer_ET, rep_re, rep_le, rep_et)
     !> Random uncertainties
-    call AddFloatDatumToDataline(lEx%rand_uncer(u), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%rand_uncer(ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%rand_uncer_LE, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(lEx%rand_uncer_ET, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_re(u), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_re(ts), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_le, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_et, csv_row, EddyFlowProj%err_label)
     do jg = firstGas, nRowVar
         gas = rowVar(jg)
-        call AddFloatDatumToDataline(lEx%rand_uncer(gas), csv_row, EddyFlowProj%err_label, &
+        call AddFloatDatumToDataline(rep_re(gas), csv_row, EddyFlowProj%err_label, &
             gain=FluxnetGasScale(gas), offset=0d0)
+    end do
+
+    !> Limits of detection, Langford et al. (2015): alpha times the random
+    !> errors above. Error-labelled unless that is the random error method.
+    lod_on = RUsetup%meth == 'langford_15'
+    call AddFloatDatumToDataline(LodField(rep_re(u)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_re(ts)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_le), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_et), csv_row, EddyFlowProj%err_label)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(LodField(rep_re(gas)), csv_row, &
+            EddyFlowProj%err_label, gain=FluxnetGasScale(gas), offset=0d0)
     end do
 
     !> Storage fluxes
@@ -727,4 +750,19 @@ subroutine WriteOutFluxnetFcc(lEx)
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
+
+contains
+
+    !> The Langford limit of detection of a random error, or the error code
+    !> when that is not the random error method.
+    elemental function LodField(re) result(lod)
+        real(kind = dbl), intent(in) :: re
+        real(kind = dbl) :: lod
+
+        if (lod_on) then
+            lod = LimitOfDetection(re, RUsetup%lod_alpha, error)
+        else
+            lod = error
+        end if
+    end function LodField
 end subroutine WriteOutFluxnetFcc

@@ -106,6 +106,10 @@ subroutine InitFluxnetFile_rp()
 
     call AddFluxFamily('')
     call AddFluxFamily('_RANDUNC_HF')
+    !> Limit of detection after Langford et al. (2015), alpha times the random
+    !> error. Always laid out, so the record keeps one shape; error-labelled
+    !> unless the random error method is langford_15.
+    call AddFluxFamily('_LOD')
 
     !> Single-point storage. CO2 is SC, not SCO2.
     call AddDatum(csv_row, 'SH_SINGLE', separator)

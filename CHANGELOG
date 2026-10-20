@@ -2,6 +2,51 @@
 
     Engine:
 	- Version bump to 8.1.3, to match EddyFlow GUI 8.1.3.
+	- New: Limit of detection after Langford et al. (2015), as a random
+	       uncertainty method (ru_meth = 6) and as a detection limit
+	       (detlim_meth = 2). The random flux error is the scatter of the
+	       w-scalar cross-covariance far from the lag: its root mean square,
+	       RE_RMSE (their Eq. 9, the default), or its standard deviation,
+	       RE_SD; the limit of detection is alpha * RE (alpha 1.96 by
+	       default, lod_alpha). Windows (lod_window): +/-150-180 s, Langford's
+	       own; +/-160-180 s, as Maier et al. (2022) used after Spirig et al.
+	       (2005); or automatic, from lod_its_mult times the integral
+	       turbulence scale (default 10) or 10 s past the gas's lag search
+	       half-width, whichever is later, 30 s wide. Spirig et al. placed
+	       their window "several times the integral timescale" away; the
+	       multiple is EddyFlow's choice, not a published one. Covers Tau, H,
+	       LE, ET and every gas. One routine, two call points: the random
+	       error is measured on the detrended, aligned series the flux comes
+	       from, about lag zero; the detection limit on the raw series before
+	       the shift, about each gas's lag, because time-lag borrowing tests
+	       against it there - and borrowing now accepts either detection
+	       limit. New columns lod_Tau, lod_H, lod_LE, lod_<gas>flux in the
+	       full output (only with this method), and a FLUXNET family _LOD
+	       after _RANDUNC_HF, error-labelled unless this is the method. The ex
+	       record widens by 4 + one per gas accordingly; FCC skips the family
+	       and recomputes it from the random error. Spectrally corrected
+	       only with ru_spec_corr = 1, like every other random error
+	       method (see below).
+	- New: Random errors can be reported spectrally corrected, as Langford et
+	       al. (2015) recommend: each rand_err_* / *_RANDUNC_HF value is
+	       multiplied by the spectral correction factor of its own flux
+	       (w_u for Tau, w_ts for H, the designated hygrometer for LE and
+	       ET, each gas its own), for every random uncertainty method, and
+	       the Langford LoD and the CEC significance test follow. Off by
+	       default (ru_spec_corr=1 in [Project] switches it on), also for
+	       projects without the key: EddyPro does not do it, and the
+	       defaults reproduce EddyPro. Only the spectral factor: the WPL and
+	       SND terms are added from other covariances. The flux detection
+	       limit stays in uncorrected covariance units. Applied where the
+	       final outputs are written - by RP when FCC does not follow, by FCC
+	       when it does - and never twice: RP's FLUXNET file stays
+	       uncorrected when FCC follows, and FCC, reading the FLUXNET file of
+	       a project RP finished on its own, applies RP's own test
+	       (FccFollowsProject) before changing any setting it reads.
+	- Change: The integral turbulence scale rules (cross_0, cross_e,
+	          full_integral) moved into m_covmax_core so the automatic Langford
+	          window shares them; the scale is bitwise unchanged. ru_its_meth
+	          and ru_tlag_max are now decoded whatever the random error method.
 	- Change: The time-lag optimisation and PWB time-lag summaries list every
 	          gas the run had, not only the gases its last half-hour had. A
 	          gas with no data in the final half-hour was left out, as if

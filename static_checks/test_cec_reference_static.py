@@ -835,12 +835,15 @@ class CecReferenceTests(unittest.TestCase):
         rp = read("src/src_rp/eddyflow-rp_main.f90")
         block = rp[rp.index("cec_totals(cec_k) = Flux3%gas(cec_slots(cec_k))"):]
         block = block[:block.index("end do")]
-        self.assertIn("cec_errors(cec_k) = Essentials%rand_uncer(cec_slots(cec_k))",
-                      block)
+        #> The reported error - spectrally corrected like the total when
+        #> ru_spec_corr is on - from the same slot.
+        self.assertIn("cec_errors(cec_k) = rep_re(cec_slots(cec_k))", block)
+        self.assertIn("call ReportedRandomErrors(.true., Essentials%rand_uncer,", rp)
         fcc = read("src/src_fcc/eddyflow-fcc_main.f90")
         block = fcc[fcc.index("cec_totals(cec_k) = Flux3%gas(cec_slot)"):]
         block = block[:block.index("end do")]
-        self.assertIn("cec_errors(cec_k) = lEx%rand_uncer(cec_slot)", block)
+        self.assertIn("cec_errors(cec_k) = rep_re(cec_slot)", block)
+        self.assertIn("call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer,", fcc)
 
     def test_it_applies_whichever_stationarity_mode_is_chosen(self):
         #> The failure is not mode-specific. Mode 0 merely happens to reject

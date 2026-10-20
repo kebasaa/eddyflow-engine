@@ -264,6 +264,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 4 + nExGas                &  !< skipped: final fluxes
         + 2                         &  !< rand_uncer u, ts
         + 2 + nExGas                &  !< rand_uncer LE/ET, per gas
+        + 4 + nExGas                &  !< skipped: Langford LoD, alpha * rand_uncer
         + 3 + nExGas                &  !< storage H/LE/ET, per gas
         + nExGas                    &  !< skipped: advection fluxes
         + 6                         &  !< unrotated and rotated u,v,w
@@ -303,6 +304,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%rand_uncer(u), lEx%rand_uncer(ts), &
         lEx%rand_uncer_LE, lEx%rand_uncer_ET, &
         (lEx%rand_uncer(exSlots(jx)), jx = 1, nExSlots), &
+        aux(1 : 4 + n_layout_gas), & !< Skip the LoD: FCC recomputes it from rand_uncer
         lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, &
         (lEx%Stor%of(exSlots(jx)), jx = 1, nExSlots), &
         aux(1 : n_layout_gas), & !< Skip advection fluxes

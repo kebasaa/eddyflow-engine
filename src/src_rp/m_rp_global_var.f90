@@ -405,9 +405,9 @@ module m_rp_global_var
          SNTags(62)%Label  / 'sr_step_v' / &
          SNTags(63)%Label  / 'sr_step_w' / &
          SNTags(64)%Label  / 'sr_step_ts' / &
-         SNTags(65)%Label  / '' / &
-         SNTags(66)%Label  / '' / &
-         SNTags(67)%Label  / '' / &
+         SNTags(65)%Label  / 'lod_window' / &
+         SNTags(66)%Label  / 'lod_stat' / &
+         SNTags(67)%Label  / 'lod_its_mult' / &
          SNTags(68)%Label  / '' / &
          SNTags(69)%Label  / 'pf_num_sec' / &
          SNTags(70)%Label  / 'pf_min_num_per_sec' / &

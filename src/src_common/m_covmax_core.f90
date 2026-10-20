@@ -52,6 +52,9 @@ module m_covmax_core
     private
 
     public :: CrossCovarianceSeries
+    public :: FarLagCovarianceNoise
+    public :: IntegralScaleFromCorr
+    public :: LimitOfDetection
 
 contains
 
@@ -122,5 +125,128 @@ contains
             cov(lag) = c
         end do
     end subroutine CrossCovarianceSeries
+
+    !***************************************************************************
+    !> rief Random flux error from the cross-covariance far from the lag,
+    !>        Langford et al. (2015), Sect. 2.2.
+    !>
+    !> The cross-covariance of (col1, col2) is taken over the two windows
+    !> [centre - hi, centre - lo] and [centre + lo, centre + hi], in rows and
+    !> in CrossCovarianceSeries' sign convention, and the two are pooled.
+    !> Out there w and the scalar should no longer be correlated, so what the
+    !> function does is noise. With stat 'rmse' this returns
+    !> sqrt(mean f^2) - Langford's RE_RMSE, Eq. 9, which also counts an
+    !> offset of the function from zero - and with 'sd' the population
+    !> standard deviation, so that RE_RMSE^2 = RE_SD^2 + mean^2 exactly.
+    !>
+    !> Lags with no valid pair are skipped. Fewer than three valid lags, or a
+    !> window that does not fit inside the series, gives err; nlags reports
+    !> how many were used.
+    !***************************************************************************
+    pure subroutine FarLagCovarianceNoise(col1, col2, n, centre, lo, hi, err, &
+        stat, re, nlags)
+        integer, intent(in) :: n
+        integer, intent(in) :: centre
+        integer, intent(in) :: lo
+        integer, intent(in) :: hi
+        real(kind = dbl), intent(in) :: col1(n)
+        real(kind = dbl), intent(in) :: col2(n)
+        real(kind = dbl), intent(in) :: err
+        character(*), intent(in) :: stat
+        real(kind = dbl), intent(out) :: re
+        integer, intent(out) :: nlags
+        real(kind = dbl) :: cov_lo(centre - hi:centre - lo)
+        real(kind = dbl) :: cov_hi(centre + lo:centre + hi)
+        real(kind = dbl) :: s1
+        real(kind = dbl) :: s2
+        real(kind = dbl) :: mu
+        integer :: lag
+
+        re = err
+        nlags = 0
+        if (lo < 0 .or. hi < lo) return
+        if (abs(centre - hi) >= n .or. abs(centre + hi) >= n) return
+
+        call CrossCovarianceSeries(col1, col2, n, centre - hi, centre - lo, err, cov_lo)
+        call CrossCovarianceSeries(col1, col2, n, centre + lo, centre + hi, err, cov_hi)
+
+        s1 = 0d0
+        s2 = 0d0
+        do lag = centre - hi, centre - lo
+            if (cov_lo(lag) == err) cycle
+            nlags = nlags + 1
+            s1 = s1 + cov_lo(lag)
+            s2 = s2 + cov_lo(lag) ** 2
+        end do
+        do lag = centre + lo, centre + hi
+            if (cov_hi(lag) == err) cycle
+            nlags = nlags + 1
+            s1 = s1 + cov_hi(lag)
+            s2 = s2 + cov_hi(lag) ** 2
+        end do
+        if (nlags < 3) return
+
+        if (stat == 'sd') then
+            mu = s1 / dble(nlags)
+            re = sqrt(max(0d0, s2 / dble(nlags) - mu ** 2))
+        else
+            re = sqrt(s2 / dble(nlags))
+        end if
+    end subroutine FarLagCovarianceNoise
+
+    !***************************************************************************
+    !> rief Integral scale of a cross-correlation already normalised to one
+    !>        at lag zero, by the rule its_meth names.
+    !>
+    !> The three rules IntegralTurbulenceScale has always applied, moved here
+    !> so the automatic Langford window measures the same scale: integrate
+    !> |corr| up to its first crossing of zero ('cross_0'), of 1/e
+    !> ('cross_e'), or over every lag given ('full_integral'). Same
+    !> operations in the same order as before, so the scale it returns there
+    !> is bitwise unchanged.
+    !***************************************************************************
+    pure function IntegralScaleFromCorr(corr, lagmax, dt, its_meth) result(its)
+        integer, intent(in) :: lagmax
+        real(kind = dbl), intent(in) :: corr(0:lagmax)
+        real(kind = dbl), intent(in) :: dt
+        character(*), intent(in) :: its_meth
+        real(kind = dbl) :: its
+        integer :: lag
+
+        its = 0d0
+        select case(its_meth)
+            case('cross_0')
+                do lag = 0, lagmax
+                    if (corr(lag) < 0d0) exit
+                    its = its + dt * dabs(corr(lag))
+                end do
+            case('cross_e')
+                do lag = 0, lagmax
+                    if (corr(lag) <  1d0/exp(1d0)) exit
+                    its = its + dt * dabs(corr(lag))
+                end do
+            case('full_integral')
+                do lag = 0, lagmax
+                    its = its + dt * dabs(corr(lag))
+                end do
+        end select
+    end function IntegralScaleFromCorr
+
+    !***************************************************************************
+    !> rief Limit of detection LoD = alpha * RE, Langford et al. (2015),
+    !>        keeping the error code where there is no random error.
+    !***************************************************************************
+    pure elemental function LimitOfDetection(re, alpha, err) result(lod)
+        real(kind = dbl), intent(in) :: re
+        real(kind = dbl), intent(in) :: alpha
+        real(kind = dbl), intent(in) :: err
+        real(kind = dbl) :: lod
+
+        if (re == err) then
+            lod = err
+        else
+            lod = alpha * re
+        end if
+    end function LimitOfDetection
 
 end module m_covmax_core

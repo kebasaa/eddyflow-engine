@@ -110,6 +110,12 @@ Program EddyFlowFCC
     integer :: cec_slot
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
     real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    !> The random errors as reported, for the CEC significance test: tested
+    !> against the corrected total, so corrected like it when ru_spec_corr is on.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
+    logical, external :: FccFollowsProject
     !> The flux loop split across worker processes (m_fcc_parallel): the
     !> record that opened the output files, the one the parent's own piece
     !> ends before, and how many processes run at once.
@@ -154,6 +160,11 @@ Program EddyFlowFCC
 
     !> Read ".eddypro" file for both spectral analysis and flux correction
     call ReadIniFCC('FluxCorrection')
+    !> Whether RP wrote this project's final outputs, and with them random
+    !> errors already spectrally corrected (reported_random_errors.f90). Here,
+    !> before anything below falls back to Moncrieff or drops the ensemble
+    !> outputs, which would change the answer.
+    RUsetup%rp_corrected = .not. FccFollowsProject()
     call ResetSpectralAssessmentDiagnostics()
 
     !> Add run-mode tag to Timestamp_FilePadding
@@ -787,6 +798,8 @@ Program EddyFlowFCC
             call ResetCecFlux(CECFlux(cec_p))
         end do
         if (EddyFlowProj%do_cec > 0) then
+            call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer, lEx%rand_uncer_LE, &
+                lEx%rand_uncer_ET, rep_re, rep_le, rep_et)
             do cec_p = 1, min(lEx%n_cec, MaxNumCecPairs)
                 cec_totals = error
                 cec_errors = error
@@ -796,7 +809,7 @@ Program EddyFlowFCC
                     cec_totals(cec_k) = Flux3%gas(cec_slot)
                     !> RP estimated it and the essentials row carried it here,
                     !> from the same slot as the total beside it.
-                    cec_errors(cec_k) = lEx%rand_uncer(cec_slot)
+                    cec_errors(cec_k) = rep_re(cec_slot)
                 end do
                 call ApplyCecDescriptor(lEx%cec(cec_p), cec_totals, &
                     cec_errors, EddyFlowProj%cec, CECFlux(cec_p))

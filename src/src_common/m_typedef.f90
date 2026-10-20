@@ -1429,6 +1429,23 @@ module m_typedef
         integer :: tlag_max
         character(32) :: meth
         character(32) :: its_meth
+        !> Langford et al. (2015) limit of detection, shared by the random
+        !> error method langford_15 and the detection limit of that name.
+        !> Window: 0 +/-150-180 s (Langford), 1 +/-160-180 s (Maier et al.
+        !> 2022), 2 automatic. Statistic 'rmse' or 'sd'. The multiple of the
+        !> integral turbulence scale the automatic window starts at, and the
+        !> coverage factor alpha of LoD = alpha * RE.
+        integer :: lod_window = 0
+        character(4) :: lod_stat = 'rmse'
+        real(kind = dbl) :: lod_its_mult = 10d0
+        real(kind = dbl) :: lod_alpha = 1.96d0
+        !> Report every random error multiplied by its flux's spectral
+        !> correction factor, as Langford et al. (2015) recommend. Off by
+        !> default, as in EddyPro; see reported_random_errors.f90.
+        logical :: spec_corr = .false.
+        !> FCC only: the ex record it reads was written by an RP that owned
+        !> the final outputs, so its random errors are corrected already.
+        logical :: rp_corrected = .false.
     end type RUsetupType
 
     type :: RPsetupType
