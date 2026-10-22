@@ -67,6 +67,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: jxj
     integer :: cec_target_valid
     integer :: n_gas_moist
+    integer :: moist_ref
     real(kind = dbl) :: moist_rhow
     real(kind = dbl) :: moist_sigma
     real(kind = dbl) :: moist_q
@@ -180,8 +181,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     integer :: cec_p
     integer :: cec_k
     !> Per-gas moisture block: a count, then this many fields per gas
-    !> (slot, rhow, sigma, q, rhoa, rhocp, rh).
-    integer, parameter :: nGasMoistFields = 7
+    !> (slot, ref, rhow, sigma, q, rhoa, rhocp, rh).
+    integer, parameter :: nGasMoistFields = 8
     !> Per-hygrometer flux block: a count, then this many fields per
     !> non-designated hygrometer (slot, H, LE, ET, tau, L, zL).
     integer, parameter :: nWaterFluxFields = 7
@@ -263,6 +264,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 4 + nExGas                &  !< skipped: final fluxes
         + 2                         &  !< rand_uncer u, ts
         + 2 + nExGas                &  !< rand_uncer LE/ET, per gas
+        + 4 + nExGas                &  !< skipped: Langford LoD, alpha * rand_uncer
         + 3 + nExGas                &  !< storage H/LE/ET, per gas
         + nExGas                    &  !< skipped: advection fluxes
         + 6                         &  !< unrotated and rotated u,v,w
@@ -302,6 +304,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%rand_uncer(u), lEx%rand_uncer(ts), &
         lEx%rand_uncer_LE, lEx%rand_uncer_ET, &
         (lEx%rand_uncer(exSlots(jx)), jx = 1, nExSlots), &
+        aux(1 : 4 + n_layout_gas), & !< Skip the LoD: FCC recomputes it from rand_uncer
         lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, &
         (lEx%Stor%of(exSlots(jx)), jx = 1, nExSlots), &
         aux(1 : n_layout_gas), & !< Skip advection fluxes
@@ -711,7 +714,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
 
     !> Read the per-gas water vapour terms written by WriteOutFluxnet.
     !> Self-describing: a count, then that many
-    !> (slot, rhow, sigma, q, rhoa, rhocp, rh) records - nGasMoistFields wide.
+    !> (slot, ref, rhow, sigma, q, rhoa, rhocp, rh) records - nGasMoistFields
+    !> wide. `ref` is the H2O whose terms these are, as RP resolved it.
     !> The slot is explicit because configured gases need not be contiguous.
     !> Slots not named here keep `error`, which makes the consumers fall back
     !> to the single global sigma/RHO%w.
@@ -721,6 +725,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     lEx%rhoa_at = error
     lEx%rhocp_at = error
     lEx%rh_at = error
+    lEx%moist_ref_at = 0
     lEx%n_gas_moist = 0
     lEx%gas_moist_slot = 0
     n_gas_moist = 0
@@ -742,13 +747,14 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
             return
         end if
         do i = 1, n_gas_moist
-            read(dataline, *, iostat = read_status) gas, moist_rhow, &
+            read(dataline, *, iostat = read_status) gas, moist_ref, moist_rhow, &
                 moist_sigma, moist_q, moist_rhoa, moist_rhocp, moist_rh
             if (read_status /= 0) then
                 call InvalidateRecord()
                 return
             end if
             if (gas >= firstGas .and. gas <= lastGas) then
+                lEx%moist_ref_at(gas) = moist_ref
                 lEx%rhow_at(gas) = moist_rhow
                 lEx%sigma_at(gas) = moist_sigma
                 lEx%q_at(gas) = moist_q

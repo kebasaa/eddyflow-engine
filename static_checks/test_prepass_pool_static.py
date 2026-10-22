@@ -65,11 +65,21 @@ class PiecesAreCutByWorkNotByCount(unittest.TestCase):
 
     def test_coverage_comes_from_the_file_list_in_one_sweep(self):
         """Files are in time order; a file covers a period if it starts
-        before the period ends and ends after it starts."""
-        self.assertIn("Files(j)%timestamp + DatafileDateStep > Series(p)", PLAN)
-        self.assertIn("Files(j)%timestamp < Series(p + 1)", PLAN)
-        self.assertEqual(PLAN.count("do p = iStart, iEnd - 1"), 1,
+        before the period ends and ends after it starts. The sweep is its
+        own routine now, because the preliminary time-lag assessment draws
+        its sample from the same periods."""
+        sweep = body("PeriodsWithFile")
+        self.assertIn("Files(j)%timestamp + DatafileDateStep > Series(p)", sweep)
+        self.assertIn("Files(j)%timestamp < Series(p + 1)", sweep)
+        self.assertEqual(sweep.count("do p = iStart, iEnd - 1"), 1,
                          "one pass over the periods, not one per file")
+        self.assertIn("call PeriodsWithFile(iStart, iEnd, Series, nSeries, Files, nFiles, has)", PLAN)
+
+    def test_under_a_sample_only_the_drawn_periods_weigh(self):
+        """The preliminary assessment skips undrawn periods before looking
+        for their file, so they cost nothing and must not attract a cut."""
+        self.assertIn("if (SampleOn) has(p) = PeriodSampled(p)", PLAN)
+        self.assertIn("SpanWork(iStart, iEnd) / 4", PLAN)
 
     def test_cuts_fall_at_equal_shares_of_the_total(self):
         self.assertIn("total = sum(weight)", PLAN)
@@ -101,7 +111,7 @@ class AFreeWorkerTakesTheNextPiece(unittest.TestCase):
         self.assertIn("call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))", START)
 
     def test_the_wait_keeps_neff_workers_running_while_pieces_are_left(self):
-        loop = WAIT[WAIT.index("        do\n"):WAIT.index("deallocate(Running)")]
+        loop = WAIT[WAIT.index("        do\n"):WAIT.index("deallocate(Running")]
         self.assertIn("call PollPrepassPool(nEff, .false., progressed)", loop)
         self.assertIn("nRunning = count(Running)", POLL)
         self.assertIn("if (nRunning < slots .and. NextChunk <= NumChunks) then", POLL)
@@ -138,7 +148,7 @@ class AFailureStillStopsTheRun(unittest.TestCase):
                         POLL.index("call AppendWorkerLog(PoolKind, k)", i))
 
     def test_worker_logs_join_the_run_log_in_piece_order(self):
-        tail = WAIT[WAIT.index("deallocate(Running)"):]
+        tail = WAIT[WAIT.index("deallocate(Running"):]
         self.assertIn("do k = 2, NumChunks", tail)
         self.assertIn("call AppendWorkerLog(kind, k)", tail)
 
@@ -161,15 +171,15 @@ class NoCoreIdlesWhileTheParentWorks(unittest.TestCase):
     the next piece then, not when the parent reaches the wait."""
 
     def test_the_parent_tops_up_quietly_leaving_its_own_core(self):
-        self.assertIn("if (.not. PoolActive) return", TOPUP)
-        self.assertIn("call PollPrepassPool(PoolEff - 1, .true., progressed)", TOPUP)
+        self.assertIn("if (PoolActive) call PollPrepassPool(PoolEff - 1, .true., progressed)", TOPUP)
 
     def test_every_loop_the_parent_shares_tops_up_once_a_period(self):
+        # Every process walking the pass calls it - see test_run_progress_static.
         for loop in ("to_periods_loop: do", "pf_periods_loop: do"):
             i = MAIN.index(loop)
-            self.assertIn("call TopUpPrepassBatches()", MAIN[i:i + 600], loop)
+            self.assertIn("call TopUpPrepassBatches(pcount + 1)", MAIN[i:i + 600], loop)
         i = MAIN.index("if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop")
-        self.assertIn("if (ProdSplit) call TopUpPrepassBatches()", MAIN[i:i + 200])
+        self.assertIn("call TopUpPrepassBatches(pcount)", MAIN[i:i + 200])
 
     def test_the_pool_is_set_up_when_the_workers_start(self):
         self.assertLess(START.index("allocate(Running(NumChunks))"),

@@ -56,8 +56,19 @@ subroutine Fluxes23_rp()
     integer :: pcs
     integer :: msl
     integer :: wsl
-    integer :: wsx
     integer :: gas
+    !> Every hygrometer, and each one's fully corrected water flux and its
+    !> flux without WPL - the two quantities a trace gas's correction reads
+    !> from the hygrometer its record names. Indexed by gas slot; error where
+    !> a slot is not a hygrometer or yielded nothing this period.
+    integer :: w_slots(GHGNumVar)
+    character(8) :: w_tags(GHGNumVar)
+    integer :: n_w_slots
+    integer :: iw
+    logical :: isHygro(GHGNumVar)
+    real(kind = dbl) :: E3w(GHGNumVar)
+    real(kind = dbl) :: Enowplw(GHGNumVar)
+    real(kind = dbl) :: E3_ref, Enowpl_ref
     include '../src_common/interfaces_1.inc'
 
     !> Water's own slot, resolved from the records. The terms below are about
@@ -66,14 +77,6 @@ subroutine Fluxes23_rp()
     !> the project's primary water record rather than the h2o slot constant,
     !> which is record two and holds water only by convention.
     wsl = PrimaryWaterSlot()
-    !> An always-in-bounds stand-in for wsl inside guard expressions.
-    !>
-    !> Fortran does not mandate short-circuit `.and.`, so
-    !> `wsl >= firstGas .and. X(wsl)` still evaluates X(wsl) - and with no
-    !> hygrometer wsl is 0, which is out of bounds. The wsl >= firstGas test
-    !> still decides the outcome; wsx only keeps the subscript legal while it
-    !> is being decided.
-    wsx = max(wsl, firstGas)
 
     !> The global pair is the fallback, exactly as in Level2GasFlux: with one
     !> analyser it *is* that analyser's cell, so a single-analyser project is
@@ -100,107 +103,8 @@ subroutine Fluxes23_rp()
     Flux2%Hi_gas(firstGas:lastGas) = Flux1%Hi_gas(firstGas:lastGas)
     Flux3%Hi_gas(firstGas:lastGas) = Flux2%Hi_gas(firstGas:lastGas)
 
-    !> Level 2 evapotranspiration WPL corrected ,including Burba if the case
-    if (EddyFlowProj%wpl) then
-        if (wsl < firstGas) then
-            !> No hygrometer, so there is no evapotranspiration to correct.
-            !>
-            !> Tested on its own rather than folded into the open-path test
-            !> below: Fortran does not mandate short-circuit evaluation of
-            !> `.and.`, so `wsl >= firstGas .and. E2Col(wsl)%...` is not a
-            !> guard, and the closed-path arm reached E2Col(0) unconditionally.
-            Flux2%E = error
-        elseif (E2Col(wsl)%Instr%path_type == 'open') then
-            !> Open-path uses Webb et al. (1980)
-            !> Note that Burba terms are forced to zero
-            !> if analyzer is /= LI-7500
-            if (Ambient%RhoCp > 0d0 .and. Ambient%Ta > 0d0 &
-                .and. Flux1%E /= error .and. Flux1%H /= error &
-                .and. Ambient%sigma /= error) then
-                Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
-                    + (1d0 + mu * Ambient%sigma) &
-                        * (Flux1%H + BurbaHeatFor(wsl))&
-                        * RHO%w / (Ambient%RhoCp * Ambient%Ta)
-            else
-                Flux2%E = error
-            end if
-        else
-            !> Closed-path uses Ibrom et al. (2007) if conversion to mixing
-            !> ratio did not already occur (which implies that some variables
-            !> were missing)
-            select case(E2Col(wsl)%measure_type)
-                case ('molar_density', 'mole_fraction')
-                    if (Flux1%E /= error .and. Ambient%sigma /= error &
-                        .and. E2Col(wsl)%Va > 0d0 .and. Ambient%Va > 0d0) then
-
-                        if (Flux1%Hi_gas(wsl) /= error &
-                            .and. Stats%cov(w, pcs) /= error) then
-                            !> Complete formulation, should actually never be
-                            !> used cause conversion to mixing ratio should have
-                            !> already happened if everything is available
-                            Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
-                                * E2Col(wsl)%Va / Ambient%Va &
-                                + (1d0 + mu * Ambient%sigma) * Flux1%Hi_gas(wsl) &
-                                * RHO%w / (Ambient%RhoCp * Tcell_w) &
-                                - (1d0 + mu * Ambient%sigma) * Stats%cov(w, pcs) &
-                                * RHO%w / (Pcell_w)
-
-                        elseif (Flux1%Hi_gas(wsl) /= error) then
-                            !> Correct only for effect of T
-                            Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
-                                * E2Col(wsl)%Va / Ambient%Va &
-                                + (1d0 + mu * Ambient%sigma) * Flux1%Hi_gas(wsl) &
-                                * RHO%w / (Ambient%RhoCp * Tcell_w)
-
-                        elseif (Stats%cov(w, pcs)  /= error) then
-                            !> Correct only for effect of P
-                            Flux2%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
-                                * E2Col(wsl)%Va / Ambient%Va &
-                                - (1d0 + mu * Ambient%sigma) * Stats%cov(w, pcs) &
-                                * RHO%w / (Pcell_w)
-                        else
-                            !> Can't correct for T and P
-                            Flux2%E = Flux1%E * E2Col(wsl)%Va / Ambient%Va
-                        end if
-
-                    else
-                        Flux2%E = error
-                    end if
-                case ('mixing_ratio')
-                    Flux2%E = Flux1%E
-            end select
-        end if
-    else
-        !> If WPL should not be applied
-        Flux2%E = Flux1%E
-    end if
-    !> If Flux1 was error, then set also 2 to error
-    if (Flux1%E == error) Flux2%E = error
-
-    !> Level 2 h2o and latent heat flux
-    !>
-    !> `wsl` is a slot only when a hygrometer exists; with none it is 0 and
-    !> Flux2%gas(0) writes past the low end of the array.
-    if (wsl < firstGas) then
-        Flux2%LE  = error
-        Flux2%ET  = error
-    elseif (Flux2%E /= error) then
-        Flux2%gas(wsl) = Flux2%E * 1d3 / MW_H2O
-        Flux2%ET = Flux2%gas(wsl) * h2o_to_ET
-        if (Ambient%lambda /= error) then
-            Flux2%LE = Flux2%E * Ambient%lambda
-        else
-            Flux2%LE = error
-        end if
-    else
-        Flux2%gas(wsl) = error
-        Flux2%LE  = error
-        Flux2%ET  = error
-    end if
-
-    !> Level 2 evapotranspiration fluxes with H2O covariances
-    !> at time-lags of other scalars. Do nothing, WPL is deleterious here
-    Flux2%E_gas(firstGas:lastGas) = Flux1%E_gas(firstGas:lastGas)
+    !> Sensible heat comes first. It needs only the level 0 water flux, and
+    !> every hygrometer's open-path WPL at level 3 needs it.
 
     !> Level 2 Sensible heat
     if (E2Col(ts)%instr%category == 'sonic') then
@@ -240,27 +144,50 @@ subroutine Fluxes23_rp()
         Flux3%H = error
     end if
 
-    !> Level 3 for evapotranspiration: for open path, WPL again with corrected H
-    !> Starts again from Level 1 of E, Level 2 was only used to
-    !> calculate H Level 3.
-    if(EddyFlowProj%wpl .and. wsl >= firstGas &
-        .and. E2Col(wsx)%Instr%path_type == 'open') then
-        if (Ambient%RhoCp > 0d0 .and. Ambient%Ta > 0d0 .and. Flux1%E /= error &
-            .and. Flux1%H /= error .and. Ambient%sigma /= error) then
-            Flux3%E = (1d0 + mu * Ambient%sigma) * Flux1%E &
-                + (1d0 + mu * Ambient%sigma) &
-                * (Flux3%H + BurbaHeatFor(wsl))&
-                * RHO%w / (Ambient%RhoCp * Ambient%Ta)
-        else
-            Flux3%E = Flux2%E
-        end if
+    !> Every hygrometer, and each one's sensible heat on its own air.
+    call WaterOutSlots(w_slots, w_tags, n_w_slots)
+    isHygro = .false.
+    do iw = 1, n_w_slots
+        isHygro(w_slots(iw)) = .true.
+    end do
+    call PerHygrometerHeat_rp()
+
+    !> Level 2 and 3 evapotranspiration of the designated hygrometer, WPL
+    !> corrected after its own path type, including Burba if the case.
+    if (wsl < firstGas) then
+        !> No hygrometer, so there is no evapotranspiration to correct.
+        Flux2%E = error
+        Flux3%E = error
+        E_nowpl = Flux1%E
     else
-        Flux3%E = Flux2%E
+        call HygrometerWater(wsl, Flux1%E, Ambient%sigma, RHO%w, Ambient%RhoCp, &
+            Tcell_w, Pcell_w, pcs, Flux3%H, Flux2%E, Flux3%E, E_nowpl)
     end if
 
-    !> Level 3 latent heat fluxes with H2O covariances at
-    !> timelags of other scalars
-    !> Do nothing
+    !> Level 2 h2o and latent heat flux
+    !>
+    !> `wsl` is a slot only when a hygrometer exists; with none it is 0 and
+    !> Flux2%gas(0) writes past the low end of the array.
+    if (wsl < firstGas) then
+        Flux2%LE  = error
+        Flux2%ET  = error
+    elseif (Flux2%E /= error) then
+        Flux2%gas(wsl) = Flux2%E * 1d3 / MW_H2O
+        Flux2%ET = Flux2%gas(wsl) * h2o_to_ET
+        if (Ambient%lambda /= error) then
+            Flux2%LE = Flux2%E * Ambient%lambda
+        else
+            Flux2%LE = error
+        end if
+    else
+        Flux2%gas(wsl) = error
+        Flux2%LE  = error
+        Flux2%ET  = error
+    end if
+
+    !> Level 2 and 3 evapotranspiration fluxes with H2O covariances at
+    !> time-lags of other scalars. Do nothing, WPL is deleterious here
+    Flux2%E_gas(firstGas:lastGas) = Flux1%E_gas(firstGas:lastGas)
     Flux3%E_gas(firstGas:lastGas) = Flux2%E_gas(firstGas:lastGas)
 
     !> Level 3 h2o flux and latent heat flux
@@ -281,27 +208,24 @@ subroutine Fluxes23_rp()
         Flux3%ET  = error
     end if
 
-    !> Calculate E_nowpl for closed and open path systems
-    if (wsl >= firstGas .and. E2Col(wsx)%Instr%path_type == 'closed') then
-        if (Flux1%E /= error .and. BPCF%of(wsl) /= error) then
-            E_nowpl = Flux1%E * BPCF%of(wsl)
-        elseif(Flux1%E /= error) then
-            E_nowpl = Flux1%E
-        else
-            E_nowpl = error
-        end if
-    else
-        E_nowpl = Flux1%E
-    end if
-
     !> Apply spectral correction to h2o and E/LE Level 3 fluxes for closed path
     if (wsl >= firstGas .and. Flux3%E /= error) then
         if (E2Col(wsl)%Instr%path_type == 'closed') then
-            !> Level 3, spectral correction
-            Flux3%gas(wsl) = Flux3%gas(wsl) * BPCF%of(wsl)
-            Flux3%E   = Flux3%E   * BPCF%of(wsl)
-            Flux3%LE  = Flux3%LE  * BPCF%of(wsl)
-            Flux3%ET  = Flux3%ET  * BPCF%of(wsl)
+            !> No correction factor means the corrected flux is unavailable -
+            !> not the flux times the error sentinel, which is what the
+            !> unguarded multiply produced.
+            if (BPCF%of(wsl) /= error) then
+                !> Level 3, spectral correction
+                Flux3%gas(wsl) = Flux3%gas(wsl) * BPCF%of(wsl)
+                Flux3%E   = Flux3%E   * BPCF%of(wsl)
+                Flux3%LE  = Flux3%LE  * BPCF%of(wsl)
+                Flux3%ET  = Flux3%ET  * BPCF%of(wsl)
+            else
+                Flux3%gas(wsl) = error
+                Flux3%E   = error
+                Flux3%LE  = error
+                Flux3%ET  = error
+            end if
         end if
     end if
 
@@ -316,6 +240,25 @@ subroutine Fluxes23_rp()
         Flux3%ET  = error
     end if
 
+    !> Every other hygrometer: the same correction, after its own path type and
+    !> on its own analyser and air. These went through the trace-gas formula,
+    !> which on a closed path has no (1 + mu*sigma) dilution of the flux
+    !> itself - for any other gas that term is the water-vapour term, and a
+    !> hygrometer's covariance with itself has no lagged counterpart - and on
+    !> an open path took the designated hygrometer's evapotranspiration for its
+    !> own. So the numbered LE and ET of a second hygrometer carried a
+    !> different correction from the bare ones they sit beside.
+    E3w = error
+    Enowplw = error
+    if (wsl >= firstGas .and. wsl <= lastGas) then
+        E3w(wsl) = Flux3%E
+        Enowplw(wsl) = E_nowpl
+    end if
+    do iw = 1, n_w_slots
+        if (w_slots(iw) == wsl) cycle
+        call OtherHygrometerWater(w_slots(iw))
+    end do
+
     !> Level 2 other gases.
     !>
     !> One loop over the configured gases, replacing three near-duplicate
@@ -323,23 +266,20 @@ subroutine Fluxes23_rp()
     !> as an if/elseif cascade; accumulating each term when its inputs are
     !> available is equivalent, and does not have to be written once per gas.
     do msl = firstGas, lastGas
-        !> The primary water's own flux is the evapotranspiration handled
+        !> Every hygrometer's own flux is its evapotranspiration, handled
         !> above, not a WPL-corrected trace gas flux. Keyed on the resolved
-        !> slot, not the h2o constant: on a project that declares its water
+        !> slots, not the h2o constant: on a project that declares its water
         !> anywhere but record two, that constant skipped a trace gas from
         !> this loop - leaving its Level 2 and 3 fluxes unset - and sent the
         !> real water through the trace-gas path instead.
-        !>
-        !> A *second* hygrometer is deliberately still treated as a trace gas
-        !> here: only one evapotranspiration is computed above, so skipping
-        !> it would leave its flux unreported.
-        if (msl == wsl) cycle
+        if (msl == wsl .or. isHygro(msl)) cycle
         if (.not. E2Col(msl)%present) then
             Flux2%gas(msl) = error
             cycle
         end if
         call MoistTerms(msl, sigma_g, rhow_g)
-        call Level2GasFlux(msl, sigma_g, rhow_g)
+        call WaterFluxFor(msl, E3_ref, Enowpl_ref)
+        call Level2GasFlux(msl, sigma_g, rhow_g, E3_ref, Enowpl_ref)
     end do
 
     !> Level 3 other gases. For closed path apply the spectral correction
@@ -347,7 +287,7 @@ subroutine Fluxes23_rp()
     !> BPCF%of is indexed by the w_* covariance labels, which carry the same
     !> numbering as the gas slots, so the slot indexes it directly.
     do msl = firstGas, lastGas
-        if (msl == wsl) cycle
+        if (msl == wsl .or. isHygro(msl)) cycle
         if (E2Col(msl)%Instr%path_type == 'closed' .and. Flux2%gas(msl) /= error) then
             !> No correction factor means the corrected flux is
             !> unavailable, not that it equals the uncorrected one - and
@@ -427,36 +367,32 @@ subroutine Fluxes23_rp()
 contains
 
 !***************************************************************************
-!> H, LE, ET, tau and the stability, one set per hygrometer.
+!> Sensible heat, once per hygrometer.
 !>
-!> The RP twin of PerHygrometerFluxes in src_fcc/fluxes23.f90. Same formulas
-!> on the same inputs, taken from Ambient and Flux3 rather than from the ex
-!> record. Kept in step with that routine: two sites reporting different
-!> numbers for the same half-hour depending on whether FCC ran would be worse
-!> than either alone.
+!> The first half of the per-hygrometer set, split from the rest because it
+!> is needed earlier: each hygrometer's open-path WPL redoes its level 3
+!> evapotranspiration with its own level 3 H, as the designated hygrometer has
+!> always done with Flux3%H.
+!>
+!> Spectrally corrected, as Flux3%H is. Flux1%H carries no correction factor -
+!> Fluxes1_rp passes Flux0%H through - and the bare H is Flux2%H times
+!> BPCF%of(w_ts), so the numbered H of a second hygrometer, built straight from
+!> Flux1%H, was the uncorrected flux beside a corrected one.
+!>
+!> The RP twin of PerHygrometerHeat in src_fcc/fluxes23.f90.
 !***************************************************************************
-subroutine PerHygrometerFluxes_rp()
+subroutine PerHygrometerHeat_rp()
     implicit none
-    integer :: slots(GHGNumVar)
-    character(8) :: wtags(GHGNumVar)
     !> `wslot`, not `w`: w is the module's wind-component index and a loop
     !> variable of that name would shadow it inside this routine, silently
     !> retargeting every Stats%Cov(w, ...) below.
-    integer :: nw, iw, wslot
+    integer :: iw, wslot
     real(kind = dbl) :: rhocp_w, rhoa_w, q_w, e0_w
 
-    Flux3%E_at = error
-    Flux3%LE_at = error
-    Flux3%ET_at = error
     Flux3%H_at = error
-    Flux3%tau_at = error
-    Flux3%L_at = error
-    Flux3%zL_at = error
 
-    call WaterOutSlots(slots, wtags, nw)
-
-    do iw = 1, nw
-        wslot = slots(iw)
+    do iw = 1, n_w_slots
+        wslot = w_slots(iw)
         if (.not. E2Col(wslot)%present) cycle
 
         !> A hygrometer's own moisture reference is itself.
@@ -466,14 +402,6 @@ subroutine PerHygrometerFluxes_rp()
         if (rhocp_w == error) rhocp_w = Ambient%RhoCp
         if (rhoa_w  == error) rhoa_w  = RHO%a
         if (q_w     == error) q_w     = Ambient%Q
-
-        !> Reported water flux: fully corrected, as LE and ET are.
-        if (Flux3%gas(wslot) /= error) then
-            Flux3%E_at(wslot) = Flux3%gas(wslot) * MW_H2O * 1d-3
-            Flux3%ET_at(wslot) = Flux3%gas(wslot) * h2o_to_ET
-            if (Ambient%lambda /= error) &
-                Flux3%LE_at(wslot) = Flux3%E_at(wslot) * Ambient%lambda
-        end if
 
         !> The humidity correction of sensible heat takes the *level 0* water
         !> flux, which is what the scalar above uses - Flux0%E is exactly
@@ -495,6 +423,55 @@ subroutine PerHygrometerFluxes_rp()
             else
                 Flux3%H_at(wslot) = Flux1%H
             end if
+            !> Level 3, spectral corrected, as the bare H.
+            if (BPCF%of(w_ts) /= error) then
+                Flux3%H_at(wslot) = Flux3%H_at(wslot) * BPCF%of(w_ts)
+            else
+                Flux3%H_at(wslot) = error
+            end if
+        end if
+    end do
+end subroutine PerHygrometerHeat_rp
+
+!***************************************************************************
+!> LE, ET, tau and the stability, one set per hygrometer.
+!>
+!> The RP twin of PerHygrometerFluxes in src_fcc/fluxes23.f90. Same formulas
+!> on the same inputs, taken from Ambient and Flux3 rather than from the ex
+!> record. Kept in step with that routine: two sites reporting different
+!> numbers for the same half-hour depending on whether FCC ran would be worse
+!> than either alone. H is already in place, from PerHygrometerHeat_rp.
+!***************************************************************************
+subroutine PerHygrometerFluxes_rp()
+    implicit none
+    !> `wslot`, not `w`: see PerHygrometerHeat_rp.
+    integer :: iw, wslot
+    real(kind = dbl) :: rhocp_w, rhoa_w
+
+    Flux3%E_at = error
+    Flux3%LE_at = error
+    Flux3%ET_at = error
+    Flux3%tau_at = error
+    Flux3%L_at = error
+    Flux3%zL_at = error
+
+    do iw = 1, n_w_slots
+        wslot = w_slots(iw)
+        if (.not. E2Col(wslot)%present) cycle
+
+        !> A hygrometer's own moisture reference is itself.
+        rhocp_w = Ambient%RhoCp_at(wslot)
+        rhoa_w  = Ambient%rho_a_at(wslot)
+        if (rhocp_w == error) rhocp_w = Ambient%RhoCp
+        if (rhoa_w  == error) rhoa_w  = RHO%a
+
+        !> Reported water flux: fully corrected, as LE and ET are - by
+        !> OtherHygrometerWater, after this hygrometer's own path type.
+        if (Flux3%gas(wslot) /= error) then
+            Flux3%E_at(wslot) = Flux3%gas(wslot) * MW_H2O * 1d-3
+            Flux3%ET_at(wslot) = Flux3%gas(wslot) * h2o_to_ET
+            if (Ambient%lambda /= error) &
+                Flux3%LE_at(wslot) = Flux3%E_at(wslot) * Ambient%lambda
         end if
 
         !> Momentum follows the humidity only through air density; u* comes
@@ -525,6 +502,216 @@ subroutine PerHygrometerFluxes_rp()
         Flux3%zL_at(wsl)  = Ambient%zL
     end if
 end subroutine PerHygrometerFluxes_rp
+
+!***************************************************************************
+!> Level 2 and 3 evapotranspiration of one hygrometer, WPL corrected after
+!> its own path type.
+!>
+!> The designated hygrometer's block, lifted out unchanged so every
+!> hygrometer gets it: open path after Webb et al. (1980), with the Burba terms
+!> of an LI-7500, redone at level 3 with the level 3 sensible heat; closed path
+!> after Ibrom et al. (2007), unless the series was already converted to
+!> mixing ratio point by point. The caller supplies the air and the cell: the
+!> designated hygrometer passes the scalars it always used, so its numbers do
+!> not move; every other one passes its own.
+!>
+!> E3 is returned before the closed-path spectral correction, which the
+!> caller applies - in the designated hygrometer's case to E, LE and ET in the
+!> order it always has.
+!>
+!> With WPL off, E2 = E1, as EddyPro does.
+!***************************************************************************
+subroutine HygrometerWater(slot, E1, sigma, rhow, rhocp, Tcell, Pcell, pslot, &
+    H3, E2, E3, Enw)
+    implicit none
+    integer, intent(in) :: slot
+    real(kind = dbl), intent(in) :: E1
+    real(kind = dbl), intent(in) :: sigma, rhow, rhocp
+    real(kind = dbl), intent(in) :: Tcell, Pcell
+    integer, intent(in) :: pslot
+    real(kind = dbl), intent(in) :: H3
+    real(kind = dbl), intent(out) :: E2, E3, Enw
+
+    E2 = error
+    if (EddyFlowProj%wpl) then
+        if (E2Col(slot)%Instr%path_type == 'open') then
+            !> Open-path uses Webb et al. (1980)
+            !> Note that Burba terms are forced to zero
+            !> if analyzer is /= LI-7500
+            if (rhocp > 0d0 .and. Ambient%Ta > 0d0 &
+                .and. E1 /= error .and. Flux1%H /= error &
+                .and. sigma /= error) then
+                E2 = (1d0 + mu * sigma) * E1 &
+                    + (1d0 + mu * sigma) &
+                        * (Flux1%H + BurbaHeatFor(slot))&
+                        * rhow / (rhocp * Ambient%Ta)
+            end if
+        else
+            !> Closed-path uses Ibrom et al. (2007) if conversion to mixing
+            !> ratio did not already occur (which implies that some variables
+            !> were missing)
+            select case(E2Col(slot)%measure_type)
+                case ('molar_density', 'mole_fraction')
+                    if (E1 /= error .and. sigma /= error &
+                        .and. E2Col(slot)%Va > 0d0 .and. Ambient%Va > 0d0) then
+
+                        if (Flux1%Hi_gas(slot) /= error &
+                            .and. Stats%cov(w, pslot) /= error) then
+                            !> Complete formulation, should actually never be
+                            !> used cause conversion to mixing ratio should have
+                            !> already happened if everything is available
+                            E2 = (1d0 + mu * sigma) * E1 &
+                                * E2Col(slot)%Va / Ambient%Va &
+                                + (1d0 + mu * sigma) * Flux1%Hi_gas(slot) &
+                                * rhow / (rhocp * Tcell) &
+                                - (1d0 + mu * sigma) * Stats%cov(w, pslot) &
+                                * rhow / (Pcell)
+
+                        elseif (Flux1%Hi_gas(slot) /= error) then
+                            !> Correct only for effect of T
+                            E2 = (1d0 + mu * sigma) * E1 &
+                                * E2Col(slot)%Va / Ambient%Va &
+                                + (1d0 + mu * sigma) * Flux1%Hi_gas(slot) &
+                                * rhow / (rhocp * Tcell)
+
+                        elseif (Stats%cov(w, pslot)  /= error) then
+                            !> Correct only for effect of P
+                            E2 = (1d0 + mu * sigma) * E1 &
+                                * E2Col(slot)%Va / Ambient%Va &
+                                - (1d0 + mu * sigma) * Stats%cov(w, pslot) &
+                                * rhow / (Pcell)
+                        else
+                            !> Can't correct for T and P
+                            E2 = E1 * E2Col(slot)%Va / Ambient%Va
+                        end if
+                    end if
+                case ('mixing_ratio')
+                    E2 = E1
+            end select
+        end if
+    else
+        !> If WPL should not be applied
+        E2 = E1
+    end if
+    !> If Flux1 was error, then set also 2 to error
+    if (E1 == error) E2 = error
+
+    !> Level 3 for evapotranspiration: for open path, WPL again with corrected
+    !> H. Starts again from Level 1 of E, Level 2 was only used to calculate H
+    !> Level 3. A level 3 H that is error - no spectral factor for it - leaves
+    !> level 2 standing rather than entering the formula as -9999.
+    if (EddyFlowProj%wpl .and. E2Col(slot)%Instr%path_type == 'open') then
+        if (rhocp > 0d0 .and. Ambient%Ta > 0d0 .and. E1 /= error &
+            .and. Flux1%H /= error .and. H3 /= error .and. sigma /= error) then
+            E3 = (1d0 + mu * sigma) * E1 &
+                + (1d0 + mu * sigma) &
+                * (H3 + BurbaHeatFor(slot))&
+                * rhow / (rhocp * Ambient%Ta)
+        else
+            E3 = E2
+        end if
+    else
+        E3 = E2
+    end if
+
+    !> E without WPL, spectrally corrected, for the LI-7700 formulation
+    if (E2Col(slot)%Instr%path_type == 'closed') then
+        if (E1 /= error .and. BPCF%of(slot) /= error) then
+            Enw = E1 * BPCF%of(slot)
+        elseif(E1 /= error) then
+            Enw = E1
+        else
+            Enw = error
+        end if
+    else
+        Enw = E1
+    end if
+end subroutine HygrometerWater
+
+!***************************************************************************
+!> Level 2 and 3 water flux of a hygrometer other than the designated one.
+!>
+!> HygrometerWater on that hygrometer's own record: its air (sigma, rho_w,
+!> rho*cp, each falling back to the site's as PerHygrometerHeat_rp does), its
+!> own analyser's cell, its own level 3 sensible heat. Then the closed-path
+!> spectral correction, guarded, and the results kept for the trace gases that
+!> name this hygrometer for their water.
+!***************************************************************************
+subroutine OtherHygrometerWater(ws)
+    implicit none
+    integer, intent(in) :: ws
+    real(kind = dbl) :: E1, E2, E3, Enw
+    real(kind = dbl) :: sig, rw, rcp, Tc, Pc
+
+    Flux2%gas(ws) = error
+    Flux3%gas(ws) = error
+    if (.not. E2Col(ws)%present) return
+
+    !> Level 1 water flux in the units of E: the inverse of the conversion
+    !> the designated hygrometer's Flux2%gas is built with.
+    E1 = error
+    if (Flux1%gas(ws) /= error) E1 = Flux1%gas(ws) * MW_H2O * 1d-3
+
+    sig = Ambient%sigma_at(ws)
+    rw  = RHO%w_at(ws)
+    rcp = Ambient%RhoCp_at(ws)
+    if (sig == error) sig = Ambient%sigma
+    if (rw  == error) rw  = RHO%w
+    if (rcp == error) rcp = Ambient%RhoCp
+    Tc = Ambient%Tcell
+    Pc = Ambient%Pcell
+    if (Ambient%Tcell_at(ws) /= error) Tc = Ambient%Tcell_at(ws)
+    if (Ambient%Pcell_at(ws) /= error) Pc = Ambient%Pcell_at(ws)
+
+    call HygrometerWater(ws, E1, sig, rw, rcp, Tc, Pc, cellPressureSlot(ws), &
+        Flux3%H_at(ws), E2, E3, Enw)
+
+    if (E2 /= error) Flux2%gas(ws) = E2 * 1d3 / MW_H2O
+    if (E3 /= error .and. E2Col(ws)%Instr%path_type == 'closed') then
+        if (BPCF%of(ws) /= error) then
+            E3 = E3 * BPCF%of(ws)
+        else
+            E3 = error
+        end if
+    end if
+    if (E3 /= error) Flux3%gas(ws) = E3 * 1d3 / MW_H2O
+
+    E3w(ws) = E3
+    Enowplw(ws) = Enw
+end subroutine OtherHygrometerWater
+
+!***************************************************************************
+!> The water flux a trace gas's WPL correction reads: that of the hygrometer
+!> its record names for its water (E2Col(gas)%moist_ref), the same hygrometer
+!> MoistTerms takes sigma and rho_w from.
+!>
+!> It was always the designated hygrometer's, whatever the record named. With
+!> a MIRO and an LI-7550 side by side that corrected the MIRO's gases with the
+!> LI-7550's evapotranspiration and the MIRO's humidity at once.
+!>
+!> Falls back to the designated hygrometer when the named water is not a fast
+!> hygrometer - the biomet RH, which has humidity but no flux - and in a period
+!> where the named one has no flux. The first case is a property of the
+!> project, and DefineE2Set says so once per gas. A closed-path gas reads its
+!> own lagged water covariance (Flux3%E_gas) instead, so only open-path gases
+!> use this.
+!***************************************************************************
+subroutine WaterFluxFor(gas, e3, enw)
+    implicit none
+    integer, intent(in) :: gas
+    real(kind = dbl), intent(out) :: e3, enw
+    integer :: ref
+
+    e3 = Flux3%E
+    enw = E_nowpl
+    ref = E2Col(gas)%moist_ref
+    if (ref == wsl) return
+    if (ref < firstGas .or. ref > lastGas) return
+    if (.not. isHygro(ref)) return
+    if (E3w(ref) == error) return
+    e3 = E3w(ref)
+    enw = Enowplw(ref)
+end subroutine WaterFluxFor
 
 !***************************************************************************
 !> Level 2 flux of one gas: the WPL / density correction.
@@ -567,15 +754,25 @@ real(kind = dbl) function BurbaHeatFor(gas)
 end function BurbaHeatFor
 
 
-subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
+!> The water flux comes in with the humidity terms, both from the hygrometer
+!> the gas's record names (WaterFluxFor, MoistTerms): `e3_ref` is that
+!> hygrometer's corrected evapotranspiration, and `enw_ref` the same without
+!> its WPL, which only the LI-7700 formulation wants. Both were the
+!> designated hygrometer's, read from the host, whatever the record named.
+!>
+!> The WPL switch was never read here - only the designated hygrometer's
+!> evapotranspiration and the point-by-point mixing ratios obeyed it - so with
+!> WPL off every gas was still corrected, open-path ones against an
+!> evapotranspiration the switch had left uncorrected. Inherited from the
+!> EddyPro 6.2.2 fork; EddyPro 7 resets each gas to its level 1 flux when WPL
+!> is off, and so does this.
+subroutine Level2GasFlux(gas, sigma_gas, rhow_gas, e3_ref, enw_ref)
     implicit none
     integer, intent(in) :: gas
     real(kind = dbl), intent(in) :: sigma_gas
     real(kind = dbl), intent(in) :: rhow_gas
-    !> E_nowpl - the evapotranspiration without its own WPL correction - is
-    !> the host's, by association. Only the LI-7700 formulation below wants
-    !> it; every other path uses the corrected Flux3%E. Not passed in, because
-    !> a dummy of the same name would shadow the host variable it came from.
+    real(kind = dbl), intent(in) :: e3_ref
+    real(kind = dbl), intent(in) :: enw_ref
     real(kind = dbl) :: dens_to_chi
     real(kind = dbl) :: base
     real(kind = dbl) :: wpl
@@ -586,6 +783,16 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
 
     if (Flux1%gas(gas) == error) then
         Flux2%gas(gas) = error
+        return
+    end if
+
+    !> If WPL should not be applied. Every path and every analyser alike,
+    !> the LI-7700 included, as in EddyPro 7 - which also does no
+    !> point-by-point conversion then, so a closed-path series is what the
+    !> analyser reported.
+    if (.not. EddyFlowProj%wpl) then
+        Flux2%gas(gas) = Flux1%gas(gas)
+        if (.not. E2Col(gas)%present) Flux2%gas(gas) = error
         return
     end if
 
@@ -651,11 +858,11 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
         !> d = chi/Va * 1d-3 and water d = chi/Va, because a trace gas's chi
         !> is on the umol basis and water's is already on the mmol one.
         !>
-        !> This was a bare 1d3, calibrated for the trace-gas case. A second
-        !> hygrometer is deliberately routed through here as a trace gas -
-        !> only the primary is skipped above, so that its flux is reported at
-        !> all - and on an open path it therefore had a WPL term a thousand
-        !> times too large.
+        !> This was a bare 1d3, calibrated for the trace-gas case, while a
+        !> second hygrometer was routed through here as a trace gas - so on an
+        !> open path it had a WPL term a thousand times too large. Every
+        !> hygrometer now has its own evapotranspiration (HygrometerWater) and
+        !> never arrives here; the water case stays correct regardless.
         if (GasSlotIsWater(gas)) then
             dens_to_chi = 1d0
         else
@@ -667,7 +874,7 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
             !> Webb et al. (1980) with the corrections of the LI-7700 manual.
             !> A scales the whole flux, B the water-vapour term and C the
             !> sensible-heat term, and the formulation wants the UNcorrected
-            !> evapotranspiration - E_nowpl - rather than Flux3%E divided back
+            !> evapotranspiration - enw_ref - rather than e3_ref divided back
             !> out, together with an extra (1 + mu*sigma) on the heat term.
             !>
             !> A was never lost: rp_main applies it to chi and r, which is why
@@ -676,10 +883,18 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
             !> output and applied to nothing, leaving methane about 10 % low
             !> against EddyPro on the LI-COR sample archives - B and C are
             !> around 1.42 and 1.32 there, so two terms were scaled by one.
+            !> No multipliers means no corrected flux. They are error when
+            !> the gas's water is the biomet RH, and multiplying by the
+            !> sentinel reported methane at -8e8.
+            if (Mul7700(gas)%A == error .or. Mul7700(gas)%B == error &
+                .or. Mul7700(gas)%C == error) then
+                Flux2%gas(gas) = error
+                return
+            end if
             wpl = Flux1%gas(gas)
-            if (E_nowpl /= error .and. RHO%d > 0d0) &
+            if (enw_ref /= error .and. RHO%d > 0d0) &
                 wpl = wpl + Mul7700(gas)%B * mu * Stats%d(gas) * dens_to_chi &
-                    * E_nowpl / RHO%d
+                    * enw_ref / RHO%d
             if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 &
                 .and. Ambient%Ta > 0d0 .and. sigma_gas /= error) &
                 wpl = wpl + Mul7700(gas)%C * (1d0 + mu * sigma_gas) * Flux3%H &
@@ -687,8 +902,8 @@ subroutine Level2GasFlux(gas, sigma_gas, rhow_gas)
             Flux2%gas(gas) = Mul7700(gas)%A * wpl
         else
             wpl = Flux1%gas(gas)
-            if (Flux3%E /= error .and. RHO%d > 0d0 .and. sigma_gas /= error) &
-                wpl = wpl + mu * Flux3%E * Stats%d(gas) * dens_to_chi &
+            if (e3_ref /= error .and. RHO%d > 0d0 .and. sigma_gas /= error) &
+                wpl = wpl + mu * e3_ref * Stats%d(gas) * dens_to_chi &
                     / ((1d0 + mu * sigma_gas) * RHO%d)
             if (Flux3%H /= error .and. Ambient%RhoCp > 0d0 .and. Ambient%Ta > 0d0) &
                 wpl = wpl + (Flux3%H + BurbaHeatFor(gas)) &

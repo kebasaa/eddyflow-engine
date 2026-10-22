@@ -36,7 +36,7 @@
 subroutine InitEnv()
     use m_common_global_var
     use m_eddypro_import
-    use m_process_os, only: WatchParent, RequestFullSpeed
+    use m_process_os, only: WatchParent, RequestFullSpeed, ProcessSelfId
     use, intrinsic :: iso_fortran_env, only: error_unit
     implicit none
     include 'version_and_date.inc'
@@ -50,12 +50,14 @@ subroutine InitEnv()
     character(256) :: switch
     character(PathLen) :: projPath
     character(256) :: arg
-    character(32) :: tmpDirPadding
+    character(48) :: tmpDirPadding
     character(3), parameter :: OS_default = 'win'
     integer, external :: CreateDir
     logical, external :: SwitchTakesValue
     character(PathLen) :: lowerPath
     character(8) :: batchPadding
+    character(16) :: pidPadding
+    integer :: upid
     integer :: jobs_status
     integer :: parent_status
 
@@ -239,11 +241,33 @@ subroutine InitEnv()
         write(batchPadding, '(a,i2.2)') '_b', BatchIndex
         tmpDirPadding = trim(tmpDirPadding) // trim(batchPadding)
     end if
+    !> And the process id: two runs of different sessions started in the
+    !> same millisecond would otherwise share one, and the first to finish
+    !> would remove the other's.
+    write(pidPadding, '(a,i0)') '_p', ProcessSelfId()
+    tmpDirPadding = trim(tmpDirPadding) // trim(pidPadding)
 
     !> Default values if args are not passed
     if (len_trim(homedir) == 0) homedir = '..'
     if (len_trim(EddyFlowProj%run_env) == 0) EddyFlowProj%run_env = 'desktop'
     if (len_trim(EddyFlowProj%caller) == 0)  EddyFlowProj%caller  = 'console'
+
+    !> A double quote in the home directory or the project path is never a
+    !> real path. It is what the C runtime makes of `-e "C:\dir\"` from a
+    !> shell: the trailing backslash escapes the closing quote, and every
+    !> argument after it - the -j, the project path - is swallowed into the
+    !> home directory. CreateDir below then hands cmd a mkdir with a stray
+    !> quote in the middle, and cmd creates each word as a folder in whatever
+    !> directory the run was started from: -j, 3\tmp\tmp_<ts> and the like.
+    !> Stopped rather than defaulted, because the swallowed project path is
+    !> already gone and a default would run some other project instead.
+    if (index(homedir, '"') > 0 .or. index(projPath, '"') > 0) then
+        write(error_unit, '(a)') ' The home directory (-e) or project path contains a double'
+        write(error_unit, '(a)') ' quote. A path ending in a backslash inside quotes, such as'
+        write(error_unit, '(a)') ' -e "C:\dir\", swallows the arguments after it. Pass the'
+        write(error_unit, '(a)') ' path without a trailing separator.'
+        stop 3
+    end if
 
     !> Define default unit number (udf), run specific
     call hms_current_hms(aux, aux, aux, udf)
@@ -279,6 +303,34 @@ subroutine InitEnv()
 
     !> Create TmpDir in case it doesn't exist (for use from command line)
     make_dir = CreateDir('"' // trim(TmpDir) // '"')
+
+    !> Who owns this temporary directory. Every run of every session on one
+    !> version shares the tmp folder above it, and the interface, cleaning up
+    !> after a Stop, removes only the directories whose owner is no longer
+    !> running - not another session's run that is. Not in embedded mode,
+    !> where TmpDir is that shared folder itself.
+    if (EddyFlowProj%run_env == 'desktop') then
+        open(newunit = upid, file = trim(TmpDir) // 'owner.pid', status = 'replace', &
+            iostat = io_status)
+        if (io_status == 0) then
+            write(upid, '(i0)') ProcessSelfId()
+            close(upid)
+        end if
+    end if
+
+    !> A worker says which process it is, beside the return code its script
+    !> will write, so its parent can tell a worker that has ended without
+    !> reporting - its script deleted from under it - from one still working.
+    if (BatchIndex > 0 .and. len_trim(BatchTmpDir) > 0) then
+        write(batchPadding, '(a,i2.2)') '_b', BatchIndex
+        open(newunit = upid, file = trim(BatchTmpDir) // slash // 'batch_' &
+            // trim(BatchKind) // trim(batchPadding) // '.pid', &
+            status = 'replace', iostat = io_status)
+        if (io_status == 0) then
+            write(upid, '(i0)') ProcessSelfId()
+            close(upid)
+        end if
+    end if
 end subroutine InitEnv
 
 !***************************************************************************

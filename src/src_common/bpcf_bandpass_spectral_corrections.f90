@@ -35,7 +35,7 @@
 subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     loc_var_present, wind_speed, t_air, zL, ac_frequency, avrg_length, &
     logger_sw_ver, detrending_method, detrending_time_constant, printout, &
-    LocInstr, nfull, LocFileList, nrow_full, lEx, LocSetup)
+    LocInstr, nfull, LocFileList, lEx, LocSetup)
     use m_common_global_var
     implicit none
     !> In/out variables
@@ -54,7 +54,6 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     type(InstrumentType), intent(in) :: LocInstr(GHGNumVar)
     type(SwVerType), intent(in) :: logger_sw_ver
     !> Optional variables
-    integer, optional, intent(in):: nrow_full
     type(FileListType), optional, intent(in) :: LocFileList(nfull)
     type(ExType), optional, intent(in) :: lEx
     type(FCCsetupType), optional, intent(in) :: LocSetup
@@ -166,7 +165,13 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 end do
                 !> Nothing left for the in-situ method to do - say so with the
                 !> message that has always meant it, and switch wholesale.
-                if (.not. any(insitu_ok(firstGas:lastGas))) then
+                !> Only when some gas is there to be corrected: a period with
+                !> no gas data at all has every insitu_ok false too, and at
+                !> Jonkershoek those 111 periods each printed Error(69), which
+                !> the interface read as Fratini having failed for the whole
+                !> run when every period with a gas flux was corrected in situ.
+                if (any(loc_var_present(firstGas:lastGas)) .and. &
+                    .not. any(insitu_ok(firstGas:lastGas))) then
                     actual_hf_method = 'moncrieff_97'
                     n_analytic = 0
                     write(*,*)
@@ -229,7 +234,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                 !> Correction after Fratini et al. 2012, AFM
                 call BPCF_Fratini12(insitu_ok, LocInstr, wind_speed, &
                     t_air, ac_frequency, avrg_length, detrending_time_constant, &
-                    detrending_method, nfull, nrow_full, LocFileList, lEx, LocSetup)
+                    detrending_method, nfull, LocFileList, lEx, LocSetup)
 
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)

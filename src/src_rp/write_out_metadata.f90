@@ -78,9 +78,9 @@ subroutine WriteOutMetadata(init_string)
     call AddDatum(csv_row, field_val, separator)
     write(field_val, *) E2Col(u)%instr%north_offset
     call AddDatum(csv_row, field_val, separator)
-    write(field_val, *) E2Col(u)%instr%hpath_length * 1d2
+    write(field_val, *) OutUnits(E2Col(u)%instr%hpath_length, 1d2)
     call AddDatum(csv_row, field_val, separator)
-    write(field_val, *) E2Col(u)%instr%vpath_length  * 1d2
+    write(field_val, *) OutUnits(E2Col(u)%instr%vpath_length, 1d2)
     call AddDatum(csv_row, field_val, separator)
     write(field_val, *) E2Col(u)%instr%tau
     call AddDatum(csv_row, field_val, separator)
@@ -93,25 +93,25 @@ subroutine WriteOutMetadata(init_string)
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) E2Col(gas)%measure_type
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%nsep * 1d2
+            write(field_val, *) OutUnits(E2Col(gas)%instr%nsep, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%esep * 1d2
+            write(field_val, *) OutUnits(E2Col(gas)%instr%esep, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%vsep * 1d2
+            write(field_val, *) OutUnits(E2Col(gas)%instr%vsep, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%tube_l * 1d2
+            write(field_val, *) OutUnits(E2Col(gas)%instr%tube_l, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%tube_d * 1d3
+            write(field_val, *) OutUnits(E2Col(gas)%instr%tube_d, 1d3)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%tube_f * 6d4
+            write(field_val, *) OutUnits(E2Col(gas)%instr%tube_f, 6d4)
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) E2Col(gas)%instr%kw
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) E2Col(gas)%instr%ko
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%hpath_length * 1d2
+            write(field_val, *) OutUnits(E2Col(gas)%instr%hpath_length, 1d2)
             call AddDatum(csv_row, field_val, separator)
-            write(field_val, *) E2Col(gas)%instr%vpath_length * 1d2
+            write(field_val, *) OutUnits(E2Col(gas)%instr%vpath_length, 1d2)
             call AddDatum(csv_row, field_val, separator)
             write(field_val, *) E2Col(gas)%instr%tau
             call AddDatum(csv_row, field_val, separator)
@@ -120,4 +120,16 @@ subroutine WriteOutMetadata(init_string)
 
     write(umd, '(a)') csv_row(1:len_trim(csv_row) - 1)
 
+contains
+
+    !> SI to the units this file uses - those of the .metadata file: cm,
+    !> mm and l min-1. The error code passes through as it is: scaled, a
+    !> missing tube length came out as -999900 and a missing flow rate as
+    !> -599940000, which no reader recognises as missing.
+    real(kind = dbl) function OutUnits(si, gain)
+        real(kind = dbl), intent(in) :: si
+        real(kind = dbl), intent(in) :: gain
+
+        OutUnits = merge(si * gain, si, si /= error)
+    end function OutUnits
 end subroutine WriteOutMetadata

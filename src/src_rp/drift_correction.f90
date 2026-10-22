@@ -137,6 +137,13 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
     end select
 
 
+    !> This period's biomet humidity, for a gas that names the biomet as its
+    !> water. The main loop forms it just before its own mole fractions,
+    !> which is after this routine, so without the call the broadening below
+    !> read the previous period's biomet - and the first period's, whatever
+    !> the pre-pass left. AirAndCellParameters above has set what it needs.
+    call BiometWaterVapour()
+
     !> This call only to calculate chi_h2o, needed for equivalent pressure
     call MoleFractionsAndMixingRatios()
 
@@ -200,8 +207,15 @@ subroutine DriftCorrection(Set, nrow, ncol, locCol, ncol2, nCalibEvents, Initial
             !> of the air being drawn into it, and it is what the user asked
             !> for by naming it.
             chi_moist = error
+            !>
+            !> Without a usable biomet RH this period, the hygrometer the
+            !> site's humidity falls back to - the same water this CO2's
+            !> dilution, WPL and the rest take then. Left at error, the
+            !> broadening was dropped in exactly those periods.
             if (msl == biometMoistRef) then
                 chi_moist = Ambient%chi_biomet
+                if (chi_moist == error .and. wsl >= firstGas &
+                    .and. wsl <= lastGas) chi_moist = Stats%chi(wsl)
             elseif (msl >= firstGas .and. msl <= lastGas) then
                 chi_moist = Stats%chi(msl)
             end if

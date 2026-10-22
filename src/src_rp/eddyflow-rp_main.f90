@@ -37,18 +37,21 @@ program EddyFlowRP
     use m_rp_global_var
     use m_cec
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
+        ResetPwbOutsideWindow, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
         PostProcessPwbTimelagCache, &
         RecordPwbTimelagOptPeriod, RebuildPwbTimelagOptFromCache, &
         ResetPwbAggregateSummary, AddPwbTimelagSummaryDataset, ResolvePwbAggregateSummary, &
         SetPwbTimelagSummaryRH
     use m_ghg_prefetch, only: GhgPrefetchCleanup
+    use m_run_columns, only: ResetRunColumns, NoteRunColumns, UseRunColumns
     use m_remote_source, only: RemoteAdoptOrder, RemoteBeginMainPass, RemoteCleanup, &
         RemoteClearWindow
     use m_prepass_parallel, only: PlanPrepassBatches, PrepassChunk, PrepassChunkCount, &
         FinishBatchWorker, &
         StopIfParentGone, &
         StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches, &
+        ProgressBegin, ProgressEnd, &
         WriteTlagBatchDump, MergeTlagBatchDumps, &
         WritePwbBatchDump, MergePwbBatchDumps, &
         WritePfBatchDump, MergePfBatchDumps
@@ -60,6 +63,9 @@ program EddyFlowRP
         RemoveStaleWorkerRoots, SetProdRemoteWindow
     use m_pwb_stream, only: PwbVerdictType, PwbTakeVerdict, PwbApplyVerdict, &
         PwbEvidenceOnly, PwbLastEvidence
+    use m_batch_pool, only: PeriodSampled, ClearPeriodSample
+    use m_tlag_preassess, only: DrawTlagSample, WriteTlagPreassessTable, &
+        WritePwbPreassessTable
     !use netcdf
     !use iso_c_binding
     !use iso_fortran_env
@@ -108,6 +114,12 @@ program EddyFlowRP
     integer :: cec_slots(MaxNumCecTargets)
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
     real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    !> The random errors as reported, for the CEC significance test: tested
+    !> against the corrected total, so corrected like it when ru_spec_corr is on.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
+    logical, external :: FccFollowsProject
     real(kind = dbl), allocatable :: CecPrimes(:, :)
     logical :: cec_ok
     integer :: SpecRow
@@ -119,6 +131,9 @@ program EddyFlowRP
     !> 1 for a serial run, which is every run that did not ask for workers,
     !> every run too short to be worth splitting, and every PWB cache pre-pass.
     integer :: toWorkers
+    !> How many periods the time-lag pre-pass walks: all of its range, or
+    !> the preliminary assessment's sample of it (DrawTlagSample).
+    integer :: toWalk
     integer :: pfWorkers
     integer :: sliceStart
     integer :: sliceEnd
@@ -153,6 +168,9 @@ program EddyFlowRP
     integer :: toEndTimestampIndx
     integer :: rpStartTimestampIndx
     integer :: rpEndTimestampIndx
+    integer :: planFirst
+    integer :: planLast
+    character(32) :: RunPlan
     integer :: tlagn(E2NumVar)
     integer :: MaxNumFileRecords
     integer :: NextRawFileIndx
@@ -337,11 +355,8 @@ program EddyFlowRP
 
     !> Selects which files to output, considering the selected
     !> spectral correction method
-    if (EddyFlowProj%out_avrg_cosp &
-        .or. EddyFlowProj%out_avrg_spec &
-        .or. (EddyFlowProj%hf_meth /= 'none' &
-        .and. EddyFlowProj%hf_meth /= 'moncrieff_97' &
-        .and. EddyFlowProj%hf_meth /= 'massman_00')) then
+    !> The test lives in FccFollowsProject, which FCC evaluates as well.
+    if (FccFollowsProject()) then
         !> in this cases, passage is needed to FCC, so:
         !> don't output files, don't create dataset
         !> don't output metadata
@@ -622,6 +637,40 @@ program EddyFlowRP
         call InitPwbTimelagCache()
         call LogSay(' PWB mode: live detection during production processing.')
     end if
+
+    !> The passes ahead and roughly how many periods each walks, for the
+    !> interface's estimate of the time left: it cannot tell from the project
+    !> alone whether a time-lag or planar-fit file will be made or read. Each
+    !> pass says its own exact count when it starts - see ProgressBegin.
+    if (BatchIndex == 0 .and. EddyFlowProj%caller == 'gui') then
+        RunPlan = ''
+        if (RPsetup%to_onthefly .and. &
+            (trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
+            (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only)) &
+            RunPlan = trim(RunPlan) // ' to'
+        if (RPsetup%pf_onthefly .and. &
+            index(Meth%rot(1:len_trim(Meth%rot)), 'planar_fit') /= 0 .and. &
+            (.not. AssessmentOnly .or. RPsetup%pf_assessment_only)) &
+            RunPlan = trim(RunPlan) // ' pf'
+        if (.not. AssessmentOnly) RunPlan = trim(RunPlan) // ' rp'
+        planFirst = 1
+        planLast = size(RawTimeSeries)
+        if (EddyFlowProj%subperiod) then
+            call DateTimeToDateType(EddyFlowProj%start_date, EddyFlowProj%start_time, auxStartTimestamp)
+            call DateTimeToDateType(EddyFlowProj%end_date, EddyFlowProj%end_time, auxEndTimestamp)
+            call tsExtractSubperiodIndexes(RawTimeSeries, size(RawTimeSeries), auxStartTimestamp, &
+                auxEndTimestamp, planFirst, planLast)
+            if (planFirst == nint(error) .or. planLast == nint(error)) then
+                planFirst = 1
+                planLast = size(RawTimeSeries)
+            else
+                planLast = planLast + 1
+            end if
+        end if
+        write(TmpString1, '(i0)') max(0, planLast - planFirst)
+        call ConsoleSay('  Run plan:' // trim(RunPlan) // ' (' // trim(TmpString1) // ' periods)')
+    end if
+
     if (Meth%tlag == 'pwb') then
         PwbTimelagOptSize = size(RawTimeSeries) - 1
         allocate(PwbTimelagOpt(PwbTimelagOptSize))
@@ -715,8 +764,14 @@ program EddyFlowRP
             !> table, which is built once, by the parent, over every slice.
             !> What a worker produces is evidence, and evidence does not
             !> depend on where the walk began.
-            call PlanPrepassBatches(toEndTimestampIndx - toStartTimestampIndx, &
-                .true., toWorkers)
+            !> The preliminary time-lag assessment walks a random sample of
+            !> the range. Drawn here, over the whole range and before a
+            !> worker narrows it to its slice, so every process of the run
+            !> draws the same sample - see m_tlag_preassess.
+            call DrawTlagSample(toStartTimestampIndx, toEndTimestampIndx, &
+                RawTimeSeries, size(RawTimeSeries), RawFileList, NumRawFiles, &
+                toWalk)
+            call PlanPrepassBatches(toWalk, .true., toWorkers)
 
             !> A worker was handed its slice on the command line. Narrowed
             !> here rather than where the range was computed, so the arrays
@@ -733,6 +788,7 @@ program EddyFlowRP
             !> piece rather than waiting: the code after the loop reads state
             !> the loop establishes, and a parent that had skipped it would
             !> reach that code with the state unset.
+            call ProgressBegin('to', toStartTimestampIndx, toEndTimestampIndx, 'periods')
             toParallel = toWorkers > 1
             if (toParallel) then
                 call StartPrepassBatches('to', toStartTimestampIndx, &
@@ -744,13 +800,16 @@ program EddyFlowRP
                 pcount = toStartTimestampIndx - 1
             end if
 
+            !> Which gases the pre-pass had, over its whole range - see
+            !> m_run_columns. A worker notes only its own slice.
+            call ResetRunColumns()
             to_periods_loop: do
                 !> A worker whose parent has gone stops here, between
                 !> periods, rather than finishing a slice nobody will read.
                 call StopIfParentGone()
                 !> A parent hands a worker that has finished the next piece now,
                 !> not once its own piece is done.
-                call TopUpPrepassBatches()
+                call TopUpPrepassBatches(pcount + 1)
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -765,6 +824,12 @@ program EddyFlowRP
                 !> dealt with, or raw files are finished
                 if (LatestRawFileIndx > NumRawFiles &
                     .or. pcount >= toEndTimestampIndx) exit to_periods_loop
+
+                !> A period the preliminary assessment did not draw is passed
+                !> before its file is even looked for: the search goes forward
+                !> from the latest file read, so it picks up from there at the
+                !> next drawn period. Always true with no sample.
+                if (.not. PeriodSampled(pcount)) cycle to_periods_loop
 
                 !> Define initial/final timestamps
                 !> of current period, say [8:00 - 8:30)
@@ -1103,7 +1168,10 @@ program EddyFlowRP
                         .or. ton > TimelagOptSize) &
                         error stop 'Time-lag optimization dataset is not allocated safely.'
                     call AddToTimelagOptDataset(TimelagOpt, TimelagOptSize, ton)
+                    TimelagOpt(ton)%date = tmpDate
+                    TimelagOpt(ton)%time = tmpTime
                 end if
+                call NoteRunColumns()
 
             end do to_periods_loop
             write(*, '(a)')
@@ -1124,6 +1192,8 @@ program EddyFlowRP
                         TimelagOpt, TimelagOptSize, ton)
                 end if
             end if
+            call ProgressEnd()
+            call ClearPeriodSample()
 
             !> A worker's job ends here: it hands back the records its slice
             !> produced and stops. The fit itself - OptimizeTimelags, the
@@ -1147,6 +1217,10 @@ program EddyFlowRP
             !**** NOW STARTS TIME LAG OPT CALCULATIONS *************************
             !*******************************************************************
 
+            !> Every gas the pre-pass had, not only those its last period had,
+            !> is optimised and written to the summary.
+            call UseRunColumns()
+
             if (PwbCacheGenerate) then
                 !> Every period has been read, so the gap-filling can look
                 !> forwards as well as back. This is what the streaming
@@ -1157,6 +1231,7 @@ program EddyFlowRP
                 call RebuildPwbTimelagOptFromCache(PwbTimelagOpt, &
                     PwbTimelagOptSize, PwbTimelagN)
                 call WritePwbTimelagCache()
+                call WritePwbPreassessTable()
                 if (PwbTimelagN > 0) then
                     if (.not. allocated(PwbTimelagOpt) .or. PwbTimelagOptSize <= 0 &
                         .or. PwbTimelagN > PwbTimelagOptSize) &
@@ -1181,6 +1256,10 @@ program EddyFlowRP
                 call ResetPwbDiagnostics()
                 call LogSay(' PWB time-lag pre-pass finished.')
             else
+            !> The preliminary assessment's table, from the dataset before
+            !> FixTimelagOptDataset compacts it away.
+            call WriteTlagPreassessTable(TimelagOpt, TimelagOptSize, ton)
+
             !> Adjust time-lag opt dataset to eliminate errors,
             !> so that it's easier to treat them later
             allocate (toSet(ton))
@@ -1305,6 +1384,7 @@ program EddyFlowRP
                 pcount = pfStartTimestampIndx - 1
             end if
 
+            call ProgressBegin('pf', pfStartTimestampIndx, pfEndTimestampIndx, 'periods')
             pfParallel = pfWorkers > 1
             if (pfParallel) then
                 call StartPrepassBatches('pf', pfStartTimestampIndx, &
@@ -1322,7 +1402,7 @@ program EddyFlowRP
                 call StopIfParentGone()
                 !> A parent hands a worker that has finished the next piece now,
                 !> not once its own piece is done.
-                call TopUpPrepassBatches()
+                call TopUpPrepassBatches(pcount + 1)
                 pcount = pcount + 1
 
                 !> If embedded metadata are to be used,
@@ -1530,6 +1610,7 @@ program EddyFlowRP
                 call MergePfBatchDumps(PrepassChunkCount(), pfWind, &
                     size(pfWind, 1), pfn)
             end if
+            call ProgressEnd()
 
             !> As above: a worker hands back its slice of the wind means and
             !> stops. The sector regressions are the parent's job.
@@ -1974,6 +2055,9 @@ program EddyFlowRP
     call RemoteBeginMainPass()
 
     pwbRowWantsRH = .false.
+    !> Which gases the main pass had, over its whole range - see
+    !> m_run_columns. A production worker starts again at its piece.
+    call ResetRunColumns()
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
@@ -2011,6 +2095,7 @@ program EddyFlowRP
                 // trim(adjustl(TmpString1))
             write(*, '(a)')
             write(ulog, '(a)')
+            call ProgressBegin('rp', rpStartTimestampIndx, rpEndTimestampIndx, 'periods')
         end if
         pcount = pcount + 1
 
@@ -2055,7 +2140,7 @@ program EddyFlowRP
         !> the storage terms of its first period see the one before; and then
         !> its piece. All but the piece is dropped - see ProdPieceBegins.
         if (ProdSplit .and. pcount >= ProdParentEnd) exit periods_loop
-        if (ProdSplit) call TopUpPrepassBatches()
+        call TopUpPrepassBatches(pcount)
         if (BatchKind == 'pr' .or. BatchKind == 'pd') then
             if (pcount >= BatchSliceEnd) exit periods_loop
             if (pcount > ProdHeadEnd .and. pcount < BatchSliceStart - 1) then
@@ -2070,6 +2155,8 @@ program EddyFlowRP
                 call ProdPieceBegins(NumberOfOkPeriods)
                 PwbTimelagN = 0
             end if
+            if (pcount == BatchSliceStart .and. BatchKind == 'pd') &
+                call ResetPwbOutsideWindow()
             call StopIfParentGone()
         end if
 
@@ -2937,9 +3024,21 @@ program EddyFlowRP
                 !> measurement of the air the analyser is sampling from,
                 !> which another instrument's cell is not - and it is what
                 !> the user asked for by naming it.
+                !>
+                !> For the biomet, the site's water density RHO%w - what
+                !> MoistTerms hands the same gas's WPL - not
+                !> Ambient%chi_biomet. With a usable biomet RH the two are
+                !> the same number by the same arithmetic (FluxParams forms
+                !> chi_biomet from RHO%w and Ambient%Va). Without one - a gap
+                !> in the biomet, an RH out of range, or biom_rh naming a
+                !> column that is not an RH - chi_biomet is error while
+                !> RHO%w has fallen back to the hygrometer, so the WPL went
+                !> ahead and the multipliers did not, and Level2GasFlux then
+                !> dropped the methane flux for want of them.
                 msl = E2Col(j)%moist_ref
                 if (msl == biometMoistRef) then
-                    chi_moist = Ambient%chi_biomet
+                    if (RHO%w == error .or. Ambient%Va == error) cycle
+                    chi_moist = RHO%w * Ambient%Va / MW_H2O * 1d3
                 elseif (msl >= firstGas .and. msl <= lastGas) then
                     chi_moist = Stats%chi(msl)
                 else
@@ -3075,6 +3174,8 @@ program EddyFlowRP
             !> RP applies the CEC descriptors only when it owns the final
             !> corrected totals. Otherwise FCC applies them to FCC's Flux3.
             if (EddyFlowProj%do_cec > 0 .and. .not. EddyFlowProj%fcc_follows) then
+                call ReportedRandomErrors(.true., Essentials%rand_uncer, Essentials%rand_uncer_LE, &
+                    Essentials%rand_uncer_ET, rep_re, rep_le, rep_et)
                 do cec_p = 1, nCecPairs
                     call CecTargetSlots(CecPairList(cec_p), cec_slots, cec_ntarget)
                     cec_totals = error
@@ -3086,7 +3187,7 @@ program EddyFlowRP
                         !> From the same slot as the total beside it. Reading
                         !> either from a different one would test a flux
                         !> against another gas's error and say nothing.
-                        cec_errors(cec_k) = Essentials%rand_uncer(cec_slots(cec_k))
+                        cec_errors(cec_k) = rep_re(cec_slots(cec_k))
                     end do
                     call ApplyCecDescriptor(CECDescriptor(cec_p), cec_totals, &
                         cec_errors, EddyFlowProj%cec, CECFlux(cec_p))
@@ -3142,6 +3243,7 @@ program EddyFlowRP
             call WriteOutMetadata(suffixOutString)
             if (EddyFlowProj%out_fluxnet) &
                 call WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
+        call NoteRunColumns()
 
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
             call hms_delta_print('  Flux averaging period processing time: ','')
@@ -3212,6 +3314,11 @@ program EddyFlowRP
             call MergeProdPieces(NumberOfOkPeriods, NoPwbRows, 1, PwbTimelagN)
         end if
     end if
+    call ProgressEnd()
+    !> Every gas the run had, not only those its last period had, is in what
+    !> the end of the run writes: the time-lag windows and summaries, the
+    !> donors, the storage cleaning.
+    call UseRunColumns()
     if (Test%stor_clean .and. StorCacheN > 0) call PostProcessStorClean()
     if (allocated(bf)) deallocate(bf)
     if (Meth%tlag == 'pwb') call ReportPwbDiagnostics()

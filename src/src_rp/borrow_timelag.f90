@@ -117,7 +117,8 @@ subroutine BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
     !> else enabled. That asymmetry is deliberate: it means the EddyUH-faithful
     !> combination can be selected on its own.
     if (RPSetup%tlag_borrow_noise == 'detlim' .and. &
-        RPSetup%detlim_meth /= 'wienhold_94') return
+        RPSetup%detlim_meth /= 'wienhold_94' .and. &
+        RPSetup%detlim_meth /= 'langford_15') return
 
     allocate(ColW(nrow))
     allocate(ColGas(nrow))

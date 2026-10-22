@@ -29,7 +29,8 @@ Program EddyFlowFCC
     use m_sa_rates
     use m_remote_source, only: RemoteCleanup
     use m_batch_pool, only: WaitPrepassBatches, TopUpPrepassBatches, &
-        StopIfParentGone, FinishBatchWorker
+        StopIfParentGone, FinishBatchWorker, ProgressBegin, ProgressAt, &
+        ProgressEnd
     use m_fcc_parallel, only: CaptureFccContext, TryFccFluxSplit, &
         FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces, &
         StartBinnedSplit, GetBinnedFile, FinishBinnedSplit, RunBinnedReadWorker
@@ -73,7 +74,6 @@ Program EddyFlowFCC
     integer :: NumBinnedFiles
     integer :: NumBinnedFilesNoRecurse
     integer :: fcount
-    integer :: nrow_full
     integer :: del_status
 
     character(10) :: sDate, eDate
@@ -110,6 +110,12 @@ Program EddyFlowFCC
     integer :: cec_slot
     real(kind = dbl) :: cec_totals(MaxNumCecTargets)
     real(kind = dbl) :: cec_errors(MaxNumCecTargets)
+    !> The random errors as reported, for the CEC significance test: tested
+    !> against the corrected total, so corrected like it when ru_spec_corr is on.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
+    logical, external :: FccFollowsProject
     !> The flux loop split across worker processes (m_fcc_parallel): the
     !> record that opened the output files, the one the parent's own piece
     !> ends before, and how many processes run at once.
@@ -154,6 +160,11 @@ Program EddyFlowFCC
 
     !> Read ".eddypro" file for both spectral analysis and flux correction
     call ReadIniFCC('FluxCorrection')
+    !> Whether RP wrote this project's final outputs, and with them random
+    !> errors already spectrally corrected (reported_random_errors.f90). Here,
+    !> before anything below falls back to Moncrieff or drops the ensemble
+    !> outputs, which would change the answer.
+    RUsetup%rp_corrected = .not. FccFollowsProject()
     call ResetSpectralAssessmentDiagnostics()
 
     !> Add run-mode tag to Timestamp_FilePadding
@@ -168,6 +179,15 @@ Program EddyFlowFCC
         call ConfigureForEmbedded('EddyFlow-FCC')
 
     if (EddyFlowProj%fluxnet_mode) call ConfigureForFluxnet()
+
+    !> The passes ahead, for the interface's estimate of the time left
+    if (BatchIndex == 0 .and. EddyFlowProj%caller == 'gui') then
+        if (FCCsetup%pass_thru_spectral_assessment) then
+            call ConsoleSay('  Run plan: sa fx')
+        else
+            call ConsoleSay('  Run plan: fx')
+        end if
+    end if
 
     !> A worker of a split binned import only reads its files, which needs
     !> the project and nothing from the essentials file - so it starts here,
@@ -240,9 +260,6 @@ Program EddyFlowFCC
         call FileListByExt(Dir%full, '.csv', .true., .false., &
             FullFilePrototype, .true., .true., .true., FullFilelist, &
             size(FullFilelist), .true., '')
-
-        !> Retrieve length of full cospectra for later allocation
-        call FullCospectraLength(FullFilelist(1)%path, nrow_full)
     end if
 
     !> A worker of a split flux computation does not repeat the spectral
@@ -392,9 +409,11 @@ Program EddyFlowFCC
         !> Workers read the files after the first piece meanwhile
         call StartBinnedSplit(saStartTimestampIndx, saEndTimestampIndx, &
             BinnedFileList, size(BinnedFileList))
+        call ProgressBegin('sa', saStartTimestampIndx, saEndTimestampIndx + 1, 'files')
         binned_loop: do
             !> Update file counter
             fcount = fcount + 1
+            call ProgressAt(fcount)
 
             !> Normal exit instruction
             if (fcount > saEndTimestampIndx) exit binned_loop
@@ -489,6 +508,7 @@ Program EddyFlowFCC
             end if
         end do binned_loop
         call FinishBinnedSplit()
+        call ProgressEnd()
         close(uex)
         call LogSay('  Done.')
 
@@ -642,6 +662,7 @@ Program EddyFlowFCC
     month = 0
     day   = 0
     InitializeOuputFiles = .true.
+    call ProgressBegin('fx', 1, NumExRecords + 1, 'records')
     ex_loop: do i = 1, NumExRecords
 
         !> Split across workers: the parent stops where the first worker's
@@ -650,8 +671,8 @@ Program EddyFlowFCC
         !> did, skips the records up to its piece unread, and stops at its end.
         if (FccParentEnd > 0) then
             if (i >= FccParentEnd) exit ex_loop
-            call TopUpPrepassBatches()
         end if
+        call TopUpPrepassBatches(i)
         if (BatchKind == 'fx') then
             if (i >= BatchSliceEnd) exit ex_loop
             call StopIfParentGone()
@@ -743,7 +764,7 @@ Program EddyFlowFCC
                 lEx%disp_height, lEx%var_present, lEx%WS, lEx%Ta, iter_zL, &
                 lEx%ac_freq, nint(lEx%avrg_length), lEx%logger_swver, &
                 lEx%det_meth, nint(lEx%det_timec), .false., AuxInstrument, &
-                size(FullFileList), FullFileList, nrow_full, lEx, FCCsetup)
+                size(FullFileList), FullFileList, lEx, FCCsetup)
 
             !> Calculate fluxes at Level 1
             call Fluxes1(lEx)
@@ -777,6 +798,8 @@ Program EddyFlowFCC
             call ResetCecFlux(CECFlux(cec_p))
         end do
         if (EddyFlowProj%do_cec > 0) then
+            call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer, lEx%rand_uncer_LE, &
+                lEx%rand_uncer_ET, rep_re, rep_le, rep_et)
             do cec_p = 1, min(lEx%n_cec, MaxNumCecPairs)
                 cec_totals = error
                 cec_errors = error
@@ -786,7 +809,7 @@ Program EddyFlowFCC
                     cec_totals(cec_k) = Flux3%gas(cec_slot)
                     !> RP estimated it and the essentials row carried it here,
                     !> from the same slot as the total beside it.
-                    cec_errors(cec_k) = lEx%rand_uncer(cec_slot)
+                    cec_errors(cec_k) = rep_re(cec_slot)
                 end do
                 call ApplyCecDescriptor(lEx%cec(cec_p), cec_totals, &
                     cec_errors, EddyFlowProj%cec, CECFlux(cec_p))
@@ -857,6 +880,7 @@ Program EddyFlowFCC
         call WaitPrepassBatches('fx', FccWorkers)
         call MergeFccPieces()
     end if
+    call ProgressEnd()
     close(uex)
     close(uflx)
     close(ufnet_e)
@@ -1002,6 +1026,12 @@ subroutine JudgeExHeader(header)
     !> partition-stability statistic joined the per-target fields, and would
     !> parse one field short per target from there to the end of the row.
     if (index(header, 'CEC_METH') > 0 .and. index(header, 'CEC_NS_') <= 0) &
+        call ExceptionHandler(107)
+
+    !> The fourth, conditional for the same reason: a project with no gas has
+    !> no moisture records. One that has them without _MOIST_REF was written
+    !> before each record named its H2O, and reads one field short per gas.
+    if (index(header, '_MOIST_SLOT') > 0 .and. index(header, '_MOIST_REF') <= 0) &
         call ExceptionHandler(107)
 end subroutine JudgeExHeader
 

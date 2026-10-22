@@ -40,6 +40,7 @@ subroutine MoleFractionsAndMixingRatios()
     !> local variables
     integer :: gas
     integer :: msl
+    integer :: wsl
     real(kind = dbl) :: LocVa(GHGNumVar)
     !> The water this gas is diluted by, as a mixing ratio and a mole
     !> fraction, from whichever source its reference names.
@@ -47,6 +48,7 @@ subroutine MoleFractionsAndMixingRatios()
     real(kind = dbl) :: waterChi
     logical :: haveWater
     logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
 
     !> Initialization
     do gas = firstGas, lastGas
@@ -124,6 +126,24 @@ subroutine MoleFractionsAndMixingRatios()
             haveWater = .true.
             waterR   = Ambient%r_biomet
             waterChi = Ambient%chi_biomet
+            !> A period with no usable biomet RH - a gap, an RH out of
+            !> range, or biom_rh naming a column that is not an RH. The
+            !> site's humidity then falls back to the primary hygrometer
+            !> (FluxParams, which runs after this and so cannot be read
+            !> here), and this gas's WPL and LI-7700 multipliers follow it
+            !> there. So does its dilution: left at error, the gas went
+            !> undiluted in exactly the periods its WPL was not.
+            !> Pass 1 above has already formed that hygrometer's values.
+            if (waterChi == error) then
+                wsl = PrimaryWaterSlot()
+                if (wsl >= firstGas .and. wsl <= lastGas &
+                    .and. wsl /= gas) then
+                    if (Stats%chi(wsl) > 0d0) then
+                        waterR   = Stats%r(wsl)
+                        waterChi = Stats%chi(wsl)
+                    end if
+                end if
+            end if
         elseif (msl >= firstGas .and. msl <= lastGas .and. msl /= gas) then
             haveWater = .true.
             waterR   = Stats%r(msl)

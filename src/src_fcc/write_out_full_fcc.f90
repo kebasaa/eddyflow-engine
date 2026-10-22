@@ -33,9 +33,15 @@
 !***************************************************************************
 subroutine WriteOutFullFcc(lEx)
     use m_fx_global_var
+    use m_covmax_core, only: LimitOfDetection
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
+    !> The random errors as reported: spectrally corrected like their fluxes
+    !> when ru_spec_corr is on. See reported_random_errors.f90.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
     character(LongOutstringLen) :: csv_row
 
     !> local variables
@@ -98,6 +104,8 @@ subroutine WriteOutFullFcc(lEx)
         call AddDatum(csv_row, field_val, separator)
     end if
 
+    call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer, lEx%rand_uncer_LE, &
+        lEx%rand_uncer_ET, rep_re, rep_le, rep_et)
     !> Corrected fluxes (Level 3)
     !> Tau
     call WriteDatumFloat(Flux3%tau, field_val, EddyFlowProj%err_label)
@@ -105,7 +113,12 @@ subroutine WriteOutFullFcc(lEx)
     call WriteDatumInt(QCFlag%tau, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
     if(RUsetup%meth /= 'none') then
-        call WriteDatumFloat(lEx%rand_uncer(u), field_val, EddyFlowProj%err_label)
+        call WriteDatumFloat(rep_re(u), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+    if (RUsetup%meth == 'langford_15') then
+        call WriteDatumFloat(LimitOfDetection(rep_re(u), RUsetup%lod_alpha, error), &
+            field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
 
@@ -115,7 +128,12 @@ subroutine WriteOutFullFcc(lEx)
     call WriteDatumInt(QCFlag%H, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
     if (RUsetup%meth /= 'none') then
-        call WriteDatumFloat(lEx%rand_uncer(ts), field_val, EddyFlowProj%err_label)
+        call WriteDatumFloat(rep_re(ts), field_val, EddyFlowProj%err_label)
+        call AddDatum(csv_row, field_val, separator)
+    end if
+    if (RUsetup%meth == 'langford_15') then
+        call WriteDatumFloat(LimitOfDetection(rep_re(ts), RUsetup%lod_alpha, error), &
+            field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
 
@@ -126,7 +144,12 @@ subroutine WriteOutFullFcc(lEx)
         call WriteDatumInt(QCFlag%gas(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
-            call WriteDatumFloat(lEx%rand_uncer_LE, field_val, EddyFlowProj%err_label)
+            call WriteDatumFloat(rep_le, field_val, EddyFlowProj%err_label)
+            call AddDatum(csv_row, field_val, separator)
+        end if
+        if (RUsetup%meth == 'langford_15') then
+            call WriteDatumFloat(LimitOfDetection(rep_le, RUsetup%lod_alpha, error), &
+                field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         end if
     end if
@@ -163,8 +186,14 @@ subroutine WriteOutFullFcc(lEx)
             call WriteDatumInt(QCFlag%gas(gas), field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
             if (RUsetup%meth /= 'none') then
-                call WriteDatumFloat(merge(lEx%rand_uncer(gas) * gas_full_flux_sc(gas), error, &
-                    lEx%rand_uncer(gas) /= error), field_val, EddyFlowProj%err_label)
+                call WriteDatumFloat(merge(rep_re(gas) * gas_full_flux_sc(gas), error, &
+                    rep_re(gas) /= error), field_val, EddyFlowProj%err_label)
+                call AddDatum(csv_row, field_val, separator)
+            end if
+            if (RUsetup%meth == 'langford_15') then
+                call WriteDatumFloat(merge(LimitOfDetection(rep_re(gas), &
+                    RUsetup%lod_alpha, error) * gas_full_flux_sc(gas), error, &
+                    rep_re(gas) /= error), field_val, EddyFlowProj%err_label)
                 call AddDatum(csv_row, field_val, separator)
             end if
         end if

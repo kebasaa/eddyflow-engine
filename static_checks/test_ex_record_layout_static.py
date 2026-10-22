@@ -51,7 +51,12 @@ HISTORICAL = {
     #: not on an LI-7700 writes the missing-value token. Purely additive: no
     #: pre-existing value moved, and the gas that has multipliers still
     #: reports what it reported before.
-    "nMainFields": 287,
+    #:
+    #: 287 until the Langford et al. (2015) limit of detection gained its
+    #: FLUXNET family, _LOD, right after _RANDUNC_HF: 4 + nExGas, +8 at four
+    #: gases. Error-labelled unless the random error method is langford_15,
+    #: and skipped on read, since FCC recomputes it from the random error.
+    "nMainFields": 295,
     "nNrexFields": 23,
     "nVmFields": 12,
     "nLgdFields": 38,

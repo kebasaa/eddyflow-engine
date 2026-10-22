@@ -768,7 +768,9 @@ module m_typedef
         character(32) :: instr      !< canonical instrument id, or 'other'/'none'
         integer :: col              !< 1-based raw-file column; <=0 when unset
         integer :: moist            !< index into the gas records supplying H2O;
-                                    !< 0 = auto (same instrument, else the first)
+                                    !< 0 = auto (same instrument, else the
+                                    !< biomet RH, else the designated
+                                    !< hygrometer); -1 = the biomet RH
         integer :: cell             !< index into the cell records; 0 = auto
         real(kind = dbl) :: mw      !< molecular weight override; error = default
         real(kind = dbl) :: diff    !< diffusivity override; error = default
@@ -1427,6 +1429,23 @@ module m_typedef
         integer :: tlag_max
         character(32) :: meth
         character(32) :: its_meth
+        !> Langford et al. (2015) limit of detection, shared by the random
+        !> error method langford_15 and the detection limit of that name.
+        !> Window: 0 +/-150-180 s (Langford), 1 +/-160-180 s (Maier et al.
+        !> 2022), 2 automatic. Statistic 'rmse' or 'sd'. The multiple of the
+        !> integral turbulence scale the automatic window starts at, and the
+        !> coverage factor alpha of LoD = alpha * RE.
+        integer :: lod_window = 0
+        character(4) :: lod_stat = 'rmse'
+        real(kind = dbl) :: lod_its_mult = 10d0
+        real(kind = dbl) :: lod_alpha = 1.96d0
+        !> Report every random error multiplied by its flux's spectral
+        !> correction factor, as Langford et al. (2015) recommend. Off by
+        !> default, as in EddyPro; see reported_random_errors.f90.
+        logical :: spec_corr = .false.
+        !> FCC only: the ex record it reads was written by an RP that owned
+        !> the final outputs, so its random errors are corrected already.
+        logical :: rp_corrected = .false.
     end type RUsetupType
 
     type :: RPsetupType
@@ -1818,6 +1837,21 @@ module m_typedef
         !> hygrometer's own (PeriodWaterRH). Was one scalar, the designated
         !> hygrometer's, which every water slot was then binned and gated by.
         real(kind = dbl) :: RH(E2NumVar)
+        !> For the preliminary time-lag assessment's per-period table only
+        !> (to_dump_lags): what the detector found before the optimiser's
+        !> gates threw anything away. Tlag above holds a lag only when the
+        !> flux cleared its threshold and the lag missed both window edges;
+        !> these keep every detection, with the window and the verdicts that
+        !> Tlag's gates would have reached, so the table can show the edge
+        !> pile-up rather than hide it.
+        character(10) :: date = ''
+        character(5) :: time = ''
+        real(kind = dbl) :: RawLag(E2NumVar)
+        real(kind = dbl) :: WinMin(E2NumVar)
+        real(kind = dbl) :: WinMax(E2NumVar)
+        real(kind = dbl) :: Flux(E2NumVar)
+        logical :: AtEdge(E2NumVar)
+        logical :: FluxOk(E2NumVar)
     end type TimeLagOptType
 
     type :: TOSetupType
@@ -1836,6 +1870,16 @@ module m_typedef
         character(5) :: start_time
         character(5) :: end_time
         logical :: subperiod
+        !> Preliminary time-lag assessment (the interface's "Timelag
+        !> preliminary assessment" dialog). Never in a user's project: the
+        !> interface writes them only into the throw-away copy it runs.
+        !> sample_frac > 0 walks a seeded random sample of the periods that
+        !> have raw data - at least sample_min_n of them - instead of all;
+        !> dump_lags writes every period's detected lag to a table.
+        real(kind = dbl) :: sample_frac = 0d0
+        integer :: sample_min_n = 10
+        integer :: sample_seed = 1
+        logical :: dump_lags = .false.
     end type TOSetupType
 
     type :: PWBSetupType
@@ -2095,6 +2139,11 @@ module m_typedef
         !> the header.
         integer :: n_gas_moist
         integer :: gas_moist_slot(GHGNumVar)
+        !> Which H2O each gas's terms above belong to, as RP resolved it:
+        !> E2Col(gas)%moist_ref, so a slot, biometMoistRef, or 0 for none. FCC
+        !> has no E2Col, and needs it to take a gas's WPL water flux from the
+        !> hygrometer the gas names rather than always the designated one.
+        integer :: moist_ref_at(GHGNumVar)
         !> Which rule supplied each gas's PWB timelag. Read rather than
         !> discarded so FCC can echo it: FCC rewrites every row, and dropping
         !> these four columns shifted everything after them out of step with

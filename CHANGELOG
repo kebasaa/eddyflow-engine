@@ -1,3 +1,276 @@
+8.1.3 (2026-10-07)
+
+    Engine:
+	- Version bump to 8.1.3, to match EddyFlow GUI 8.1.3.
+	- New: Limit of detection after Langford et al. (2015), as a random
+	       uncertainty method (ru_meth = 6) and as a detection limit
+	       (detlim_meth = 2). The random flux error is the scatter of the
+	       w-scalar cross-covariance far from the lag: its root mean square,
+	       RE_RMSE (their Eq. 9, the default), or its standard deviation,
+	       RE_SD; the limit of detection is alpha * RE (alpha 1.96 by
+	       default, lod_alpha). Windows (lod_window): +/-150-180 s, Langford's
+	       own; +/-160-180 s, as Maier et al. (2022) used after Spirig et al.
+	       (2005); or automatic, from lod_its_mult times the integral
+	       turbulence scale (default 10) or 10 s past the gas's lag search
+	       half-width, whichever is later, 30 s wide. Spirig et al. placed
+	       their window "several times the integral timescale" away; the
+	       multiple is EddyFlow's choice, not a published one. Covers Tau, H,
+	       LE, ET and every gas. One routine, two call points: the random
+	       error is measured on the detrended, aligned series the flux comes
+	       from, about lag zero; the detection limit on the raw series before
+	       the shift, about each gas's lag, because time-lag borrowing tests
+	       against it there - and borrowing now accepts either detection
+	       limit. New columns lod_Tau, lod_H, lod_LE, lod_<gas>flux in the
+	       full output (only with this method), and a FLUXNET family _LOD
+	       after _RANDUNC_HF, error-labelled unless this is the method. The ex
+	       record widens by 4 + one per gas accordingly; FCC skips the family
+	       and recomputes it from the random error. Spectrally corrected
+	       only with ru_spec_corr = 1, like every other random error
+	       method (see below).
+	- New: Random errors can be reported spectrally corrected, as Langford et
+	       al. (2015) recommend: each rand_err_* / *_RANDUNC_HF value is
+	       multiplied by the spectral correction factor of its own flux
+	       (w_u for Tau, w_ts for H, the designated hygrometer for LE and
+	       ET, each gas its own), for every random uncertainty method, and
+	       the Langford LoD and the CEC significance test follow. Off by
+	       default (ru_spec_corr=1 in [Project] switches it on), also for
+	       projects without the key: EddyPro does not do it, and the
+	       defaults reproduce EddyPro. Only the spectral factor: the WPL and
+	       SND terms are added from other covariances. The flux detection
+	       limit stays in uncorrected covariance units. Applied where the
+	       final outputs are written - by RP when FCC does not follow, by FCC
+	       when it does - and never twice: RP's FLUXNET file stays
+	       uncorrected when FCC follows, and FCC, reading the FLUXNET file of
+	       a project RP finished on its own, applies RP's own test
+	       (FccFollowsProject) before changing any setting it reads.
+	- Change: The integral turbulence scale rules (cross_0, cross_e,
+	          full_integral) moved into m_covmax_core so the automatic Langford
+	          window shares them; the scale is bitwise unchanged. ru_its_meth
+	          and ru_tlag_max are now decoded whatever the random error method.
+	- Change: The time-lag optimisation and PWB time-lag summaries list every
+	          gas the run had, not only the gases its last half-hour had. A
+	          gas with no data in the final half-hour was left out, as if
+	          never measured, although its lags from every other period were
+	          in the dataset - and a later run reading the summary got no
+	          window for it. So were the optimiser's window for it, its donor
+	          and the storage cleaning of it. Such a gas is now put back as
+	          the last half-hour that had it left it; a gas the last half-hour
+	          has is unchanged.
+	- Fix: A period with no gas data at all reported Error(69), "a problem
+	       with results of the spectral assessment ... switched to Moncrieff
+	       et al. (1997)", although there was no gas in it to correct. A
+	       Jonkershoek run printed it for its 111 gas-less periods, which
+	       read as Fratini et al. (2012) having failed, while every period
+	       with a gas flux had been corrected in situ. The switch and the
+	       message now need at least one gas present.
+	- Fix: A production pass split across workers took what the end of the run
+	       reads from the run's last period - which gases were present, their
+	       instruments - from the last period of the parent's own piece
+	       instead. A Yatir run split four ways left co_2 out of its PWB
+	       summary although co_2 had data in 2074 periods, the last among
+	       them. It is now taken from the last piece, and split runs are
+	       byte-identical to serial ones again in this.
+	- Fix: A split run that lost its workers' files waited a day and then gave
+	       up. Stopping a run in one EddyFlow window wiped the temporary
+	       folder every run of the version shares, the workers' scripts among
+	       them, and a worker whose script is gone finishes without being able
+	       to say so. The interface no longer does that (see the GUI), and a
+	       run whose worker has ended without reporting now stops within about
+	       a minute with a message saying what happened. Each run's temporary
+	       folder carries its process id and an owner.pid file.
+	- Fix: In a split run the shared-link summary "N raw file(s) could not be
+	       downloaded" counted only the parent's failures, and each worker
+	       printed a partial total of its own. Every failed file is now
+	       counted once, by the parent, whichever process failed it.
+	- Fix: The PWB warning that a gas's peak keeps falling outside its lag
+	       window undercounted in a split run: the peaks found by the
+	       detection workers were not counted.
+	- Change: Every hygrometer's evapotranspiration is WPL-corrected after
+	          its own path type - Webb et al. (1980) with the Burba terms of
+	          an LI-7500 on an open path, Ibrom et al. (2007) on a closed one
+	          - with its own air and its own analyser's cell. Only the
+	          designated hygrometer had that; a second one went through the
+	          trace-gas formula, which on a closed path left out the
+	          (1 + mu*sigma) dilution of the flux itself and on an open path
+	          used the designated hygrometer's evapotranspiration for its own.
+	          Its numbered LE_<n>, ET_<n> and water flux move where that made a
+	          difference: on a closed path whose series could not be converted
+	          to mixing ratio, and on an open path whose flux differs from the
+	          designated hygrometer's. A closed path converted point by point
+	          does not move. The bare LE and ET never do.
+	- Change: Each gas's WPL takes its water flux from the hygrometer its
+	          record names for its water, as its humidity terms already did.
+	          It was always the designated hygrometer's: with a MIRO and an
+	          LI-7550 side by side, the MIRO's open-path gases were corrected
+	          with the MIRO's humidity and the LI-7550's evapotranspiration.
+	          A gas that takes its water from the biomet RH, which has no
+	          flux, still uses the designated hygrometer's, and the run log
+	          says so once per gas. A closed-path gas is unaffected: it reads
+	          its own lagged water covariance.
+	- Fix: The WPL switch did not reach the gases. Only the designated
+	       hygrometer and the point-by-point mixing ratios obeyed it, so with
+	       WPL off every other gas was still density-corrected - open-path
+	       ones against an evapotranspiration the switch had left
+	       uncorrected. With WPL off each gas now keeps its level 1 flux, as
+	       in EddyPro 7, before the closed-path spectral correction. The
+	       EddyPro 6.2.2 fork this engine came from never had that reset.
+	- Fix: The numbered H_<n> of a second hygrometer lacked the sensible heat
+	       spectral correction factor that the bare H carries.
+	- Fix: A closed-path hygrometer with no spectral correction factor had
+	       its LE, ET and water flux multiplied by the error code; they are
+	       now reported as missing.
+	- Fix: An LI-7700 gas whose LI-7700 multipliers are missing had its flux
+	       multiplied by the error code, and methane was reported at about
+	       -8e8. It is now reported as missing.
+	- Change: The essentials (ex) file names, for each gas, which H2O its
+	          moisture terms belong to (<GAS>_MOIST_REF). FCC refuses an ex
+	          file written before this with Error(107); re-run RP to
+	          regenerate it.
+	- Tested: base_ghg_licor_nowpl, base_ghg_licor with WPL off. Every level
+	          2 flux equals its level 1 flux; with the previous build FC was
+	          17 % and FCH4 122 % away from it. Against EddyPro 7.0.9 on
+	          base_ep_licor with WPL off in advanced mode every gated column
+	          of check_engines.py agrees, where the previous build failed on
+	          co2_flux and ch4_flux. With WPL on, base_rec, base_ghg_licor,
+	          base_ghg_burba and base_ghg_mixed are byte-identical apart from
+	          the new columns; base_n_gas and base_cec_cos move only in H_2
+	          and the stability derived from it, by exactly H_SCF. A second
+	          H2O record reading the designated hygrometer's own column gives
+	          an H_<n> equal to H, and an LE_<n> within 5e-5 of LE.
+	- Tested: base_lastgas, built by gen_lastgas.py, is base_rec with COS
+	          missing in its last half-hour - the only fixture with a gas
+	          absent at the end. check_parallel.sh PAR_KIND=pr is
+	          byte-identical to -j 1 on it; with the previous build it was
+	          not.
+	- Fix: FCC ignored express mode. RP applied the express settings - WPL
+	       on, Moncrieff et al. (1997) spectral corrections, the Mauder and
+	       Foken (2004) QC flags, the Kljun et al. (2004) footprint - and FCC,
+	       reading the same project file, took every one of them as written.
+	       An express project carrying wpl_meth=0 was converted to mixing
+	       ratios point by point by RP with WPL on, and its fluxes finished by
+	       FCC with WPL off: LE came out about 22 times EddyPro's, which
+	       ignores the 0 in express mode. The settings FCC reads are now
+	       applied where both programs read the project file. The interface
+	       never runs FCC in express mode, so this concerned command-line and
+	       scripted runs only.
+	- Tested: base_ep_licor (express) with wpl_meth=0 and wpl_meth=1 give
+	          byte-identical output; with the previous build LE was 3.588
+	          against 0.158 W m-2 in the first half-hour, co2_flux and
+	          ch4_flux off too. With wpl_meth=1 the output is byte-identical
+	          to the previous build's.
+	- Fix: The metadata file came out in two layouts, depending only on
+	       whether FCC follows RP (an in-situ spectral correction or ensemble
+	       spectra). RP's had a DOY column after time and FCC's did not, so
+	       every column after time sat under the wrong name in one of them;
+	       RP wrote lengths in cm, tube diameter in mm and flow rate in
+	       l min-1, as the .metadata file states them, and FCC the SI values
+	       it had read back: 0.25 where RP wrote 25. FCC now writes RP's
+	       header, DOY and units. EddyPro 7 has the same split.
+	- Fix: RP's metadata file scaled the error code with the value it
+	       stands for: a missing tube length came out as -999900, a missing
+	       tube diameter as -9999000 and a missing flow rate as -599940000.
+	       They are now -9999.
+	- Known: Latitude, longitude and a few lengths in FCC's metadata file
+	         still agree with RP's only to about 1e-6: FCC reads them back
+	         from the essentials file, which carries six significant digits.
+	- Tested: base_ep_native, where both programs write the file: same
+	          header and 63 columns, every value equal to 1e-6 relative.
+	          base_ghg_licor, base_ep_native, base_n_gas and base_5gas pass
+	          check_columns.py.
+	- Fix: A gas that takes its water from the biomet RH lost its
+	       corrections in every half-hour without a usable biomet RH - a
+	       gap in the biomet, an RH out of range, or a biomet column that is
+	       not an RH. The site's humidity falls back to the designated
+	       hygrometer then, and the gas's WPL followed it, but its LI-7700
+	       multipliers, its dilution to mole fraction and the drift
+	       correction's band broadening read the biomet humidity alone. On
+	       an LI-7700 that came out as SPEC_CORR_LI7700_*_CH4 and FCH4
+	       missing; a CO2 went undiluted, its mole fraction equal to its
+	       mixing ratio and its molar density about 1.7 % high. All three
+	       now take the hygrometer the site's humidity fell back to. A
+	       half-hour with a usable biomet RH is unchanged.
+	- Fix: The drift correction's band broadening, for a CO2 that takes its
+	       water from the biomet RH, read the previous half-hour's biomet
+	       humidity, and the first half-hour that of wherever the time-lag
+	       pre-pass ended. It now reads its own.
+	- Note: Embedded (.ghg) biomet columns are counted with DATE and TIME as
+	        columns 1 and 2, so the n-th biomet variable is biom_<var>=n+2.
+	        biom_rh=15 on the GHG fixture selects P_RAIN_1_1_1, not
+	        RH_1_1_1 (17), which is how the first fix above was found.
+	- Tested: base_ghg_licor with CH4 taking its water from the biomet and
+	          biom_rh=15: FCH4 -18.537 and 75.827 where it was missing,
+	          multipliers 0.968, 1.415 and 1.330, every column equal to the
+	          run with CH4 on the LI-7500A's water but CH4_MOIST_REF. With
+	          biom_rh=17, and with the LI-7500A's water, byte-identical to
+	          the previous build. base_drift with CO2 on the biomet: CO2
+	          418.67 where it was 425.66 undiluted with no usable RH; with
+	          the RH, a change of 7e-3 ppm in the first half-hour and less
+	          after. base_drift and base_biomet_water byte-identical.
+	- Fix: On Windows, every formatted READ and WRITE restored the numeric
+	       locale from a string the C runtime had already freed. libgfortran
+	       saves the pointer setlocale(LC_NUMERIC, NULL) returns, switches to
+	       "C" - which under the UCRT frees that string - and restores from
+	       the pointer when the transfer ends. Usually the freed memory
+	       still read "C"; when it had been reused, setlocale faulted inside
+	       ucrtbase.dll. pwb_table_check crashed so about one run in eight,
+	       in PeriodMinutes's internal READ; RP and FCC carried the same
+	       fault on every formatted transfer. setlocale is now the engine's
+	       own (src_os/win/setlocale_override.f90): the program never leaves
+	       "C", so a query answers "C" from storage that is never freed and
+	       nothing is switched. Formatted I/O no longer allocates locale data
+	       per transfer either: storing a year of PWB rows went from 3.1 s
+	       to 0.6 s.
+	- Change: RP and FCC link libgfortran statically on Windows, so the
+	          override reaches it; libgfortran-5.dll is no longer needed by
+	          them. libgcc_s_seh-1.dll and libwinpthread-1.dll still are.
+	- Tested: base_rec, base_n_gas, base_cec_cos, base_ghg_licor,
+	          base_ghg_mixed, base_lead_gap, base_pwb_cache and
+	          base_tlag_opt are byte-identical to the dynamically linked
+	          build, logs included, 232 files. pwb_table_check: 65 clean
+	          runs, 48 of them eight at a time.
+	- Fix: An engine started with -e "C:\dir\" - a path ending in a
+	       backslash inside quotes - created stray folders such as -j, 2
+	       and 3\tmp\tmp_<ts> in the directory it was started from. The
+	       backslash escapes the closing quote, every argument after it is
+	       folded into the home directory, and the mkdir for the temporary
+	       folder then names each word as a folder. A home directory or
+	       project path with a double quote in it now stops the run, before
+	       anything is created, with a message saying why. The interface
+	       passes its arguments quoted correctly and never hit this.
+	- Tested: -e with a trailing backslash exits with code 3 and creates
+	          nothing; without it the run proceeds. base_ghg_licor runs
+	          through run.sh as before.
+	- Change: For the interface (-c gui) the run says which passes lie ahead
+	          ("Run plan: to pf rp (17520 periods)", and FCC's "Run plan: sa
+	          fx") and, every five seconds at most, how far the pass under way
+	          has got over every process ("Progress [rp]: 1234 of 17520
+	          periods done.") - serial or split, time lags, planar fit, raw
+	          data processing, spectral assessment and fluxes. A split pass
+	          printed the parent's own piece only, about one period in every
+	          few, and then just how many pieces were done, so the interface's
+	          estimate of the time left was the serial time and then stood
+	          still. Each worker notes how far it has got beside its return
+	          code, and the parent adds that up. None of it goes into the run
+	          log, a console run prints none of it, and no output changes.
+	- Change: A preliminary time-lag assessment, for the interface's new
+	          "Timelag preliminary assessment" dialog. Four keys that only the
+	          throw-away project the dialog runs ever carries -
+	          to_sample_frac, to_sample_min_n, to_sample_seed and
+	          to_dump_lags - make an on-the-fly time-lag pre-pass walk a
+	          seeded random share of the periods with raw data (at least
+	          to_sample_min_n of them) and write <id>_tlag_preassess_<ts>.csv:
+	          every lag found, per period and gas, with its window, whether
+	          it sat at a window edge, and whether the flux cleared the
+	          optimiser's threshold - before the optimiser's gates drop
+	          anything, so a pile-up at an edge is shown. Covariance
+	          maximisation and PWB both write it. Every process of a split
+	          pre-pass draws the same sample, undrawn periods cost nothing,
+	          and the progress the interface is shown counts drawn periods.
+	          Absent, the keys change nothing.
+	- Tested: CH-LAE June 2025, 10 % of 1440 periods: 144 drawn, the table
+	          byte-identical serial (-j 1) and split four ways; a PWB copy of
+	          the same project writes the same layout.
+
 8.1.2 (2026-10-07)
 
     Engine:

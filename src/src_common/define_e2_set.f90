@@ -59,6 +59,9 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
     !> Gases already reported as borrowing. Saved, because this routine runs
     !> once per averaging period and the report belongs to the run.
     logical, save :: crossWaterWarned(GHGNumVar) = .false.
+    !> Gases already reported as taking the designated hygrometer's water
+    !> flux for want of their own. Saved for the same reason.
+    logical, save :: borrowFluxNoted(GHGNumVar) = .false.
     !> A gas record's index and the cell record it names, for resolving an
     !> explicit gas_<i>_cell.
     integer :: gasrec
@@ -340,6 +343,32 @@ subroutine DefineE2Set(LocCol, Raw, nrow, ncol, E2Set, e2nrow, e2ncol, DiagSet, 
             // trim(E2Col(msl)%instr%model) // '.'
         call ExceptionHandler(106)
     end do
+
+    !> Say which open-path gases take the designated hygrometer's water flux.
+    !>
+    !> Their WPL water-vapour term is the evapotranspiration of the hygrometer
+    !> their record names for their water (WaterFluxFor in Fluxes23). The
+    !> biomet RH has humidity but no flux, so a gas that names it borrows the
+    !> designated hygrometer's - a reasonable stand-in, and what every gas got
+    !> before, but a different instrument from the one its humidity comes
+    !> from. A closed-path gas reads its own lagged water covariance instead,
+    !> so it is not affected. Unresolved references are already re-pointed at
+    !> the designated hygrometer above, so the biomet is the only case left.
+    if (EddyFlowProj%wpl .and. wsl >= firstGas) then
+        if (E2Col(wsl)%present) then
+            do j = firstGas, lastGas
+                if (.not. E2Col(j)%present) cycle
+                if (GasSlotIsWater(j)) cycle
+                if (E2Col(j)%moist_ref /= biometMoistRef) cycle
+                if (E2Col(j)%instr%path_type == 'closed') cycle
+                if (borrowFluxNoted(j)) cycle
+                borrowFluxNoted(j) = .true.
+                call LogSay('  Note: ' // trim(GasOutputLabel(j)) // ' takes its water from' &
+                    // ' the biomet RH, which has no flux; its WPL water-vapour term uses' &
+                    // ' the evapotranspiration of ' // trim(E2Col(wsl)%instr%model) // '.')
+            end do
+        end if
+    end if
 
 contains
 

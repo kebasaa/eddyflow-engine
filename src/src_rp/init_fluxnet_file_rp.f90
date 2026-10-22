@@ -106,6 +106,10 @@ subroutine InitFluxnetFile_rp()
 
     call AddFluxFamily('')
     call AddFluxFamily('_RANDUNC_HF')
+    !> Limit of detection after Langford et al. (2015), alpha times the random
+    !> error. Always laid out, so the record keeps one shape; error-labelled
+    !> unless the random error method is langford_15.
+    call AddFluxFamily('_LOD')
 
     !> Single-point storage. CO2 is SC, not SCO2.
     call AddDatum(csv_row, 'SH_SINGLE', separator)
@@ -469,6 +473,8 @@ subroutine InitFluxnetFile_rp()
     do j = 1, nFluxnetGasSlots
         i = FluxnetGasSlots(j)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SLOT', separator)
+        !> Which H2O corrects this gas - see WriteOutFluxnet.
+        call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_REF', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_RHOW', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_SIGMA', separator)
         call AddDatum(csv_row, trim(FluxnetGasTags(j)) // '_MOIST_Q', separator)

@@ -72,6 +72,7 @@ module m_prepass_parallel
     use m_rp_global_var
     use m_batch_pool
     use m_pwb_timelag, only: AppendPwbCacheRows
+    use m_run_columns, only: WriteRunColumns, MergeRunColumns
     implicit none
     private
 
@@ -79,6 +80,7 @@ module m_prepass_parallel
     !> program's calls did not have to change.
     public :: PlanPrepassBatches, PrepassChunk, PrepassChunkCount
     public :: StartPrepassBatches, WaitPrepassBatches, TopUpPrepassBatches
+    public :: ProgressBegin, ProgressEnd
     public :: BatchDumpPath
     public :: FinishBatchWorker, StopIfParentGone
     public :: WriteTlagBatchDump, MergeTlagBatchDumps
@@ -95,7 +97,13 @@ module m_prepass_parallel
     !>
     !> 06: TimeLagOptType carries one humidity per slot, not one scalar, so
     !> the records it dumps changed size.
-    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_06 '
+    !>
+    !> 07: a slice's notes of the gases it had follow its records
+    !> (m_run_columns).
+    !>
+    !> 08: TimeLagOptType carries the preliminary assessment's raw lag,
+    !> window and verdicts per slot, and the period's date and time.
+    character(20), parameter :: BatchMagic = 'EDDYFLOW_PREPASS_08 '
 
 contains
 
@@ -121,6 +129,7 @@ contains
         write(u) BatchKind
         write(u) n
         if (n > 0) write(u) dataset(1:n)
+        call WriteRunColumns(u)
         close(u)
     end subroutine WriteTlagBatchDump
 
@@ -175,6 +184,7 @@ contains
                 end do
                 deallocate(slice)
             end if
+            call MergeRunColumns(u)
             close(u)
         end do
     end subroutine MergeTlagBatchDumps
@@ -218,6 +228,7 @@ contains
             write(u) PwbOptDate(1:nOpt)
             write(u) PwbOptTime(1:nOpt)
         end if
+        call WriteRunColumns(u)
         close(u)
     end subroutine WritePwbBatchDump
 
@@ -288,6 +299,7 @@ contains
                 end do
                 deallocate(slice, sdate, stime)
             end if
+            call MergeRunColumns(u)
             close(u)
         end do
     end subroutine MergePwbBatchDumps

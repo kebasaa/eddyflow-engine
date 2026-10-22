@@ -116,7 +116,10 @@ class ItIsInertWithoutADetectionLimit(unittest.TestCase):
             "if (RPSetup%tlag_borrow_noise == 'detlim' .and. &", BORROW,
             "the routine would divide by a detection limit that was never "
             "computed")
-        self.assertIn("RPSetup%detlim_meth /= 'wienhold_94') return", BORROW)
+        #> Either detection limit will do: Wienhold's, or Langford's, which
+        #> the same Essentials%detlim carries.
+        self.assertIn("RPSetup%detlim_meth /= 'wienhold_94' .and. &", BORROW)
+        self.assertIn("RPSetup%detlim_meth /= 'langford_15') return", BORROW)
 
     def test_both_guards_precede_any_work(self):
         body = BORROW[BORROW.index("subroutine " + ROUTINE):]

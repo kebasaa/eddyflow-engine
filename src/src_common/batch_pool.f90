@@ -55,6 +55,8 @@ module m_batch_pool
     public :: ForcedPieceLength, RemoveStaleWorkerRoots, WorkerRoot
     public :: RemoveWorkerRoots, NoSlashEnd, AppendBytes, FileBytes
     public :: MaxChunks
+    public :: ProgressBegin, ProgressAt, ProgressEnd
+    public :: PeriodsWithFile, SetPeriodSample, ClearPeriodSample, PeriodSampled
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
@@ -96,6 +98,41 @@ module m_batch_pool
     integer :: PoolEff = 0
     integer :: PoolDone = 0
     logical, allocatable :: Running(:)
+
+    !> When each piece's worker was started, and when it was found to have
+    !> ended with no return code to show for it (0 if it has not), in
+    !> system_clock counts; and when the workers were last looked for.
+    integer(8), allocatable :: LaunchedAt(:)
+    integer(8), allocatable :: SuspectAt(:)
+    integer(8) :: LastLivenessCheck = 0
+
+    !> How far each running piece's worker has got, as it last said; never
+    !> less than before, so a file caught mid-write costs nothing.
+    integer, allocatable :: PieceProg(:)
+
+    !> The pass whose progress the interface is shown - see ProgressBegin -
+    !> over [ProgFirst, ProgEnd), with this process at ProgOwnNext.
+    logical :: ProgOn = .false.
+    character(2) :: ProgStage = ''
+    character(8) :: ProgUnit = ''
+    integer :: ProgFirst = 0
+    integer :: ProgEnd = 0
+    integer :: ProgOwnNext = 0
+    integer :: ProgLastDone = -1
+    integer(8) :: ProgLastSay = 0
+
+    !> A worker's own, for its piece's progress file.
+    integer(8) :: PieceLastNote = 0
+
+    !> The preliminary time-lag assessment walks a random sample of a
+    !> pre-pass's periods, not all of them (SetPeriodSample). While a sample is
+    !> set, the periods outside it cost nothing - the loop passes them without
+    !> looking for a file - so the cut into pieces and the progress the
+    !> interface is shown both count sampled periods only.
+    logical :: SampleOn = .false.
+    integer :: SampleFirst = 0
+    integer :: SampleLast = -1
+    logical, allocatable :: SampleKeep(:)
 
 contains
 
@@ -213,7 +250,6 @@ contains
         type(DateType), intent(in) :: Series(nSeries)
         type(FileListType), intent(in) :: Files(nFiles)
         integer :: p
-        integer :: j
         integer :: c
         integer :: want
         integer :: firstData
@@ -223,33 +259,32 @@ contains
         real(kind = dbl) :: total
         real(kind = dbl) :: cum
         real(kind = dbl), allocatable :: weight(:)
+        logical, allocatable :: has(:)
 
         if (allocated(ChunkStart)) deallocate(ChunkStart, ChunkEnd)
 
         !> No more pieces than periods a few to each, as for the slices
-        !> before: a piece still has to pay for starting a process.
-        want = min(ChunksPerWorker * nEff, MaxChunks, (iEnd - iStart) / 4)
-        want = max(want, min(nEff, iEnd - iStart))
+        !> before: a piece still has to pay for starting a process. Under a
+        !> sample, the periods that count are the sampled ones.
+        want = min(ChunksPerWorker * nEff, MaxChunks, SpanWork(iStart, iEnd) / 4)
+        want = max(want, min(nEff, SpanWork(iStart, iEnd)), 1)
 
-        !> Which periods a raw file covers. Files are in time order, so one
-        !> forward sweep: skip the files that end before the period starts,
-        !> then the period has data if the next file starts before it ends.
+        !> A period weighs 1 if it will be read and EmptyPeriodWeight if not.
+        !> With no sample, read means a raw file covers it; under one, that
+        !> it was drawn - and only periods with a file are drawn.
         allocate(weight(iStart:iEnd - 1))
+        allocate(has(iStart:iEnd - 1))
+        call PeriodsWithFile(iStart, iEnd, Series, nSeries, Files, nFiles, has)
         firstData = 0
-        j = 1
         do p = iStart, iEnd - 1
-            do while (j <= nFiles)
-                if (Files(j)%timestamp + DatafileDateStep > Series(p)) exit
-                j = j + 1
-            end do
+            if (SampleOn) has(p) = PeriodSampled(p)
             weight(p) = EmptyPeriodWeight
-            if (j <= nFiles) then
-                if (Files(j)%timestamp < Series(p + 1)) then
-                    weight(p) = 1d0
-                    if (firstData == 0) firstData = p
-                end if
+            if (has(p)) then
+                weight(p) = 1d0
+                if (firstData == 0) firstData = p
             end if
         end do
+        deallocate(has)
         total = sum(weight)
 
         !> Cut where the running total passes each equal share. A cut is the
@@ -287,6 +322,88 @@ contains
         end do
         ChunkEnd(NumChunks) = iEnd
     end subroutine PlanPrepassChunks
+
+    !***************************************************************************
+    !> \brief Which periods of [iStart, iEnd) a raw file covers.
+    !>
+    !> Files are in time order, so one forward sweep: skip the files that end
+    !> before the period starts, then the period has data if the next file
+    !> starts before it ends. Only an estimate - the file's time span from its
+    !> name, not whether it holds usable records.
+    !***************************************************************************
+    subroutine PeriodsWithFile(iStart, iEnd, Series, nSeries, Files, nFiles, has)
+        integer, intent(in) :: iStart
+        integer, intent(in) :: iEnd
+        integer, intent(in) :: nSeries
+        integer, intent(in) :: nFiles
+        type(DateType), intent(in) :: Series(nSeries)
+        type(FileListType), intent(in) :: Files(nFiles)
+        logical, intent(out) :: has(iStart:iEnd - 1)
+        integer :: p
+        integer :: j
+
+        j = 1
+        do p = iStart, iEnd - 1
+            do while (j <= nFiles)
+                if (Files(j)%timestamp + DatafileDateStep > Series(p)) exit
+                j = j + 1
+            end do
+            has(p) = .false.
+            if (j <= nFiles) has(p) = Files(j)%timestamp < Series(p + 1)
+        end do
+    end subroutine PeriodsWithFile
+
+    !***************************************************************************
+    !> \brief Walk only the periods `keep` marks, until ClearPeriodSample.
+    !>
+    !> keep(i) stands for period iFirst + i - 1, the loop's own counter. Parent
+    !> and workers each build the same mask from the same seed and range, so a
+    !> worker needs nothing from its parent to skip the same periods.
+    !***************************************************************************
+    subroutine SetPeriodSample(iFirst, keep)
+        integer, intent(in) :: iFirst
+        logical, intent(in) :: keep(:)
+
+        if (allocated(SampleKeep)) deallocate(SampleKeep)
+        SampleFirst = iFirst
+        SampleLast = iFirst + size(keep) - 1
+        allocate(SampleKeep(SampleFirst:SampleLast))
+        SampleKeep = keep
+        SampleOn = .true.
+    end subroutine SetPeriodSample
+
+    !> Every period again, as before SetPeriodSample.
+    subroutine ClearPeriodSample()
+        if (allocated(SampleKeep)) deallocate(SampleKeep)
+        SampleOn = .false.
+        SampleFirst = 0
+        SampleLast = -1
+    end subroutine ClearPeriodSample
+
+    !> Whether period p is walked: always with no sample, else if it was drawn.
+    logical function PeriodSampled(p)
+        integer, intent(in) :: p
+
+        PeriodSampled = .true.
+        if (.not. SampleOn) return
+        PeriodSampled = .false.
+        if (p < SampleFirst .or. p > SampleLast) return
+        PeriodSampled = SampleKeep(p)
+    end function PeriodSampled
+
+    !> How many periods of [a, b) are walked: all of them with no sample.
+    integer function SpanWork(a, b)
+        integer, intent(in) :: a
+        integer, intent(in) :: b
+
+        if (.not. SampleOn) then
+            SpanWork = max(0, b - a)
+            return
+        end if
+        SpanWork = 0
+        if (max(a, SampleFirst) > min(b - 1, SampleLast)) return
+        SpanWork = count(SampleKeep(max(a, SampleFirst):min(b - 1, SampleLast)))
+    end function SpanWork
 
     !***************************************************************************
     !> \brief The index range of piece k of the current pre-pass, half-open.
@@ -408,9 +525,18 @@ contains
         call LogSay('  comes free.')
 
         !> A stale return code from an earlier attempt would be read as a worker
-        !> that had already finished.
+        !> that had already finished, and a stale process id as one that has
+        !> ended without reporting.
         do k = 2, NumChunks
             rcPath = ReturnCodePath(kind, k)
+            inquire(file = trim(rcPath), exist = ex)
+            if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
+                // comm_err_redirect)
+            rcPath = PidPath(kind, k)
+            inquire(file = trim(rcPath), exist = ex)
+            if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
+                // comm_err_redirect)
+            rcPath = ProgPath(kind, k)
             inquire(file = trim(rcPath), exist = ex)
             if (ex) call system(comm_del // '"' // trim(rcPath) // '"' &
                 // comm_err_redirect)
@@ -431,6 +557,14 @@ contains
         if (allocated(Running)) deallocate(Running)
         allocate(Running(NumChunks))
         Running = .false.
+        if (allocated(LaunchedAt)) deallocate(LaunchedAt, SuspectAt)
+        allocate(LaunchedAt(NumChunks), SuspectAt(NumChunks))
+        LaunchedAt = 0
+        SuspectAt = 0
+        if (allocated(PieceProg)) deallocate(PieceProg)
+        allocate(PieceProg(NumChunks))
+        PieceProg = 0
+        LastLivenessCheck = 0
         NextChunk = 2
         call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))
         Running(2:NextChunk - 1) = .true.
@@ -451,12 +585,29 @@ contains
         integer :: k
         integer :: u
         integer :: io_status
+        integer(8) :: now
+        logical :: ex
         character(PathLen) :: masterPath
         character(PathLen) :: childPath
         character(16) :: tag
         character(2048) :: cmd
 
         if (n <= 0) return
+
+        !> Each piece's script was written when the pass began. One that is
+        !> gone was removed from under this run, and cmd would only say it is
+        !> "not recognized" while this process waited for a worker that never
+        !> started.
+        do k = NextChunk, NextChunk + n - 1
+            write(tag, '(a,a,i2.2)') trim(kind), '_b', k
+            if (OS == 'win') then
+                childPath = trim(TmpDir) // 'batch_' // trim(tag) // '.bat'
+            else
+                childPath = trim(TmpDir) // 'batch_' // trim(tag) // '.sh'
+            end if
+            inquire(file = trim(childPath), exist = ex)
+            if (.not. ex) call WorkerFilesGone(kind, k, .false.)
+        end do
 
         if (OS == 'win') then
             masterPath = trim(TmpDir) // 'batch_' // trim(kind) // '_run.bat'
@@ -487,6 +638,11 @@ contains
             end if
         end do
         close(u)
+        if (allocated(LaunchedAt)) then
+            call system_clock(now)
+            LaunchedAt(NextChunk:NextChunk + n - 1) = now
+            SuspectAt(NextChunk:NextChunk + n - 1) = 0
+        end if
         NextChunk = NextChunk + n
 
         !> On Windows this returns as soon as the workers are started. On the
@@ -511,13 +667,186 @@ contains
     !> for return-code files, so it costs nothing a period would notice. Quiet:
     !> the period loop may have a progress line open, and the pieces finished
     !> are counted when the parent starts waiting.
+    !>
+    !> `next` is the period (or record) about to be dealt with. Every process
+    !> walking a pass calls this at the top of its loop, split or not: a
+    !> worker notes how far it has got, and the parent tells the interface
+    !> how far the whole pass has - see ProgressBegin.
     !***************************************************************************
-    subroutine TopUpPrepassBatches()
+    subroutine TopUpPrepassBatches(next)
+        integer, intent(in) :: next
         logical :: progressed
 
-        if (.not. PoolActive) return
-        call PollPrepassPool(PoolEff - 1, .true., progressed)
+        if (BatchIndex > 0) then
+            call NotePieceProgress(next)
+            return
+        end if
+        if (PoolActive) call PollPrepassPool(PoolEff - 1, .true., progressed)
+        call ProgressAt(next)
     end subroutine TopUpPrepassBatches
+
+    !***************************************************************************
+    !> \brief Parent: start telling the interface how far pass `stage` has
+    !>        got, over the periods (or records, or files) [iFirst, iEnd).
+    !>
+    !> The interface estimates the time left from it. It could not from what
+    !> the run printed before: a split pass prints the periods of its own
+    !> first piece only, then waits, saying no more than how many pieces are
+    !> done - so the estimate was the serial time while the parent was on its
+    !> piece, and then stood still. This counts every process's periods:
+    !> pieces whose worker has returned in full, running ones as far as their
+    !> worker last noted (NotePieceProgress), and the parent's own.
+    !>
+    !> Only for the interface (-c gui), only in the parent, at most every five
+    !> seconds, and never in the run log:
+    !>   "  Progress [rp]: 1234 of 17520 periods done."
+    !> The tag says which pass: to, pf, rp, sa or fx - and pd while a split
+    !> production pass with PWB time lags is reading its pieces for evidence,
+    !> before it computes their fluxes.
+    !***************************************************************************
+    subroutine ProgressBegin(stage, iFirst, iEnd, unit)
+        character(*), intent(in) :: stage
+        integer, intent(in) :: iFirst
+        integer, intent(in) :: iEnd
+        character(*), intent(in) :: unit
+
+        ProgOn = BatchIndex == 0 .and. EddyFlowProj%caller == 'gui' &
+            .and. iEnd > iFirst
+        if (.not. ProgOn) return
+        ProgStage = stage
+        ProgUnit = unit
+        ProgFirst = iFirst
+        ProgEnd = iEnd
+        ProgOwnNext = iFirst
+        ProgLastDone = -1
+        ProgLastSay = 0
+        call ProgressSay(.true.)
+    end subroutine ProgressBegin
+
+    !> Parent: it is about to deal with period `next` of the pass under way.
+    subroutine ProgressAt(next)
+        integer, intent(in) :: next
+
+        if (.not. ProgOn) return
+        ProgOwnNext = max(ProgOwnNext, min(next, ProgEnd))
+        call ProgressSay(.false.)
+    end subroutine ProgressAt
+
+    !> Parent: the pass is done, all of it - said unless it already was.
+    subroutine ProgressEnd()
+        if (.not. ProgOn) return
+        ProgOwnNext = ProgEnd
+        if (ProgLastDone /= SpanWork(ProgFirst, ProgEnd)) call ProgressSay(.true.)
+        ProgOn = .false.
+    end subroutine ProgressEnd
+
+    !> Whether the pool under way is working on the pass being reported.
+    logical function ProgressUsesPool()
+        ProgressUsesPool = .false.
+        if (.not. PoolActive) return
+        select case (ProgStage)
+            case ('rp')
+                ProgressUsesPool = PoolKind == 'pd' .or. PoolKind == 'pr'
+            case ('to', 'pf', 'fx')
+                ProgressUsesPool = PoolKind == ProgStage
+        end select
+    end function ProgressUsesPool
+
+    !> How many of the pass's periods are done, across every process.
+    integer function ProgressDone()
+        integer :: k
+
+        !> Counted in walked periods (SpanWork), which are all of them unless
+        !> the preliminary time-lag assessment set a sample.
+        if (.not. ProgressUsesPool()) then
+            ProgressDone = SpanWork(ProgFirst, ProgOwnNext)
+            return
+        end if
+        !> The parent's share is everything before the first worker's piece:
+        !> its own piece, and in a production pass the head before it.
+        ProgressDone = SpanWork(ProgFirst, min(ProgOwnNext, ChunkEnd(1)))
+        do k = 2, min(NextChunk - 1, NumChunks)
+            if (.not. Running(k)) then
+                ProgressDone = ProgressDone + SpanWork(ChunkStart(k), ChunkEnd(k))
+            else
+                call ReadPieceProgress(k)
+                ProgressDone = ProgressDone &
+                    + SpanWork(ChunkStart(k), ChunkStart(k) + PieceProg(k))
+            end if
+        end do
+        ProgressDone = max(0, min(ProgressDone, SpanWork(ProgFirst, ProgEnd)))
+    end function ProgressDone
+
+    !> The progress line, if five seconds have passed since the last - or at
+    !> once, when `force`.
+    subroutine ProgressSay(force)
+        logical, intent(in) :: force
+        integer :: done
+        integer(8) :: now
+        integer(8) :: rate
+        character(16) :: tag
+        character(16) :: DoneString
+        character(16) :: TotalString
+
+        if (.not. ProgOn) return
+        call system_clock(now, rate)
+        if (.not. force .and. ProgLastSay > 0 .and. now - ProgLastSay < 5 * rate) return
+        done = ProgressDone()
+        if (.not. force .and. done == ProgLastDone) return
+        ProgLastSay = now
+        ProgLastDone = done
+
+        tag = ProgStage
+        if (ProgStage == 'rp' .and. ProgressUsesPool()) then
+            if (PoolKind == 'pd') tag = 'pd'
+        end if
+        write(DoneString, '(i0)') done
+        write(TotalString, '(i0)') SpanWork(ProgFirst, ProgEnd)
+        call ConsoleSay('  Progress [' // trim(tag) // ']: ' // trim(DoneString) &
+            // ' of ' // trim(TotalString) // ' ' // trim(ProgUnit) // ' done.')
+    end subroutine ProgressSay
+
+    !> Parent: what piece k's worker last noted, if it can be read now.
+    subroutine ReadPieceProgress(k)
+        integer, intent(in) :: k
+        integer :: u
+        integer :: n
+        integer :: io_status
+
+        open(newunit = u, file = trim(ProgPath(PoolKind, k)), status = 'old', &
+            action = 'read', iostat = io_status)
+        if (io_status /= 0) return
+        read(u, *, iostat = io_status) n
+        close(u)
+        if (io_status /= 0) return
+        PieceProg(k) = max(PieceProg(k), min(n, ChunkEnd(k) - ChunkStart(k)))
+    end subroutine ReadPieceProgress
+
+    !> Worker: how far into its piece it has got, for its parent to add up,
+    !> beside its return code - at most every two seconds, so that a stretch
+    !> of periods without data, which go by many a second, costs nothing.
+    subroutine NotePieceProgress(next)
+        integer, intent(in) :: next
+        integer :: u
+        integer :: io_status
+        integer(8) :: now
+        integer(8) :: rate
+        character(16) :: tag
+
+        if (len_trim(BatchTmpDir) == 0 .or. BatchSliceEnd <= BatchSliceStart) return
+        if (next <= BatchSliceStart) return
+        call system_clock(now, rate)
+        if (PieceLastNote > 0 .and. now - PieceLastNote < 2 * rate) return
+        PieceLastNote = now
+
+        write(tag, '(a,a,i2.2)') trim(BatchKind), '_b', BatchIndex
+        open(newunit = u, file = trim(BatchTmpDir) // slash // 'batch_' &
+            // trim(tag) // '.prog', status = 'replace', action = 'write', &
+            iostat = io_status)
+        if (io_status /= 0) return
+        write(u, '(i0)', iostat = io_status) min(next, BatchSliceEnd) - BatchSliceStart
+        close(u)
+    end subroutine NotePieceProgress
 
     !***************************************************************************
     !> \brief Hand out the remaining pieces as workers come free, and fail
@@ -552,12 +881,14 @@ contains
         !> the parent was on it.
         PoolDone = PoolDone + 1
         if (PoolDone > 1) call SayPiecesDone()
+        if (ProgressUsesPool()) ProgOwnNext = max(ProgOwnNext, ChunkEnd(1))
         ticks = 0
         do
             if (PoolDone >= NumChunks) exit
             call PollPrepassPool(nEff, .false., progressed)
             if (progressed) ticks = 0
             if (PoolDone >= NumChunks) exit
+            call ProgressSay(.false.)
 
             call system(comm_sleep)
             ticks = ticks + 1
@@ -567,7 +898,13 @@ contains
                 error stop 'Parallel pre-pass timed out.'
             end if
         end do
-        deallocate(Running)
+        !> Every piece is in, so is the pass's every period - except that the
+        !> detection round of a production pass is followed by its fluxes.
+        if (ProgressUsesPool() .and. kind /= 'pd') then
+            ProgOwnNext = ProgEnd
+            call ProgressSay(.true.)
+        end if
+        deallocate(Running, LaunchedAt, SuspectAt)
         PoolActive = .false.
 
         !> Every worker's log, in piece order, so the run log reads as one walk
@@ -628,6 +965,8 @@ contains
             if (.not. quiet) call SayPiecesDone()
         end do
 
+        call CheckWorkersAlive(quiet)
+
         !> Keep `slots` workers busy while pieces are left.
         nRunning = count(Running)
         if (nRunning < slots .and. NextChunk <= NumChunks) then
@@ -636,6 +975,112 @@ contains
             Running(k:NextChunk - 1) = .true.
         end if
     end subroutine PollPrepassPool
+
+    !***************************************************************************
+    !> \brief Every ten seconds, look at each running piece that has not
+    !>        reported: is its worker still there?
+    !>
+    !> A worker's script writes the return code once the worker has exited,
+    !> and cmd reads a script line by line as it runs it. With the script
+    !> removed while the worker ran - everything in the temporary folder that
+    !> nobody held open went when another session's run was stopped - the
+    !> worker finished, its code was never written, and this process waited
+    !> a day for it. Each worker writes its process id beside its return code
+    !> as it starts (InitEnv). A worker that has exited and still shows no
+    !> return code ten seconds later - time enough for its script to write
+    !> one - has ended without reporting; so has one with neither a process
+    !> id nor its script a minute after it was started.
+    !***************************************************************************
+    subroutine CheckWorkersAlive(quiet)
+        logical, intent(in) :: quiet
+        integer :: k
+        integer :: u
+        integer :: pid
+        integer :: io_status
+        integer(8) :: now
+        integer(8) :: rate
+        logical :: ex
+        character(16) :: tag
+        character(PathLen) :: script
+
+        if (.not. allocated(LaunchedAt)) return
+        call system_clock(now, rate)
+        if (now - LastLivenessCheck < 10 * rate) return
+        LastLivenessCheck = now
+
+        do k = 2, NextChunk - 1
+            if (.not. Running(k)) cycle
+            if (SuspectAt(k) > 0) then
+                if (now - SuspectAt(k) >= 10 * rate) &
+                    call WorkerFilesGone(PoolKind, k, quiet)
+                cycle
+            end if
+            pid = 0
+            open(newunit = u, file = trim(PidPath(PoolKind, k)), status = 'old', &
+                action = 'read', iostat = io_status)
+            if (io_status == 0) then
+                read(u, *, iostat = io_status) pid
+                close(u)
+                if (io_status /= 0) pid = 0
+            end if
+            if (pid > 0) then
+                if (.not. ProcessAlive(pid)) SuspectAt(k) = now
+                cycle
+            end if
+            if (now - LaunchedAt(k) < 60 * rate) cycle
+            write(tag, '(a,a,i2.2)') trim(PoolKind), '_b', k
+            if (OS == 'win') then
+                script = trim(TmpDir) // 'batch_' // trim(tag) // '.bat'
+            else
+                script = trim(TmpDir) // 'batch_' // trim(tag) // '.sh'
+            end if
+            inquire(file = trim(script), exist = ex)
+            if (.not. ex) call WorkerFilesGone(PoolKind, k, quiet)
+        end do
+    end subroutine CheckWorkersAlive
+
+    !> Stop the run: piece k's worker cannot report, because what it needed in
+    !> the temporary folder was removed while this run used it.
+    subroutine WorkerFilesGone(kind, k, quiet)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        logical, intent(in) :: quiet
+        character(64) :: LogString
+
+        !> Ends the progress line the period loop may have left open.
+        if (quiet) call LogSay('')
+        write(LogString, '(i6)') k
+        call LogSay(' Worker ' // trim(adjustl(LogString)) // ' of this run cannot report back:')
+        call LogSay(' files it needs in the temporary folder')
+        call LogSay('   ' // trim(TmpDir))
+        call LogSay(' were removed while the run was using them. That happens when')
+        call LogSay(' another EddyFlow run of this version is stopped from an older')
+        call LogSay(' interface, or when another program cleans that folder. The')
+        call LogSay(' output files written so far are left with a .tmp extension.')
+        call LogSay(' The last the worker printed:')
+        call DumpWorkerStdout(kind, k, 15)
+        error stop 'A parallel worker ended without reporting back.'
+    end subroutine WorkerFilesGone
+
+    !> Where piece k's worker writes its process id: beside its return code.
+    character(PathLen) function PidPath(kind, k)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        character(16) :: tag
+
+        write(tag, '(a,a,i2.2)') trim(kind), '_b', k
+        PidPath = trim(TmpDir) // 'batch_' // trim(tag) // '.pid'
+    end function PidPath
+
+    !> Where piece k's worker notes how far it has got: beside its process id.
+    character(PathLen) function ProgPath(kind, k)
+        character(*), intent(in) :: kind
+        integer, intent(in) :: k
+        character(16) :: tag
+
+        write(tag, '(a,a,i2.2)') trim(kind), '_b', k
+        ProgPath = trim(TmpDir) // 'batch_' // trim(tag) // '.prog'
+    end function ProgPath
 
     subroutine SayPiecesDone()
         character(64) :: LogString
@@ -705,7 +1150,7 @@ contains
                 error stop 'Parallel pass timed out.'
             end if
         end do
-        deallocate(Running)
+        deallocate(Running, LaunchedAt, SuspectAt)
         PoolActive = .false.
     end subroutine CancelBatchPool
 
@@ -877,11 +1322,15 @@ contains
     !***************************************************************************
     !> \brief Echo what a failed worker printed, which is where a crash lands.
     !***************************************************************************
-    subroutine DumpWorkerStdout(kind, k)
+    subroutine DumpWorkerStdout(kind, k, lastLines)
         character(*), intent(in) :: kind
         integer, intent(in) :: k
+        !> Only this many lines from its end; all of it when absent.
+        integer, intent(in), optional :: lastLines
         integer :: u
         integer :: io_status
+        integer :: n
+        integer :: skip
         logical :: ex
         character(1024) :: dataline
 
@@ -890,10 +1339,23 @@ contains
         open(newunit = u, file = trim(StdoutPath(kind, k)), status = 'old', &
             iostat = io_status)
         if (io_status /= 0) return
+        skip = 0
+        if (present(lastLines)) then
+            n = 0
+            do
+                read(u, '(a)', iostat = io_status) dataline
+                if (io_status /= 0) exit
+                n = n + 1
+            end do
+            skip = max(0, n - lastLines)
+            rewind(u)
+        end if
+        n = 0
         do
             read(u, '(a)', iostat = io_status) dataline
             if (io_status /= 0) exit
-            call LogSay('   ' // trim(dataline))
+            n = n + 1
+            if (n > skip) call LogSay('   ' // trim(dataline))
         end do
         close(u)
     end subroutine DumpWorkerStdout

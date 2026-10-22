@@ -580,10 +580,10 @@ module m_common_global_var
          EPPrjNTags(8)%Label / 'corr_iter_meth' / &
          EPPrjNTags(9)%Label / 'corr_iter_max' / &
          EPPrjNTags(10)%Label / 'corr_iter_tol' / &
-         EPPrjNTags(11)%Label / '' / &
+         EPPrjNTags(11)%Label / 'lod_alpha' / &
          EPPrjNTags(12)%Label / 'col_air_t' / &
          EPPrjNTags(13)%Label / 'col_air_p' / &
-         EPPrjNTags(14)%Label / '' / &
+         EPPrjNTags(14)%Label / 'ru_spec_corr' / &
          EPPrjNTags(15)%Label / '' / &
          EPPrjNTags(16)%Label / '' / &
          EPPrjNTags(17)%Label / '' / &

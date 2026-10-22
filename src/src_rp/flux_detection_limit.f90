@@ -69,8 +69,12 @@ subroutine FluxDetectionLimit(Set, nrow, ncol)
     real(kind = dbl) :: acc
 
     Essentials%detlim = error
-    if (RPSetup%detlim_meth /= 'wienhold_94') return
     if (Metadata%ac_freq <= 0d0) return
+    if (RPSetup%detlim_meth == 'langford_15') then
+        call LangfordDetectionLimit(Set, nrow, ncol)
+        return
+    end if
+    if (RPSetup%detlim_meth /= 'wienhold_94') return
 
     !> Window geometry on the row grid. Both are at least one row, so a
     !> setting finer than the sample interval degrades to the smallest
@@ -165,3 +169,34 @@ subroutine CrossCovarianceScatter(ColW, ColGas, nrow, centre_lag, half_rows, sd)
     !> negative when every covariance in the window is the same number.
     sd = dsqrt(max(0d0, (s2 - dble(n) * mean * mean) / dble(n - 1)))
 end subroutine CrossCovarianceScatter
+
+!***************************************************************************
+!
+! rief       Detection limit after Langford et al. (2015): RE_RMSE (or
+!              RE_SD) of the cross-covariance far from each gas's lag, on the
+!              raw series, at 1x - a noise floor like Wienhold's sigma, which
+!              time-lag borrowing multiplies by its own SNR threshold.
+!              Same routine as the random error method of that name; see
+!              langford_noise.f90.
+! uthor      Jonathan Muller
+!***************************************************************************
+subroutine LangfordDetectionLimit(Set, nrow, ncol)
+    use m_rp_global_var
+    implicit none
+    !> in/out variables
+    integer, intent(in) :: nrow
+    integer, intent(in) :: ncol
+    real(kind = dbl), intent(in) :: Set(nrow, ncol)
+    !> local variables
+    integer :: centre(ncol)
+    logical :: want(ncol)
+    real(kind = dbl) :: re(ncol)
+
+    !> Before the shift, so each gas's windows sit about its own lag.
+    centre = 0
+    centre(firstGas:lastGas) = RowLags(firstGas:lastGas)
+    want = .false.
+    want(firstGas:lastGas) = .true.
+    call LangfordNoise(Set, nrow, ncol, centre, want, re)
+    Essentials%detlim(firstGas:lastGas) = re(firstGas:lastGas)
+end subroutine LangfordDetectionLimit

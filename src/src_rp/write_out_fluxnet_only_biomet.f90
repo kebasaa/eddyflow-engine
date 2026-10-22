@@ -227,6 +227,9 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
     call AddIntDatumToDataline(nFluxnetGasSlots, csv_row, EddyFlowProj%err_label)
     do i = 1, nFluxnetGasSlots
         call AddIntDatumToDataline(FluxnetGasSlots(i), csv_row, EddyFlowProj%err_label)
+        !> The moisture reference is read as an integer, and the error label
+        !> need not be one; 0 says "none" in any project.
+        call AddIntDatumToDataline(0, csv_row, EddyFlowProj%err_label)
         do indx = 1, 6
             call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
         end do

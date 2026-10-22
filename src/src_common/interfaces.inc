@@ -18,7 +18,7 @@ interface
     subroutine BandPassSpectralCorrections(measuring_height, displ_height,&
         loc_var_present, wind_speed, t_air, zL, ac_frequency, avrg_length, logger_sw_ver,&
         detrending_method, detrending_time_constant, printout, LocInstr, &
-        nfull, LocFileList, nrow_full, lEx, LocSetup)
+        nfull, LocFileList, lEx, LocSetup)
         use m_common_global_var
         implicit none
         !> In/out variables
@@ -37,7 +37,6 @@ interface
         type(InstrumentType), intent(in) :: LocInstr(GHGNumVar)
         type(SwVerType) :: logger_sw_ver
         !> Optional variables
-        integer, optional, intent(in):: nrow_full
         type(FileListType), optional, intent(in) :: LocFileList(nfull)
         type(ExType), optional, intent(in) :: lEx
         type(FCCsetupType), optional, intent(in) :: LocSetup

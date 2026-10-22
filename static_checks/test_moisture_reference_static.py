@@ -2,8 +2,9 @@
 
 `E2Col(gas)%moist_ref` is that answer. `ResolveGasRef` fills it with the
 project's explicit choice, failing that the H2O on the gas's own analyser,
-failing that the first H2O anywhere - and the interface mirrors the same three
-rules, so what the user picked is what the engine uses.
+failing that the biomet RH if one is configured - and `DefineE2Set` points
+anything still unresolved at the designated hygrometer. The interface mirrors
+the same rules, so what the user picked is what the engine uses.
 
 Three places consume it, and they used to disagree:
 

@@ -391,7 +391,7 @@ class ThePwbCachePrepassIsSplitToo(unittest.TestCase):
                         body.index("DetectCoreCount()"))
 
     def test_the_time_lag_prepass_is_no_longer_gated_on_the_cache_mode(self):
-        i = MAIN.index("call PlanPrepassBatches(toEndTimestampIndx")
+        i = MAIN.index("call PlanPrepassBatches(toWalk")
         self.assertNotIn(".not. PwbCacheGenerate", MAIN[i:i + 200])
         self.assertIn(".true.", MAIN[i:i + 200])
 
@@ -423,7 +423,8 @@ class ThePwbCachePrepassIsSplitToo(unittest.TestCase):
         header. A dump left by an older build has a different layout and must
         be refused rather than read short."""
         #> 06: TimeLagOptType carries a humidity per slot.
-        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_06 '", PARALLEL)
+        #> 08: and the preliminary assessment's raw lags.
+        self.assertIn("BatchMagic = 'EDDYFLOW_PREPASS_08 '", PARALLEL)
 
 
 if __name__ == "__main__":

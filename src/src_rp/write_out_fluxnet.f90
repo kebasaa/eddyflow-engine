@@ -33,6 +33,7 @@
 !***************************************************************************
 subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     use m_rp_global_var
+    use m_covmax_core, only: LimitOfDetection
     implicit none
     integer, external :: cellPressureSlot
     real(kind = dbl), external :: ColumnAcFreq
@@ -60,6 +61,13 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
     character(LongOutstringLen) :: csv_row
+    !> The random errors as reported: spectrally corrected like their fluxes
+    !> when ru_spec_corr is on. See reported_random_errors.f90.
+    real(kind = dbl) :: rep_re(E2NumVar)
+    real(kind = dbl) :: rep_le
+    real(kind = dbl) :: rep_et
+    !> Whether the Langford limits of detection are written or error-labelled.
+    logical :: lod_on
     character(32) :: char_doy
     character(14) :: tsIso
     character(9) :: vm97flags(GHGNumVar)
@@ -183,14 +191,29 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             gain=FluxnetGasScale(gas), offset=0d0)
     end do
 
+    call ReportedRandomErrors(.not. EddyFlowProj%fcc_follows, Essentials%rand_uncer, Essentials%rand_uncer_LE, &
+        Essentials%rand_uncer_ET, rep_re, rep_le, rep_et)
     !> Flux random uncertainties
-    call AddFloatDatumToDataline(Essentials%rand_uncer(u), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%rand_uncer(ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%rand_uncer_LE, csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%rand_uncer_ET, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_re(u), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_re(ts), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_le, csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(rep_et, csv_row, EddyFlowProj%err_label)
     do jg = firstGas, nRowVar
         gas = rowVar(jg)
-        call AddFloatDatumToDataline(Essentials%rand_uncer(gas), csv_row, &
+        call AddFloatDatumToDataline(rep_re(gas), csv_row, &
+            EddyFlowProj%err_label, gain=FluxnetGasScale(gas), offset=0d0)
+    end do
+
+    !> Limits of detection, Langford et al. (2015): alpha times the random
+    !> errors above. Error-labelled unless that is the random error method.
+    lod_on = RUsetup%meth == 'langford_15'
+    call AddFloatDatumToDataline(LodField(rep_re(u)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_re(ts)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_le), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_et), csv_row, EddyFlowProj%err_label)
+    do jg = firstGas, nRowVar
+        gas = rowVar(jg)
+        call AddFloatDatumToDataline(LodField(rep_re(gas)), csv_row, &
             EddyFlowProj%err_label, gain=FluxnetGasScale(gas), offset=0d0)
     end do
 
@@ -1041,6 +1064,11 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         !> RHO%w_at is only populated for H2O slots, so writing it directly
         !> would send nothing but error for every non-H2O gas.
         indx = E2Col(var)%moist_ref
+        !> And which H2O that is: the slot, biometMoistRef for the biomet, 0
+        !> for none. The terms alone do not say, and FCC needs to know whose
+        !> evapotranspiration the gas's WPL takes - its own record's
+        !> hygrometer, not always the designated one.
+        call AddIntDatumToDataline(indx, csv_row, EddyFlowProj%err_label)
         if (indx == biometMoistRef) then
             !> The gas names the biomet. Its terms are the site's, and they
             !> are written out here rather than left as error.
@@ -1217,4 +1245,19 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     csv_row = replace2(csv_row, ',Infinity,', ',' // trim(EddyFlowProj%err_label) // ',')
 
     write(uflxnt, '(a)') csv_row(1:len_trim(csv_row) - 1)
+
+contains
+
+    !> The Langford limit of detection of a random error, or the error code
+    !> when that is not the random error method.
+    elemental function LodField(re) result(lod)
+        real(kind = dbl), intent(in) :: re
+        real(kind = dbl) :: lod
+
+        if (lod_on) then
+            lod = LimitOfDetection(re, RUsetup%lod_alpha, error)
+        else
+            lod = error
+        end if
+    end function LodField
 end subroutine WriteOutFluxnet

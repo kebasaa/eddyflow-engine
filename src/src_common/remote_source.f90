@@ -417,6 +417,7 @@ contains
             else
                 Raw(e)%state = stFailed
                 NumFailed = NumFailed + 1
+                call MarkFailed(Raw(e)%local)
                 call LogSayList(' Warning(121)> Could not download "' &
                     // trim(BaseName(Raw(e)%local)) // '" from the shared link.')
                 call ExceptionHandler(121)
@@ -529,6 +530,7 @@ contains
     subroutine RemoteCleanup()
         character(16) :: count_str
         integer :: e
+        logical :: failedMark
 
         !> Background downloads still running are waited for first. Their
         !> launcher scripts live in TmpDir, which is about to go, and cmd reads
@@ -541,6 +543,21 @@ contains
             end do
         end if
 
+        !> Counted from the staging directory every process of the run shares,
+        !> where each leaves a marker for a file it could not download: a
+        !> split run's workers fail files too, and two processes failing the
+        !> same file - a worker and the parent, or the two that share a cut -
+        !> count it once, as a single pass would. A worker leaves the summary
+        !> to its parent; its own warnings name each file.
+        if (BatchIndex > 0) then
+            NumFailed = 0
+        else if (Listed) then
+            NumFailed = 0
+            do e = 1, NumRaw
+                inquire(file = trim(Raw(e)%local) // '.failed', exist = failedMark)
+                if (failedMark) NumFailed = NumFailed + 1
+            end do
+        end if
         if (NumFailed > 0) then
             write(count_str, '(i0)') NumFailed
             call LogSayList(' Warning(121)> ' // trim(count_str) &
@@ -554,6 +571,18 @@ contains
             // 'remote_aux' // slash // '"' // comm_err_redirect)
         Active = .false.
     end subroutine RemoteCleanup
+
+    !> A file this process could not download, marked beside where it would
+    !> have been staged, for the end of the run to count.
+    subroutine MarkFailed(local)
+        character(*), intent(in) :: local
+        integer :: u
+        integer :: io_status
+
+        open(newunit = u, file = trim(local) // '.failed', status = 'replace', &
+            iostat = io_status)
+        if (io_status == 0) close(u)
+    end subroutine MarkFailed
 
 
     !===========================================================================

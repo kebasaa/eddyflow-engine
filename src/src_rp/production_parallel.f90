@@ -72,9 +72,14 @@
 !              lags it settled, from their lead-in on.
 !
 !              Refused, so the loop simply runs on serially: the Billesbach
-!              random error (one random stream for the whole run), raw data
-!              from a shared link, embedded mode, and a run whose first fully
-!              processed period left an output file still to be opened.
+!              random error (one random stream for the whole run), embedded
+!              mode, and a run whose first fully processed period left an output
+!              file still to be opened.
+!
+!              What the end of the run reads from the last period is taken from
+!              the last piece: the custom and biomet variable counts, and E2Col
+!              - which gases were present, their instruments - read by the
+!              time-lag optimiser, the PWB summary and the storage cleaning.
 !
 ! \author      Jonathan Muller
 ! \sa          prepass_parallel.f90, eddyflow-rp_main.f90
@@ -85,7 +90,9 @@ module m_production_parallel
         RemoveStaleWorkerRoots, WorkerRoot, RemoveWorkerRoots, NoSlashEnd, &
         AppendBytes, FileBytes
     use m_remote_source, only: RemoteSetWindow, RemotePositionOf
-    use m_pwb_timelag, only: InitPwbTimelagCache, AppendPwbCacheRows
+    use m_run_columns, only: ResetRunColumns, WriteRunColumns, MergeRunColumns
+    use m_pwb_timelag, only: InitPwbTimelagCache, AppendPwbCacheRows, &
+        PwbOutsideWindowCounts, AddPwbOutsideWindow
     use m_pwb_stream, only: PwbEvidenceType, PwbVerdictType, PwbReplayEvidence, &
         WritePwbEvidence, ReadPwbEvidence, WritePwbVerdict, ReadPwbVerdict
     implicit none
@@ -599,6 +606,7 @@ contains
         character(PathLen) :: nm
 
         nOk = 0
+        call ResetRunColumns()
         StorCacheN = 0
         if (allocated(StorCache)) deallocate(StorCache)
         !> Which gas lent each PWB lag, tallied per period for the aggregate
@@ -672,6 +680,10 @@ contains
         write(ud) pwbN
         if (pwbN > 0) write(ud) pwbRows(1:pwbN)
         write(ud) PwbSummaryDonorCount
+        !> The variables as the piece's last period left them: the end of the
+        !> run reads them from the run's last period, which is this piece's.
+        write(ud) E2Col
+        call WriteRunColumns(ud)
         write(ud) DumpMagic
         close(ud)
     end subroutine FinishProdWorker
@@ -693,6 +705,7 @@ contains
         integer, intent(inout) :: pwbN
         integer :: wPwbN
         integer :: wDonors(E2NumVar, E2NumVar)
+        type(ColType) :: wE2Col(E2NumVar)
         integer :: k
         integer :: u
         integer :: i
@@ -773,6 +786,8 @@ contains
             end if
             read(ud) wDonors
             PwbSummaryDonorCount = PwbSummaryDonorCount + wDonors
+            read(ud) wE2Col
+            call MergeRunColumns(ud)
             read(ud, iostat = io_status) magic
             close(ud)
             if (io_status /= 0 .or. magic /= DumpMagic) &
@@ -781,6 +796,7 @@ contains
             if (k == nPieces) then
                 NumUserVar = wUser
                 nbVars = wBiomet
+                E2Col = wE2Col
             end if
         end do
         call RemoveWorkerRoots('pr')
@@ -812,8 +828,13 @@ contains
     !> \brief Detection worker: its piece is done; close the evidence off.
     !***************************************************************************
     subroutine FinishEvidenceWorker()
+        integer :: counts(E2NumVar)
+
         call OpenEvidenceDump()
         write(EvidenceUnit) .false.
+        !> The peaks outside the lag window its piece found
+        call PwbOutsideWindowCounts(counts)
+        write(EvidenceUnit) counts
         write(EvidenceUnit) EvidMagic
         close(EvidenceUnit)
         EvidenceOpen = .false.
@@ -844,6 +865,7 @@ contains
         integer :: uv
         integer :: io_status
         logical :: more
+        integer :: wOutside(E2NumVar)
         logical :: havePrev
         character(20) :: magic
         type(PwbEvidenceType) :: ev
@@ -892,6 +914,9 @@ contains
             write(uv) .false.
             write(uv) VerdMagic
             close(uv)
+            read(ud, iostat = io_status) wOutside
+            if (io_status /= 0) error stop 'A detection worker dump is truncated.'
+            call AddPwbOutsideWindow(wOutside)
             read(ud, iostat = io_status) magic
             close(ud)
             if (io_status /= 0 .or. magic /= EvidMagic) &

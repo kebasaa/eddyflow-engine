@@ -182,6 +182,16 @@ FIXED_TAGS = {
         #: Nemitz et al. (2018) conditional lag borrowing: how many detection
         #: limits the covariance must clear before the gas keeps its own lag.
         60: "tlag_borrow_snr",
+        #: Limit of detection after Langford et al. (2015): the far-lag
+        #: window (0 = +/-150-180 s, Langford; 1 = +/-160-180 s, Maier et al.
+        #: 2022; 2 = automatic, a multiple of the integral turbulence scale
+        #: after Spirig et al. 2005), the statistic (0 RMSE, 1 SD) and that
+        #: multiple. RP only: both its uses, the random error and the
+        #: detection limit, are measured on the raw series. The last free
+        #: slots of the 55-68 run.
+        65: "lod_window",
+        66: "lod_stat",
+        67: "lod_its_mult",
         #: Consecutive-difference despiking, EddyUH's spi_method 1: the
         #: largest step a sample may take from the one before it, in the
         #: variable's own units. Four rather than the two the Vickers test
@@ -198,6 +208,18 @@ FIXED_TAGS = {
         119: "tilt_arm_y",
         120: "tilt_arm_z",
         121: "tilt_lpf_s",
+        #: Preliminary time-lag assessment. Written by the interface only
+        #: into the throw-away copy of a project it runs from its "Timelag
+        #: preliminary assessment" dialog, never into the user's own file:
+        #: a seeded random share of the periods with raw data, at least
+        #: to_sample_min_n of them, and a per-period table of every lag the
+        #: detector found. 365-369 is what the instrument allowances left of
+        #: the never-assigned run at 357, below rpGasOriginN. Not 406-413:
+        #: those are the retired flat PWB lag bounds, kept unread.
+        365: "to_sample_frac",
+        366: "to_sample_min_n",
+        367: "to_sample_seed",
+        368: "to_dump_lags",
         61: "sr_step_u",
         62: "sr_step_v",
         63: "sr_step_w",
@@ -265,6 +287,15 @@ FIXED_TAGS = {
         8: "corr_iter_meth",
         9: "corr_iter_max",
         10: "corr_iter_tol",
+        #: Coverage factor of the Langford et al. (2015) limit of detection,
+        #: LoD = alpha * RE. In [Project] because FCC writes the LoD columns
+        #: too, from the random error the ex record carries.
+        11: "lod_alpha",
+        #: Whether the random errors (and the Langford LoD) are reported
+        #: spectrally corrected like their fluxes, Langford et al. (2015).
+        #: Off unless 1, as EddyPro, which does not do it. [Project]: RP and
+        #: FCC both apply it.
+        14: "ru_spec_corr",
         4: "cec_singular_band",
         5: "cec_stationarity_mode",
         6: "cec_min_flux_sigma",

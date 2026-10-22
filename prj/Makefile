@@ -35,6 +35,7 @@ ifeq ($(OS), Windows_NT)
 	PWBCMP_EXE = pwb_compare.exe
 	CCFCHECK_EXE = ccf_bitexact.exe
 	COVMAXCHECK_EXE = covmax_bitexact.exe
+	LANGFORDCHECK_EXE = langford_check.exe
 	PWBTABLECHECK_EXE = pwb_table_check.exe
 	OS_DIR = win
 	#> Which src_os/ directory supplies m_process_os: the one module
@@ -43,7 +44,11 @@ ifeq ($(OS), Windows_NT)
 	FC = gfortran.exe
 	MAKE_DIR = if not exist DIR mkdir DIR
 	PATHSEP2 = \\
-	LDFLAGS = -shared-libgcc
+	#> libgfortran linked in, not loaded as libgfortran-5.dll: only then does
+	#> src_os/win/setlocale_override.f90 replace the setlocale it calls around
+	#> every formatted READ and WRITE, whose saved locale string the UCRT has
+	#> freed by the time it is restored. See that file.
+	LDFLAGS = -shared-libgcc -static-libgfortran -static-libquadmath
 else
 	#Unix
 	RM = rm -f FILE
@@ -54,6 +59,7 @@ else
 	PWBCMP_EXE = pwb_compare
 	CCFCHECK_EXE = ccf_bitexact
 	COVMAXCHECK_EXE = covmax_bitexact
+	LANGFORDCHECK_EXE = langford_check
 	PWBTABLECHECK_EXE = pwb_table_check
 	FC = gfortran
 	MAKE_DIR = @mkdir -p DIR
@@ -214,6 +220,14 @@ covmaxcheck : m_numeric_kinds.o m_covmax_core.o
 	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
 	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)covmax_bitexact_main.f90 -o $(OBJS_DIR)covmax_bitexact_main.o
 	$(FC) -static -o $(OBJS_DIR)$(COVMAXCHECK_EXE) $(OBJS_DIR)covmax_bitexact_main.o $(OBJS_DIR)m_covmax_core.o $(OBJS_DIR)m_numeric_kinds.o
+
+# The Langford et al. (2015) far-lag noise check: FarLagCovarianceNoise on
+# synthetic series with known answers. static_checks/test_langford_lod_static.py
+# runs it.
+langfordcheck : m_numeric_kinds.o m_covmax_core.o
+	@$(subst DIR,$(OS_OBJS_DIR),$(MAKE_DIR))
+	$(FC) $(CFLAGS) -c $(TOOLS_SRC_DIR_f90d1)langford_check_main.f90 -o $(OBJS_DIR)langford_check_main.o
+	$(FC) -static -o $(OBJS_DIR)$(LANGFORDCHECK_EXE) $(OBJS_DIR)langford_check_main.o $(OBJS_DIR)m_covmax_core.o $(OBJS_DIR)m_numeric_kinds.o
 
 # The PWB table check: store a year of rows through the shipped routines and
 # confirm every lookup returns the row a scan from row 1 would. Unlike the
@@ -413,6 +427,9 @@ configure_for_fluxnet.o: \
 configure_for_md_retrieval.o: \
 	configure_for_md_retrieval.f90 \
 	m_rp_global_var.o
+configure_project_for_express.o: \
+	configure_project_for_express.f90 \
+	m_common_global_var.o
 copy_file.o: \
 	copy_file.f90 \
 	m_common_global_var.o
@@ -531,6 +548,7 @@ eddyflow-rp_main.o: \
 	eddyflow-rp_main.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	batch_pool.o \
 	ghg_prefetch.o \
 	m_cec.o \
 	m_rp_global_var.o \
@@ -538,7 +556,9 @@ eddyflow-rp_main.o: \
 	production_parallel.o \
 	pwb_stream.o \
 	pwb_timelag_handle.o \
-	remote_source.o
+	remote_source.o \
+	run_columns.o \
+	tlag_preassess.o
 edit_ini_file.o: \
 	edit_ini_file.f90 \
 	m_common_global_var.o
@@ -753,6 +773,7 @@ int_2_flag.o: \
 	m_rp_global_var.o
 integral_turbulence_scale.o: \
 	integral_turbulence_scale.f90 \
+	m_covmax_core.o \
 	m_rp_global_var.o
 interpret_diagnostics.o: \
 	interpret_diagnostics.f90 \
@@ -765,6 +786,10 @@ kaimal_models.o: \
 kid.o: \
 	kid.f90 \
 	m_common_global_var.o \
+	m_rp_global_var.o
+langford_noise.o: \
+	langford_noise.f90 \
+	m_covmax_core.o \
 	m_rp_global_var.o
 longest_gap_duration.o: \
 	longest_gap_duration.f90 \
@@ -917,14 +942,16 @@ prepass_parallel.o: \
 	prepass_parallel.f90 \
 	batch_pool.o \
 	m_rp_global_var.o \
-	pwb_timelag_handle.o
+	pwb_timelag_handle.o \
+	run_columns.o
 production_parallel.o: \
 	production_parallel.f90 \
 	batch_pool.o \
 	m_rp_global_var.o \
 	pwb_stream.o \
 	pwb_timelag_handle.o \
-	remote_source.o
+	remote_source.o \
+	run_columns.o
 pwb_stream.o: \
 	pwb_stream.f90 \
 	m_rp_global_var.o \
@@ -1012,6 +1039,10 @@ replace_sonic_temperature.o: \
 report_imported_spectra.o: \
 	report_imported_spectra.f90 \
 	m_fx_global_var_mod.o
+reported_random_errors.o: \
+	reported_random_errors.f90 \
+	interfaces_1.inc \
+	m_common_global_var.o
 retrieve_dynamic_metadata.o: \
 	retrieve_dynamic_metadata.f90 \
 	m_rp_global_var.o \
@@ -1034,6 +1065,9 @@ rffti.o: \
 ridders_diff.o: \
 	ridders_diff.f90 \
 	m_common_global_var.o
+run_columns.o: \
+	run_columns.f90 \
+	m_rp_global_var.o
 sa_rates.o: \
 	sa_rates.f90 \
 	m_fx_global_var_mod.o
@@ -1047,6 +1081,8 @@ set_timelags.o: \
 	set_timelags.f90 \
 	interfaces_1.inc \
 	m_rp_global_var.o
+setlocale_override.o: \
+	setlocale_override.f90
 show_daily_advancement.o: \
 	show_daily_advancement.f90 \
 	m_common_global_var.o \
@@ -1164,6 +1200,12 @@ timestamp.o: \
 	m_index_parameters.o \
 	m_log.o \
 	m_numeric_kinds.o
+tlag_preassess.o: \
+	tlag_preassess.f90 \
+	batch_pool.o \
+	m_log.o \
+	m_rp_global_var.o \
+	pwb_timelag_handle.o
 ts_extract_subperiod_indexes.o: \
 	ts_extract_subperiod_indexes.f90 \
 	m_common_global_var.o
@@ -1200,10 +1242,12 @@ write_out_fluxnet.o: \
 	write_out_fluxnet.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	m_covmax_core.o \
 	m_rp_global_var.o
 write_out_fluxnet_fcc.o: \
 	write_out_fluxnet_fcc.f90 \
 	interfaces_1.inc \
+	m_covmax_core.o \
 	m_fx_global_var_mod.o
 write_out_fluxnet_only_biomet.o: \
 	write_out_fluxnet_only_biomet.f90 \
@@ -1215,10 +1259,12 @@ write_out_full.o: \
 	write_out_full.f90 \
 	interfaces.inc \
 	interfaces_1.inc \
+	m_covmax_core.o \
 	m_rp_global_var.o
 write_out_full_fcc.o: \
 	write_out_full_fcc.f90 \
 	interfaces_1.inc \
+	m_covmax_core.o \
 	m_fx_global_var_mod.o
 write_out_metadata.o: \
 	write_out_metadata.f90 \

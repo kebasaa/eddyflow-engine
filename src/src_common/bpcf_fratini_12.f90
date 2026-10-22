@@ -34,7 +34,7 @@
 ! \todo
 !***************************************************************************
 subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequency, avrg_length, &
-        detrending_time_constant, detrending_method, nfull, nfreq, LocFileList, lEx, LocSetup)
+        detrending_time_constant, detrending_method, nfull, LocFileList, lEx, LocSetup)
     use m_common_global_var
     implicit none
     logical :: low_flux
@@ -49,10 +49,6 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
     integer, intent(in) :: detrending_time_constant
     character(2), intent(in) :: detrending_method
     integer, intent(in) :: nfull
-    !> The first full-cospectra file's length. No longer used for sizing -
-    !> each period is sized from its own file below - but kept, because the
-    !> explicit interface of this routine names it.
-    integer, intent(in) :: nfreq
     !> Optional input arguments
     type(ExType), optional, intent(in) :: lEx
     type(FileListType), optional, intent(in) :: LocFileList(nfull)
