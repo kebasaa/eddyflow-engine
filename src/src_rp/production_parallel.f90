@@ -669,6 +669,7 @@ contains
         if (io_status /= 0) error stop 'Production worker could not write its dump.'
         write(ud) DumpMagic
         write(ud) nOk, NumUserVar, nbVars
+        write(ud) EmbBiometTableSeen, EmbBiometValueSeen
         n = count(PieceOpen)
         write(ud) n
         do u = FirstOutUnit, LastOutUnit
@@ -717,6 +718,8 @@ contains
         integer :: wUser
         integer :: wBiomet
         integer :: wStorN
+        logical :: wTableSeen
+        logical :: wValueSeen
         integer(8) :: offset
         logical :: op
         logical :: seen(FirstOutUnit:LastOutUnit)
@@ -746,6 +749,11 @@ contains
             if (io_status /= 0 .or. magic /= DumpMagic) &
                 error stop 'A production worker dump is not one of this run.'
             read(ud) wOk, wUser, wBiomet
+            !> The end of the run warns when no embedded biomet table gave a
+            !> record; a worker's piece is part of the run.
+            read(ud) wTableSeen, wValueSeen
+            EmbBiometTableSeen = EmbBiometTableSeen .or. wTableSeen
+            EmbBiometValueSeen = EmbBiometValueSeen .or. wValueSeen
             read(ud) n
             seen = .false.
             do i = 1, n

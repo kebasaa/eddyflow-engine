@@ -73,7 +73,9 @@ else
 		OS_DIR = mac
 		INFO = Compiling for Mac OS
 	endif
-	LDLAGS = -shared-libgcc
+	#> libgfortran and libquadmath linked in, so the engine needs no
+	#> Fortran runtime package installed next to it.
+	LDFLAGS = -shared-libgcc -static-libgfortran -static-libquadmath
 endif
 
 PATHSEP=$(strip $(PATHSEP2))

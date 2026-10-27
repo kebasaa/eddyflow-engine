@@ -313,6 +313,16 @@ module m_rp_global_var
     logical, allocatable :: BiometNTagFound(:)
     type(Text), allocatable :: BiometCTags(:)
     type(Numerical), allocatable :: BiometNTags(:)
+    !> Whether the main pass met an embedded biomet table at all, and whether
+    !> any of them gave a value - not a record: a logger that writes its
+    !> half-hourly value on the first one-minute row and -9999 on the other
+    !> 29 gives 29 records and no value once a biomet_header_rows one larger
+    !> than the file's header has taken that first row as header. Every
+    !> period then reports its records imported and every biomet output is
+    !> -9999, with nothing naming why. The end of the run says so once. A
+    !> production worker hands both back.
+    logical :: EmbBiometTableSeen = .false.
+    logical :: EmbBiometValueSeen = .false.
 
     !> Dynamic metadata
     type(DynMDType) :: DynamicMetadata

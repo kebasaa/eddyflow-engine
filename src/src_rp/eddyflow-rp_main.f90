@@ -2058,6 +2058,10 @@ program EddyFlowRP
     !> Which gases the main pass had, over its whole range - see
     !> m_run_columns. A production worker starts again at its piece.
     call ResetRunColumns()
+    !> Only the main pass's biomet tables count: the pre-passes read the same
+    !> archives, and a split pass's workers report their own.
+    EmbBiometTableSeen = .false.
+    EmbBiometValueSeen = .false.
     periods_loop: do
         GasCalRefCol = InitGasCalRefCol
         !> Reset CEC state at the start of every period.
@@ -3315,6 +3319,14 @@ program EddyFlowRP
         end if
     end if
     call ProgressEnd()
+    if (EmbBiometTableSeen .and. .not. EmbBiometValueSeen) then
+        call LogSay('  Warning> Not one embedded biomet table in this run''s raw files')
+        call LogSay('  gave a value, so no biomet data was used for any period. If the')
+        call LogSay('  archives do hold biomet data, compare biomet_header_rows in their')
+        call LogSay('  -biomet.metadata with the header lines their -biomet.data has:')
+        call LogSay('  one too many reads the first record as header, and a logger that')
+        call LogSay('  writes its value on that record only leaves nothing but -9999.')
+    end if
     !> Every gas the run had, not only those its last period had, is in what
     !> the end of the run writes: the time-lag windows and summaries, the
     !> donors, the storage cleaning.
