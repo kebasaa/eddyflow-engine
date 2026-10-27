@@ -73,9 +73,22 @@ subroutine ReadBiometFile(BiometFile, skip_file)
     end if
 
     !> Skip header
+    !>
+    !> A file with fewer lines than its metadata's biomet_header_rows is
+    !> skipped, not read: the last archive of a logger that stopped mid-file
+    !> can hold a header and no record, and a converter that states one header
+    !> row more than it writes makes that file shorter than its own header.
+    !> Without the iostat the read past its end was a Fortran runtime error,
+    !> and that error took the whole run with it - including every worker of
+    !> a split pre-pass.
     if (bFileMetadata%nhead > 0) then
         do i = 1, bFileMetadata%nhead
-            read(udf, *)
+            read(udf, *, iostat = io_status)
+            if (io_status /= 0) then
+                skip_file = .true.
+                close(udf)
+                return
+            end if
         end do
     end if
     fnbRecs = nrow - bFileMetadata%nhead

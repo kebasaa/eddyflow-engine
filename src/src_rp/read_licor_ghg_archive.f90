@@ -129,6 +129,13 @@ subroutine ReadLicorGhgArchive(ZipFile, FirstRecord, LastRecord, LocCol, &
                 fnbRecs = 0
                 call ExceptionHandler(44)
             end if
+            EmbBiometTableSeen = .true.
+            if (fnbRecs > 0) then
+                !> fbSet == fbSet leaves out NaN, which is no value either
+                if (any(fbSet(1:fnbRecs, :) /= error &
+                    .and. fbSet(1:fnbRecs, :) == fbSet(1:fnbRecs, :))) &
+                    EmbBiometValueSeen = .true.
+            end if
         end if
     end if
 

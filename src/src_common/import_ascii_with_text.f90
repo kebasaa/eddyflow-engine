@@ -100,7 +100,11 @@ subroutine ImportAsciiWithText(FirstRecord, LastRecord, LocCol, fRaw, &
         !> Read data line as a string and decide what to do if reading fails
         N = N + 1
         read(unat, '(a)', iostat = io_status) dataline
-        if (io_status < 0) then
+        !> 5001 and 5008 are gfortran's answer to a read made after the end
+        !> was already reached - which is where this loop starts when the file
+        !> is shorter than its header, or than the records skipped above. They
+        !> are positive, so without them here the cycle below read on forever.
+        if (io_status < 0 .or. io_status == 5001 .or. io_status == 5008) then
             N = N - 1
             FileEndReached = .true.
             exit record_loop

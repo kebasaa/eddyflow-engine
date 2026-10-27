@@ -270,6 +270,32 @@
 	- Tested: CH-LAE June 2025, 10 % of 1440 periods: 144 drawn, the table
 	          byte-identical serial (-j 1) and split four ways; a PWB copy of
 	          the same project writes the same layout.
+	- Fix: A raw file or embedded biomet table with fewer lines than its
+	       metadata's header rows stopped the run with "Fortran runtime
+	       error: End of file". A Jonkershoek run died on its last archive,
+	       written as the logger stopped: 2 minutes of 20 Hz data, and a
+	       biomet table with its header and no record. Split, the pre-pass
+	       worker that met it failed and took the run with it. Such a biomet
+	       table is now skipped for its period with Error(44), and such a raw
+	       file is read as one with no records. A raw file read with text
+	       columns (ImportAsciiWithText) did not stop but read on forever:
+	       gfortran answers every read after the end with a positive code,
+	       which that loop took for a bad line.
+	- Change: When embedded biomet was selected and the main pass met biomet
+	          tables but not one of them gave a value, the end of the run
+	          says so once, naming biomet_header_rows as the likely cause.
+	          The Jonkershoek archives declared one header row more than they
+	          had, in the raw and the biomet table alike. Their biomet tables
+	          hold 30 one-minute rows with values on the first only, -9999 on
+	          the other 29, so the first was read as header: every period
+	          reported "29 biomet records imported" and every biomet output
+	          was -9999, with nothing naming why. A split production pass's
+	          workers report what their pieces met.
+	- Tested: Jonkershoek 2026-01-09 09:00-12:30, serial: the previous build
+	          stops at 11:30 with "End of file" (exit 2); this one reports
+	          Error(44) there, goes on to 12:00, ends with the warning
+	          (exit 0). 2026-01-06 to 01-09 split four ways, PWB: every
+	          pre-pass and production piece finishes, 176 periods written.
 
 8.1.2 (2026-10-07)
 

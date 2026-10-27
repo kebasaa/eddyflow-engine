@@ -55,6 +55,7 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
     integer :: io_status
     integer :: parse_status
     integer :: intsep
+    logical :: header_short
     character(LongInstringLen) :: dataline
     real(kind = sgl) :: TmpfRaw(nrow, NumCol)
     type(ColType) :: TmpCol(MaxNumCol)
@@ -69,21 +70,35 @@ subroutine ImportAscii(FirstRecord, LastRecord, LocCol, fRaw, nrow, ncol, N, Fil
     tN = 0
 
     !> Skip header if present
+    !>
+    !> A file with fewer lines than header_rows - a logger that stopped while
+    !> writing it - has no record to give. It ends here as a file that was
+    !> read to its end, so the period goes on to the next file, and its
+    !> columns are still compacted below like any other file's. Without the
+    !> iostat the read past its end was a Fortran runtime error that stopped
+    !> the run.
+    header_short = .false.
     if (FileInterpreter%header_rows > 0) then
         do i = 1, FileInterpreter%header_rows
-            read(unat, *)
+            read(unat, *, iostat = io_status)
+            if (io_status /= 0) then
+                header_short = .true.
+                exit
+            end if
         end do
     end if
 
     !> Skip all records until FirstRecord
-    if (FirstRecord > 1) then
+    if (FirstRecord > 1 .and. .not. header_short) then
         do i = 1, FirstRecord - 1
             read(unat, *, iostat = io_status)
             if (io_status /= 0) return
         end do
     end if
 
-    if (len_trim(FileInterpreter%data_label) == 0 &
+    if (header_short) then
+        FileEndReached = .true.
+    else if (len_trim(FileInterpreter%data_label) == 0 &
         .or. index(FileInterpreter%data_label, 'Not set') /= 0) then
         !> Read datalines directly as real arrays
         record_loop: do
