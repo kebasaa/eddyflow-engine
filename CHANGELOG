@@ -43,6 +43,31 @@
 	       uncorrected when FCC follows, and FCC, reading the FLUXNET file of
 	       a project RP finished on its own, applies RP's own test
 	       (FccFollowsProject) before changing any setting it reads.
+	- New: High-frequency spectral correction after Eugster and Senn (1995),
+	       hf_meth = 7 ('eugster_senn_95'). Opt-in: no default changes. The
+	       gas measurement's damping is a first-order filter with a time
+	       constant L, and the measurable fraction xi of each gas flux is
+	       their closed form - Eq. 32 for zL <= 0, Eq. 33 for zL > 0 with zL
+	       held at 2 - from (z - d)/u, the iterated zL and L. The factor is
+	       1/xi, times the analytic low-frequency factor when lf_meth is
+	       analytic; Tau and H keep their usual correction. L is per gas:
+	       gas_<i>_es_tau in [Project], or, when that is absent or empty, the
+	       analyser's tau from the metadata. Developed on NO2 but applied to
+	       every gas. A gas with xi < 0.4 has its fluxes set to -9999, as the
+	       paper recommends, while its *_SCF still shows the factor; the
+	       discard is applied after every WPL term has used the water flux.
+	       Analytic, so RP runs it and FCC is not forced
+	       (FccFollowsProject). SPECTRAL_CORRECTION_METHOD reports 7. The
+	       stable branch is written with the common root of Eq. 33's
+	       numerator and denominator cancelled, which removes its 0/0.
+	       gas_<i>_es_tau is a new record block appended after the agc
+	       block (gasTailOriginN), so no existing record origin moves.
+	       Pinned by static_checks/test_eugster_senn_95_static.py, which
+	       also reproduces the paper's Table III from the Fortran's
+	       constants; new fixture tests/regression/base_es95.eddyflow.
+	- Fix: SPECTRAL_CORRECTION_METHOD wrote no field at all for a method
+	       without a code ('custom'), shifting every later column one place
+	       left of its header. It now writes the error label.
 	- Change: The integral turbulence scale rules (cross_0, cross_e,
 	          full_integral) moved into m_covmax_core so the automatic Langford
 	          window shares them; the scale is bitwise unchanged. ru_its_meth

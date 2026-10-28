@@ -374,6 +374,9 @@ bpcf_bandpass_spectral_corrections.o: \
 bpcf_cospectral_models.o: \
 	bpcf_cospectral_models.f90 \
 	m_common_global_var.o
+bpcf_eugster_senn_95.o: \
+	bpcf_eugster_senn_95.f90 \
+	m_common_global_var.o
 bpcf_fratini_12.o: \
 	bpcf_fratini_12.f90 \
 	m_common_global_var.o

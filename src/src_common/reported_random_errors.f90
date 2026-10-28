@@ -122,5 +122,6 @@ logical function FccFollowsProject()
         .or. EddyFlowProj%out_avrg_spec &
         .or. (EddyFlowProj%hf_meth /= 'none' &
         .and. EddyFlowProj%hf_meth /= 'moncrieff_97' &
-        .and. EddyFlowProj%hf_meth /= 'massman_00')
+        .and. EddyFlowProj%hf_meth /= 'massman_00' &
+        .and. EddyFlowProj%hf_meth /= 'eugster_senn_95')
 end function FccFollowsProject

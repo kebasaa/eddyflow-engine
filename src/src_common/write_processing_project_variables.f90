@@ -367,6 +367,10 @@ subroutine WriteProcessingProjectVariables()
             !> Custom correction, in-situ/analytical
             EddyFlowProj%hf_meth = 'custom'
             EddyFlowProj%hf_meth_in_situ = .false.
+        case ('7')
+            !> Correction after Eugster and Senn (1995, BLM), fully analytical
+            EddyFlowProj%hf_meth = 'eugster_senn_95'
+            EddyFlowProj%hf_meth_in_situ = .false.
         case default
             !> If not specified, set to none
             EddyFlowProj%hf_meth = 'none'
@@ -648,7 +652,7 @@ subroutine ReadMeasurementRecords()
 
     do i = 1, MaxNumGases
         EddyFlowProj%gas(i) = GasRecordType('none', 'none', nint(error), 0, 0, &
-                                            error, error, 0)
+                                            error, error, 0, error)
         if (i > EddyFlowProj%gas_num) cycle
 
         b = gasRecOriginC + (i - 1) * gasRecLeapC
@@ -665,6 +669,13 @@ subroutine ReadMeasurementRecords()
         if (EPPrjNTagFound(b + 4)) EddyFlowProj%gas(i)%diff  = dble(EPPrjNTags(b + 4)%value)
         if (EPPrjNTagFound(b + 5)) EddyFlowProj%gas(i)%fluxnet_default = &
             nint(EPPrjNTags(b + 5)%value)
+
+        !> The per-gas keys appended after the agc block. Written empty when
+        !> the interface has no value, which parses as error, so empty and
+        !> absent both mean "use the analyser's tau".
+        b = gasTailOriginN + (i - 1) * gasTailLeapN
+        if (EPPrjNTagFound(b)) EddyFlowProj%gas(i)%es_tau = &
+            dble(EPPrjNTags(b)%value)
     end do
 
     !> Carry each record's molecular weight and diffusivity onto its gas slot.

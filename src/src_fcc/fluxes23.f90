@@ -268,6 +268,19 @@ subroutine Fluxes23(lEx)
         end if
     end do
 
+    !> Eugster and Senn (1995) discard a gas when less than 40% of its flux
+    !> was measurable. Done last, so the other gases' WPL terms have already
+    !> used this water flux; only the discarded gas's own fluxes go.
+    do msl = firstGas, lastGas
+        if (.not. BPCF_discard(msl)) cycle
+        Flux3%gas(msl) = error
+        if (msl == wsl) then
+            Flux3%E  = error
+            Flux3%LE = error
+            Flux3%ET = error
+        end if
+    end do
+
     !> Potential temperature
     !> If condition fails, previous value (from Fluxes0) holds for z/Ambient%L
     if (lEx%Pa > 0d0) then
