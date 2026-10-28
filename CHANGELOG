@@ -1,4 +1,4 @@
-8.1.3 (2026-10-07)
+8.1.3 (2026-10-28)
 
     Engine:
 	- Version bump to 8.1.3, to match EddyFlow GUI 8.1.3.
@@ -202,6 +202,10 @@
 	          header and 63 columns, every value equal to 1e-6 relative.
 	          base_ghg_licor, base_ep_native, base_n_gas and base_5gas pass
 	          check_columns.py.
+	          The regression harness now keeps RP's metadata file as well,
+	          which FCC overwrote under the same name, so the two writers
+	          are compared; that they never were is how they came to
+	          differ.
 	- Fix: A gas that takes its water from the biomet RH lost its
 	       corrections in every half-hour without a usable biomet RH - a
 	       gap in the biomet, an RH out of range, or a biomet column that is
@@ -253,6 +257,10 @@
 	          base_tlag_opt are byte-identical to the dynamically linked
 	          build, logs included, 232 files. pwb_table_check: 65 clean
 	          runs, 48 of them eight at a time.
+	- Change: RP and FCC link libgfortran and libquadmath statically on
+	          Linux too, so a Linux package needs no Fortran runtime. The
+	          Makefile's Unix branch set LDLAGS, a misspelling, so LDFLAGS
+	          stayed empty and both were loaded at run time.
 	- Fix: An engine started with -e "C:\dir\" - a path ending in a
 	       backslash inside quotes - created stray folders such as -j, 2
 	       and 3\tmp\tmp_<ts> in the directory it was started from. The
@@ -295,6 +303,14 @@
 	- Tested: CH-LAE June 2025, 10 % of 1440 periods: 144 drawn, the table
 	          byte-identical serial (-j 1) and split four ways; a PWB copy of
 	          the same project writes the same layout.
+	- Change: The full-cospectra length handed to the Fratini et al.
+	          (2012) correction is gone. Each period is sized from its own
+	          full-cospectra file, so the length went unused, and FCC read
+	          the first file only to pass it on - uninitialised where
+	          there were no full cospectra. The engine now builds without
+	          compiler warnings.
+	- Tested: base_rec, base_pwb_par and base_cec_cos, all with the
+	          Fratini correction, are byte-identical.
 	- Fix: A raw file or embedded biomet table with fewer lines than its
 	       metadata's header rows stopped the run with "Fortran runtime
 	       error: End of file". A Jonkershoek run died on its last archive,
