@@ -53,8 +53,9 @@ subroutine QualityFlags(lFlux2, StDiff, DtDiff, STFlg, DTFlg, lQCFlag, printout,
     !>
     !> This matters more than "RP's own call vs FCC's own call" suggests:
     !> whenever EddyFlowProj%fcc_follows is set - which it is for any
-    !> project using a spectral-correction method beyond the two built-in
-    !> analytic ones (moncrieff_97, massman_00), i.e. most real projects -
+    !> project using a spectral-correction method beyond the built-in
+    !> analytic ones (moncrieff_97, massman_00, eugster_senn_95), i.e. most
+    !> real projects -
     !> RP's own QualityFlags call is the one that gets skipped (the
     !> `else` branch below sets every flag to `error` and RP does not
     !> even write full_output in that mode), and FCC's call - raw_ok and

@@ -79,6 +79,14 @@ DIAG_TEXT = ["var", "instr"]
 #: block so no existing origin moves.
 AGC_NUMERIC = ["col"]
 AGC_TEXT = ["var", "instr"]
+#: Per-gas [Project] keys added after the record blocks were laid out: a
+#: second gas record block, appended AFTER the agc block, because growing
+#: GAS_NUMERIC would move the cell, diag, cec and agc origins.
+#:
+#: `es_tau` is the damping time constant L (s) of Eugster and Senn (1995). In
+#: [Project] because RP runs that correction itself and FCC recomputes it
+#: whenever it runs. Absent or empty means "use the analyser's tau".
+GAS_TAIL_NUMERIC = ["es_tau"]
 
 # Per-gas processing settings, replacing the single *_gas4 key of each family.
 #> Append only. Every name here is a slot at a fixed offset from the record
@@ -334,6 +342,7 @@ def appended(marker, lim):
         out += [f"cec_{i}_{s}" for i in range(1, CEC_PAIRS + 1) for s in CEC_NUMERIC]
         out += ["agc_num"]
         out += [f"agc_{i}_{s}" for i in range(1, a + 1) for s in AGC_NUMERIC]
+        out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_TAIL_NUMERIC]
     elif marker == "EPPrjCTags":
         out += [f"gas_{i}_{s}" for i in range(1, g + 1) for s in GAS_TEXT]
         out += [f"cell_{i}_{s}" for i in range(1, c + 1) for s in CELL_TEXT]
@@ -592,6 +601,7 @@ def origins_block(origins, lim):
     L.append(f"    integer, parameter :: cecRecLeapC   = {len(CEC_TEXT)}")
     L.append(f"    integer, parameter :: agcRecLeapN   = {len(AGC_NUMERIC)}")
     L.append(f"    integer, parameter :: agcRecLeapC   = {len(AGC_TEXT)}")
+    L.append(f"    integer, parameter :: gasTailLeapN  = {len(GAS_TAIL_NUMERIC)}")
     L.append(f"    integer, parameter :: fccGasLeapN   = {len(FCC_GAS_NUMERIC)}")
     L.append(f"    integer, parameter :: fccGasLeapC   = {len(FCC_GAS_TEXT)}")
     return L
@@ -632,7 +642,9 @@ def main():
                         ("cecNumTag", cec_num_n),
                         ("cecRecOriginN", cec_num_n + 1),
                         ("agcNumTag", agc_num_n),
-                        ("agcRecOriginN", agc_num_n + 1)]
+                        ("agcRecOriginN", agc_num_n + 1),
+                        ("gasTailOriginN",
+                         agc_num_n + 1 + lim["agcs"] * len(AGC_NUMERIC))]
         elif marker == "EPPrjCTags":
             d = lim["diags"]
             diag_c = base + g * len(GAS_TEXT) + c * len(CELL_TEXT)

@@ -113,6 +113,7 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
 
     !> Spectral correction factors for all gases
     BPCF%of(firstGas:lastGas)  = 1d0
+    BPCF_discard = .false.
 
     !> Relevant only to FCC - before entering the correction method, work out
     !> which gases the method can actually be applied to. A gas is corrected in
@@ -199,6 +200,12 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
             call BPCF_Massman00(measuring_height, displ_height, loc_var_present, &
                 LocInstr, wind_speed, t_air, zL, avrg_length, &
                 detrending_time_constant, detrending_method, printout)
+
+        case('eugster_senn_95')
+            !> Correction after Eugster and Senn (1995, BLM) fully analytical
+            call BPCF_EugsterSenn95(measuring_height, displ_height, &
+                loc_var_present, LocInstr, wind_speed, zL, ac_frequency, &
+                avrg_length, detrending_time_constant, detrending_method, printout)
 
         case('horst_97')
             if (app == 'EddyFlow-FCC') then

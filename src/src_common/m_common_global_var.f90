@@ -301,6 +301,12 @@ module m_common_global_var
     type(EddyFlowLogType)   :: EddyFlowLog
     type(EddyFlowProjType) :: EddyFlowProj
     type(SpectralType) :: BPCF
+    !> Gases whose spectrally corrected flux is to be discarded, while BPCF
+    !> still reports the factor that caused it. Set by Eugster and Senn (1995)
+    !> when the measurable fraction falls below 0.4. A separate mask rather
+    !> than BPCF%of = error, because an error factor leaves an open-path flux
+    !> at its uncorrected Level 0 value instead of removing it.
+    logical :: BPCF_discard(GHGNumVar) = .false.
     type(SpectralType), parameter :: &
         errBPCF = spectraltype(error)
     type(SpectralType) :: ADDCF
@@ -524,7 +530,7 @@ module m_common_global_var
     real(kind = dbl) :: UnPar(2) = error
 
     !> tags of the [Project] group of processing.eddypro file
-    integer, parameter :: Npn = 509
+    integer, parameter :: Npn = 573
     integer, parameter :: Npc = 314
     !> BEGIN GENERATED ProjectRecordOrigins - edit gen_project_tags.py, not this block
     !> Slot origins for the appended gas/cell/diag records. The value
@@ -540,6 +546,7 @@ module m_common_global_var
     integer, parameter :: cecRecOriginN = 469
     integer, parameter :: agcNumTag = 493
     integer, parameter :: agcRecOriginN = 494
+    integer, parameter :: gasTailOriginN = 510
     integer, parameter :: gasRecOriginC = 51
     integer, parameter :: cellRecOriginC = 179
     integer, parameter :: diagRecOriginC = 243
@@ -562,6 +569,7 @@ module m_common_global_var
     integer, parameter :: cecRecLeapC   = 1
     integer, parameter :: agcRecLeapN   = 1
     integer, parameter :: agcRecLeapC   = 2
+    integer, parameter :: gasTailLeapN  = 1
     integer, parameter :: fccGasLeapN   = 6
     integer, parameter :: fccGasLeapC   = 1
     !> END GENERATED ProjectRecordOrigins
@@ -1078,7 +1086,71 @@ module m_common_global_var
          EPPrjNTags(506)%Label / 'agc_13_col' / &
          EPPrjNTags(507)%Label / 'agc_14_col' / &
          EPPrjNTags(508)%Label / 'agc_15_col' / &
-         EPPrjNTags(509)%Label / 'agc_16_col' /
+         EPPrjNTags(509)%Label / 'agc_16_col' / &
+         EPPrjNTags(510)%Label / 'gas_1_es_tau' / &
+         EPPrjNTags(511)%Label / 'gas_2_es_tau' / &
+         EPPrjNTags(512)%Label / 'gas_3_es_tau' / &
+         EPPrjNTags(513)%Label / 'gas_4_es_tau' / &
+         EPPrjNTags(514)%Label / 'gas_5_es_tau' / &
+         EPPrjNTags(515)%Label / 'gas_6_es_tau' / &
+         EPPrjNTags(516)%Label / 'gas_7_es_tau' / &
+         EPPrjNTags(517)%Label / 'gas_8_es_tau' / &
+         EPPrjNTags(518)%Label / 'gas_9_es_tau' / &
+         EPPrjNTags(519)%Label / 'gas_10_es_tau' / &
+         EPPrjNTags(520)%Label / 'gas_11_es_tau' / &
+         EPPrjNTags(521)%Label / 'gas_12_es_tau' / &
+         EPPrjNTags(522)%Label / 'gas_13_es_tau' / &
+         EPPrjNTags(523)%Label / 'gas_14_es_tau' / &
+         EPPrjNTags(524)%Label / 'gas_15_es_tau' / &
+         EPPrjNTags(525)%Label / 'gas_16_es_tau' / &
+         EPPrjNTags(526)%Label / 'gas_17_es_tau' / &
+         EPPrjNTags(527)%Label / 'gas_18_es_tau' / &
+         EPPrjNTags(528)%Label / 'gas_19_es_tau' / &
+         EPPrjNTags(529)%Label / 'gas_20_es_tau' / &
+         EPPrjNTags(530)%Label / 'gas_21_es_tau' / &
+         EPPrjNTags(531)%Label / 'gas_22_es_tau' / &
+         EPPrjNTags(532)%Label / 'gas_23_es_tau' / &
+         EPPrjNTags(533)%Label / 'gas_24_es_tau' / &
+         EPPrjNTags(534)%Label / 'gas_25_es_tau' / &
+         EPPrjNTags(535)%Label / 'gas_26_es_tau' / &
+         EPPrjNTags(536)%Label / 'gas_27_es_tau' / &
+         EPPrjNTags(537)%Label / 'gas_28_es_tau' / &
+         EPPrjNTags(538)%Label / 'gas_29_es_tau' / &
+         EPPrjNTags(539)%Label / 'gas_30_es_tau' / &
+         EPPrjNTags(540)%Label / 'gas_31_es_tau' / &
+         EPPrjNTags(541)%Label / 'gas_32_es_tau' / &
+         EPPrjNTags(542)%Label / 'gas_33_es_tau' / &
+         EPPrjNTags(543)%Label / 'gas_34_es_tau' / &
+         EPPrjNTags(544)%Label / 'gas_35_es_tau' / &
+         EPPrjNTags(545)%Label / 'gas_36_es_tau' / &
+         EPPrjNTags(546)%Label / 'gas_37_es_tau' / &
+         EPPrjNTags(547)%Label / 'gas_38_es_tau' / &
+         EPPrjNTags(548)%Label / 'gas_39_es_tau' / &
+         EPPrjNTags(549)%Label / 'gas_40_es_tau' / &
+         EPPrjNTags(550)%Label / 'gas_41_es_tau' / &
+         EPPrjNTags(551)%Label / 'gas_42_es_tau' / &
+         EPPrjNTags(552)%Label / 'gas_43_es_tau' / &
+         EPPrjNTags(553)%Label / 'gas_44_es_tau' / &
+         EPPrjNTags(554)%Label / 'gas_45_es_tau' / &
+         EPPrjNTags(555)%Label / 'gas_46_es_tau' / &
+         EPPrjNTags(556)%Label / 'gas_47_es_tau' / &
+         EPPrjNTags(557)%Label / 'gas_48_es_tau' / &
+         EPPrjNTags(558)%Label / 'gas_49_es_tau' / &
+         EPPrjNTags(559)%Label / 'gas_50_es_tau' / &
+         EPPrjNTags(560)%Label / 'gas_51_es_tau' / &
+         EPPrjNTags(561)%Label / 'gas_52_es_tau' / &
+         EPPrjNTags(562)%Label / 'gas_53_es_tau' / &
+         EPPrjNTags(563)%Label / 'gas_54_es_tau' / &
+         EPPrjNTags(564)%Label / 'gas_55_es_tau' / &
+         EPPrjNTags(565)%Label / 'gas_56_es_tau' / &
+         EPPrjNTags(566)%Label / 'gas_57_es_tau' / &
+         EPPrjNTags(567)%Label / 'gas_58_es_tau' / &
+         EPPrjNTags(568)%Label / 'gas_59_es_tau' / &
+         EPPrjNTags(569)%Label / 'gas_60_es_tau' / &
+         EPPrjNTags(570)%Label / 'gas_61_es_tau' / &
+         EPPrjNTags(571)%Label / 'gas_62_es_tau' / &
+         EPPrjNTags(572)%Label / 'gas_63_es_tau' / &
+         EPPrjNTags(573)%Label / 'gas_64_es_tau' /
     !> END GENERATED EPPrjNTags
 
     !> BEGIN GENERATED EPPrjCTags - edit gen_project_tags.py, not this block

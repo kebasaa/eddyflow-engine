@@ -22,6 +22,7 @@ Run `gen_fixtures.py --check` to confirm the emitted files still match what
 this script would write, the same way the tag-table generators are checked.
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -346,7 +347,32 @@ def build_sa_write(src_lines):
     return _set(out, 'sa_mode', '1')
 
 
+#: gas record -> gas_<i>_es_tau. Each value takes a different branch: a
+#: stated L, a damping strong enough that xi falls below 0.4 and the flux is
+#: discarded, L = 0 (no high-frequency correction), and records left unset,
+#: which fall back to their analyser's tau.
+ES95_TAU = {1: '0.30', 4: '1.00', 5: '5.00', 6: '0.00'}
+
+
+def build_es95(src_lines):
+    """base_n_gas_analytic corrected after Eugster and Senn (1995).
+
+    hf_meth=7. Only the gas records listed in ES95_TAU state an L; the rest
+    are written empty, as the interface writes them, so the analyser's tau
+    is used.
+    """
+    out = []
+    for ln in _set(src_lines, 'hf_meth', '7'):
+        out.append(ln)
+        m = re.match(r'gas_(\d+)_diff=', ln)
+        if m:
+            i = int(m.group(1))
+            out.append('gas_%d_es_tau=%s' % (i, ES95_TAU.get(i, '')))
+    return out
+
+
 TARGETS = {
+    'base_es95.eddyflow': ('base_n_gas_analytic.eddyflow', build_es95),
     'base_sa_write.eddyflow': ('base_n_gas_bin.eddyflow', build_sa_write),
     'base_auto_sa.eddyflow': ('base_n_gas.eddyflow', build_auto_sa),
     'base_no_gas.eddyflow': ('base_rec.eddyflow', build_no_gas),

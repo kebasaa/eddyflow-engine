@@ -978,6 +978,12 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddIntDatumToDataline(4, csv_row, EddyFlowProj%err_label)
         case('massman_00')
             call AddIntDatumToDataline(5, csv_row, EddyFlowProj%err_label)
+        case('eugster_senn_95')
+            call AddIntDatumToDataline(7, csv_row, EddyFlowProj%err_label)
+        case default
+            !> A method with no code must still fill the field, or every
+            !> later column shifts one place left of its header.
+            call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end select
     !> Footprint model
     select case(trim(adjustl(foot_model_used)))

@@ -778,6 +778,9 @@ module m_typedef
                                     !< name for its species; 0 = numbered.
                                     !< Unset anywhere, the lowest record index
                                     !< of a species is designated.
+        real(kind = dbl) :: es_tau  !< Eugster and Senn (1995) damping time
+                                    !< constant L [s]; error = use the
+                                    !< analyser's tau
     end type GasRecordType
 
     !> A cell temperature/pressure or diagnostic measurement, tied to the
