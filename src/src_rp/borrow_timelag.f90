@@ -46,7 +46,8 @@
 ! The default here is the Wienhold et al. (1994) detection limit - the scatter
 ! of the very function whose peak is being tested, which is the question being
 ! asked - and the best-resolved tube-mate. tlag_borrow_noise and
-! tlag_borrow_donor select EddyUH's instead.
+! tlag_borrow_donor select EddyUH's instead. tlag_borrow_donor can also hand
+! the choice to the user, gas by gas, through tlag_borrow_pairs.
 !
 ! Read EddyUH's own comment at that line with care: it calls unc3 a detection
 ! limit, and it is not one. Both quantities are noise floors in covariance
@@ -88,7 +89,7 @@ subroutine BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
     logical, external :: GasSlotIsWater
     integer, external :: CarbonOnAnalyserOf
     real(kind = dbl), external :: LenschowFluxNoise
-    integer :: gas, donor, chosen
+    integer :: gas, donor, chosen, named
     !> Heap, not automatic arrays. At 20 Hz over half an hour each of these
     !> is some 288 kB, and this runs from deep inside the period loop with
     !> TimeLagHandle's own frame already on the stack. Left automatic, and
@@ -168,11 +169,29 @@ subroutine BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
         !> not change donor halfway through the day is easier to defend. It
         !> refuses rather than falling back when that analyser measures no
         !> carbon dioxide, or when its carbon dioxide is not itself trusted.
+        !>
+        !> 'per_gas' lets the user name each gas's donor. A gas that names
+        !> none is ranked as under 'best_resolved'; one that names a donor
+        !> takes that one or nothing, for the same reason the carbon rule
+        !> refuses: a fixed donor is chosen so that it does not change, and
+        !> falling back would change it. The named record must still be a
+        !> trusted, eligible tube-mate - the interface only offers those, and
+        !> this holds a hand-written project to the same rule.
         chosen = 0
+        named = 0
+        if (RPSetup%tlag_borrow_donor == 'per_gas') named = NamedDonor(gas)
         if (RPSetup%tlag_borrow_donor == 'carbon_dioxide') then
             donor = CarbonOnAnalyserOf(gas)
             if (donor >= firstGas .and. donor <= lastGas) then
                 if (donor /= gas .and. trusted(donor)) chosen = donor
+            end if
+        else if (named /= 0) then
+            if (named >= firstGas .and. named <= lastGas) then
+                if (named /= gas .and. trusted(named)) then
+                    if (Eligible(named)) then
+                        if (SameAnalyser(gas, named)) chosen = named
+                    end if
+                end if
             end if
         else
             best = 0d0
@@ -269,4 +288,78 @@ contains
         OnWindowEdge = RowLags(g) == min_rl(g) .or. RowLags(g) == max_rl(g)
     end function OnWindowEdge
 
+    !> The slot of the donor this gas's record names, or 0 for none. The
+    !> pairs are stored by record, which is what the interface knows.
+    integer function NamedDonor(g)
+        integer, intent(in) :: g
+        integer :: rec
+
+        NamedDonor = 0
+        rec = g - firstGas + 1
+        if (rec < 1 .or. rec > MaxNumGases) return
+        if (RPSetup%tlag_borrow_pair(rec) <= 0) return
+        NamedDonor = firstGas + RPSetup%tlag_borrow_pair(rec) - 1
+    end function NamedDonor
+
 end subroutine BorrowTimelagBelowDetectionLimit
+
+!***************************************************************************
+!
+! \brief       Read tlag_borrow_pairs into a donor record per borrower record.
+! \author      Jonathan Muller
+! \note        `borrower:donor` pairs of 1-based gas records, comma-separated:
+!              `3:1,4:1`. Unlike a month grouping this is not all-or-nothing:
+!              each pair is one gas's choice and stands on its own, so a pair
+!              that does not parse, names a record out of range, or names the
+!              gas itself is dropped and leaves that gas on the best-resolved
+!              tube-mate. Whether the donor is really a tube-mate is decided
+!              per period by the caller, which knows the analysers.
+! \sa          BorrowTimelagBelowDetectionLimit
+! \bug
+! \deprecated
+! \test
+! \todo
+!***************************************************************************
+subroutine ParseTlagBorrowPairs(spec, pair)
+    use m_rp_global_var
+    implicit none
+    !> in/out variables
+    character(*), intent(in) :: spec
+    integer, intent(out) :: pair(MaxNumGases)
+    !> local variables
+    character(len(spec)) :: body
+    character(len(spec)) :: token
+    integer :: pos
+    integer :: nxt
+    integer :: colon
+    integer :: borrower
+    integer :: lender
+    integer :: read_status
+
+    pair = 0
+    body = adjustl(spec)
+    if (len_trim(body) == 0) return
+
+    pos = 1
+    do while (pos <= len_trim(body))
+        nxt = index(body(pos:len_trim(body)), ',')
+        if (nxt == 0) then
+            token = body(pos:len_trim(body))
+            pos = len_trim(body) + 1
+        else
+            token = body(pos:pos + nxt - 2)
+            pos = pos + nxt
+        end if
+        token = adjustl(token)
+        colon = index(trim(token), ':')
+        if (colon <= 1 .or. colon >= len_trim(token)) cycle
+        read(token(1:colon - 1), *, iostat = read_status) borrower
+        if (read_status /= 0) cycle
+        read(token(colon + 1:len_trim(token)), *, iostat = read_status) lender
+        if (read_status /= 0) cycle
+        if (borrower < 1 .or. borrower > MaxNumGases) cycle
+        if (lender < 1 .or. lender > MaxNumGases) cycle
+        if (borrower == lender) cycle
+        pair(borrower) = lender
+    end do
+end subroutine ParseTlagBorrowPairs

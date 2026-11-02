@@ -956,6 +956,14 @@ subroutine WriteVariablesRP()
     RPSetup%tlag_borrow_donor = 'best_resolved'
     if (SCTagFound(82) .and. SCTags(82)%value(1:1) == '1') &
         RPSetup%tlag_borrow_donor = 'carbon_dioxide'
+    !> '2' is each gas naming its own donor, in tlag_borrow_pairs. Read
+    !> whatever the rule so the array is never left holding stale values;
+    !> only the 'per_gas' branch looks at it.
+    if (SCTagFound(82) .and. SCTags(82)%value(1:1) == '2') &
+        RPSetup%tlag_borrow_donor = 'per_gas'
+    RPSetup%tlag_borrow_pair = 0
+    if (SCTagFound(86)) &
+        call ParseTlagBorrowPairs(SCTags(86)%value, RPSetup%tlag_borrow_pair)
 
     !> Flux detection limit, Wienhold et al. (1994).
     !>

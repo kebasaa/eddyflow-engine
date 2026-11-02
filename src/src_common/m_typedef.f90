@@ -1535,6 +1535,10 @@ module m_typedef
         !> EddyUH hard-codes.
         character(32) :: tlag_borrow_noise
         character(32) :: tlag_borrow_donor
+        !> Under tlag_borrow_donor 'per_gas': the gas record each gas record
+        !> borrows from, indexed by borrower record, 0 for the best-resolved
+        !> tube-mate. Records, not slots - the slot is firstGas + record - 1.
+        integer :: tlag_borrow_pair(MaxNumGases)
         !> Flux detection limit after Wienhold et al. (1994): the standard
         !> deviation of the cross-covariance function measured away from the
         !> peak, where there is no flux signal, taken as the noise floor of
