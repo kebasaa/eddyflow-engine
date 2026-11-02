@@ -44,10 +44,9 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     !> local variables
     integer :: gas
     integer :: wsl
-    real(kind = dbl) :: flux_test
+    logical :: fluxOk
     real(kind = dbl) :: le
     real(kind = dbl) :: rh
-    character(32) :: label
     real(kind = dbl), external :: PeriodWaterRH
     include '../src_common/interfaces.inc'
 
@@ -68,31 +67,28 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     !> fourth slot, so a fifth gas never contributed to the time-lag
     !> optimisation dataset however strong its flux.
     !>
-    !> NOTE: the CO2 arm compared dabs(flux) against the threshold and the
-    !> other two compared the signed flux. That is preserved rather than
-    !> unified - CO2 is the one gas routinely measured with a negative flux,
-    !> so on the others a signed comparison and a magnitude comparison agree
-    !> in practice, but making them agree by fiat would move numbers. Worth
-    !> deciding deliberately.
+    !> Every gas is gated on the magnitude of its flux. The threshold is
+    !> there because a weak covariance gives a poorly defined correlation
+    !> peak, and the sign does not change how well it is defined. Only a
+    !> column labelled exactly co2 used to be compared by magnitude; any
+    !> other gas was compared signed, so an uptake gas such as COS fed the
+    !> optimisation nothing but its occasional emission half-hours. A
+    !> missing flux is excluded outright - dabs(error) clears any threshold.
+    !> Water keeps the signed latent heat test below.
     do gas = firstGas, lastGas
         if (gas == wsl) cycle
         if (GasSlotIsWater(gas)) cycle
         TimelagOpt(n)%tlag(gas) = error
         if (.not. E2Col(gas)%present) cycle
 
-        label = GasOutputLabel(gas)
-        call lowercase(label)
-        if (trim(adjustl(label)) == 'co2') then
-            flux_test = dabs(Flux0%gas(gas))
-        else
-            flux_test = Flux0%gas(gas)
-        end if
+        fluxOk = Flux0%gas(gas) /= error &
+            .and. dabs(Flux0%gas(gas)) > TOSetup%gas_min_flux(gas)
 
-        if (flux_test > TOSetup%gas_min_flux(gas) &
+        if (fluxOk &
             .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
             .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
             TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
-        call NoteRawLag(gas, Flux0%gas(gas), flux_test > TOSetup%gas_min_flux(gas))
+        call NoteRawLag(gas, Flux0%gas(gas), fluxOk)
     end do
 
     !> Water vapour and RH, every hygrometer. Each is gated on its own latent
