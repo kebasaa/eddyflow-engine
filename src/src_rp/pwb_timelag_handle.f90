@@ -656,17 +656,32 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     valid = .false.
     call InitPwbTimelagCache()
     open(newunit=u, file=path, status='old', action='read', iostat=ios, encoding='utf-8')
-    if (ios /= 0) return
-    read(u, '(a)', iostat=ios) line
     if (ios /= 0) then
-        close(u)
+        call LogSay(' Fatal> PWB time-lag file could not be opened: ' // trim(path))
         return
     end if
+    read(u, '(a)', iostat=ios) line
+    if (ios /= 0) line = ''
     !> Only the current version is read. Every earlier one predates a
     !> setting that is now in the fingerprint, so none of them could have
     !> matched this build in any case; refusing them by version says so
     !> plainly rather than letting the fingerprint say it obscurely.
     if (trim(line) /= 'PWB_TIMELAG_CACHE_VERSION=5') then
+        if (index(line, 'PWB_TIMELAG_CACHE_VERSION=') == 1) then
+            call LogSay(' Fatal> PWB time-lag file was written by an earlier version of EddyFlow.')
+            call LogSay('        Regenerate it with this version.')
+        else
+            !> Most often the summary written beside the table, which reads
+            !> like an ordinary time-lag optimisation file. Taking it would
+            !> quietly replace PWB with covariance maximisation inside its
+            !> RH-class windows, so it is refused rather than reinterpreted.
+            call LogSay(' Fatal> The selected time-lag file is not a PWB half-hourly time-lag table:')
+            call LogSay('        ' // trim(path))
+            call LogSay('        Select the *' // PwbTimelag_FilePadding // '_<timestamp>' // CsvExt &
+                // ' table a PWB run writes, not the *' // PwbTimelag_FilePadding &
+                // '_opt_<timestamp>.txt summary')
+            call LogSay('        beside it or a time-lag optimisation file.')
+        end if
         close(u)
         return
     end if

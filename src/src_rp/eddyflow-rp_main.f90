@@ -617,19 +617,19 @@ program EddyFlowRP
     end if
 
     !> Method 5 uses a per-period cache when an existing time-lag file was
-    !> selected.  A legacy aggregate optimizer file keeps its established path.
+    !> selected, and only that. An aggregate file - the *_pwb_timelag_opt_*
+    !> summary written beside the table above all, or an ordinary time-lag
+    !> optimisation file - used to be taken as one, which switched the run to
+    !> covariance maximisation inside its RH-class windows and said so in a
+    !> single log line. Someone who asked for PWB got no PWB, so it stops.
     if (trim(adjustl(Meth%tlag)) == 'pwb' .and. PwbCacheUpdateRequested) then
         call ReadPwbTimelagCache(AuxFile%to, PwbCacheRecognized, PwbCacheValid)
-        if (PwbCacheRecognized) then
-            if (.not. PwbCacheValid) &
-                error stop 'PWB half-hourly time-lag table could not be used; see the message above.'
-            call LogSay(' PWB half-hourly time-lag table found, retrieving content..')
-            call LogSay(' PWB mode: exact per-period reuse; missing periods will be detected.')
-        else
-            TimeLagOptSelected = .true.
-            Meth%tlag = 'tlag_opt'
-            call LogSay(' PWB mode: aggregate/RH-class time-lag reuse; PWB detection is disabled.')
-        end if
+        if (.not. PwbCacheRecognized) &
+            error stop 'Time-lag file is not a PWB half-hourly time-lag table; see the message above.'
+        if (.not. PwbCacheValid) &
+            error stop 'PWB half-hourly time-lag table could not be used; see the message above.'
+        call LogSay(' PWB half-hourly time-lag table found, retrieving content..')
+        call LogSay(' PWB mode: exact per-period reuse; missing periods will be detected.')
     elseif (PwbCacheGenerate) then
         call InitPwbTimelagCache()
         call LogSay(' PWB mode: whole-run time-lag pre-pass, then production processing from its table.')
