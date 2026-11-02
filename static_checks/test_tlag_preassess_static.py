@@ -129,6 +129,13 @@ class EveryLagFoundIsTabled(unittest.TestCase):
     def test_the_gates_themselves_are_untouched(self):
         self.assertEqual(ADD.count(".and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl"), 2)
 
+    def test_every_gas_is_gated_on_its_magnitude(self):
+        # An uptake gas such as COS was compared signed and kept only its
+        # emission half-hours; only a column labelled co2 got dabs.
+        self.assertIn("fluxOk = Flux0%gas(gas) /= error &", ADD)
+        self.assertIn(".and. dabs(Flux0%gas(gas)) > TOSetup%gas_min_flux(gas)", ADD)
+        self.assertNotIn("'co2'", ADD)
+
     def test_written_before_the_dataset_is_compacted(self):
         i = MAIN.index("call WriteTlagPreassessTable(TimelagOpt, TimelagOptSize, ton)")
         self.assertLess(i, MAIN.index("call FixTimelagOptDataset(TimelagOpt, TimelagOptSize", i - 2000))

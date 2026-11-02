@@ -2508,6 +2508,7 @@ module m_rp_global_var
          SCTags(83)%Label  / 'out_raw_t_air' / &
          SCTags(84)%Label  / 'out_raw_p_air' / &
          SCTags(85)%Label  / 'out_qc_details' / &
+         SCTags(86)%Label  / 'tlag_borrow_pairs' / &
          SCTags(87)%Label  / 'power_of_two' / &
          SCTags(88)%Label  / 'pf_fix' / &
          SCTags(89)%Label  / 'use_geo_north' / &
@@ -2625,9 +2626,9 @@ module m_rp_global_var
          SCTags(201)%Label / 'gas_34_out_full_sp' / &
          SCTags(202)%Label / 'gas_34_out_full_cosp_w' / &
          SCTags(203)%Label / 'gas_34_out_raw' / &
-         SCTags(204)%Label / 'gas_35_out_full_sp' / &
-         SCTags(205)%Label / 'gas_35_out_full_cosp_w' /
-    data SCTags(206)%Label / 'gas_35_out_raw' / &
+         SCTags(204)%Label / 'gas_35_out_full_sp' /
+    data SCTags(205)%Label / 'gas_35_out_full_cosp_w' / &
+         SCTags(206)%Label / 'gas_35_out_raw' / &
          SCTags(207)%Label / 'gas_36_out_full_sp' / &
          SCTags(208)%Label / 'gas_36_out_full_cosp_w' / &
          SCTags(209)%Label / 'gas_36_out_raw' / &

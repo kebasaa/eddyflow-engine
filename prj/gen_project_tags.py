@@ -251,9 +251,13 @@ FIXED_TAGS = {
         #: it borrows from. 81: 0 the flux detection limit (this
         #: engine's own), 1 the Lenschow instrument noise (EddyUH's).
         #: 82: 0 the best-resolved tube-mate, 1 the analyser's carbon
-        #: dioxide, which is what EddyUH hard-codes.
+        #: dioxide, which is what EddyUH hard-codes. 2: each gas names
+        #: its own donor, in 86 - 1-based gas-record pairs
+        #: `borrower:donor`, comma-separated. Slot 86 held out_biomet,
+        #: retired long ago and commented out.
         81: "tlag_borrow_noise",
         82: "tlag_borrow_donor",
+        86: "tlag_borrow_pairs",
         #: Extra raw-signal instrument-malfunction diagnostics (AL1 lag-1
         #: autocorrelation, DDI discrete/dominant-value test, Qn-scaled
         #: HF5/HF10/HD5/HD10 spike counts), ported from RFlux (Vitale et al.

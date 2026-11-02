@@ -1,3 +1,31 @@
+8.1.4 (2026-11-02)
+
+    Engine:
+	- Version bump to 8.1.4, to match EddyFlow GUI 8.1.4. No change to the
+	  computation.
+	- New: Per-gas donors for conditional lag borrowing. tlag_borrow_donor
+	       = 2 reads tlag_borrow_pairs (SCTags 86, the slot out_biomet left),
+	       1-based gas-record pairs "borrower:donor", comma-separated. A gas
+	       that names a donor takes its lag only if that donor is trusted,
+	       eligible (closed-path, not water) and on the same analyser, and
+	       otherwise borrows nothing that period, as the carbon dioxide rule
+	       does; a gas that names none is ranked as under best_resolved. A
+	       pair that does not parse, is out of range or names the gas itself
+	       is dropped. Projects without the key behave exactly as before.
+	- Changed: The time lag optimization's minimum flux
+	       (gas_<i>_to_min_flux) is compared with the magnitude of every
+	       gas's flux, as the GUI's "Minimum (absolute) flux" always said.
+	       Only a column labelled exactly co2 was compared by magnitude;
+	       every other gas was compared signed, so an uptake gas such as
+	       COS fed the optimization only its occasional emission
+	       half-hours, and the preliminary assessment's threshold filter
+	       dropped nearly all of it. A half-hour whose flux is missing no
+	       longer passes the gate (dabs(error) cleared any threshold, CO2
+	       included). Water vapour keeps the signed latent heat test.
+	       Projects with uptake or negative fluxes of gases other than co2
+	       will see more half-hours enter the optimization, and their
+	       optimized lag and window may change.
+
 8.1.3 (2026-10-28)
 
     Engine:
