@@ -117,15 +117,23 @@ class PwbTimelagStaticTests(unittest.TestCase):
         self.assertIn("PWB_aggregate_summary: true", writer_source)
         self.assertIn("PWB_summary_source_for_", writer_source)
 
-    def test_pwb_supports_live_cache_and_aggregate_reuse_modes(self):
+    def test_pwb_supports_live_and_cache_reuse_and_refuses_aggregate_files(self):
         parser_source = read("src/src_rp/read_ini_rp.f90")
         main_source = read("src/src_rp/eddyflow-rp_main.f90")
+        module_source = read("src/src_rp/pwb_timelag_handle.f90")
         writer_source = read("src/src_rp/writeout_timelag_optimization.f90")
 
         self.assertIn("PwbCacheUpdateRequested = len_trim(AuxFile%to) > 0", parser_source)
         self.assertIn("PWB mode: live detection during production processing.", main_source)
-        self.assertIn("aggregate/RH-class time-lag reuse; PWB detection is disabled.", main_source)
         self.assertIn("PWB mode: exact per-period reuse", main_source)
+        #> With PWB selected, a file that is not the half-hourly table - the
+        #> *_pwb_timelag_opt_* summary above all - stops the run. It used to
+        #> switch the run to tlag_opt, so PWB was asked for and not done.
+        self.assertNotIn("aggregate/RH-class time-lag reuse", main_source)
+        self.assertNotIn("            Meth%tlag = 'tlag_opt'\n", main_source)
+        self.assertIn("if (.not. PwbCacheRecognized) &\n            error stop", main_source)
+        self.assertIn("is not a PWB half-hourly time-lag table", module_source)
+        self.assertIn("written by an earlier version of EddyFlow", module_source)
         self.assertIn("'_pwb_timelag_opt'", writer_source)
         self.assertIn("PwbAggregateSummary", writer_source)
 
