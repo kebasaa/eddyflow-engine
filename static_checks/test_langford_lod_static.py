@@ -8,14 +8,17 @@ The random flux error is the scatter of the w-scalar cross-covariance far from
 the lag: RE_RMSE = sqrt(sigma^2 + mu^2) (their Eq. 9) or RE_SD = sigma, and
 LoD = alpha RE. One routine, ``LangfordNoise``, measures it; two callers use it:
 
-- ``ru_meth = 6`` (``langford_15``), the random error, on the detrended and
-  aligned series the flux comes from, centred on lag zero;
+- ``lod_meth = 1`` (``langford_15``), the limit of detection, on the detrended
+  and aligned series the flux comes from, centred on lag zero. Its own switch,
+  not a random error method: the run reports the random error method's
+  estimate in rand_err_* / *_RANDUNC_HF and Langford's LoD beside it, from its
+  own fields (lod_re), so neither overwrites the other;
 - ``detlim_meth = 2`` (``langford_15``), the detection limit time-lag borrowing
   tests against, on the raw series before the shift, centred on each gas's lag.
 
 Two call points rather than one shared result, deliberately: the borrowing test
-has to run before the shift, and the random error has to see the detrending the
-flux saw - Langford's Fig. 2c shows the LoD moving with it.
+has to run before the shift, and the LoD has to see the detrending the flux
+saw - Langford's Fig. 2c shows the LoD moving with it.
 
 Known answers for the arithmetic are in ``src/src_tools/langford_check_main.f90``
 (``mingw32-make langfordcheck``), run below when built.
@@ -62,9 +65,25 @@ GEN = (ROOT / "prj" / "gen_project_tags.py").read_text(encoding="utf-8")
 
 class TheSettingsDecode(unittest.TestCase):
 
-    def test_ru_meth_six_is_langford(self):
-        self.assertIn("case(6)", DECODE)
-        self.assertIn("RUsetup%meth = 'langford_15'", DECODE)
+    def test_the_lod_has_its_own_switch(self):
+        self.assertIn('15: "lod_meth"', GEN)
+        self.assertIn("RUsetup%lod_meth = 'none'", DECODE)
+        self.assertIn("if (EPPrjNTagFound(15)) then", DECODE)
+        self.assertIn("if (nint(EPPrjNTags(15)%value) == 1) RUsetup%lod_meth = 'langford_15'",
+                      DECODE)
+
+    def test_langford_is_no_longer_a_random_error_method(self):
+        # ru_meth 6 is gone: it falls to 'none' like any value the decoder
+        # does not know, and nothing writes the random error from Langford.
+        self.assertNotIn("case(6)", DECODE)
+        self.assertNotIn("RUsetup%meth = 'langford_15'", DECODE)
+        self.assertNotIn("case('langford_15')", RU)
+        self.assertNotIn("RU_Langford_15", RU)
+
+    def test_express_and_metadata_retrieval_switch_it_off(self):
+        for parts in (("src_common", "configure_project_for_express.f90"),
+                      ("src_rp", "configure_for_md_retrieval.f90")):
+            self.assertIn("RUsetup%lod_meth = 'none'", code(*parts))
 
     def test_detlim_meth_two_is_langford(self):
         self.assertIn("RPSetup%detlim_meth = 'langford_15'", READER)
@@ -94,14 +113,33 @@ class TheSettingsDecode(unittest.TestCase):
 
 class OneRoutineTwoCallers(unittest.TestCase):
 
-    def test_the_random_error_is_measured_about_lag_zero(self):
-        self.assertIn("case('langford_15')", RU)
-        body = RU[RU.index("subroutine RU_Langford_15"):]
+    def test_the_lod_is_measured_about_lag_zero_into_its_own_fields(self):
+        body = RU[RU.index("subroutine LodLangford15"):]
+        body = body[:body.index("end subroutine LodLangford15")]
         self.assertIn("centre = 0", body)
         self.assertIn("call LangfordNoise(Set, N, M, centre, want, re)", body)
         for var in ("want(u) = .true.", "want(ts) = .true.",
                     "want(firstGas:lastGas) = .true."):
             self.assertIn(var, body)
+        self.assertNotIn("rand_uncer", body)
+        # Reset before the switch is tested: nothing else clears these, so a
+        # period with the LoD off must not carry the previous one.
+        reset = body.index("Essentials%lod_re(u:lastGas) = error")
+        self.assertLess(reset, body.index("if (RUsetup%lod_meth /= 'langford_15') return"))
+
+    def test_it_runs_beside_the_random_error_method(self):
+        main = code("src_rp", "eddyflow-rp_main.f90")
+        ru = main.index("call RandomUncertaintyHandle(E2Primes,")
+        lod = main.index("call LodLangford15(E2Primes,")
+        self.assertLess(ru, lod)
+
+    def test_both_are_converted_to_flux_units_the_same_way(self):
+        f0 = code("src_rp", "fluxes0_rp.f90")
+        self.assertIn("subroutine ToFluxUnits(re, re_LE, re_ET)", f0)
+        self.assertIn("call ToFluxUnits(Essentials%rand_uncer, Essentials%rand_uncer_LE, &", f0)
+        self.assertIn("call ToFluxUnits(Essentials%lod_re, Essentials%lod_re_LE, &", f0)
+        # Only through the helper: no conversion of rand_uncer left inline.
+        self.assertNotIn("Essentials%rand_uncer(ts) * Ambient%RhoCp", f0)
 
     def test_the_detection_limit_is_measured_about_each_gas_lag(self):
         body = DETLIM[DETLIM.index("subroutine LangfordDetectionLimit"):]
@@ -138,20 +176,37 @@ class TheOutputs(unittest.TestCase):
         for src in (FULL_RP, FULL_FCC):
             self.assertEqual(src.count("LimitOfDetection("), 4)
 
-    def test_full_output_columns_only_with_langford(self):
+    def test_full_output_columns_only_with_the_lod_switch(self):
         # Default runs keep their layout.
         for src in (FULL_HDR_RP, FULL_HDR_FCC, FULL_RP, FULL_FCC):
-            self.assertEqual(src.count("if (RUsetup%meth == 'langford_15') then"), 4)
+            self.assertEqual(src.count("if (RUsetup%lod_meth == 'langford_15') then"), 4)
+            self.assertNotIn("RUsetup%meth == 'langford_15'", src)
 
-    def test_fluxnet_family_follows_the_random_errors_and_is_skipped_on_read(self):
+    def test_every_lod_reads_its_own_random_error(self):
+        # rep_re is the random error method's; the LoD is alpha times
+        # Langford's, spectrally corrected the same way through its own call.
+        for src in (FULL_RP, FULL_FCC, FLUXNET_RP, FLUXNET_FCC):
+            self.assertIn("%lod_re_ET, rep_lre, rep_lle, rep_let)", src)
+            self.assertNotIn("LimitOfDetection(rep_re(", src)
+            self.assertNotIn("LimitOfDetection(rep_le,", src)
+            self.assertNotIn("LodField(rep_re(", src)
+            self.assertNotIn("LodField(rep_le)", src)
+            self.assertNotIn("LodField(rep_et)", src)
+
+    def test_fluxnet_family_follows_the_random_errors_and_is_read_back(self):
         rand = FLUXNET_HDR.index("call AddFluxFamily('_RANDUNC_HF')")
         lod = FLUXNET_HDR.index("call AddFluxFamily('_LOD')")
         self.assertLess(rand, lod)
         for src in (FLUXNET_RP, FLUXNET_FCC):
-            self.assertIn("lod_on = RUsetup%meth == 'langford_15'", src)
+            self.assertIn("lod_on = RUsetup%lod_meth == 'langford_15'", src)
             self.assertEqual(src.count("LodField("), 6)
-        self.assertIn("+ 4 + nExGas                &  !< skipped: Langford LoD", EX)
-        self.assertIn("aux(1 : 4 + n_layout_gas), & !< Skip the LoD", EX)
+        # FCC cannot recompute it from rand_uncer any more, which is another
+        # method's estimate: it reads the family back and divides out alpha.
+        self.assertIn("+ 4 + nExGas                &  !< Langford LoD, read back as lod_re", EX)
+        self.assertIn("lEx%lod_re(u), lEx%lod_re(ts), &", EX)
+        self.assertIn("(lEx%lod_re(exSlots(jx)), jx = 1, nExSlots), &", EX)
+        self.assertIn("where (lEx%lod_re /= error) lEx%lod_re = lEx%lod_re / RUsetup%lod_alpha", EX)
+        self.assertIn("lEx%lod_re(gas) = lEx%lod_re(gas) / FluxnetGasScale(gas)", EX)
 
 
 class KnownAnswers(unittest.TestCase):

@@ -546,16 +546,19 @@ subroutine WriteProcessingProjectVariables()
             !> is a sampling error and a different paper - the shared name
             !> is the only thing they have in common.
             RUsetup%meth = 'lenschow_00'
-        case(6)
-            !> Langford et al. (2015): the scatter of the w-scalar
-            !> cross-covariance far from the applied lag, RMSE or SD.
-            RUsetup%meth = 'langford_15'
         case default
             RUsetup%meth = 'none'
     end select
-    !> Decoded whatever the method: the Langford detection limit's automatic
-    !> window measures the integral turbulence scale with these two even
-    !> when no random error is asked for.
+    !> The Langford et al. (2015) limit of detection, alpha times the scatter
+    !> of the w-scalar cross-covariance far from the lag. Its own switch,
+    !> independent of the random error method above.
+    RUsetup%lod_meth = 'none'
+    if (EPPrjNTagFound(15)) then
+        if (nint(EPPrjNTags(15)%value) == 1) RUsetup%lod_meth = 'langford_15'
+    end if
+    !> Decoded whatever the method: the Langford limit of detection's
+    !> automatic window measures the integral turbulence scale with these two
+    !> even when no random error is asked for.
     select case (nint(EPPrjNTags(23)%value))
         case(1)
             RUsetup%its_meth = 'cross_0'

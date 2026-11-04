@@ -59,11 +59,6 @@ subroutine RandomUncertaintyHandle(Set, nrow, ncol)
             !> autocorrelation this would measure, and the estimate does not
             !> use it. The other two need it because they integrate over lags.
             call RU_Billesbach_11(Set, nrow, ncol)
-        case('langford_15')
-            !> Langford et al. (2015): the far-lag scatter of the
-            !> cross-covariance, on these detrended, aligned series - the
-            !> ones the flux is computed from - so centred on lag zero.
-            call RU_Langford_15(Set, nrow, ncol)
         case('none')
             Essentials%rand_uncer(u:lastGas) = error
             Essentials%rand_uncer_LE = error
@@ -708,12 +703,15 @@ end subroutine InitRandomSeed
 
 !***************************************************************************
 !
-! rief       Random error after Langford et al. (2015), Sect. 2.2: RE_RMSE
-!              (or RE_SD) of the w-scalar cross-covariance far from the lag.
-!              See langford_noise.f90 for the method and the windows.
+! rief       The random error behind the limit of detection of Langford et
+!              al. (2015), Sect. 2.2: RE_RMSE (or RE_SD) of the w-scalar
+!              cross-covariance far from the lag. Its own switch (lod_meth),
+!              independent of the random error method, and kept in its own
+!              fields, so a run can report both. The LoD is lod_alpha times
+!              it. See langford_noise.f90 for the method and the windows.
 ! uthor      Jonathan Muller
 !***************************************************************************
-subroutine RU_Langford_15(Set, N, M)
+subroutine LodLangford15(Set, N, M)
     use m_rp_global_var
     implicit none
     !> in/out variables
@@ -725,7 +723,19 @@ subroutine RU_Langford_15(Set, N, M)
     logical :: want(M)
     real(kind = dbl) :: re(M)
 
-    !> The series are already shifted by each variable's lag.
+    !> Written every period: nothing else resets these fields, so a period
+    !> with the LoD off must not carry the last one forward. Converted to
+    !> flux units in Fluxes0, LE and ET from the water slot there, as the
+    !> random errors are.
+    Essentials%lod_re(u:lastGas) = error
+    Essentials%lod_re_LE = error
+    Essentials%lod_re_ET = error
+    if (RUsetup%lod_meth /= 'langford_15') return
+
+    call LogSay('  Estimating the limit of detection..')
+    !> The series are already shifted by each variable's lag: these are the
+    !> detrended, aligned series the flux is computed from, so centred on
+    !> lag zero.
     centre = 0
     want = .false.
     want(u) = .true.
@@ -733,12 +743,7 @@ subroutine RU_Langford_15(Set, N, M)
     want(firstGas:lastGas) = .true.
     call LangfordNoise(Set, N, M, centre, want, re)
 
-    Essentials%rand_uncer(u:lastGas) = error
-    Essentials%rand_uncer(u) = re(u)
-    Essentials%rand_uncer(ts) = re(ts)
-    Essentials%rand_uncer(firstGas:lastGas) = re(firstGas:lastGas)
-    !> Converted to flux units in Fluxes0, LE and ET from the water slot
-    !> there, as for every other method.
-    Essentials%rand_uncer_LE = error
-    Essentials%rand_uncer_ET = error
-end subroutine RU_Langford_15
+    Essentials%lod_re(u) = re(u)
+    Essentials%lod_re(ts) = re(ts)
+    Essentials%lod_re(firstGas:lastGas) = re(firstGas:lastGas)
+end subroutine LodLangford15

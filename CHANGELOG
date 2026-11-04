@@ -1,8 +1,23 @@
 8.1.7 (2026-11-04)
 
     Engine:
-	- Version bump to 8.1.7, to match EddyFlow GUI 8.1.7. No change to the
-	  computation.
+	- Change: The limit of detection after Langford et al. (2015) has its own
+	          switch, lod_meth in [Project] (0 none, the default; 1
+	          langford_15), and is no longer a random error method: ru_meth 6
+	          is gone and decodes as none. A run can now report one method's
+	          random error in rand_err_* / *_RANDUNC_HF and Langford's limit
+	          of detection beside it in lod_* / *_LOD. The far-lag random
+	          error behind the LoD is measured by LodLangford15 into fields of
+	          its own (lod_re), converted to flux units by the same routine as
+	          the random errors (ToFluxUnits, in Fluxes0), and spectrally
+	          corrected with them under ru_spec_corr. FCC no longer recomputes
+	          the LoD from rand_uncer, which is another method's estimate: it
+	          reads the _LOD family back from the ex record and divides out
+	          alpha. The ex record keeps its width. Express mode and metadata
+	          retrieval switch it off with the random errors. Every output is
+	          unchanged for a project without lod_meth. New fixture
+	          tests/regression/base_n_gas_lod.eddyflow; pinned by
+	          static_checks/test_langford_lod_static.py.
 
 8.1.6 (2026-11-04)
 

@@ -2907,6 +2907,8 @@ program EddyFlowRP
 
             !> If requested, estimate random error
             call RandomUncertaintyHandle(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
+            !> And, on its own switch, the Langford limit of detection
+            call LodLangford15(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
 
             if (allocated(UserSet)) deallocate(UserSet)
 

@@ -308,6 +308,11 @@ FIXED_TAGS = {
         #: Off unless 1, as EddyPro, which does not do it. [Project]: RP and
         #: FCC both apply it.
         14: "ru_spec_corr",
+        #: The Langford et al. (2015) limit of detection, on its own switch:
+        #: 0 none, 1 langford_15. Independent of ru_meth, so a run can report
+        #: one method's random error beside Langford's LoD. [Project]: FCC
+        #: writes the LoD columns too.
+        15: "lod_meth",
         4: "cec_singular_band",
         5: "cec_stationarity_mode",
         6: "cec_min_flux_sigma",

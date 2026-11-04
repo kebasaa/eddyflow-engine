@@ -42,6 +42,11 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     real(kind = dbl) :: rep_re(E2NumVar)
     real(kind = dbl) :: rep_le
     real(kind = dbl) :: rep_et
+    !> The Langford random errors behind the limits of detection,
+    !> reported the same way.
+    real(kind = dbl) :: rep_lre(E2NumVar)
+    real(kind = dbl) :: rep_lle
+    real(kind = dbl) :: rep_let
     integer, intent(in) :: PeriodRecords
     integer, intent(in) :: PeriodActualRecords
     !> local variables
@@ -112,6 +117,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
 
     call ReportedRandomErrors(.not. EddyFlowProj%fcc_follows, Essentials%rand_uncer, Essentials%rand_uncer_LE, &
         Essentials%rand_uncer_ET, rep_re, rep_le, rep_et)
+    call ReportedRandomErrors(.not. EddyFlowProj%fcc_follows, Essentials%lod_re, Essentials%lod_re_LE, &
+        Essentials%lod_re_ET, rep_lre, rep_lle, rep_let)
     !> Corrected fluxes (Level 3)
     !> Tau
     call WriteDatumFloat(Flux3%tau, field_val, EddyFlowProj%err_label)
@@ -122,8 +129,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call WriteDatumFloat(rep_re(u), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
-    if (RUsetup%meth == 'langford_15') then
-        call WriteDatumFloat(LimitOfDetection(rep_re(u), RUsetup%lod_alpha, error), &
+    if (RUsetup%lod_meth == 'langford_15') then
+        call WriteDatumFloat(LimitOfDetection(rep_lre(u), RUsetup%lod_alpha, error), &
             field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
@@ -137,8 +144,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
         call WriteDatumFloat(rep_re(ts), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
-    if (RUsetup%meth == 'langford_15') then
-        call WriteDatumFloat(LimitOfDetection(rep_re(ts), RUsetup%lod_alpha, error), &
+    if (RUsetup%lod_meth == 'langford_15') then
+        call WriteDatumFloat(LimitOfDetection(rep_lre(ts), RUsetup%lod_alpha, error), &
             field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
@@ -153,8 +160,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
             call WriteDatumFloat(rep_le, field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         end if
-        if (RUsetup%meth == 'langford_15') then
-            call WriteDatumFloat(LimitOfDetection(rep_le, RUsetup%lod_alpha, error), &
+        if (RUsetup%lod_meth == 'langford_15') then
+            call WriteDatumFloat(LimitOfDetection(rep_lle, RUsetup%lod_alpha, error), &
                 field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         end if
@@ -176,10 +183,10 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
                     rep_re(gas) /= error), field_val, EddyFlowProj%err_label)
                 call AddDatum(csv_row, field_val, separator)
             end if
-            if (RUsetup%meth == 'langford_15') then
-                call WriteDatumFloat(merge(LimitOfDetection(rep_re(gas), &
+            if (RUsetup%lod_meth == 'langford_15') then
+                call WriteDatumFloat(merge(LimitOfDetection(rep_lre(gas), &
                     RUsetup%lod_alpha, error) * gas_flux_sc(gas), error, &
-                    rep_re(gas) /= error), field_val, EddyFlowProj%err_label)
+                    rep_lre(gas) /= error), field_val, EddyFlowProj%err_label)
                 call AddDatum(csv_row, field_val, separator)
             end if
         end if

@@ -43,6 +43,11 @@ subroutine WriteOutFluxnetFcc(lEx)
     real(kind = dbl) :: rep_re(E2NumVar)
     real(kind = dbl) :: rep_le
     real(kind = dbl) :: rep_et
+    !> The Langford random errors behind the limits of detection,
+    !> reported the same way.
+    real(kind = dbl) :: rep_lre(E2NumVar)
+    real(kind = dbl) :: rep_lle
+    real(kind = dbl) :: rep_let
     !> Whether the Langford limits of detection are written or error-labelled.
     logical :: lod_on
 
@@ -145,6 +150,8 @@ subroutine WriteOutFluxnetFcc(lEx)
 
     call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer, lEx%rand_uncer_LE, &
         lEx%rand_uncer_ET, rep_re, rep_le, rep_et)
+    call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%lod_re, lEx%lod_re_LE, &
+        lEx%lod_re_ET, rep_lre, rep_lle, rep_let)
     !> Random uncertainties
     call AddFloatDatumToDataline(rep_re(u), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(rep_re(ts), csv_row, EddyFlowProj%err_label)
@@ -156,16 +163,17 @@ subroutine WriteOutFluxnetFcc(lEx)
             gain=FluxnetGasScale(gas), offset=0d0)
     end do
 
-    !> Limits of detection, Langford et al. (2015): alpha times the random
-    !> errors above. Error-labelled unless that is the random error method.
-    lod_on = RUsetup%meth == 'langford_15'
-    call AddFloatDatumToDataline(LodField(rep_re(u)), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(LodField(rep_re(ts)), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(LodField(rep_le), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(LodField(rep_et), csv_row, EddyFlowProj%err_label)
+    !> Limits of detection, Langford et al. (2015): alpha times their own
+    !> random errors, whatever the method above. Error-labelled unless the
+    !> limit of detection is on.
+    lod_on = RUsetup%lod_meth == 'langford_15'
+    call AddFloatDatumToDataline(LodField(rep_lre(u)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_lre(ts)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_lle), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(LodField(rep_let), csv_row, EddyFlowProj%err_label)
     do jg = firstGas, nRowVar
         gas = rowVar(jg)
-        call AddFloatDatumToDataline(LodField(rep_re(gas)), csv_row, &
+        call AddFloatDatumToDataline(LodField(rep_lre(gas)), csv_row, &
             EddyFlowProj%err_label, gain=FluxnetGasScale(gas), offset=0d0)
     end do
 

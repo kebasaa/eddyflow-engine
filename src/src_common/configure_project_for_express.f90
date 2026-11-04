@@ -68,6 +68,7 @@ subroutine ConfigureProjectForExpress
     Meth%qcflag = 'mauder_foken_04'
     Meth%foot = 'kljun_04'
     RUsetup%meth = 'none'
+    RUsetup%lod_meth = 'none'
 
     !> Output files that carry, or decide, the fluxes FCC computes
     EddyFlowProj%out_full     = .true.

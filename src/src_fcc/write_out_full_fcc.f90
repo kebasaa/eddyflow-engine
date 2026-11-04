@@ -42,6 +42,11 @@ subroutine WriteOutFullFcc(lEx)
     real(kind = dbl) :: rep_re(E2NumVar)
     real(kind = dbl) :: rep_le
     real(kind = dbl) :: rep_et
+    !> The Langford random errors behind the limits of detection,
+    !> reported the same way.
+    real(kind = dbl) :: rep_lre(E2NumVar)
+    real(kind = dbl) :: rep_lle
+    real(kind = dbl) :: rep_let
     character(LongOutstringLen) :: csv_row
 
     !> local variables
@@ -106,6 +111,8 @@ subroutine WriteOutFullFcc(lEx)
 
     call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%rand_uncer, lEx%rand_uncer_LE, &
         lEx%rand_uncer_ET, rep_re, rep_le, rep_et)
+    call ReportedRandomErrors(.not. RUsetup%rp_corrected, lEx%lod_re, lEx%lod_re_LE, &
+        lEx%lod_re_ET, rep_lre, rep_lle, rep_let)
     !> Corrected fluxes (Level 3)
     !> Tau
     call WriteDatumFloat(Flux3%tau, field_val, EddyFlowProj%err_label)
@@ -116,8 +123,8 @@ subroutine WriteOutFullFcc(lEx)
         call WriteDatumFloat(rep_re(u), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
-    if (RUsetup%meth == 'langford_15') then
-        call WriteDatumFloat(LimitOfDetection(rep_re(u), RUsetup%lod_alpha, error), &
+    if (RUsetup%lod_meth == 'langford_15') then
+        call WriteDatumFloat(LimitOfDetection(rep_lre(u), RUsetup%lod_alpha, error), &
             field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
@@ -131,8 +138,8 @@ subroutine WriteOutFullFcc(lEx)
         call WriteDatumFloat(rep_re(ts), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
-    if (RUsetup%meth == 'langford_15') then
-        call WriteDatumFloat(LimitOfDetection(rep_re(ts), RUsetup%lod_alpha, error), &
+    if (RUsetup%lod_meth == 'langford_15') then
+        call WriteDatumFloat(LimitOfDetection(rep_lre(ts), RUsetup%lod_alpha, error), &
             field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
@@ -147,8 +154,8 @@ subroutine WriteOutFullFcc(lEx)
             call WriteDatumFloat(rep_le, field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         end if
-        if (RUsetup%meth == 'langford_15') then
-            call WriteDatumFloat(LimitOfDetection(rep_le, RUsetup%lod_alpha, error), &
+        if (RUsetup%lod_meth == 'langford_15') then
+            call WriteDatumFloat(LimitOfDetection(rep_lle, RUsetup%lod_alpha, error), &
                 field_val, EddyFlowProj%err_label)
             call AddDatum(csv_row, field_val, separator)
         end if
@@ -190,10 +197,10 @@ subroutine WriteOutFullFcc(lEx)
                     rep_re(gas) /= error), field_val, EddyFlowProj%err_label)
                 call AddDatum(csv_row, field_val, separator)
             end if
-            if (RUsetup%meth == 'langford_15') then
-                call WriteDatumFloat(merge(LimitOfDetection(rep_re(gas), &
+            if (RUsetup%lod_meth == 'langford_15') then
+                call WriteDatumFloat(merge(LimitOfDetection(rep_lre(gas), &
                     RUsetup%lod_alpha, error) * gas_full_flux_sc(gas), error, &
-                    rep_re(gas) /= error), field_val, EddyFlowProj%err_label)
+                    rep_lre(gas) /= error), field_val, EddyFlowProj%err_label)
                 call AddDatum(csv_row, field_val, separator)
             end if
         end if

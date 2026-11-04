@@ -72,13 +72,6 @@ subroutine Fluxes0_rp(printout)
         Flux0%H = error
     end if
 
-    !> Random error on sensible heat flux
-    if (RUsetup%meth /= 'none') then
-        if (Ambient%RhoCp > 0d0 .and. Essentials%rand_uncer(ts) /= error) &
-            Essentials%rand_uncer(ts) = &
-                Essentials%rand_uncer(ts) * Ambient%RhoCp
-    end if
-
     !> Internal sensible heat flux, Hint in [W m-2], Cp in [J Kg-1K-1]
     !>
     !> One pass over the gas slots. The four arms this replaces read four
@@ -119,11 +112,6 @@ subroutine Fluxes0_rp(printout)
                 else
                     Flux0%gas(msl) = error
                 end if
-                if (RUsetup%meth /= 'none') then
-                    if (Essentials%rand_uncer(msl) /= error) &
-                        Essentials%rand_uncer(msl) = &
-                            Essentials%rand_uncer(msl) * dens_gain
-                end if
 
             case ('mixing_ratio')
                 if (Ambient%Vd > 0d0 .and. Stats%Cov(w, msl) /= error) then
@@ -131,30 +119,12 @@ subroutine Fluxes0_rp(printout)
                 else
                     Flux0%gas(msl) = error
                 end if
-                if (RUsetup%meth /= 'none') then
-                    if (Essentials%rand_uncer(msl) /= error &
-                        .and. Ambient%Vd > 0d0) then
-                        Essentials%rand_uncer(msl) = &
-                            Essentials%rand_uncer(msl) / Ambient%Vd
-                    else
-                        Essentials%rand_uncer(msl) = error
-                    end if
-                end if
 
             case ('mole_fraction')
                 if (Ambient%Va > 0d0 .and. Stats%Cov(w, msl) /= error) then
                     Flux0%gas(msl) = Stats%Cov(w, msl) / Ambient%Va
                 else
                     Flux0%gas(msl) = error
-                end if
-                if (RUsetup%meth /= 'none') then
-                    if (Essentials%rand_uncer(msl) /= error &
-                        .and. Ambient%Va > 0d0) then
-                        Essentials%rand_uncer(msl) = &
-                            Essentials%rand_uncer(msl) / Ambient%Va
-                    else
-                        Essentials%rand_uncer(msl) = error
-                    end if
                 end if
         end select
     end do
@@ -172,20 +142,6 @@ subroutine Fluxes0_rp(printout)
         Flux0%LE = error
         Flux0%E  = error
         Flux0%ET = error
-    end if
-
-    !> Random uncertainty on latent heat flux, lambda in [J+1kg-1]
-    if (RUsetup%meth /= 'none') then
-        if (wsl >= firstGas .and. Essentials%rand_uncer(wsx) /= error &
-            .and. Ambient%lambda > 0d0) then
-            Essentials%rand_uncer_LE = &
-                Essentials%rand_uncer(wsl) * Ambient%lambda * MW_H2O * 1d-3
-            Essentials%rand_uncer_ET = &
-                Essentials%rand_uncer(wsl) * h2o_to_ET
-        else
-            Essentials%rand_uncer_LE = error
-            Essentials%rand_uncer_ET = error
-        end if
     end if
 
     !> Level 0 evapotranspiration flux [kg m-2 -1]
@@ -242,15 +198,15 @@ subroutine Fluxes0_rp(printout)
         Flux0%tau = error
     end if
 
-    !> Random error on momentum flux
-    if (RUsetup%meth /= 'none') then
-        if (Essentials%rand_uncer(u) /= error &
-            .and. RHO%a > 0d0 .and. Ambient%us >= 0d0) then
-            Essentials%rand_uncer(u) = Essentials%rand_uncer(u) * RHO%a
-        else
-            Essentials%rand_uncer(u) = error
-        end if
-    end if
+    !> Random errors and the Langford limit of detection, in covariance units
+    !> so far, into the units of their fluxes. Here, after u* is known, which
+    !> the momentum one needs; every other input was set before Fluxes0.
+    if (RUsetup%meth /= 'none') &
+        call ToFluxUnits(Essentials%rand_uncer, Essentials%rand_uncer_LE, &
+            Essentials%rand_uncer_ET)
+    if (RUsetup%lod_meth == 'langford_15') &
+        call ToFluxUnits(Essentials%lod_re, Essentials%lod_re_LE, &
+            Essentials%lod_re_ET)
 
     !> Potential temperature
     if (Stats%Pr > 0d0 .and. Stats%T > 0d0) then
@@ -291,4 +247,68 @@ subroutine Fluxes0_rp(printout)
     end if
     if (printout) write(*,'(a)')   ' Done.'
     if (printout) write(ulog,'(a)')   ' Done.'
+
+contains
+
+!***************************************************************************
+!> A random error, or the Langford one behind the limit of detection, from
+!> covariance units into the units of its flux: H by rho*cp, each gas as its
+!> flux above, LE and ET from the primary water slot, and Tau by rho_a. One
+!> routine for both, so the two cannot be converted differently.
+!***************************************************************************
+subroutine ToFluxUnits(re, re_LE, re_ET)
+    implicit none
+    real(kind = dbl), intent(inout) :: re(E2NumVar)
+    real(kind = dbl), intent(out) :: re_LE
+    real(kind = dbl), intent(out) :: re_ET
+    integer :: s
+    real(kind = dbl) :: gain
+
+    !> Sensible heat flux
+    if (Ambient%RhoCp > 0d0 .and. re(ts) /= error) &
+        re(ts) = re(ts) * Ambient%RhoCp
+
+    !> Gases, as their fluxes
+    do s = firstGas, lastGas
+        if (.not. E2Col(s)%present) cycle
+        if (GasSlotIsWater(s)) then
+            gain = 1d0
+        else
+            gain = 1d3
+        end if
+        select case (E2Col(s)%measure_type)
+            case ('molar_density')
+                if (re(s) /= error) re(s) = re(s) * gain
+            case ('mixing_ratio')
+                if (re(s) /= error .and. Ambient%Vd > 0d0) then
+                    re(s) = re(s) / Ambient%Vd
+                else
+                    re(s) = error
+                end if
+            case ('mole_fraction')
+                if (re(s) /= error .and. Ambient%Va > 0d0) then
+                    re(s) = re(s) / Ambient%Va
+                else
+                    re(s) = error
+                end if
+        end select
+    end do
+
+    !> Latent heat flux and evapotranspiration, lambda in [J+1kg-1]
+    if (wsl >= firstGas .and. re(wsx) /= error &
+        .and. Ambient%lambda > 0d0) then
+        re_LE = re(wsl) * Ambient%lambda * MW_H2O * 1d-3
+        re_ET = re(wsl) * h2o_to_ET
+    else
+        re_LE = error
+        re_ET = error
+    end if
+
+    !> Momentum flux
+    if (re(u) /= error .and. RHO%a > 0d0 .and. Ambient%us >= 0d0) then
+        re(u) = re(u) * RHO%a
+    else
+        re(u) = error
+    end if
+end subroutine ToFluxUnits
 end subroutine Fluxes0_rp

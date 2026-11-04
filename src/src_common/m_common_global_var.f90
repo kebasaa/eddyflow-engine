@@ -592,7 +592,7 @@ module m_common_global_var
          EPPrjNTags(12)%Label / 'col_air_t' / &
          EPPrjNTags(13)%Label / 'col_air_p' / &
          EPPrjNTags(14)%Label / 'ru_spec_corr' / &
-         EPPrjNTags(15)%Label / '' / &
+         EPPrjNTags(15)%Label / 'lod_meth' / &
          EPPrjNTags(16)%Label / '' / &
          EPPrjNTags(17)%Label / '' / &
          EPPrjNTags(18)%Label / '' / &
