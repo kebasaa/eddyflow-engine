@@ -496,9 +496,10 @@ class FluxnetGasScalesAreBySpecies(unittest.TestCase):
         self.assertIn("do gas = firstGas, ts + min(EddyFlowProj%gas_num", block)
         self.assertEqual(
             block.count("/ FluxnetGasScale(gas)"),
-            4,
-            "the inverse must cover all four scaled quantities - Flux0, "
-            "rand_uncer, r and chi - each through the same function",
+            5,
+            "the inverse must cover all five scaled quantities - Flux0, "
+            "rand_uncer, the Langford LoD's lod_re, r and chi - each through "
+            "the same function",
         )
         for slot in ("ch4", "gas4"):
             # Built by concatenation: '%r' in the Fortran text is a Python

@@ -1240,6 +1240,12 @@ module m_typedef
         real(kind = dbl) :: rand_uncer(E2NumVar)
         real(kind = dbl) :: rand_uncer_LE
         real(kind = dbl) :: rand_uncer_ET
+        !> The Langford et al. (2015) random error behind the limit of
+        !> detection, LoD = lod_alpha * lod_re: kept apart from rand_uncer,
+        !> which holds the random error method's own estimate.
+        real(kind = dbl) :: lod_re(E2NumVar)
+        real(kind = dbl) :: lod_re_LE
+        real(kind = dbl) :: lod_re_ET
         real(kind = dbl) :: ar_s(GHGNumVar)
         real(kind = dbl) :: do_s_ctr(GHGNumVar)
         real(kind = dbl) :: do_s_ext(GHGNumVar)
@@ -1432,12 +1438,15 @@ module m_typedef
         integer :: tlag_max
         character(32) :: meth
         character(32) :: its_meth
-        !> Langford et al. (2015) limit of detection, shared by the random
-        !> error method langford_15 and the detection limit of that name.
+        !> Langford et al. (2015) limit of detection, switched on by lod_meth
+        !> ('none' or 'langford_15') whatever the random error method is.
+        !> The window, statistic and multiple below are shared with the
+        !> detection limit of that name.
         !> Window: 0 +/-150-180 s (Langford), 1 +/-160-180 s (Maier et al.
         !> 2022), 2 automatic. Statistic 'rmse' or 'sd'. The multiple of the
         !> integral turbulence scale the automatic window starts at, and the
         !> coverage factor alpha of LoD = alpha * RE.
+        character(16) :: lod_meth = 'none'
         integer :: lod_window = 0
         character(4) :: lod_stat = 'rmse'
         real(kind = dbl) :: lod_its_mult = 10d0
@@ -2209,6 +2218,11 @@ module m_typedef
         real(kind = dbl) :: rand_uncer(E2NumVar)
         real(kind = dbl) :: rand_uncer_LE
         real(kind = dbl) :: rand_uncer_ET
+        !> The Langford random error behind the limit of detection, recovered
+        !> from the ex record's _LOD family as LoD / lod_alpha.
+        real(kind = dbl) :: lod_re(E2NumVar)
+        real(kind = dbl) :: lod_re_LE
+        real(kind = dbl) :: lod_re_ET
         !> Flux detection limit, Wienhold et al. (1994), in covariance units.
         !> Read from the ex record so FCC can carry it into its own outputs.
         real(kind = dbl) :: detlim(E2NumVar)

@@ -44,6 +44,7 @@ subroutine ConfigureForMdRetrieval()
     Meth%qcflag = 'none'
     Meth%foot = 'none'
     RUsetup%meth = 'none'
+    RUsetup%lod_meth = 'none'
     RPsetup%bu_corr = 'none'
     RPsetup%calib_aoa = 'none'
     RPsetup%bu_multi = .false.

@@ -264,7 +264,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 4 + nExGas                &  !< skipped: final fluxes
         + 2                         &  !< rand_uncer u, ts
         + 2 + nExGas                &  !< rand_uncer LE/ET, per gas
-        + 4 + nExGas                &  !< skipped: Langford LoD, alpha * rand_uncer
+        + 4 + nExGas                &  !< Langford LoD, read back as lod_re
         + 3 + nExGas                &  !< storage H/LE/ET, per gas
         + nExGas                    &  !< skipped: advection fluxes
         + 6                         &  !< unrotated and rotated u,v,w
@@ -294,6 +294,9 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         + 1 + 9                     &  !< degraded T covariance and its 9 lags
         + nExVar                       !< spike counts
 
+    !> Only the slots the record carries are read back.
+    lEx%lod_re = error
+
     !> Extract some data
     read(dataline, *, iostat = read_status) lEx%DOY_start, lEx%DOY_end, lEx%fname, lEx%RP, &
         lEx%nighttime_int, lEx%nr_theor, &
@@ -304,7 +307,9 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
         lEx%rand_uncer(u), lEx%rand_uncer(ts), &
         lEx%rand_uncer_LE, lEx%rand_uncer_ET, &
         (lEx%rand_uncer(exSlots(jx)), jx = 1, nExSlots), &
-        aux(1 : 4 + n_layout_gas), & !< Skip the LoD: FCC recomputes it from rand_uncer
+        lEx%lod_re(u), lEx%lod_re(ts), & !< The LoD, divided by alpha below:
+        lEx%lod_re_LE, lEx%lod_re_ET, &  !< its own random error, not rand_uncer's
+        (lEx%lod_re(exSlots(jx)), jx = 1, nExSlots), &
         lEx%Stor%H, lEx%Stor%LE, lEx%Stor%ET, &
         (lEx%Stor%of(exSlots(jx)), jx = 1, nExSlots), &
         aux(1 : n_layout_gas), & !< Skip advection fluxes
@@ -1049,9 +1054,19 @@ subroutine CompleteEssentials(lEx)
             lEx%Flux0%gas(gas) = lEx%Flux0%gas(gas) / FluxnetGasScale(gas)
         if (lEx%rand_uncer(gas) /= error) &
             lEx%rand_uncer(gas) = lEx%rand_uncer(gas) / FluxnetGasScale(gas)
+        if (lEx%lod_re(gas) /= error) &
+            lEx%lod_re(gas) = lEx%lod_re(gas) / FluxnetGasScale(gas)
         if (lEx%r(gas) /= error) lEx%r(gas) = lEx%r(gas) / FluxnetGasScale(gas)
         if (lEx%chi(gas) /= error) lEx%chi(gas) = lEx%chi(gas) / FluxnetGasScale(gas)
     end do
+    !> RP wrote the limit of detection, alpha times its random error; FCC
+    !> keeps the random error, so the LoD goes through the same spectral
+    !> correction as every other random error before alpha is applied again.
+    !> Not recomputed from rand_uncer: that is the random error method's own
+    !> estimate, not Langford's.
+    where (lEx%lod_re /= error) lEx%lod_re = lEx%lod_re / RUsetup%lod_alpha
+    if (lEx%lod_re_LE /= error) lEx%lod_re_LE = lEx%lod_re_LE / RUsetup%lod_alpha
+    if (lEx%lod_re_ET /= error) lEx%lod_re_ET = lEx%lod_re_ET / RUsetup%lod_alpha
     if (lEx%Ts /= error) lEx%Ts = lEx%Ts + 273.15d0
     if (lEx%Ta /= error) lEx%Ta = lEx%Ta + 273.15d0
     if (lEx%Tdew /= error) lEx%Tdew = lEx%Tdew + 273.15d0

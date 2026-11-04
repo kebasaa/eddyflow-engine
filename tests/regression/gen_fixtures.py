@@ -371,7 +371,24 @@ def build_es95(src_lines):
     return out
 
 
+def build_lod(src_lines):
+    """base_n_gas_ru with the Langford et al. (2015) limit of detection on.
+
+    The only fixture with a random error method and the limit of detection
+    together, which is the point of the separate switch: *_RANDUNC_HF must stay
+    Finkelstein and Sims's, byte-identical to base_n_gas_ru, while *_LOD and
+    the lod_* columns fill in beside it.
+    """
+    out = []
+    for ln in src_lines:
+        out.append(ln)
+        if ln.startswith('ru_meth='):
+            out.append('lod_meth=1')
+    return out
+
+
 TARGETS = {
+    'base_n_gas_lod.eddyflow': ('base_n_gas_ru.eddyflow', build_lod),
     'base_es95.eddyflow': ('base_n_gas_analytic.eddyflow', build_es95),
     'base_sa_write.eddyflow': ('base_n_gas_bin.eddyflow', build_sa_write),
     'base_auto_sa.eddyflow': ('base_n_gas.eddyflow', build_auto_sa),
