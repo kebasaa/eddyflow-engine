@@ -132,6 +132,11 @@
 	       its closed form cancels, and an error component is kept out of the
 	       product. Ordinary path lengths are unaffected. Inherited from
 	       EddyPro.
+	- Fix: The *_ABSLIM_NREX columns were inverted. They count the values the
+	       absolute-limits test eliminated, like the spike and diagnostics
+	       counts beside them, but were zeroed exactly when the test removed
+	       values and showed a count when it only flagged. Fluxes and the flag
+	       string were unaffected.
 
 8.1.7 (2026-11-04)
 

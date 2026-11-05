@@ -232,5 +232,14 @@ class AShortPathAveragesToOne(unittest.TestCase):
         self.assertIn("where (BPTF%LP(var1)%wirga == error .or. BPTF%LP(var2)%wirga == error)", bp)
 
 
+class AbsoluteLimitsCountWhatTheyRemove(unittest.TestCase):
+
+    def test_zero_only_when_nothing_is_removed(self):
+        al = code("src_rp", "test_absolute_limits.f90")
+        guard = al.index("if (.not. RPsetup%filter_al) then")
+        self.assertIn("Essentials%al_s(u:lastGas) = 0", al[guard:guard + 200])
+        self.assertNotIn("    if (RPsetup%filter_al) then\n        where (E2Col(u:lastGas)%present)", al)
+
+
 if __name__ == "__main__":
     unittest.main()
