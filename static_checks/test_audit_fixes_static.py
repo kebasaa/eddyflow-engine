@@ -419,5 +419,18 @@ class PotentialRadiationKeepsSolarTime(unittest.TestCase):
         self.assertIn("lrad = PotentialRadiationAt(rad, date, time)", self.DATES)
 
 
+class AnEmptyWaterClassTableCostsOnlyWater(unittest.TestCase):
+    """With edge-pinned lags kept out, water's RH classes can all be empty;
+    that switched the whole run to covariance maximisation."""
+
+    def test_water_takes_its_unclassed_window_and_the_run_continues(self):
+        opt = code("src_rp", "optimize_timelags.f90")
+        tail = opt[opt.index("if (WaterSlotClassed(wsl)) then\n        if (toH2O(1, wsl)%def == error"):]
+        tail = tail[:tail.index("end subroutine OptimizeTimelags")]
+        self.assertIn("toH2O(1:MM, wsl) = toPasGas(wsl)", tail)
+        self.assertNotIn("call ExceptionHandler(43)", tail)
+        self.assertNotIn("Meth%tlag = 'maxcov'", tail)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -289,6 +289,15 @@
 	       the new utc_offset and the equation of time, at each period's middle.
 	       SW_IN_POT and the day/night flag move for every site. Inherited from
 	       EddyPro (LI-COR eddypro-engine issue 8).
+	- Fix: When the time-lag optimisation could fill none of water vapour's
+	       relative-humidity classes, it switched the whole run to covariance
+	       maximisation (Alert 43) and dropped every gas's optimised window.
+	       With lags pinned at the search window's edge now kept out of the
+	       dataset - the intent of EddyPro's own gate, which its exact
+	       comparison defeated - a short or edge-bound water record empties its
+	       classes more often. Water now takes one window from all its
+	       determinations, or its metadata window when it has too few, and the
+	       other gases keep theirs.
 
 8.1.7 (2026-11-04)
 
