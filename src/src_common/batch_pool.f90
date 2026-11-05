@@ -1093,7 +1093,7 @@ contains
     end subroutine SayPiecesDone
 
     !***************************************************************************
-    !> rief Parent: block until piece k is done, keeping the other workers
+    !> \brief Parent: block until piece k is done, keeping the other workers
     !>        busy meanwhile.
     !>
     !> For a parent that consumes the pieces in order while they are being
@@ -1123,7 +1123,7 @@ contains
     end subroutine WaitForBatchPiece
 
     !***************************************************************************
-    !> rief Parent: start no more pieces, wait for the running ones to end,
+    !> \brief Parent: start no more pieces, wait for the running ones to end,
     !>        and close the pool, without folding their logs into the run's.
     !>
     !> For a parent that has taken what it needed from the pieces - all of

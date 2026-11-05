@@ -71,6 +71,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     !> Row lag the water covariance is taken at: the gas's own where the two
     !> share an analyser, the hygrometer's where they do not.
     integer :: lagRow
+    logical :: same_analyser
     include '../src_common/interfaces_1.inc'
 
     skip_apply = pwb_detect_only_mode
@@ -169,6 +170,32 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     end select
 
     if (.not. skip_apply .and. .not. InTimelagOpt) then
+        !> Flux detection limit, Wienhold et al. (1994).
+        !>
+        !> Here, and not from the main program after this routine returns,
+        !> because the noise windows are read off the cross-covariance
+        !> function and that needs the series on their raw alignment. The
+        !> block below shifts Set by each gas's lag, after which the function
+        !> this measures no longer exists.
+        call FluxDetectionLimit(Set, nrow, ncol)
+
+        !> Conditional borrowing, Nemitz et al. (2018). After the detection
+        !> limit, which it tests against, and before the shift below, which
+        !> is what makes a borrowed lag take effect - and before the lagged
+        !> water and cell-temperature covariances that follow, which are
+        !> taken at RowLags: run after them, as it was, a gas that borrowed
+        !> had its E_gas and Hi_gas terms evaluated at the lag it had just
+        !> been found not to have, often its window's edge.
+        !>
+        !> The limits it reads were measured at each gas's pre-borrow lag.
+        !> That is not worth recomputing: the windows sit a hundred seconds
+        !> off the peak by default, and moving their centre by the second or
+        !> two a borrow changes it by leaves the scatter out there the same.
+        !> ActTLag is deliberately not passed: it reports what each gas's own
+        !> maximisation found, and borrowing must leave that alone.
+        call BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
+            TLag, DefTlagUsed)
+
         !> For closed path instruments, calculate H2O covariances
         !> for time-lags of other scalars from the same instrument
         !>
@@ -225,7 +252,18 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             !> analysers is a compromise and ExceptionHandler(106) says so;
             !> declaring an H2O on the gas's own analyser makes ResolveGasRef
             !> prefer it and the two lags become one again.
-            if (E2Col(j)%instr%model == E2Col(msl)%instr%model) then
+            !>
+            !> "Same analyser" by identity where the records name their
+            !> instruments: two analysers of one model are two tubes, and the
+            !> model test sent a gas's water covariance down the other one's
+            !> lag. Unnamed records keep the model test, as EddyPro had it.
+            if (len_trim(E2Col(j)%instr_name) > 0 &
+                .and. len_trim(E2Col(msl)%instr_name) > 0) then
+                same_analyser = SameAnalyser(j, msl)
+            else
+                same_analyser = E2Col(j)%instr%model == E2Col(msl)%instr%model
+            end if
+            if (same_analyser) then
                 lagRow = RowLags(j)
             else
                 lagRow = RowLags(msl)
@@ -272,28 +310,6 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             call CovarianceW(ColW, ColTC, size(ColTC), &
                 RowLags(j), Stats%tc_cov_tl(j))
         end do
-
-        !> Flux detection limit, Wienhold et al. (1994).
-        !>
-        !> Here, and not from the main program after this routine returns,
-        !> because the noise windows are read off the cross-covariance
-        !> function and that needs the series on their raw alignment. The
-        !> block below shifts Set by each gas's lag, after which the function
-        !> this measures no longer exists.
-        call FluxDetectionLimit(Set, nrow, ncol)
-
-        !> Conditional borrowing, Nemitz et al. (2018). After the detection
-        !> limit, which it tests against, and before the shift below, which
-        !> is what makes a borrowed lag take effect.
-        !>
-        !> The limits it reads were measured at each gas's pre-borrow lag.
-        !> That is not worth recomputing: the windows sit a hundred seconds
-        !> off the peak by default, and moving their centre by the second or
-        !> two a borrow changes it by leaves the scatter out there the same.
-        !> ActTLag is deliberately not passed: it reports what each gas's own
-        !> maximisation found, and borrowing must leave that alone.
-        call BorrowTimelagBelowDetectionLimit(Set, nrow, ncol, min_rl, max_rl, &
-            TLag, DefTlagUsed)
     end if
 
     if (.not. skip_apply) then
@@ -301,6 +317,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         !> filling remaining with error code.
         do j = u, pe
             if (E2Col(j)%present) then
+                !> A lag as long as the period leaves nothing to align, and
+                !> the loops below would index outside Set and TmpSet - which
+                !> a time-lag optimisation window built from empty RH classes
+                !> could ask for. The column is missing for the period instead.
+                if (abs(RowLags(j)) >= nrow) then
+                    TmpSet(1:nrow, j) = error
+                    cycle
+                end if
                 if (RowLags(j) >= 0) then
                     !> For positive lags
                     do i = 1, nrow - RowLags(j)

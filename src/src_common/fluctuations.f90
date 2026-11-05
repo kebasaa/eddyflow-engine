@@ -96,7 +96,6 @@ subroutine LinDetrend(Set, Primes, Tconst, LocCol, N, M)
     integer :: chuncks
     integer :: j
     integer :: nn(M)
-    integer :: mm(M)
     integer :: Rconst
     integer :: imin
     integer :: imax
@@ -126,7 +125,16 @@ subroutine LinDetrend(Set, Primes, Tconst, LocCol, N, M)
             end if
         end if
 
-        !> Linear regression
+        !> Linear regression, against each sample's row offset in the chunk.
+        !>
+        !> The time axis was the sample count, and the trend was evaluated at
+        !> the row count. The two agree for a column with no missing rows;
+        !> for any other they part, and the trend is evaluated at times the fit
+        !> never saw. A 1 Hz column in a 10 Hz file had its slope fitted over
+        !> a tenth of the chunk and drawn over all of it - a real 5 ppm rise
+        !> became a -45 ppm ramp in the fluctuations - and a few filtered rows
+        !> tilt every column a little. Rows are time, so both use rows; for a
+        !> column with no gaps nothing changes.
         sumx1 = 0d0
         sumx2 = 0d0
         sumtime = 0d0
@@ -137,10 +145,10 @@ subroutine LinDetrend(Set, Primes, Tconst, LocCol, N, M)
                 do i = imin, imax
                     if (Set(i, j) /= error) then
                         nn(j) = nn(j) + 1
-                        sumx1(j) = sumx1(j) + (Set(i, j)*(dble(nn(j) - 1)))
+                        sumx1(j) = sumx1(j) + (Set(i, j)*(dble(i - imin)))
                         sumx2(j) = sumx2(j) + Set(i, j)
-                        sumtime(j) = sumtime(j) + (dble(nn(j) - 1))
-                        sumtime2(j) = sumtime2(j) + (dble(nn(j) - 1))**2
+                        sumtime(j) = sumtime(j) + (dble(i - imin))
+                        sumtime2(j) = sumtime2(j) + (dble(i - imin))**2
                     end if
                 end do
                 where (nn(:) /= 0)
@@ -150,16 +158,14 @@ subroutine LinDetrend(Set, Primes, Tconst, LocCol, N, M)
         end do
 
         !> Trend
-        mm = 0
         do j = 1, M
             if (LocCol(j)%present) then
                 b(j) = (sumx1(j) - (sumx2(j)*sumtime(j)) / dble(nn(j))) / &
                       (sumtime2(j) - (sumtime(j)*sumtime(j)) / dble(nn(j)))
                 do i = imin, imax
-                    mm(j) = mm(j) + 1
                     if(Set(i, j) /= error) then
                         Trend(i, j) = mean(j) + b(j) * &
-                            (dble(mm(j) - 1) - sumtime(j) / dble(nn(j)))
+                            (dble(i - imin) - sumtime(j) / dble(nn(j)))
                     else
                         Trend(i, j) = error
                     end if
@@ -211,6 +217,8 @@ subroutine RunningMean(Set, Primes, Tconst, LocCol, N, M)
     integer :: back = 0
     integer :: cnt = 0
     integer :: Rconst
+    integer :: win_cnt
+    real(kind = dbl) :: win_sum
     real(kind = dbl) :: Trend(N, M)
 
 
@@ -218,8 +226,43 @@ subroutine RunningMean(Set, Primes, Tconst, LocCol, N, M)
     Rconst = Tconst * idint(Metadata%ac_freq)
 
     !> Trend
+    Trend = error
     do k = 1, M
         if (LocCol(k)%present) then
+            !> A column with missing rows - one slower than the file, or with
+            !> filtered samples - gets the mean of its valid samples in the
+            !> trailing Rconst rows, kept as a running sum and count.
+            !>
+            !> The recursion below adds (new - oldest) / Rconst only where
+            !> both rows hold a sample, so a 1 Hz column in a 10 Hz file was
+            !> updated at a tenth of its samples' weight and detrended about
+            !> ten times too weakly; and after a gap at the start no earlier
+            !> trend existed, the search back found none, and the trend came
+            !> from whatever memory held. A column without gaps keeps the
+            !> recursion, which is the same mean, so its numbers do not move.
+            if (any(Set(1:N, k) == error)) then
+                win_sum = 0d0
+                win_cnt = 0
+                do i = 1, N
+                    if (Set(i, k) /= error) then
+                        win_sum = win_sum + Set(i, k)
+                        win_cnt = win_cnt + 1
+                    end if
+                    if (i > Rconst) then
+                        if (Set(i - Rconst, k) /= error) then
+                            win_sum = win_sum - Set(i - Rconst, k)
+                            win_cnt = win_cnt - 1
+                        end if
+                    end if
+                    if (win_cnt > 0) Trend(i, k) = win_sum / dble(win_cnt)
+                end do
+                where (Trend(1:N, k) /= error .and. Set(1:N, k) /= error)
+                    Primes(1:N, k) = Set(1:N, k) - Trend(1:N, k)
+                elsewhere
+                    Primes(1:N, k) = error
+                end where
+                cycle
+            end if
             !> First Rconst elements in the time series have a special treatment
             do i = 1, Rconst
                 Trend(i, k) = 0.d0
@@ -298,8 +341,10 @@ subroutine ExpWeightAvrg(Set, Primes, Tconst, LocCol, N, M)
     integer :: cnt = 0
     integer :: Rconst
     real(kind = dbl) :: b
+    real(kind = dbl) :: bk
     real(kind = dbl) :: dt
     real(kind = dbl) :: Trend(N, M)
+    integer :: last_valid
 
 
     !> Time consant in terms of rows
@@ -310,6 +355,7 @@ subroutine ExpWeightAvrg(Set, Primes, Tconst, LocCol, N, M)
     b = dexp(-dt / dfloat(Tconst))
 
     !> Trend
+    Trend = error
     do k = 1, M
         if (LocCol(k)%present) then
             !> First Rconst elements in the time series have a special treatment
@@ -328,9 +374,26 @@ subroutine ExpWeightAvrg(Set, Primes, Tconst, LocCol, N, M)
                     Trend(i, k) = error
                 end if
             end do
-            !> Then, normal running mean
+            !> Then, normal running mean.
+            !>
+            !> Decayed by the rows since the column's last sample, b**gap: a
+            !> column slower than the file has a sample every few rows, and one
+            !> step's decay per sample left its trend ten times too slow for a
+            !> 1 Hz column in a 10 Hz file. One row apart, as every sample of a
+            !> full-rate column is, b**1 is b and nothing changes. With no
+            !> earlier trend at all - the column's first Rconst rows missing -
+            !> the search back found nothing and the trend stayed whatever
+            !> memory held; it now starts at the first sample.
+            last_valid = 0
+            do i = 1, min(Rconst, N)
+                if (Set(i, k) /= error) last_valid = i
+            end do
             do i = Rconst + 1, N
                 if (Set(i, k) /= error) then
+                    bk = b
+                    if (last_valid > 0) bk = b ** (i - last_valid)
+                    last_valid = i
+                    Trend(i, k) = error
                     do back = 1, Rconst
                         if (Trend(i - back, k) /= error) then
                             !> Column k, not every column. The test is on k, so
@@ -343,11 +406,12 @@ subroutine ExpWeightAvrg(Set, Primes, Tconst, LocCol, N, M)
                             !> sample at different rates, a fast column's pass
                             !> writes -9999 into a slower one's trend, and only
                             !> the last present column survives it.
-                            Trend(i, k) = b * Trend(i - back, k) &
-                                + (1.d0 - b) * Set(i, k)
+                            Trend(i, k) = bk * Trend(i - back, k) &
+                                + (1.d0 - bk) * Set(i, k)
                             exit
                         end if
                     end do
+                    if (Trend(i, k) == error) Trend(i, k) = Set(i, k)
                 else
                     Trend(i, k) = Trend(i - 1, k)
                 end if

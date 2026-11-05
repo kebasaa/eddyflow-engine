@@ -36,7 +36,6 @@
 subroutine Fluxes1_rp()
     use m_rp_global_var
     implicit none
-    real(kind = dbl)  :: Cox
     integer :: msl
     integer :: wsl
     integer :: wsx
@@ -46,10 +45,10 @@ subroutine Fluxes1_rp()
 
     Flux1 = errFlux
 
-    !> Water's own slot. The oxygen correction below is a krypton /
-    !> Lyman-alpha hygrometer correction - genuinely about water - and the
-    !> E/ET/LE terms are the primary water's. Both resolve the slot rather
-    !> than assuming record two holds water.
+    !> Water's own slot: the E/ET/LE terms are the primary water's, so the
+    !> slot is resolved rather than assuming record two holds water. The
+    !> oxygen correction of krypton and Lyman-alpha hygrometers, which used
+    !> to open this routine, is OxygenCorrectionKrypton_rp below.
     wsl = PrimaryWaterSlot()
     !> An always-in-bounds stand-in for wsl inside guard expressions.
     !>
@@ -59,40 +58,6 @@ subroutine Fluxes1_rp()
     !> still decides the outcome; wsx only keeps the subscript legal while it
     !> is being decided.
     wsx = max(wsl, firstGas)
-
-    !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
-    !> according to van Dijk et al. (2003, JAOT, eq. 13b).
-    !>
-    !> Over every hygrometer, each with its own ko/kw. This is genuinely a
-    !> water-vapour correction - oxygen absorbs in the same band the
-    !> instrument uses to measure water - so the H2O assumption stays; only
-    !> the slot is resolved. Applied to the primary water alone, a second
-    !> krypton on the same site was never corrected at all.
-    do msl = firstGas, lastGas
-        if (.not. GasSlotIsWater(msl)) cycle
-        if (.not. E2Col(msl)%present) cycle
-        select case (E2Col(msl)%Instr%model(1:len_trim(E2Col(msl)%Instr%model) - 2))
-            case('open_path_krypton','closed_path_krypton', &
-                    'open_path_lyman','closed_path_lyman')
-                !> That hygrometer's own extinction coefficients. Absent, the
-                !> correction is not performed for it - never performed with
-                !> another instrument's numbers.
-                if (E2Col(msl)%Instr%ko /= error .and. E2Col(msl)%Instr%kw /= 0d0 &
-                    .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
-                    .and. Ambient%lambda > 0) then
-                    Cox = 1d0 + 0.23d0 * E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw &
-                        * Ambient%Bowen * Ambient%lambda / Ambient%Ta
-                    Stats%Cov(w, msl) = Cox * Stats%Cov(w, msl)
-                    Stats%Cov(msl, msl) = Cox**2 * Stats%Cov(msl, msl)
-                    !> Alternative formulation by T.W. Horst
-                    !> http://www.eol.ucar.edu/instrumentation/sounding&
-                    !> &/isfs/isff-support-center/how-tos/&
-                    !> $corrections-to-sensible-and-latent-heat-flux-measurements
-                    !Stats%Cov(w, msl) = Stats%Cov(w, msl) / (1 - 8d0 * 0.23d0 &
-                    !* E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw * Ambient%bowen)
-                end if
-        end select
-    end do
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = Flux0%H
@@ -151,8 +116,13 @@ subroutine Fluxes1_rp()
     !> Momentum flux [kg m-1 s-2] and friction velocity [m s-1]
     if (BPCF%of(w_u) /= error) then
         Flux1%tau = Flux0%tau * BPCF%of(w_u)
-        if (Ambient%us /= error) &
-            Ambient%us = Ambient%us * dsqrt(BPCF%of(w_u))
+        !> From the Level-0 u*, not in place: the iterative correction calls
+        !> this routine once per pass, and multiplying Ambient%us by itself
+        !> left u* carrying BPCF(w_u)**(n/2) after n passes - and with it L,
+        !> z/L, the footprint and the turbulence test. Flux0%ustar is set once
+        !> per period, by Fluxes0_rp.
+        if (Flux0%ustar /= error) &
+            Ambient%us = Flux0%ustar * dsqrt(BPCF%of(w_u))
     else
         Flux1%tau = Flux0%tau
     end if
@@ -161,3 +131,81 @@ subroutine Fluxes1_rp()
 
     call LogSay(' Done.')
 end subroutine Fluxes1_rp
+
+!***************************************************************************
+! \brief       Oxygen correction of krypton and Lyman-alpha hygrometers, after
+!              van Dijk et al. (2003, JAOT, eq. 13b), once per period.
+! \author      Jonathan Muller
+! \note        Out of Fluxes1_rp, which the iterative correction calls once
+!              per pass: the correction scales Stats%Cov in place, so every
+!              further pass applied it again and the water covariance and
+!              variance carried Cox to the power of the number of passes.
+!              Called before the first Fluxes1_rp of a period.
+!***************************************************************************
+subroutine OxygenCorrectionKrypton_rp(scale_fluxes)
+    use m_rp_global_var
+    implicit none
+    !> Whether the Level-0 water fluxes are corrected here too: not when FCC
+    !> follows, which reads them back uncorrected and corrects them itself.
+    logical, intent(in) :: scale_fluxes
+    real(kind = dbl)  :: Cox
+    integer :: msl
+    logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
+
+    !> Apply oxygen correction to Krypton and Lyman-alpha hygrometers,
+    !> according to van Dijk et al. (2003, JAOT, eq. 13b).
+    !>
+    !> Over every hygrometer, each with its own ko/kw. This is genuinely a
+    !> water-vapour correction - oxygen absorbs in the same band the
+    !> instrument uses to measure water - so the H2O assumption stays; only
+    !> the slot is resolved. Applied to the primary water alone, a second
+    !> krypton on the same site was never corrected at all.
+    do msl = firstGas, lastGas
+        if (.not. GasSlotIsWater(msl)) cycle
+        if (.not. E2Col(msl)%present) cycle
+        select case (E2Col(msl)%Instr%model(1:len_trim(E2Col(msl)%Instr%model) - 2))
+            case('open_path_krypton','closed_path_krypton', &
+                    'open_path_lyman','closed_path_lyman')
+                !> That hygrometer's own extinction coefficients. Absent, the
+                !> correction is not performed for it - never performed with
+                !> another instrument's numbers.
+                if (E2Col(msl)%Instr%ko /= error .and. E2Col(msl)%Instr%kw /= 0d0 &
+                    .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
+                    .and. Ambient%lambda > 0 .and. RHO%a > 0d0 &
+                    .and. Ambient%RhoCp > 0d0) then
+                    !> Cox = 1 + 0.23 (ko/kw) beta lambda / (cp T), with 0.23
+                    !> the oxygen mole fraction times M_O2 / M_air and cp the
+                    !> moist air's, RhoCp / rho. The 1/cp was missing, which
+                    !> made the factor about 1 + 56 beta instead of
+                    !> 1 + 0.06 beta, negative for beta below -0.02; Horst's
+                    !> form below carries the same ratio as its 8.
+                    Cox = 1d0 + 0.23d0 * E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw &
+                        * Ambient%Bowen * Ambient%lambda &
+                        / (Ambient%RhoCp / RHO%a * Ambient%Ta)
+                    Stats%Cov(w, msl) = Cox * Stats%Cov(w, msl)
+                    Stats%Cov(msl, msl) = Cox**2 * Stats%Cov(msl, msl)
+                    !> And the flux, which is what the correction is for: the
+                    !> Level-0 water flux and its LE/E/ET were computed from
+                    !> the uncorrected covariance, so the correction never
+                    !> reached them. Not when FCC follows: the ex record
+                    !> carries Level 0 uncorrected and FCC corrects it once.
+                    if (scale_fluxes) then
+                        if (Flux0%gas(msl) /= error) &
+                            Flux0%gas(msl) = Cox * Flux0%gas(msl)
+                        if (msl == PrimaryWaterSlot()) then
+                            if (Flux0%LE /= error) Flux0%LE = Cox * Flux0%LE
+                            if (Flux0%E /= error) Flux0%E = Cox * Flux0%E
+                            if (Flux0%ET /= error) Flux0%ET = Cox * Flux0%ET
+                        end if
+                    end if
+                    !> Alternative formulation by T.W. Horst
+                    !> http://www.eol.ucar.edu/instrumentation/sounding&
+                    !> &/isfs/isff-support-center/how-tos/&
+                    !> $corrections-to-sensible-and-latent-heat-flux-measurements
+                    !Stats%Cov(w, msl) = Stats%Cov(w, msl) / (1 - 8d0 * 0.23d0 &
+                    !* E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw * Ambient%bowen)
+                end if
+        end select
+    end do
+end subroutine OxygenCorrectionKrypton_rp

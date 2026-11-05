@@ -152,8 +152,8 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
     character(32) :: w_tags(GHGNumVar)
     type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
     type(CECDescriptorType) :: cec_blank
-    real(kind = dbl) :: cec_values(MaxNumCecTargets * 6 + 9)
-    logical :: cec_is_int(MaxNumCecTargets * 6 + 9)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 7 + 9)
+    logical :: cec_is_int(MaxNumCecTargets * 7 + 9)
     include '../src_common/interfaces.inc'
 
     call clearstr(csv_row)
@@ -180,9 +180,7 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
     call AddDatum(csv_row, 'not_enough_data', separator)
 
     !> Potential Radiations
-    indx = DateTimeToHalfHourNumber(end_date, end_time) - 1
-    indx = max(indx, 2)
-    lrad = (PotRad(indx) + PotRad(indx - 1)) / 2
+    lrad = PotentialRadiationAt(PotRad, end_date, end_time)
     call AddFloatDatumToDataline(lrad, csv_row, EddyFlowProj%err_label)
 
     !> Daytime

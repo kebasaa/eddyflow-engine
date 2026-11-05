@@ -38,6 +38,8 @@ subroutine AirAndCellParameters()
     !> local variables
     integer :: gas
     integer :: cellBase
+    real(kind = dbl) :: amb_T
+    real(kind = dbl) :: amb_P
 
     !> Air temperature/pressure estimates
     !> Last true condition determines which temperature is used
@@ -86,6 +88,20 @@ subroutine AirAndCellParameters()
     E2Col%Va = error
     Ambient%Tcell_at = error
     Ambient%Pcell_at = error
+    !> What a gas without a cell reading of its own falls back to: ambient
+    !> air. The scalars Ambient%Tcell and Ambient%Pcell are the FIRST cell
+    !> block's - whichever analyser owns cell record one - so falling back to
+    !> them handed that analyser's cell to a gas measured in another, the very
+    !> thing the comment below says this stopped doing; with a low-pressure
+    !> laser cell in record one, the other analyser's Va and its WPL terms
+    !> were off by a large factor. A single-analyser project points every gas
+    !> at its one block, so nothing changes there.
+    amb_T = Stats%T
+    if (Stats%Pr /= error) then
+        amb_P = Stats%Pr
+    else
+        amb_P = Metadata%bar_press
+    end if
     do gas = firstGas, lastGas
         if (.not. E2Col(gas)%present) cycle
 
@@ -97,8 +113,8 @@ subroutine AirAndCellParameters()
         !> no reading.
         cellBase = E2Col(gas)%cell_ref
         if (cellBase < firstCell .or. cellBase > lastCell) then
-            Ambient%Tcell_at(gas) = Ambient%Tcell
-            Ambient%Pcell_at(gas) = Ambient%Pcell
+            Ambient%Tcell_at(gas) = amb_T
+            Ambient%Pcell_at(gas) = amb_P
             if (E2Col(gas)%instr%path_type == 'closed') then
                 if (Ambient%Pcell_at(gas) > 0d0 &
                     .and. Ambient%Tcell_at(gas) /= error) then
@@ -113,13 +129,13 @@ subroutine AirAndCellParameters()
         if (Stats%Mean(cellBase) /= error) then
             Ambient%Tcell_at(gas) = Stats%Mean(cellBase)
         else
-            Ambient%Tcell_at(gas) = Ambient%Tcell
+            Ambient%Tcell_at(gas) = amb_T
         end if
 
         if (Stats%Mean(cellBase + 3) /= error) then
             Ambient%Pcell_at(gas) = Stats%Mean(cellBase + 3)
         else
-            Ambient%Pcell_at(gas) = Ambient%Pcell
+            Ambient%Pcell_at(gas) = amb_P
         end if
 
         if (E2Col(gas)%instr%path_type == 'closed') then

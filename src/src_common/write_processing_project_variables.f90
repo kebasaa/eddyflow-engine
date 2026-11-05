@@ -821,7 +821,7 @@ subroutine ReadCecRecords()
             nint(EPPrjNTags(b + 2)%value)
 
         if (EddyFlowProj%cec_pair(i)%meth < 0 &
-            .or. EddyFlowProj%cec_pair(i)%meth > 3) &
+            .or. EddyFlowProj%cec_pair(i)%meth > 4) &
             EddyFlowProj%cec_pair(i)%meth = 1
 
         b = cecRecOriginC + (i - 1) * cecRecLeapC

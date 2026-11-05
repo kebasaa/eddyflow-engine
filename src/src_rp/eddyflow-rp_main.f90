@@ -171,6 +171,7 @@ program EddyFlowRP
     integer :: planFirst
     integer :: planLast
     character(32) :: RunPlan
+    character(16) :: utc_msg
     integer :: tlagn(E2NumVar)
     integer :: MaxNumFileRecords
     integer :: NextRawFileIndx
@@ -526,7 +527,13 @@ program EddyFlowRP
     if (EddyFlowProj%use_dynmd_file) call InitDynamicMetadata(NumDynRecords)
 
     !> Determine potential radiation, based on lat/long info from metadata file
-    PotRad = PotentialRadiation(Metadata%lat)
+    PotRad = PotentialRadiation(Metadata%lat, Metadata%lon, Metadata%utc_offset)
+    !> Once, from the parent: every worker process runs this startup too.
+    if (Metadata%utc_offset_assumed .and. BatchIndex == 0) then
+        write(utc_msg, '(f0.1)') Metadata%utc_offset
+        call LogSay(' Note: the metadata give no UTC offset for the timestamps;' &
+            // ' the potential radiation assumes ' // trim(utc_msg) // ' h from the longitude.')
+    end if
 
     !> Initialize output files for "user" variables (non-sensitive variables)
     !> if at least one such variable exists. Not in a pre-pass worker, for the
@@ -3105,6 +3112,9 @@ program EddyFlowRP
                 corr_passes = 1
                 if (EddyFlowProj%corr_iter_meth) &
                     corr_passes = EddyFlowProj%corr_iter_max
+                !> Once per period, ahead of the passes: it scales the
+                !> covariances in place, so inside the loop it compounded.
+                call OxygenCorrectionKrypton_rp(.true.)
                 do corr_pass = 1, corr_passes
                     if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
@@ -3159,6 +3169,7 @@ program EddyFlowRP
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
+                    call OxygenCorrectionKrypton_rp(.false.)
                     call Fluxes1_rp()
                     call Fluxes23_rp()
                     do j = firstGas, lastGas

@@ -192,7 +192,11 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     call PackFlagString(hflags, GHGNumVar, CharHF%al)
 
 
-    if (RPsetup%filter_al) then
+    !> The *_ABSLIM_NREX columns count values ELIMINATED by the test, as the
+    !> spike and diagnostics counts beside them do - so they are zero when
+    !> the test only flags. This zeroed them exactly when values were
+    !> removed and reported a count when none were.
+    if (.not. RPsetup%filter_al) then
         where (E2Col(u:lastGas)%present)
             Essentials%al_s(u:lastGas) = 0
         end where

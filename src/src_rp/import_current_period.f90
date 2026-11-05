@@ -85,6 +85,12 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     real(kind = dbl) :: ExpectedAcFreq
     character(24) :: FromRate, ToRate
     real(kind = dbl) :: PeriodInstrFreq(MaxNumCol)
+    !> Whether a file of this period has been read yet. The period's first
+    !> file in the list need not be: one skipped for Error 24/25 left the
+    !> reference rates unset, and the next file was compared with whatever
+    !> memory held - and a rate change on it was a Warning(116) instead of
+    !> a new rate.
+    logical :: FirstRead
     integer :: j
 
 
@@ -113,6 +119,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
     if (EddyFlowProj%biomet_data == 'embedded') nbRecs = 0
     Raw = 0.d0
     CurrentFile = FirstFile
+    FirstRead = .false.
     rawfile_loop: do
         FileEndReached = .false.
         if (CurrentFile > NumFiles) then
@@ -213,7 +220,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
                 if (rate_mismatch) then
                     if (allocated(fRaw)) deallocate(fRaw)
                     NextFile = CurrentFile
-                    if (CurrentFile == FirstFile) then
+                    if (.not. FirstRead) then
                         rate_changed = .true.
                     else
                         write(FromRate, '(f0.3)') ExpectedAcFreq
@@ -251,7 +258,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
                 !> after the data are read, which the next period then reads
                 !> again - at a change of rate only.
                 if (ExpectedAcFreq > 0d0) then
-                    if (CurrentFile == FirstFile) then
+                    if (.not. FirstRead) then
                         PeriodInstrFreq = LocCol%instr%ac_freq
                     else
                         do j = 1, MaxNumCol
@@ -282,6 +289,7 @@ subroutine ImportCurrentPeriod(InitialTimestamp, FinalTimestamp, FileList, &
                         end if
                     end if
                 end if
+                FirstRead = .true.
 
             case default
                 !> For all other file types

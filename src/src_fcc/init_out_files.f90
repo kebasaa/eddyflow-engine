@@ -161,7 +161,7 @@ subroutine InitOutFiles(lEx)
         end if
 
         !> LE
-        if(fcc_var_present(PrimaryWaterOutSlot())) then
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) then
             call AddDatum(header1, ',', separator)
             call AddDatum(header2, 'LE,qc_LE', separator)
             call AddDatum(header3, '[W+1m-2],[#]', separator)
@@ -225,9 +225,9 @@ subroutine InitOutFiles(lEx)
         call AddDatum(header1, 'storage_fluxes', separator)
         call AddDatum(header2,'H_strg', separator)
         call AddDatum(header3,'[W+1m-2]', separator)
-        if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header1, '', separator)
-        if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header2,'LE_strg', separator)
-        if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2]', separator)
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) call AddDatum(header1, '', separator)
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) call AddDatum(header2,'LE_strg', separator)
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) call AddDatum(header3,'[W+1m-2]', separator)
         do k = 1, n_fo_slots
             gas = fo_slots(k)
             if(.not. fcc_var_present(gas)) cycle
@@ -296,9 +296,9 @@ subroutine InitOutFiles(lEx)
         call AddDatum(header2,'un_Tau,Tau_scf,un_H,H_scf', separator)
         call AddDatum(header3,'[kg+1m-1s-2],[#],[W+1m-2],[#]', separator)
         !> LE
-        if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header1, ',', separator)
-        if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header2,'un_LE,LE_scf', separator)
-        if(fcc_var_present(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2],[#]', separator)
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) call AddDatum(header1, ',', separator)
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) call AddDatum(header2,'un_LE,LE_scf', separator)
+        if(PrimaryWaterIn(fcc_var_present, size(fcc_var_present))) call AddDatum(header3,'[W+1m-2],[#]', separator)
         !> Uncorrected gas fluxes (Level 0)
         do k = 1, n_fo_slots
             gas = fo_slots(k)

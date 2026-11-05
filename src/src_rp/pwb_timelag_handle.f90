@@ -207,10 +207,12 @@ end subroutine GatePwbWaterRH
 !> Every water slot, plus the designated hygrometer's slot whatever it holds.
 logical function HumiditySlot(gas)
     integer, intent(in) :: gas
-    integer, external :: PrimaryWaterOutSlot
+    integer, external :: PrimaryWaterSlot
     logical, external :: GasSlotIsWater
 
-    HumiditySlot = gas == PrimaryWaterOutSlot()
+    !> The designated hygrometer, never the fallback slot six: with no water
+    !> that holds another gas, and PWB gated it by humidity as if it were.
+    HumiditySlot = gas == PrimaryWaterSlot()
     if (.not. HumiditySlot) HumiditySlot = GasSlotIsWater(gas)
 end function HumiditySlot
 
@@ -337,6 +339,9 @@ subroutine ResolvePwbAggregateSummary(actn)
     end do
     do gas = firstGas, lastGas
         if (.not. E2Col(gas)%present .or. PwbSummarySource(gas) /= 0) cycle
+        !> Water takes no other record's window either, for the same reason it
+        !> gives none.
+        if (GasSlotIsWater(gas)) cycle
         donor = 0
         best_count = 0
         do candidate = firstGas, lastGas
@@ -1167,6 +1172,11 @@ subroutine PostProcessPwbTimelagCache()
         if (gas < firstGas .or. gas > lastGas) cycle
         if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
             .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
+        !> Nor TO water: its lag is humidity-dependent and its own carry-forward
+        !> comes after this pass, so a water record pending this period took CO2's
+        !> lag - and LE, ET and every WPL water term with it - instead of its
+        !> own previous one. Water is never borrowed for or from.
+        if (GasSlotIsWater(gas)) cycle
         shared = 0
         do j = 1, PwbTimelagCacheN
             if (j == i) cycle
@@ -1264,6 +1274,11 @@ subroutine PostProcessPwbTimelagCache()
         if (gas < firstGas .or. gas > lastGas) cycle
         if (trim(PwbTimelagCache(i)%result%reliability_class) /= 'pending' &
             .and. trim(PwbTimelagCache(i)%result%reliability_class) /= 'S3_expired') cycle
+        !> Nor TO water: its lag is humidity-dependent and its own carry-forward
+        !> comes after this pass, so a water record pending this period took CO2's
+        !> lag - and LE, ET and every WPL water term with it - instead of its
+        !> own previous one. Water is never borrowed for or from.
+        if (GasSlotIsWater(gas)) cycle
         shared = 0
         do j = 1, PwbTimelagCacheN
             if (j == i) cycle

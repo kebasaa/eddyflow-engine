@@ -50,7 +50,10 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     real(kind = dbl), external :: PeriodWaterRH
     include '../src_common/interfaces.inc'
 
-    wsl = PrimaryWaterOutSlot()
+    !> Zero with no hygrometer, so no gas is taken for water: the fallback
+    !> slot six holds another gas then, which this kept out of the gases'
+    !> dataset and filed as water.
+    wsl = PrimaryWaterSlot()
     TimelagOpt(n)%RH = error
 
     !> What the preliminary time-lag assessment's table shows: every lag the
@@ -84,10 +87,11 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
         fluxOk = Flux0%gas(gas) /= error &
             .and. dabs(Flux0%gas(gas)) > TOSetup%gas_min_flux(gas)
 
-        if (fluxOk &
-            .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
-            .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
-            TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        !> Nested: OffWindowEdge is a function, and in one .and. it need
+        !> not be evaluated.
+        if (fluxOk) then
+            if (OffWindowEdge(gas)) TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        end if
         call NoteRawLag(gas, Flux0%gas(gas), fluxOk)
     end do
 
@@ -114,10 +118,9 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
         else
             le = error
         end if
-        if (le /= error .and. le > TOSetup%le_min_flux &
-            .and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl &
-            .and. Essentials%used_timelag(gas) /= E2Col(gas)%min_tl) &
-            TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        if (le /= error .and. le > TOSetup%le_min_flux) then
+            if (OffWindowEdge(gas)) TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)
+        end if
         call NoteRawLag(gas, le, le /= error .and. le > TOSetup%le_min_flux)
         rh = PeriodWaterRH(gas)
         if (rh >= 0d0 .and. rh <= 100d0) TimelagOpt(n)%RH(gas) = rh
@@ -125,9 +128,28 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
 
 contains
 
+    !> Whether a gas's used lag is clear of its search window's edges, to
+    !> within half a sample. A lag is a whole number of samples and a window
+    !> need not be - most derived ones, nominal - 2 s or a separation-based
+    !> bound, are not - so the exact comparison this replaces almost never
+    !> recognised a lag pinned at the edge, and those entered the dataset
+    !> the optimised lag and window are fitted to.
+    logical function OffWindowEdge(gas)
+        integer, intent(in) :: gas
+        real(kind = dbl) :: lag
+        real(kind = dbl) :: halfSample
+
+        OffWindowEdge = .false.
+        lag = Essentials%used_timelag(gas)
+        if (lag == error) return
+        halfSample = 0d0
+        if (Metadata%ac_freq > 0d0) halfSample = 0.5d0 / Metadata%ac_freq
+        OffWindowEdge = dabs(lag - E2Col(gas)%min_tl) > halfSample &
+            .and. dabs(lag - E2Col(gas)%max_tl) > halfSample
+    end function OffWindowEdge
+
     !> The raw lag of one gas, with its window and verdicts. The edge test
-    !> allows half a sample, where the gate above compares exactly: a lag
-    !> is a whole number of samples, a window need not be.
+    !> allows half a sample, as OffWindowEdge does.
     subroutine NoteRawLag(gas, flux, fluxOk)
         integer, intent(in) :: gas
         real(kind = dbl), intent(in) :: flux

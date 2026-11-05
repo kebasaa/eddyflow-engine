@@ -92,24 +92,33 @@ subroutine TestDiscontinuities(Set, N)
         do i = 1, nn
             XX(i, u:GHGNumVar) = Set(i + 100 * (wdw - 1), u:GHGNumVar)
         end do
-        !> Half windows
-        do i = 1, nn / 2
-            XX_dw(i, :) = XX(i, :)
-            XX_up(i, :) = XX(nn/2 + i, :)
-        end do
         !> Convert instantaneous molar densities into mole fractions using
         !> standard air molar volume. The 1d3 is the umol basis every gas but
         !> water is held on, so it is asked of the species rather than spelled
         !> out per slot - four arms named four positions and a fifth gas was
         !> left on its raw molar density, which then failed the threshold
         !> comparisons against a mole-fraction limit.
+        !>
+        !> Before the half windows are cut from it, so that they are in the
+        !> same units as the whole window - they were copied first, and a
+        !> molar-density gas compared its half-window means in mmol m-3
+        !> against a mole-fraction threshold (HaarAvr some 22 times too small
+        !> for CO2) and its half-window spread against a whole-window variance
+        !> in other units. Missing samples keep the error code rather than
+        !> being scaled into a value.
         do gas = firstGas, lastGas
             if (E2Col(gas)%measure_type /= 'molar_density') cycle
             if (GasSlotIsWater(gas)) then
-                XX(1:nn, gas) = XX(1:nn, gas) * StdVair
+                where (XX(1:nn, gas) /= error) XX(1:nn, gas) = XX(1:nn, gas) * StdVair
             else
-                XX(1:nn, gas) = XX(1:nn, gas) * StdVair * 1d3
+                where (XX(1:nn, gas) /= error) XX(1:nn, gas) = XX(1:nn, gas) * StdVair * 1d3
             end if
+        end do
+
+        !> Half windows
+        do i = 1, nn / 2
+            XX_dw(i, :) = XX(i, :)
+            XX_up(i, :) = XX(nn/2 + i, :)
         end do
 
         !> Whole window mean values
@@ -120,10 +129,18 @@ subroutine TestDiscontinuities(Set, N)
 
         !> Whole window variance
         call StDevNoError(XX, size(XX, 1), size(XX, 2), Var, error)
-        Var = Var**2
+        !> Variances, all three. StDevNoError returns standard deviations, and
+        !> only the whole window's was squared, so HaarVar compared a
+        !> difference of half-window sigmas with a whole-window sigma squared:
+        !> not dimensionless, and for w with half-window sigmas of 0.05 and
+        !> 0.03 m s-1 about 8 - a hard flag - where EddyPro 6.2.2, which used
+        !> variances throughout, gave 0.64. An error code is not squared.
+        where (Var /= error) Var = Var**2
         !> Half windows variances
         call StDevNoError(XX_dw, size(XX_dw, 1), size(XX_dw, 2), Var_dw, error)
         call StDevNoError(XX_up, size(XX_up, 1), size(XX_up, 2), Var_up, error)
+        where (Var_dw /= error) Var_dw = Var_dw**2
+        where (Var_up /= error) Var_up = Var_up**2
 
         !> Haar functions
         HaarAvr(:) = Mean_dw(:) - Mean_up(:)

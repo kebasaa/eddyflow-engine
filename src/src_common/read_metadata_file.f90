@@ -74,6 +74,8 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     type(ColType), intent(inout) :: LocCol(MaxNumCol)
     !> local variables
     integer :: init_ac_instr
+    integer :: utc_status
+    real(kind = dbl) :: utc_value
     integer :: init_an_instr
     integer :: leap_ac_instr
     integer :: leap_an_instr
@@ -165,6 +167,22 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
         Metadata%lon = 0.001d0
     end if
 
+    !> UTC offset of the timestamps [h], standard time. A character tag so
+    !> that adding it moved no numeric table; empty or unreadable - an older
+    !> file, a GHG archive's own metadata, an EddyPro project - it is assumed
+    !> from the longitude, and the potential radiation says so.
+    Metadata%utc_offset_assumed = .true.
+    Metadata%utc_offset = dble(nint(Metadata%lon / 15d0))
+    if (len_trim(ACTags(26)%value) > 0) then
+        read(ACTags(26)%value, *, iostat = utc_status) utc_value
+        if (utc_status == 0) then
+            if (utc_value >= -14d0 .and. utc_value <= 14d0) then
+                Metadata%utc_offset = utc_value
+                Metadata%utc_offset_assumed = .false.
+            end if
+        end if
+    end if
+
     !> Canopy height [m]
     Metadata%canopy_height = dble(ANTags(4)%value)
 
@@ -222,7 +240,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     !> Instruments description
     leap_ac_instr = 9
     leap_an_instr = 15
-    init_ac_instr = 26 - leap_ac_instr
+    init_ac_instr = 27 - leap_ac_instr
     init_an_instr = 10 - leap_an_instr
     NumInstruments = 0
     Instr%firm = 'none'
@@ -470,7 +488,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     Metadata%ac_freq = dble(ANTags(7)%value)
     Metadata%file_length = dble(ANTags(8)%value)
     FileInterpreter%header_rows = nint(ANTags(9)%value)
-    FileInterpreter%data_label = ACTags(98)%value(1:len_trim(ACTags(98)%value))
+    FileInterpreter%data_label = ACTags(99)%value(1:len_trim(ACTags(99)%value))
 
     select case (ACTags(23)%value(1:len_trim(ACTags(23)%value)))
         case('comma')
@@ -490,7 +508,7 @@ subroutine WriteEddyFlowMetadataVariables(LocCol, printout)
     FileInterpreter%file_with_text = .false.
     leap_ac_col = 7
     leap_an_col = 11
-    init_ac_col = 99 - leap_ac_col
+    init_ac_col = 100 - leap_ac_col
     init_an_col = 130 - leap_an_col
     LocCol%var = 'none'
     LocCol%label = 'none'

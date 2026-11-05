@@ -39,45 +39,10 @@ subroutine Fluxes1(lEx)
     !> In/out variables
     type(ExType), intent(inout) :: lEx
     !> local variables
-    real(kind = dbl)  :: Cox
-    integer :: gas
     integer :: wsl
     include '../src_common/interfaces_1.inc'
 
     Flux1 = errFlux
-
-    !> First, apply oxygen correction to Krypton and Lyman-alpha hygrometers,
-    !> according to van Dijk et al. (2003, JAOT, eq. 13b)
-    !>
-    !> Per hygrometer, not per slot. This asked lEx%instr(ih2o) - the water
-    !> role of a five-wide instrument numbering that ran alongside the gas
-    !> slots - and corrected lEx%cov_w(h2o). A site with two hygrometers had
-    !> only one of them corrected, and a site whose water is not record two
-    !> had the correction applied to whatever gas held slot six.
-    do gas = firstGas, lastGas
-        if (.not. GasSlotIsWater(gas)) cycle
-        select case (lEx%gas_instr(gas)%model(1:max(1, &
-            len_trim(lEx%gas_instr(gas)%model) - 2)))
-            case('open_path_krypton','closed_path_krypton', &
-                    'open_path_lyman','closed_path_lyman')
-                if (lEx%gas_instr(gas)%ko /= error &
-                    .and. lEx%gas_instr(gas)%kw /= 0d0 &
-                    .and. lEx%Ta > 0d0 .and. lEx%Bowen /= error &
-                    .and. lEx%lambda > 0d0) then
-                    Cox = 1d0 + 0.23d0 * lEx%gas_instr(gas)%ko &
-                        / lEx%gas_instr(gas)%kw &
-                        * lEx%Bowen * lEx%lambda / lEx%Ta
-                    lEx%cov_w(gas) = Cox * lEx%cov_w(gas)
-                    lEx%var(gas) = Cox**2 * lEx%var(gas)
-                    !> Alternative formulation by T.W. Horst
-                    !> http://www.eol.ucar.edu/instrumentation/&
-                    !> &sounding/isfs/isff-support-center/how-tos/&
-                    !> &corrections-to-sensible-and-latent-heat-flux-measurements
-                    !lEx%cov_w(gas) = lEx%cov_w(gas) / (1 - 8d0 * 0.23d0 &
-                    !* lEx%gas_instr(gas)%ko / lEx%gas_instr(gas)%kw * lEx%Bowen)
-                endif
-        end select
-    end do
 
     !> Sensible heat flux, H in [W m-2]
     Flux1%H = lEx%Flux0%H
@@ -163,3 +128,74 @@ subroutine Fluxes1(lEx)
     if (lEx%Flux0%tau == error) Flux1%tau = error
     if (lEx%Flux0%ustar == error) Flux1%ustar = error
 end subroutine Fluxes1
+
+!***************************************************************************
+! \brief       Oxygen correction of krypton and Lyman-alpha hygrometers, after
+!              van Dijk et al. (2003, JAOT, eq. 13b), once per period.
+! \author      Jonathan Muller
+! \note        Out of Fluxes1, which the iterative correction calls once per
+!              pass: the correction scales lEx in place, so every further
+!              pass applied it again and the water covariance and variance
+!              carried Cox to the power of the number of passes.
+!***************************************************************************
+subroutine OxygenCorrectionKrypton(lEx)
+    use m_fx_global_var
+    implicit none
+    type(ExType), intent(inout) :: lEx
+    real(kind = dbl)  :: Cox
+    integer :: gas
+    logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
+
+    !> Apply oxygen correction to Krypton and Lyman-alpha hygrometers,
+    !> according to van Dijk et al. (2003, JAOT, eq. 13b)
+    !>
+    !> Per hygrometer, not per slot. This asked lEx%instr(ih2o) - the water
+    !> role of a five-wide instrument numbering that ran alongside the gas
+    !> slots - and corrected lEx%cov_w(h2o). A site with two hygrometers had
+    !> only one of them corrected, and a site whose water is not record two
+    !> had the correction applied to whatever gas held slot six.
+    do gas = firstGas, lastGas
+        if (.not. GasSlotIsWater(gas)) cycle
+        select case (lEx%gas_instr(gas)%model(1:max(1, &
+            len_trim(lEx%gas_instr(gas)%model) - 2)))
+            case('open_path_krypton','closed_path_krypton', &
+                    'open_path_lyman','closed_path_lyman')
+                if (lEx%gas_instr(gas)%ko /= error &
+                    .and. lEx%gas_instr(gas)%kw /= 0d0 &
+                    .and. lEx%Ta > 0d0 .and. lEx%Bowen /= error &
+                    .and. lEx%lambda > 0d0 .and. lEx%Cp > 0d0) then
+                    !> Cox = 1 + 0.23 (ko/kw) beta lambda / (cp T), with 0.23
+                    !> the oxygen mole fraction times M_O2 / M_air. The 1/cp
+                    !> was missing, which made the factor about 1 + 56 beta
+                    !> instead of 1 + 0.06 beta, negative for beta below
+                    !> -0.02; Horst's form below carries the same ratio as
+                    !> its 8 ~ lambda / (cp T).
+                    Cox = 1d0 + 0.23d0 * lEx%gas_instr(gas)%ko &
+                        / lEx%gas_instr(gas)%kw &
+                        * lEx%Bowen * lEx%lambda / (lEx%Cp * lEx%Ta)
+                    lEx%cov_w(gas) = Cox * lEx%cov_w(gas)
+                    lEx%var(gas) = Cox**2 * lEx%var(gas)
+                    !> And the flux, which is what the correction is for: it
+                    !> scaled the covariance and variance columns only, while
+                    !> FH2O, LE and ET came from the uncorrected Level-0
+                    !> values. The ex record carries those uncorrected - RP
+                    !> leaves them alone when FCC follows - so this is the
+                    !> one place they are corrected.
+                    if (lEx%Flux0%gas(gas) /= error) &
+                        lEx%Flux0%gas(gas) = Cox * lEx%Flux0%gas(gas)
+                    if (gas == PrimaryWaterSlot()) then
+                        if (lEx%Flux0%LE /= error) lEx%Flux0%LE = Cox * lEx%Flux0%LE
+                        if (lEx%Flux0%ET /= error) lEx%Flux0%ET = Cox * lEx%Flux0%ET
+                        if (lEx%Flux0%E /= error) lEx%Flux0%E = Cox * lEx%Flux0%E
+                    end if
+                    !> Alternative formulation by T.W. Horst
+                    !> http://www.eol.ucar.edu/instrumentation/&
+                    !> &sounding/isfs/isff-support-center/how-tos/&
+                    !> &corrections-to-sensible-and-latent-heat-flux-measurements
+                    !lEx%cov_w(gas) = lEx%cov_w(gas) / (1 - 8d0 * 0.23d0 &
+                    !* lEx%gas_instr(gas)%ko / lEx%gas_instr(gas)%kw * lEx%Bowen)
+                endif
+        end select
+    end do
+end subroutine OxygenCorrectionKrypton

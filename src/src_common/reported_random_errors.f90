@@ -107,12 +107,12 @@ end subroutine ReportedRandomErrors
 
 !***************************************************************************
 !
-! rief       Whether this project's final outputs are written by FCC: RP's
+! \brief       Whether this project's final outputs are written by FCC: RP's
 !              test, shared so FCC can tell whether the ex record it reads
 !              carries corrected random errors. Must be evaluated straight
 !              after the project is read - FCC later falls back to Moncrieff
 !              and drops the ensemble outputs when it finds no spectra.
-! uthor      Jonathan Muller
+! \author      Jonathan Muller
 !***************************************************************************
 logical function FccFollowsProject()
     use m_common_global_var

@@ -56,6 +56,17 @@ subroutine FootprintHandle(var_w, ustar, zL, wind_speed, MO_length, sonic_height
         return
     end if
 
+    !> Every model needs the stability and u*. FCC sets L to error whenever
+    !> H is missing, and RP's z/L is error when its L failed, yet none of the
+    !> three checked: Hsieh took z/(-9999) for neutral, Kormann and Meixner
+    !> ran at z/L = -9999, and both wrote plausible distances for a period
+    !> with no stability at all. No footprint instead.
+    if (ustar == error .or. ustar <= 0d0 .or. zL == error &
+        .or. MO_length == error) then
+        Foot = errFootprint
+        return
+    end if
+
     !> If Kljun model was chosen, but conditions are outside those stated at Pag. 512 of the paper
     !> shift to Kormann and Meixner model.
     if (foot_model_used == 'kljun_04' .and. &

@@ -51,17 +51,30 @@ subroutine TestRFluxDiagnostics(Set, N, printout)
     real(kind = dbl), intent(in) :: Set(N, E2NumVar)
     !> local variables
     integer :: icol
+    real(kind = dbl) :: ref_col(N)
+    real(kind = dbl), external :: ColumnAcFreq
 
     if (printout) write(*, '(a)', advance = 'no') '   RFlux raw-signal diagnostics test..'
     if (printout) write(ulog, '(a)', advance = 'no') '   RFlux raw-signal diagnostics test..'
 
+    !> RFlux states its tolerances - the 1e-3 flat-line step, the 0.01
+    !> floor on the robust sigma - in its own reference units, and its
+    !> count limits for 30 minutes at the file rate. Each column is put in
+    !> those units first, and its nominal sample count is kept for the
+    !> grading in VitaleFlag. Tested in the column's own units, an open-path
+    !> CH4 in mmol m-3 had nearly every step called flat and the sigma floor
+    !> at some 250 ppb.
     do icol = u, ts
+        RFluxNominalSamples(icol) = dble(N) * ColumnAcFreq(icol) / Metadata%ac_freq
         call RFluxDiagColumn(Set(:, icol), N, icol)
     end do
     do icol = firstGas, lastGas
         if (E2Col(icol)%present) then
-            call RFluxDiagColumn(Set(:, icol), N, icol)
+            RFluxNominalSamples(icol) = dble(N) * ColumnAcFreq(icol) / Metadata%ac_freq
+            call RFluxReferenceUnits(Set(:, icol), ref_col, N, icol)
+            call RFluxDiagColumn(ref_col, N, icol)
         else
+            RFluxNominalSamples(icol) = error
             Essentials%AL1(icol)  = error
             Essentials%DDI(icol)  = error
             Essentials%HF5(icol)  = error
@@ -74,6 +87,35 @@ subroutine TestRFluxDiagnostics(Set, N, printout)
     if (printout) write(*,'(a)') ' Done.'
     if (printout) write(ulog,'(a)') ' Done.'
 end subroutine TestRFluxDiagnostics
+
+
+!***************************************************************************
+!
+! \brief       A gas column in RFlux's reference units.
+! \author      Jonathan Muller
+! \note        Molar densities as mole fractions at standard molar volume,
+!              umol mol-1 for every gas but water (mmol mol-1), the basis the
+!              discontinuity test converts to as well. Other measure types are
+!              already mole fractions or mixing ratios and pass unchanged, as
+!              do missing samples.
+!***************************************************************************
+subroutine RFluxReferenceUnits(xin, xout, N, icol)
+    use m_rp_global_var
+    implicit none
+    integer, intent(in) :: N
+    integer, intent(in) :: icol
+    real(kind = dbl), intent(in) :: xin(N)
+    real(kind = dbl), intent(out) :: xout(N)
+    real(kind = dbl) :: scale
+    logical, external :: GasSlotIsWater
+
+    xout = xin
+    if (icol < firstGas .or. icol > lastGas) return
+    if (E2Col(icol)%measure_type /= 'molar_density') return
+    scale = StdVair * 1d3
+    if (GasSlotIsWater(icol)) scale = StdVair
+    where (xout /= error) xout = xout * scale
+end subroutine RFluxReferenceUnits
 
 
 !> One raw column's worth of RFlux-derived diagnostics, written into

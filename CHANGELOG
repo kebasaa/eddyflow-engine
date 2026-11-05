@@ -1,6 +1,39 @@
 8.1.8 (2026-11-05)
 
     Engine:
+	- New (experimental): A Conditional Eddy Covariance pairing may name
+	       carbonyl sulfide as its octant gas (cec_<i>_co2 naming a COS
+	       record), sorting moist ejections by the sign of COS' instead of
+	       CO2'. Sound only where the ground is a net COS source or
+	       negligible: soil uptake carried in a moist ejection sorts as
+	       stomatal. CO2 stays the default, and the automatic pairings are
+	       unchanged. Such a pairing's suffix carries the species
+	       (_miro_mga4_6_2_cos), and its COS block is named like an extra
+	       species - cos_nonstomatal_cec, cos_stomatal_cec, cos_total_cec,
+	       r_cos_cec, cec_ns_cos, qc_cec_cos - not Reco/P/NEE. A pairing that
+	       names any other species there used to be given the designated CO2
+	       silently; it still is, now with Warning(123).
+	- New: cec_<i>_meth=4, extras only: a pairing kept to sort the parcels
+	       its extra species are split over, reporting neither of its own two
+	       gases.
+	- New (experimental): cec_sign_<stem><tag> after qc_cec_<stem><tag> for
+	       every carbonyl sulfide target: 1 when its stomatal component came
+	       out as emission, 0 for uptake or none, the error code when there
+	       is no component. Leaves are not known to emit COS while their
+	       stomata work, so these are the periods to look at: noise, soil
+	       uptake misattributed by COS octants, or a senescent canopy. Values
+	       are reported either way.
+	- Fix: A CEC pairing with four extra species wrote a shorter essentials
+	       row than its header: the row buffers held six fields per target
+	       where every target has seven, and the emitters stop silently at
+	       the end of the buffer, so FCC misread every field after it. Sized
+	       MaxNumCecTargets * 7 + 9 in all three row writers.
+	- Change: Project format 5.2.0 (MaxSupportedIniVer and the EddyPro
+	       import's stamp), so an older engine refuses a project with a COS
+	       octant gas rather than swapping it for CO2. Warnings 113 and 114
+	       say "octant gas" where they said carbon dioxide. Pinned by
+	       static_checks/test_cec_octant_species_static.py; regression fixture
+	       tests/regression/base_cec_cos_octants.eddyflow.
 	- Fix: The stable Ibrom et al. (2007) correction factor model was judged
 	       not to have moved when it sat at (1, 0.02), a point it never
 	       starts from; it starts at (6.5e-3, 3.0e-3). A stalled stable fit
@@ -39,6 +72,223 @@
 	       instead of in situ, with the reason (no cut-off frequency, failed
 	       fit) and the timestamps, worker processes included. Nothing is
 	       written for a run without any.
+	- Fix: Mauder et al. (2013) despiking drew its interpolation from the row
+	       before a spike, which could hold the error code: a spike next to one
+	       filtered sample was replaced by about (x - 9999) / 2, and that value
+	       went on into rotation and every covariance. A column slower than the
+	       file has error rows between all its samples, so there it happened at
+	       every spike. Runs are now counted in samples and the line is drawn
+	       from the last good sample, as in the Vickers and Mahrt (1997)
+	       variant; with none before the run the spike is flagged and left.
+	       Whether a run was already flagged now looks at the run, not only at
+	       the row before it.
+	- Fix: With the iterative correction on, RP's u* was multiplied by the
+	       square root of the momentum factor once per pass, from its own
+	       previous value: after four passes it carried the factor squared
+	       instead of its square root, and L, z/L, the footprint and the
+	       developed-turbulence test with it. It is now built from the Level-0
+	       value each pass, as FCC already did. The krypton and Lyman-alpha
+	       oxygen correction compounded the same way in both programs; it now
+	       runs once per period, before the passes (OxygenCorrectionKrypton).
+	       A single-pass run is unchanged.
+	- Fix: The krypton and Lyman-alpha oxygen correction of van Dijk et al.
+	       (2003) lacked the 1/cp in 1 + 0.23 (ko/kw) beta lambda / (cp T),
+	       which made it about 1 + 56 beta instead of 1 + 0.06 beta, and
+	       negative for beta below -0.02. It also scaled only the water
+	       covariance and variance columns, never the flux: FH2O, LE, E and ET
+	       came from the uncorrected Level 0. Both are corrected now, so LE
+	       and ET change for krypton and Lyman-alpha hygrometers. RP corrects
+	       the flux when it is the last program to touch it; when FCC follows,
+	       the ex record keeps Level 0 uncorrected and FCC corrects it once.
+	- Fix: Detrending of a column with missing rows - one slower than the file
+	       (instr_<K>_ac_freq), or with filtered samples. Linear detrending
+	       fitted the slope against the sample count and drew it against the
+	       row count, so a 1 Hz column in a 10 Hz file turned a real 5 ppm rise
+	       into a -45 ppm ramp, and a few filtered rows tilted any column. The
+	       running mean updated a slower column at a tenth of its samples'
+	       weight, and the exponential average decayed one step per sample
+	       instead of per elapsed row, both detrending it about ten times too
+	       weakly. After a leading gap of Tconst or more, both took their trend
+	       from uninitialised memory. Linear now regresses on the row offset,
+	       the running mean averages the valid samples in its window, and the
+	       exponential average decays by b**gap and starts at the first sample.
+	       A column without missing rows gives the same numbers as before.
+	- Fix: The Haar discontinuity test (Vickers and Mahrt 1997) cut its half
+	       windows before converting molar densities to mole fractions, and
+	       squared only the whole window's standard deviation. HaarVar was
+	       therefore not dimensionless - w with half-window sigmas of 0.05 and
+	       0.03 m s-1 scored about 8, a hard flag, where it should be 0.64 -
+	       molar-density H2O was hard-flagged in nearly every period, and real
+	       jumps in molar-density CO2 were missed (HaarAvr some 22 times too
+	       small). The conversion now comes first and all three are variances,
+	       as in EddyPro 6.2.2. Missing samples are no longer scaled into
+	       values.
+	- Fix: PWB applied every cached time lag at one acquisition rate. The
+	       cache's row lags were converted from seconds once, after the
+	       pre-pass, at the rate the last pre-pass period had, and the
+	       production pass shifted by those rows while reporting the right
+	       seconds. After a 10 -> 20 Hz change, every 10 Hz period was shifted
+	       by twice its lag; a saved table read by a later run carried the same
+	       rows, and a split pre-pass could differ from a serial one. The rows
+	       are now derived from the cached seconds at each period's own rate.
+	- Fix: A project without a hygrometer took another gas for its water.
+	       PrimaryWaterOutSlot falls back to slot six, which holds whatever the
+	       sixth record is - N2O in a CH4 + N2O project - so the full output's
+	       ET was that gas's flux times 0.0648, and LE/ET carried its QC flag
+	       and spectral correction factor, in RP and FCC alike. PWB gated that
+	       gas by humidity, the time-lag optimiser forced it present as the
+	       humidity record and kept it out of the gases' dataset, and the
+	       readiness report counted its classes as water's RH classes. With no
+	       hygrometer the LE/ET columns are now gated off (full output) or carry
+	       the error label (FLUXNET), and nothing else reads slot six as water.
+	- Fix: Post-flux despiking (test_pfd) despiked the Level-2 fluxes: H
+	       without its spectral correction, closed-path CO2 and LE without
+	       theirs. Its series and *_CLEANED columns therefore did not match the
+	       published FC, H and LE, and because the test works on
+	       log10(x + 1000) its spike flags differed as well. It now banks the
+	       Level-3 values the outputs carry. Its NEE column is FC, without the
+	       storage term. A project without CO2 banked slot zero; it now banks
+	       no carbon flux.
+	- Fix: Footprints were written for periods with no stability. FCC sets L
+	       to error whenever H is missing, and RP's z/L is error when its L
+	       failed, but none of the footprint models checked: Hsieh et al.
+	       (2000) took z/(-9999) for neutral and Kormann and Meixner (2001) ran
+	       at z/L = -9999, both producing plausible distances. A period without
+	       u*, z/L or L now has no footprint. Inherited from EddyPro.
+	- Fix: A very short analyser path length - a mistyped value, or dynamic
+	       metadata, which skips the static check - made the path-averaging
+	       transfer function NaN, which was set to the error code and then
+	       multiplied into the band-pass function. The correction factor came
+	       out near -1e-4: the flux flipped in sign and shrank to nothing,
+	       unflagged, under Moncrieff et al. (1997) and every method that falls
+	       back to it. The function now takes its limit, sqrt(1 - x/6), where
+	       its closed form cancels, and an error component is kept out of the
+	       product. Ordinary path lengths are unaffected. Inherited from
+	       EddyPro.
+	- Fix: The *_ABSLIM_NREX columns were inverted. They count the values the
+	       absolute-limits test eliminated, like the spike and diagnostics
+	       counts beside them, but were zeroed exactly when the test removed
+	       values and showed a count when it only flagged. Fluxes and the flag
+	       string were unaffected.
+	- Fix: FCC converted VPD to Pa on the condition that Pa was available, so
+	       a missing VPD - no hygrometer and no biomet RH - became -999900 in the
+	       full output and "-9999.00" in FLUXNET, past the error label. The
+	       conversion now tests VPD itself.
+	- Fix: In a LI-COR GHG period whose first archive was skipped (Error 24 or
+	       25), the instruments' reference rates were never set, and the next
+	       archive was compared with uninitialised memory - which could drop a
+	       good period with Warning(116). A real rate change on that archive
+	       was also reported as Warning(116) rather than taken as the period's
+	       new rate. Both now follow the first archive actually read.
+	- Fix: The Mahrt (1998) random error divided by the nominal six windows
+	       however many had data. A sub-window with no valid w/gas pairs - an
+	       open-path rain dropout, diagnostic filtering - left its sigma at 0
+	       and still counted, so the random error came out low (-17 % for a
+	       whole missing sub-period) and the nonstationarity ratio M98 high,
+	       grading the vitale_20 flag too severely. It now divides by the
+	       windows and sub-periods with data, and gives no estimate below two.
+	       A period with every window filled is unchanged.
+	- Fix: The dropout test (Vickers and Mahrt 1997) never raised its hard
+	       flag. Its percentages were an integer quotient of dropouts over
+	       samples, which is always 0, so the DO digit was always 0 and the
+	       *_DO percentages in the output read 0; and the extreme-value limit
+	       overwrote the central one's verdict. The percentages are real now
+	       and either limit raises the flag. The DO digit changes wherever the
+	       test is on. Inherited from EddyPro.
+	- Fix: The RFlux diagnostics behind the vitale_20 QC scheme (Vitale et al.
+	       2020) applied RFlux's numbers outside the units and period length
+	       they are stated for. The 1e-3 flat-line step and the 0.01 floor on
+	       the robust sigma were compared in the column's own units, so an
+	       open-path CH4 in mmol m-3 had nearly every step called flat and its
+	       spike counts nulled; the HF5/HF10 and DDI count limits were written
+	       for 30 minutes at the file rate, unreachable for a slower
+	       instrument and wrong for any other averaging length. Molar densities
+	       are now tested as mole fractions (umol mol-1, water mmol mol-1), and
+	       the count limits are the same fractions of the samples the column
+	       should have in the period.
+	- Fix: The stationarity test (Foken and Wichura 1996) added a sub-period's
+	       error code into the mean sub-period covariance like a value, so a
+	       period with one sub-period missing - possible once the allowed
+	       missing data reaches about 15 %, or at 10 % when w and the gas are
+	       missing in adjacent halves of one - got a deviation of millions of
+	       percent and quality flag 2 instead of a test from the sub-periods
+	       present. The mean now covers the sub-periods with a covariance and
+	       needs at least two; u* is formed only where both its covariances
+	       exist. A complete period is unchanged. Inherited from EddyPro.
+	- Fix: The time-lag optimiser kept lags pinned at its search window's edge
+	       in the dataset it fits the nominal lag and window to. It recognised
+	       an edge only by exact equality, and a lag is a whole number of
+	       samples while most derived windows (nominal - 2 s, separation-based
+	       bounds) are not, so the test almost never fired and the optimised
+	       lag was pulled toward the edge. An edge is now within half a sample,
+	       as the optimiser's own diagnostic table already judged it.
+	       Inherited from EddyPro.
+	- Fix: A planar-fit file read back by a later run shifted every sector
+	       boundary by the north offset (pf_north_offset). The file states the
+	       sector ends as true bearings, while the run compares them with the
+	       wind direction minus the offset; read as written, the offset was
+	       applied twice, so wind near a boundary was rotated with the
+	       neighbouring sector's matrix, and with a negative offset some
+	       directions fell in no sector and were double-rotated. The ends are
+	       now read back relative to the offset. Inherited from EddyPro.
+	- Fix: The counterclockwise planar-fit sector fill (pf_fix) never ran: its
+	       loop counted upwards from sec - 1 to -N + 1 without a step of -1,
+	       so a sector with too few periods was not given its neighbour's fit
+	       and was double-rotated without a message. Inherited from EddyPro.
+	- Fix: PWB time lags let water borrow a trace gas's lag. Water was refused
+	       as a donor but not as a borrower, in the streaming pass, both
+	       sharing steps of the table builder and the aggregate summary, so a
+	       hygrometer whose detection was pending in a period - common for
+	       water - was aligned with CO2's lag (S4_instrument_shared) before its
+	       own carry-forward ran, moving LE, ET and every WPL water term. Water
+	       is now never borrowed for or from, as with tlag_borrow_meth.
+	- Fix: The time-lag optimisation filled sparse H2O relative-humidity
+	       classes from neighbours that could hold the error code. Its
+	       interpolation rewrote only a class with exactly the minimum count,
+	       leaving the real gaps as error, so a neighbour's average came out
+	       near -5000 s and the extrapolation of the top classes near
+	       +10000 s; SetTimelags accepted those windows, and the shift then
+	       wrote outside its arrays. Every class at or below the minimum is now
+	       interpolated between the good classes either side, the top classes
+	       are carried from the last good one when there is nothing to
+	       extrapolate from, and a lag as long as the period leaves the column
+	       missing instead of being applied. Inherited from EddyPro.
+	- Fix: With conditional time-lag borrowing (tlag_borrow_meth) on, the
+	       lagged water and cell-temperature covariances were taken before a
+	       gas's lag was borrowed, so its E_gas and Hi_gas WPL terms were
+	       evaluated at the lag it had just been found not to have - often its
+	       window's edge - while its flux used the borrowed one. Borrowing now
+	       comes first. Nothing changes with borrowing off.
+	- Fix: The lagged water covariance behind a gas's E_gas WPL term judged
+	       "same analyser" by model string, so with two analysers of one model
+	       a gas whose water reference was the other one took the water at its
+	       own lag instead of the hygrometer's. Named records are now matched by
+	       analyser identity; unnamed ones keep the model test.
+	- Fix: A gas whose analyser has no cell record, or whose cell block has no
+	       reading in a period, fell back to the first cell block's temperature
+	       and pressure - whichever analyser owns cell record one - rather than
+	       to ambient air. With a low-pressure laser cell in record one, the
+	       other analyser's cell molar volume, and with it its WPL terms in RP
+	       and FCC, was off by a large factor. It now falls back to ambient
+	       temperature and pressure. A single-analyser project is unchanged.
+	- New: Metadata [Site] utc_offset, the hours the timestamps are ahead of
+	       UTC as standard time (daylight saving ignored), for the potential
+	       radiation. A file without it - older metadata, a GHG archive's own,
+	       an EddyPro project - takes round(longitude / 15) and says so. A
+	       character tag appended to the header block by gen_metadata_tags.py,
+	       so the instrument and column tables move by one index and
+	       read_metadata_file.f90 takes the new origins.
+	- Fix: The potential radiation took clock noon for solar noon whatever the
+	       longitude and time zone, and computed the equation of time without
+	       using it; its readers then averaged the two half-hours before a
+	       period's end, centring the value on the period's start. At a site
+	       far from its time zone's meridian - or logging in UTC - the curve sat
+	       hours off, and where biomet has neither Rg nor PPFD it decides day
+	       and night: the NIGHT flag, and Burba's day or night regression for an
+	       LI-7500. It is now evaluated at apparent solar time from the longitude,
+	       the new utc_offset and the equation of time, at each period's middle.
+	       SW_IN_POT and the day/night flag move for every site. Inherited from
+	       EddyPro (LI-COR eddypro-engine issue 8).
 
 8.1.7 (2026-11-04)
 

@@ -106,8 +106,12 @@ class ALagIsNeverBorrowedAcrossInstruments(unittest.TestCase):
         module = code(MODULE)
         searches = module.count("SameAnalyser(gas, ")
         self.assertGreaterEqual(searches, 3, "the donor searches moved")
-        self.assertEqual(module.count("if (GasSlotIsWater("), searches,
-                         "a donor search does not refuse water")
+        donors = (module.count("if (GasSlotIsWater(g)) cycle")
+                  + module.count("if (GasSlotIsWater(candidate)) cycle"))
+        self.assertEqual(donors, searches, "a donor search does not refuse water")
+        # And none lends to water either: one borrower refusal per search.
+        self.assertEqual(module.count("if (GasSlotIsWater(gas)) cycle"), searches,
+                         "a donor search lends to water")
         self.assertIn("GasSlotIsWater(k)", code(STREAM))
 
     def test_a_rejected_lag_is_the_last_resort_not_the_second(self):

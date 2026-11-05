@@ -917,6 +917,60 @@ end function PrimaryWaterOutSlot
 
 !***************************************************************************
 !
+! \brief       Whether the site's primary water is present in a mask.
+! \author      Jonathan Muller
+! \note        For the one-per-site LE/ET columns. PrimaryWaterOutSlot falls
+!              back to the historical sixth slot when the project describes
+!              no water, which was right while that slot could only hold
+!              water: with a CH4 + N2O project N2O sits there, and the LE/ET
+!              columns were gated - and filled - from it. False with no water.
+!***************************************************************************
+logical function PrimaryWaterIn(mask, n)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: n
+    logical, intent(in) :: mask(n)
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
+
+    PrimaryWaterIn = .false.
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas .or. wsl > n) return
+    PrimaryWaterIn = mask(wsl)
+end function PrimaryWaterIn
+
+!> The primary water's entry of a per-slot array; error with no water.
+real(kind = dbl) function PrimaryWaterOf(vals, n)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: n
+    real(kind = dbl), intent(in) :: vals(n)
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
+
+    PrimaryWaterOf = error
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas .or. wsl > n) return
+    PrimaryWaterOf = vals(wsl)
+end function PrimaryWaterOf
+
+!> The primary water's QC flag; ierror with no water.
+integer function PrimaryWaterQC(vals, n)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: n
+    integer, intent(in) :: vals(n)
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
+
+    PrimaryWaterQC = ierror
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas .or. wsl > n) return
+    PrimaryWaterQC = vals(wsl)
+end function PrimaryWaterQC
+
+!***************************************************************************
+!
 ! \brief       Every hygrometer the project describes, with its column suffix.
 ! \author      Jonathan Muller
 ! \note        H, LE and ET used to be one column each, computed from the
@@ -1381,6 +1435,12 @@ end subroutine GasFullOutputUnits
 !              partition describes without consulting the project file. Two
 !              pairings on one analyser - a site with two water channels on it
 !              - are told apart by an occurrence number after that.
+!
+!              The "carbon" channel is the OCTANT GAS, and a stated pairing may
+!              name carbonyl sulfide for it as well as CO2 (experimental). Its
+!              suffix then carries the species too - _miro_mga4_6_cos - so a
+!              COS-octant pairing never shares its names with the CO2-octant
+!              pairing on the same analyser. The automatic default stays CO2.
 !***************************************************************************
 subroutine CecPairs(pairs, npairs)
     use m_common_global_var
@@ -1402,6 +1462,7 @@ subroutine CecPairs(pairs, npairs)
     integer, external :: CecWaterOnAnalyserOf
     character(32), external :: GasOutputLabel
     logical, save :: crossPairWarned(MaxNumCecPairs) = .false.
+    logical, save :: octantWarned(MaxNumCecPairs) = .false.
     logical, save :: cecWplWarned = .false.
 
     do i = 1, MaxNumCecPairs
@@ -1419,8 +1480,25 @@ subroutine CecPairs(pairs, npairs)
         do i = 1, min(EddyFlowProj%cec_num, MaxNumCecPairs)
             if (EddyFlowProj%cec_pair(i)%meth == 0) cycle
 
-            slot = CecSlotOfRecord(EddyFlowProj%cec_pair(i)%carbon, 'CO2')
-            if (slot == 0) slot = PrimaryCarbonSlot()
+            !> The octant gas: CO2 as Zahn et al. (2022) define it, or
+            !> carbonyl sulfide, which stomata take up the same way and which
+            !> is offered experimentally. Anything else cannot say which
+            !> parcels passed through stomata, so it falls back to the
+            !> designated CO2 - and says so, rather than partitioning against
+            !> a gas the user did not choose without a word.
+            rec = EddyFlowProj%cec_pair(i)%carbon
+            slot = CecSlotOfRecord(rec, 'CO2')
+            if (slot == 0) slot = CecSlotOfRecord(rec, 'COS')
+            if (slot == 0) then
+                if (CecRecordHasColumn(rec) .and. .not. octantWarned(i)) then
+                    octantWarned(i) = .true.
+                    write(pairLine, '(a,i0,a)') '  Warning(123)> CEC pairing ', i, ': ' &
+                        // trim(GasOutputLabel(firstGas + rec - 1)) // '.'
+                    call LogSay(trim(pairLine))
+                    call ExceptionHandler(123)
+                end if
+                slot = PrimaryCarbonSlot()
+            end if
             if (slot < firstGas) cycle
 
             npairs = npairs + 1
@@ -1556,6 +1634,18 @@ contains
         CecSlotOfRecord = firstGas + rec - 1
     end function CecSlotOfRecord
 
+    !> Does a 1-based record index name a gas with a column? What separates
+    !> "this pairing named the wrong species" from "this pairing named nothing",
+    !> which is resolved quietly because that is what not stating means.
+    logical function CecRecordHasColumn(rec)
+        integer, intent(in) :: rec
+
+        CecRecordHasColumn = .false.
+        if (rec <= 0) return
+        if (rec > min(EddyFlowProj%gas_num, MaxNumGases)) return
+        CecRecordHasColumn = EddyFlowProj%gas(rec)%col > 0
+    end function CecRecordHasColumn
+
     logical function CecPairIsRepeated(seen, nseen, csl, wsl)
         type(CECResolvedPairType), intent(in) :: seen(MaxNumCecPairs)
         integer, intent(in) :: nseen
@@ -1576,10 +1666,17 @@ contains
     !> the header writers ask for these before the first period is imported,
     !> and E2Col is not populated until one is. A pairing whose analyser has no
     !> name falls back to its ordinal, which is unlovely but unambiguous.
+    !>
+    !> An octant gas other than CO2 is appended, so the CO2-octant and the
+    !> COS-octant pairings on one analyser read as two partitions of different
+    !> things rather than as a first and a second of the same one. A CO2
+    !> pairing's suffix is what it always was.
     character(48) function CecPairBaseTag(csl, ordinal)
         integer, intent(in) :: csl
         integer, intent(in) :: ordinal
         integer :: r
+        character(32) :: species
+        character(32), external :: CecSlotSpecies
 
         CecPairBaseTag = ''
         r = csl - firstGas + 1
@@ -1590,6 +1687,11 @@ contains
             .or. trim(CecPairBaseTag) == 'none' &
             .or. trim(CecPairBaseTag) == 'other') &
             write(CecPairBaseTag, '(a,i0)') 'pair', ordinal
+        species = CecSlotSpecies(csl)
+        if (len_trim(species) > 0 .and. trim(species) /= 'CO2') then
+            call lowercase(species)
+            CecPairBaseTag = trim(CecPairBaseTag) // '_' // trim(species)
+        end if
     end function CecPairBaseTag
 
 end subroutine CecPairs
@@ -1635,6 +1737,52 @@ subroutine AutoCecPairs(pairs, npairs)
         pairs(npairs)%tag = ''
     end do
 end subroutine AutoCecPairs
+
+!***************************************************************************
+!
+! \brief       The species a gas slot holds, upper-cased; blank when the slot
+!              names no record.
+! \author      Jonathan Muller
+! \note        Asked of the project rather than of E2Col, like the rest of the
+!              pairing code, because the header builders need it before the
+!              first period is imported.
+!***************************************************************************
+character(32) function CecSlotSpecies(slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: slot
+
+    integer :: rec
+
+    CecSlotSpecies = ''
+    rec = slot - firstGas + 1
+    if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    CecSlotSpecies = adjustl(EddyFlowProj%gas(rec)%var)
+    call uppercase(CecSlotSpecies)
+end function CecSlotSpecies
+
+!***************************************************************************
+!
+! \brief       Whether a target's stomatal component has a sign to check.
+! \author      Jonathan Muller
+! \note        Carbonyl sulfide only. Leaves take it up and, as far as is known,
+!              do not give it back while their stomata work, so a stomatal
+!              component that comes out as emission is worth a flag of its own:
+!              noise, an octant gas that misattributed soil exchange, or a
+!              senescent canopy. It is reported either way; the flag only says
+!              which. CO2 and water are left alone, because their columns are
+!              a published layout and their sign is already guarded where it
+!              can be (CecTotalContradictsOctants).
+!***************************************************************************
+logical function CecFlagsStomatalSign(slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: slot
+
+    character(32), external :: CecSlotSpecies
+
+    CecFlagsStomatalSign = trim(CecSlotSpecies(slot)) == 'COS'
+end function CecFlagsStomatalSign
 
 !***************************************************************************
 !
@@ -1919,6 +2067,8 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
     character(64) :: stem
     character(64) :: gas_tags(GHGNumVar)
     character(48) :: tag
+    character(32), external :: CecSlotSpecies
+    logical, external :: CecFlagsStomatalSign
 
     names = ''
     units = ''
@@ -1941,7 +2091,7 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit('r_ET_cec' // trim(tag), '[#]')
             call Emit('cec_ns_h2o' // trim(tag), '[%]')
             call Emit('qc_cec_h2o' // trim(tag), '[#]')
-        else if (k == cecTargetCarbon) then
+        else if (k == cecTargetCarbon .and. trim(CecSlotSpecies(slots(k))) == 'CO2') then
             if (pair%meth /= 1 .and. pair%meth /= 3) cycle
             call Emit('Reco_cec' // trim(tag), flux_label(slots(k)))
             call Emit('P_cec' // trim(tag), flux_label(slots(k)))
@@ -1950,6 +2100,10 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit('cec_ns_co2' // trim(tag), '[%]')
             call Emit('qc_cec_co2' // trim(tag), '[#]')
         else
+            !> An extra, or an octant gas that is not CO2 (carbonyl sulfide,
+            !> experimental). Respiration and photosynthesis would be the
+            !> wrong words for the latter, so it is named like any extra.
+            if (k == cecTargetCarbon .and. pair%meth /= 1 .and. pair%meth /= 3) cycle
             stem = gas_tags(slots(k))
             if (len_trim(stem) > 1) stem = stem(1:len_trim(stem) - 1)
             call Emit(trim(stem) // '_nonstomatal_cec' // trim(tag), &
@@ -1961,6 +2115,10 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit('r_' // trim(stem) // '_cec' // trim(tag), '[#]')
             call Emit('cec_ns_' // trim(stem) // trim(tag), '[%]')
             call Emit('qc_cec_' // trim(stem) // trim(tag), '[#]')
+            !> 1 when the stomatal component came out as emission, which for
+            !> carbonyl sulfide is unexpected. See CecFlagsStomatalSign.
+            if (CecFlagsStomatalSign(slots(k))) &
+                call Emit('cec_sign_' // trim(stem) // trim(tag), '[#]')
         end if
     end do
 
@@ -2023,6 +2181,7 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
     integer :: ntarget
     integer :: slots(MaxNumCecTargets)
     real(kind = dbl) :: sc
+    logical, external :: CecFlagsStomatalSign
 
     values = error
     is_int = .false.
@@ -2052,6 +2211,7 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
             call EmitScaled(descriptor%target(k)%r, 1d0)
             call EmitScaled(descriptor%target(k)%ns_r, 1d0)
             call EmitCount(flux%comp(k)%status)
+            if (CecFlagsStomatalSign(slots(k))) call EmitSign(flux%comp(k)%stomatal)
         else
             call EmitScaled(flux%comp(k)%nonstomatal, sc)
             call EmitScaled(flux%comp(k)%stomatal, sc)
@@ -2059,6 +2219,7 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
             call EmitScaled(descriptor%target(k)%r, 1d0)
             call EmitScaled(descriptor%target(k)%ns_r, 1d0)
             call EmitCount(flux%comp(k)%status)
+            if (CecFlagsStomatalSign(slots(k))) call EmitSign(flux%comp(k)%stomatal)
         end if
     end do
 
@@ -2092,6 +2253,18 @@ contains
         is_int(nvalues) = .true.
     end subroutine EmitCount
 
+    !> 0 for uptake or nothing, 1 for emission, the error code when there is
+    !> no component to judge. A count, so it prints as one.
+    subroutine EmitSign(stomatal)
+        real(kind = dbl), intent(in) :: stomatal
+
+        if (stomatal == error) then
+            call EmitCount(nint(error))
+        else
+            call EmitCount(merge(1, 0, stomatal > 0d0))
+        end if
+    end subroutine EmitSign
+
 end subroutine CecRowValues
 
 !***************************************************************************
@@ -2103,7 +2276,7 @@ end subroutine CecRowValues
 !              ReadExRecord consumes it, so it is built once here.
 !
 !              The widths are fixed and named: nine fields for the pairing,
-!              then six for each of the targets the NINTH of those announces.
+!              then seven for each of the targets the NINTH of those announces.
 !              The count comes from the pairing rather than from the
 !              descriptor, because a period whose extraction bailed still has
 !              to occupy its own width in the row.

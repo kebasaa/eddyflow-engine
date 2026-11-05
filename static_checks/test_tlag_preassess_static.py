@@ -126,8 +126,10 @@ class EveryLagFoundIsTabled(unittest.TestCase):
         note = body(ADD, "subroutine", "NoteRawLag")
         self.assertIn("lag = Essentials%actual_timelag(gas)", note)
 
-    def test_the_gates_themselves_are_untouched(self):
-        self.assertEqual(ADD.count(".and. Essentials%used_timelag(gas) /= E2Col(gas)%max_tl"), 2)
+    def test_both_gates_test_the_edge_to_half_a_sample(self):
+        # Both arms keep a lag only clear of the window's edges; exact
+        # equality almost never matched a window off the sample grid.
+        self.assertEqual(ADD.count("if (OffWindowEdge(gas)) TimelagOpt(n)%tlag(gas)"), 2)
 
     def test_every_gas_is_gated_on_its_magnitude(self):
         # An uptake gas such as COS was compared signed and kept only its

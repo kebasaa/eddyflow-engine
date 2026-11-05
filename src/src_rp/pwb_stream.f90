@@ -200,11 +200,22 @@ contains
                 lPwbResult = ev%res(j)
                 cache_hit(j) = .true.
                 PWBResult(j) = lPwbResult
-                RowLags(j) = ev%cache_row(j)
+                !> The lag in rows at THIS period's rate. The cache's row lag
+                !> was converted once, after the pre-pass, at whatever rate
+                !> the last pre-pass period had - so after a 10 -> 20 Hz
+                !> change every 10 Hz period was shifted by twice its lag
+                !> while TLag still reported the right seconds. A table read
+                !> back by a later run carried the same rows. The seconds are
+                !> what the cache settled; the rows follow from them here.
+                if (ev%cache_used(j) /= error) then
+                    RowLags(j) = nint(ev%cache_used(j) * ev%ac_freq)
+                else
+                    RowLags(j) = ev%cache_row(j)
+                end if
                 TLag(j) = ev%cache_used(j)
                 ActTLag(j) = ev%cache_actual(j)
                 DefTlagUsed(j) = ev%cache_default(j)
-                pwb_raw_OwnRowLags(j) = ev%cache_row(j)
+                pwb_raw_OwnRowLags(j) = RowLags(j)
                 if (trim(lPwbResult%reliability_class) == 'S1_optimal' .or. &
                     trim(lPwbResult%reliability_class) == 'S2_optimal' .or. &
                     trim(lPwbResult%reliability_class) == 'S4_instrument_shared') then
@@ -270,6 +281,11 @@ contains
         do j = firstGas, lastGas
             if (.not. ev%present(j)) cycle
             if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
+            !> Nor TO water: its lag is humidity-dependent and its own carry-forward
+            !> comes after this pass, so a water record pending this period took CO2's
+            !> lag - and LE, ET and every WPL water term with it - instead of its
+            !> own previous one. Water is never borrowed for or from.
+            if (GasSlotIsWater(j)) cycle
             do k = firstGas, lastGas
                 if (k == j) cycle
                 if (.not. ev%present(k)) cycle

@@ -65,6 +65,10 @@ GAS_TEXT = ["var", "instr"]
 #: pairings. `extra` is a comma-separated list of further record indices whose
 #: species are partitioned in the same pair's octants - carbonyl sulfide, for
 #: instance - which is why it is a text key rather than a fixed run of numbers.
+#: `co2` is the OCTANT GAS: a CO2 record, or (from format 5.2.0, experimental)
+#: a carbonyl sulfide record; the key keeps its name so older files still read.
+#: `meth` is 0 off, 1 water and octant gas, 2 water only, 3 octant gas only,
+#: 4 extras only.
 #:
 #: Appended AFTER the diag block, so the gas/cell/diag origins do not move.
 CEC_NUMERIC = ["meth", "co2", "h2o"]

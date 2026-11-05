@@ -105,11 +105,14 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     include '../src_common/interfaces_1.inc'
 
     assessment_ready = .true.
-    wsl = PrimaryWaterOutSlot()
+    !> The site's hygrometer, or none. With no water the fallback slot six
+    !> holds another gas, and its classes were counted - and reported - as
+    !> water's RH classes.
+    wsl = PrimaryWaterSlot()
     method = trim(adjustl(EddyFlowProj%hf_meth))
     h2o_classes = 0
     h2o_fits = 0
-    if (allocated(MeanBinSpec)) then
+    if (allocated(MeanBinSpec) .and. wsl >= firstGas) then
         do cls = RH10, RH90
             if (MeanBinSpecAvailable(cls, wsl)) h2o_classes = h2o_classes + 1
             if (RegPar(wsl, cls)%fc /= error) h2o_fits = h2o_fits + 1
@@ -230,10 +233,14 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
                 call ReportFluxLimitSuggestions(report_unit, open_status, gas)
         end if
     end do
-    call EmitReportLine(report_unit, open_status, 'H2O RH classes: ' // trim(IntToText(h2o_classes)) // &
-        '/9, fitted cut-offs=' // trim(IntToText(h2o_fits)) // ', minimum samples/class=' // &
-        trim(IntToText(FCCsetup%SA%min_smpl)) // '... ' // &
-        trim(StatusLabel(h2o_classes >= 1, 'FAIL')))
+    if (wsl < firstGas) then
+        call EmitReportLine(report_unit, open_status, 'H2O RH classes: no hygrometer configured... NOT APPLIED')
+    else
+        call EmitReportLine(report_unit, open_status, 'H2O RH classes: ' // trim(IntToText(h2o_classes)) // &
+            '/9, fitted cut-offs=' // trim(IntToText(h2o_fits)) // ', minimum samples/class=' // &
+            trim(IntToText(FCCsetup%SA%min_smpl)) // '... ' // &
+            trim(StatusLabel(h2o_classes >= 1, 'FAIL')))
+    end if
     if (h2o_classes > 0 .and. h2o_classes < 3) then
         call EmitReportLine(report_unit, open_status, &
             'H2O RH coverage: WARNING - one class can create a file; three or more are recommended.')

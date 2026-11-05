@@ -1074,7 +1074,8 @@ subroutine CompleteEssentials(lEx)
     if (lEx%Pd /= error) lEx%Pd = lEx%Pd * 1d3
     if (lEx%e /= error) lEx%e = lEx%e * 1d2
     if (lEx%es /= error) lEx%es = lEx%es * 1d2
-    if (lEx%Pa /= error) lEx%VPD = lEx%VPD * 1d2
+    !> On VPD's own value: guarded on Pa, a missing VPD became -999900.
+    if (lEx%VPD /= error) lEx%VPD = lEx%VPD * 1d2
     if (lEx%stats%median(ts) /= error) lEx%stats%median(ts) = lEx%stats%median(ts) + 273.15d0
     if (lEx%stats%Q1(ts) /= error) lEx%stats%Q1(ts) = lEx%stats%Q1(ts) + 273.15d0
     if (lEx%stats%Q3(ts) /= error) lEx%stats%Q3(ts) = lEx%stats%Q3(ts) + 273.15d0

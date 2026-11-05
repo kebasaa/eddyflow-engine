@@ -108,6 +108,29 @@ interface
         implicit none
     end function PrimaryWaterOutSlot
 
+    !> The primary water's presence, value and QC flag; false, error and
+    !> ierror when the project describes no water.
+    logical function PrimaryWaterIn(mask, n)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: n
+        logical, intent(in) :: mask(n)
+    end function PrimaryWaterIn
+
+    real(kind = dbl) function PrimaryWaterOf(vals, n)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: n
+        real(kind = dbl), intent(in) :: vals(n)
+    end function PrimaryWaterOf
+
+    integer function PrimaryWaterQC(vals, n)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: n
+        integer, intent(in) :: vals(n)
+    end function PrimaryWaterQC
+
     !> Every hygrometer with its column suffix, in one call. Header and rows
     !> in both executables walk this; getting the list right and the naming
     !> wrong shifts the file exactly as getting the list wrong does.
@@ -366,13 +389,24 @@ interface
 end interface
 
 interface
-    function PotentialRadiation(latit) result(RP)
+    function PotentialRadiation(latit, longit, utc_off) result(RP)
         use m_common_global_var
         implicit none
         !> in/out variables
         real(kind = dbl), intent(in) :: latit
+        real(kind = dbl), intent(in) :: longit
+        real(kind = dbl), intent(in) :: utc_off
         real(kind = dbl) :: RP(17568)
     end function
+
+    !> The potential radiation of the period ending at date/time
+    real(kind = dbl) function PotentialRadiationAt(rad, date, time)
+        use m_common_global_var
+        implicit none
+        real(kind = dbl), intent(in) :: rad(17568)
+        character(*), intent(in) :: date
+        character(*), intent(in) :: time
+    end function PotentialRadiationAt
 end interface
 
 
