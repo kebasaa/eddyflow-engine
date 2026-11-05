@@ -47,6 +47,9 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     integer :: j
     integer :: k
     integer :: cnt = 0
+    integer :: prev_good
+    integer :: run_start
+    integer :: run_last
     integer :: nspikes(E2NumVar)
     integer :: nspikes_sng(E2NumVar)
     integer :: tot_spikes(E2NumVar)
@@ -94,37 +97,58 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
             deallocate(tmpx)
 
             !> Spike detection (and replacement if needed)
+            !>
+            !> In samples, as in the Vickers and Mahrt variant. The error rows
+            !> were skipped without breaking the run, so `cnt` counted samples
+            !> while the flagging and the interpolation addressed the `cnt`
+            !> rows before `i`: with an error row inside or just before the
+            !> run, the line was drawn from the error code, and a spike next to
+            !> one filtered sample became about (x - 9999) / 2 - a value the
+            !> later passes no longer looked at, carried into rotation and
+            !> every covariance. A column slower than the file has error rows
+            !> between all its samples, so there it happened at every spike.
+            !>
+            !> The run's rows are tracked alongside, the line is drawn from the
+            !> last good sample before it, and only the sample rows are
+            !> written. With no good sample before the run there is nothing to
+            !> draw from, and the spike is flagged but left as it is.
+            prev_good = 0
+            if (Set(1, j) /= error) prev_good = 1
+            run_start = 0
+            run_last = 0
             if (RPsetup%filter_sr) then
                 do i = 2, N-1
                     if (Set(i, j) == error) cycle
 
                     if(Set(i, j) > medx + (zlim * MAD / 0.6745d0) .or. &
                         Set(i, j) < medx - (zlim * MAD / 0.6745d0)) then
+                        if (cnt == 0) run_start = i
+                        run_last = i
                         cnt = cnt + 1
                     else
 !                        if ((cnt /= 0) .and. (cnt <= sr%num_spk)) then
                         if (cnt /= 0) then
                             !> check whether it was a spike already,
-                            !> if not increment the number of spikes found
-                            new_spike = .true.
-                            do k = 1, cnt
-                                if (IsSpike(i-k, j)) new_spike = .false.
-                                exit
-                            enddo
+                            !> if not increment the number of spikes found.
+                            !> The old loop exited after its first pass, so
+                            !> it only ever looked at the row before i.
+                            new_spike = .not. IsSpike(run_last, j)
                             if (new_spike) then
                                 nspikes(j) = nspikes(j) + 1
                                 nspikes_sng(j) = nspikes_sng(j) + cnt
                             end if
-                            !> update spike flags
-                            do k = 1, cnt
-                                IsSpike(i-k, j) = .true.
+                            !> update spike flags, on the samples only
+                            do k = run_start, i - 1
+                                if (Set(k, j) /= error) IsSpike(k, j) = .true.
                             enddo
-                            !> replace with linear interpolation if requested
-                            if (i - (cnt + 1) > 0 .and. i - (cnt + 1) <= N) then
-                                m = (Set(i, j) - Set(i - (cnt + 1), j)) / (dble(cnt + 1))
-                                q = Set(i - (cnt + 1), j)
-                                do k = i - cnt, i - 1
-                                    Set(k, j) = (m * (dble(k - (i - cnt - 1))) + q)
+                            !> replace with linear interpolation, from the
+                            !> last good sample behind the run
+                            if (prev_good /= 0) then
+                                m = (Set(i, j) - Set(prev_good, j)) / dble(i - prev_good)
+                                q = Set(prev_good, j)
+                                do k = run_start, i - 1
+                                    if (Set(k, j) /= error) &
+                                        Set(k, j) = m * dble(k - prev_good) + q
                                 end do
                             end if
                             cnt = 0
@@ -137,31 +161,32 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
                         end if
+                        prev_good = i
                     end if
                 end do
             else
+                !> Detection only, counted the same way, so a flag-only run
+                !> reports the spikes a despiking run would remove.
                 do i = 2, N-1
                     if (Set(i, j) == error) cycle
 
                     if(Set(i, j) > medx + (zlim * MAD / 0.6745d0) .or. &
                         Set(i, j) < medx - (zlim * MAD / 0.6745d0)) then
+                        if (cnt == 0) run_start = i
+                        run_last = i
                         cnt = cnt + 1
                     else
                         if (cnt /= 0) then
                             !> check whether it was a spike already, if not increment the
                             !> number of spikes found
-                            new_spike = .true.
-                            do k = 1, cnt
-                                if (IsSpike(i-k, j)) new_spike = .false.
-                                exit
-                            enddo
+                            new_spike = .not. IsSpike(run_last, j)
                             if (new_spike) then
                                 nspikes(j) = nspikes(j) + 1
                                 nspikes_sng(j) = nspikes_sng(j) + cnt
                             end if
-                            !> update spike flags
-                            do k = 1, cnt
-                            IsSpike(i-k, j) = .true.
+                            !> update spike flags, on the samples only
+                            do k = run_start, i - 1
+                                if (Set(k, j) /= error) IsSpike(k, j) = .true.
                             enddo
                             cnt = 0
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -171,6 +196,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
 !                            cnt = 0
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                         end if
+                        prev_good = i
                     end if
                 end do
             end if

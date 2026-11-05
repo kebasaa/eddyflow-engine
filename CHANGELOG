@@ -39,6 +39,16 @@
 	       instead of in situ, with the reason (no cut-off frequency, failed
 	       fit) and the timestamps, worker processes included. Nothing is
 	       written for a run without any.
+	- Fix: Mauder et al. (2013) despiking drew its interpolation from the row
+	       before a spike, which could hold the error code: a spike next to one
+	       filtered sample was replaced by about (x - 9999) / 2, and that value
+	       went on into rotation and every covariance. A column slower than the
+	       file has error rows between all its samples, so there it happened at
+	       every spike. Runs are now counted in samples and the line is drawn
+	       from the last good sample, as in the Vickers and Mahrt (1997)
+	       variant; with none before the run the spike is flagged and left.
+	       Whether a run was already flagged now looks at the run, not only at
+	       the row before it.
 
 8.1.7 (2026-11-04)
 
