@@ -526,6 +526,14 @@ module m_common_global_var
     type (QCType) :: QCFlag
     real(kind = dbl) :: f_c(GHGNumVar)
     real(kind = dbl) :: f_2(GHGNumVar)
+    !> Periods the in-situ spectral correction had to hand to the analytic
+    !> one, gas by gas (StoreInsituFallback, ReportInsituFallbacks). Here
+    !> rather than in FCC's globals because the hub that records them is
+    !> shared with RP, where the list simply stays empty.
+    integer, parameter :: InsituNoCutoff = 1
+    integer, parameter :: InsituFitFailed = 2
+    type(InsituFallbackType), allocatable :: InsituFallbacks(:)
+    integer :: InsituFallbackN = 0
     real(kind = dbl) :: StPar(2) = error
     real(kind = dbl) :: UnPar(2) = error
 

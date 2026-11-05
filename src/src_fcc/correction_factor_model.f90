@@ -61,6 +61,12 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords, FileRateFilter)
     real(kind = dbl), allocatable :: DegWT(:, :)
     real(kind = dbl), allocatable :: Fl(:, :)
     real(kind = dbl) :: tol = 1d-04
+    !> Where each fit starts. Named once, because a fit the solver never moved
+    !> is recognised by still sitting here: the stable one was tested against
+    !> (1, 0.02), a point it never starts from, so a stalled stable fit passed
+    !> its own starting guess off as a result.
+    real(kind = dbl), parameter :: UnStart(2) = (/ 2.5d-3, 6.0d-4 /)
+    real(kind = dbl), parameter :: StStart(2) = (/ 6.5d-3, 3.0d-3 /)
     real(kind = dbl), allocatable  :: fvec(:), fjac(:,:)
     real(kind = dbl) :: f_co(Nt)
     data f_co(1:Nt) /1.626d0, 0.614d0, 0.277d0, 0.133d0, 6.5d-2, 3.2d-2, 1.6d-2, 8d-3, 4d-3/
@@ -131,8 +137,7 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords, FileRateFilter)
     !> Unstable case
     !> Initialize regression parameters
     !> Par(1) = c1, Par(2) = c2 in eq. 9 in Ibrom et al. (2009, AFM)
-    UnPar(1) = 2.5d-3
-    UnPar(2) = 6.0d-4
+    UnPar(1:2) = UnStart
     !> Create dataset for regression
     m = 0
     un_loop: do i = 1, NumDegtRecords
@@ -169,8 +174,7 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords, FileRateFilter)
     !> Compute regression parameters for hyperbole function (Ibrom et al. 2007, eq. 9)
     allocate(fvec(m), fjac(m, npar))
     call lmder1(fcn, m, npar, UnPar, fvec, fjac, tol, info, ipvt)
-    if ((UnPar(1) == 2.5d-3 .and. UnPar(2) == 6.0d-4) &
-        .or. info < 1 .or. info > 3) then
+    if (all(UnPar(1:2) == UnStart) .or. info < 1 .or. info > 3) then
         UnPar(1:2) = error
     end if
     deallocate(fvec, fjac)
@@ -178,8 +182,7 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords, FileRateFilter)
     !> Stable case
     !> Initialize regression parameters
     !> Par(1) = c1, Par(2) = c2 in eq. 9 in Ibrom et al. (2009, AFM)
-    StPar(1) = 6.5d-3
-    StPar(2) = 3.0d-3
+    StPar(1:2) = StStart
     !> Create dataset for regression
     m = 0
     st_loop: do i = 1, NumDegtRecords
@@ -216,8 +219,7 @@ subroutine CorrectionFactorModel(ExFilename, NumExRecords, FileRateFilter)
     !> Compute regression parameters for hyperbole function (Ibrom et al. 2007, eq. 9)
     allocate(fvec(m), fjac(m, npar))
     call lmder1(fcn, m, npar, StPar, fvec, fjac, tol, info, ipvt)
-    if ((StPar(1) == 1d0 .and. StPar(2) == 0.02d0) &
-        .or. info < 1 .or. info > 3) then
+    if (all(StPar(1:2) == StStart) .or. info < 1 .or. info > 3) then
         StPar(1:2) = error
     end if
     deallocate(fvec, fjac)

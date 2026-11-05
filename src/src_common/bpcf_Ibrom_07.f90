@@ -120,10 +120,15 @@ subroutine BPCF_Ibrom07(measuring_height, displ_height, loc_var_present, wind_sp
         call CorrectionFactorsIbrom07(gas, BPCF_Ibrom, lEx)
     end do
 
-    !> Combine low freq (analytic) + high freq (in situ) correction factors
-    where (BPCF%of(firstGas:lastGas) /= error .and. BPCF_Ibrom%of(firstGas:lastGas) /= error)
+    !> Combine low freq (analytic) + high freq (in situ) correction factors.
+    !> A gas with no in-situ factor - its fit failed - gets none at all rather
+    !> than the low-frequency part alone, which would read as corrected: the
+    !> hub sees the error and corrects it with the analytic method instead.
+    where (BPCF_Ibrom%of(firstGas:lastGas) == error)
+        BPCF%of(firstGas:lastGas) = error
+    elsewhere (BPCF%of(firstGas:lastGas) /= error)
         BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * BPCF_Ibrom%of(firstGas:lastGas)
-    elsewhere (BPCF_Ibrom%of(firstGas:lastGas) /= error)
+    elsewhere
         BPCF%of(firstGas:lastGas) = BPCF_Ibrom%of(firstGas:lastGas)
     end where
 end subroutine BPCF_Ibrom07

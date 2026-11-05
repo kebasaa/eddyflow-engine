@@ -890,6 +890,10 @@ Program EddyFlowFCC
 
     if (EddyFlowProj%test_pfd .and. PfdCacheN > 0) call PostProcessFluxDespiking()
 
+    !> The periods the in-situ spectral correction handed to the analytic one,
+    !> with their timestamps; nothing in a run without any.
+    call ReportInsituFallbacks()
+
     write(*,*)
     write(ulog,*)
     write(*,*)

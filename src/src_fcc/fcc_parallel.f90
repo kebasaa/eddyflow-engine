@@ -277,6 +277,7 @@ contains
         character(PathLen) :: nm
 
         PfdCacheN = 0
+        InsituFallbackN = 0
         do j = 1, NOut
             inquire(unit = OutUnits(j), opened = op, name = nm)
             PieceOpen(j) = op
@@ -320,6 +321,10 @@ contains
         end do
         write(ud) PfdCacheN
         if (PfdCacheN > 0) write(ud) PfdCache(1:PfdCacheN)
+        !> The periods this piece corrected analytically instead of in situ,
+        !> for the report the parent writes at the end of the run.
+        write(ud) InsituFallbackN
+        if (InsituFallbackN > 0) write(ud) InsituFallbacks(1:InsituFallbackN)
         write(ud) DumpMagic
         close(ud)
     end subroutine FinishFccWorker
@@ -345,6 +350,7 @@ contains
         character(PathLen) :: path
         character(20) :: magic
         type(PfdCacheEntryType), allocatable :: rows(:)
+        type(InsituFallbackType), allocatable :: fallbacks(:)
 
         do j = 1, NOut
             inquire(unit = OutUnits(j), opened = op, name = path)
@@ -392,6 +398,18 @@ contains
                         rows(i)%h, rows(i)%le)
                 end do
                 deallocate(rows)
+            end if
+            !> Pieces arrive in order, after the parent's own, so the list
+            !> stays chronological.
+            read(ud) wN
+            if (wN > 0) then
+                allocate(fallbacks(wN))
+                read(ud) fallbacks
+                do i = 1, wN
+                    call StoreInsituFallback(fallbacks(i)%gas, fallbacks(i)%date, &
+                        fallbacks(i)%time, fallbacks(i)%reason)
+                end do
+                deallocate(fallbacks)
             end if
             read(ud, iostat = io_status) magic
             close(ud)

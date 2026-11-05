@@ -217,15 +217,12 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                 !> now, and the assessment file carries each one's `exp=`, so
                 !> the fallback below is for a hygrometer the assessment never
                 !> fitted rather than for all of them.
-                A = RegPar(gas, dum)%e1
-                B = RegPar(gas, dum)%e2
-                C = RegPar(gas, dum)%e3
-                if (A == error .or. B == error .or. C == error &
-                    .or. (A == 0d0 .and. B == 0d0 .and. C == 0d0)) then
-                    A = RegPar(dum, dum)%e1
-                    B = RegPar(dum, dum)%e2
-                    C = RegPar(dum, dum)%e3
-                end if
+                !> Own coefficients, else the project-wide set: the rule lives
+                !> in HygrometerRhCoefficients, so the hub's gate and the
+                !> readiness report ask exactly what this evaluates. With
+                !> neither, there is no cut-off to compute.
+                call HygrometerRhCoefficients(gas, A, B, C)
+                if (A == error) cycle
                 !> Each hygrometer's own humidity, not the primary's.
                 !>
                 !> The coefficients stay shared - one fit per project, the
@@ -238,8 +235,16 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                 !> 20% apart, which is two RH classes.
                 lRH = lEx%rh_at(gas)
                 if (lRH == error) lRH = lEx%RH
+                !> No humidity this period, so no cut-off. Evaluated at the
+                !> error code the regression gave a cut-off of 0 or infinity,
+                !> and from those a factor of c1 WS / c2 + 1 or of 1, either
+                !> passed off as a correction. Left at error, the gas gets no
+                !> in-situ factor and the hub corrects it analytically.
+                if (lRH == error) cycle
                 lRH = lRH * 1d-2
                 f_c(gas) = dexp(A * lRH**2 + B * lRH + C)
+                !> An exponent out of range does the same from real humidity.
+                if (f_c(gas) <= 0d0 .or. f_c(gas) > huge(1d0)) f_c(gas) = error
             end do
             !> select relevant tranfer function parameters
             !> according to the month, for every configured gas
@@ -355,10 +360,14 @@ subroutine CorrectionFactorsHorst97(lBPCF, lEx)
     !> Correction factor per configured gas. f_c must be a real cutoff: an
     !> unclassified gas leaves it at the error sentinel, and dividing by that
     !> would produce a plausible-looking factor from a value that means
-    !> "not available".
+    !> "not available". Such a gas gets no factor rather than the 1 its
+    !> caller starts from, so the hub corrects it analytically.
     do gas = firstGas, lastGas
         if (.not. lEx%var_present(gas)) cycle
-        if (f_c(gas) == error .or. f_c(gas) <= 0d0) cycle
+        if (f_c(gas) == error .or. f_c(gas) <= 0d0) then
+            lBPCF%of(gas) = error
+            cycle
+        end if
         t_c = 1d0 / (2d0 * p * f_c(gas))
         lBPCF%of(gas) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
     end do
@@ -395,11 +404,30 @@ subroutine CorrectionFactorsIbrom07(gas, lBPCF, lEx)
     if (.not. lEx%var_present(gas)) return
     !> An unclassified gas leaves f_c at the error sentinel; adding that to the
     !> denominator gives a plausible-looking factor from a missing value.
-    if (f_c(gas) == error) return
+    !> No factor either, though: returning left the 1 the callers start from,
+    !> which reads as a correction found to be nothing. With error the hub
+    !> corrects the gas analytically, as it does after a failed fit.
+    if (f_c(gas) == error .or. f_c(gas) <= 0d0) then
+        lBPCF%of(gas) = error
+        return
+    end if
 
     if (lEx%Flux0%zL >= 0d0) then
+        !> A fit that failed leaves its parameters at the error code, and
+        !> this formula turns -9999 into a factor of about WS + 1 that looks
+        !> like any other. No factor instead: the hub then corrects the gas
+        !> with the analytic method, as it does any gas the in-situ method
+        !> cannot take.
+        if (any(StPar(1:2) == error)) then
+            lBPCF%of(gas) = error
+            return
+        end if
         lBPCF%of(gas) = StPar(1) * lEx%WS / (StPar(2) + f_c(gas)) + 1d0
     else
+        if (any(UnPar(1:2) == error)) then
+            lBPCF%of(gas) = error
+            return
+        end if
         lBPCF%of(gas) = UnPar(1) * lEx%WS / (UnPar(2) + f_c(gas)) + 1d0
     end if
 end subroutine CorrectionFactorsIbrom07

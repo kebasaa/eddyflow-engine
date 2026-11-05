@@ -1,3 +1,45 @@
+8.1.8 (2026-11-05)
+
+    Engine:
+	- Fix: The stable Ibrom et al. (2007) correction factor model was judged
+	       not to have moved when it sat at (1, 0.02), a point it never
+	       starts from; it starts at (6.5e-3, 3.0e-3). A stalled stable fit
+	       therefore passed its own starting guess off as a result. Start and
+	       check now read one constant per fit (correction_factor_model.f90).
+	- Fix: A failed Ibrom fit left its parameters at the error code, which
+	       the correction formula turned into a factor of about WS + 1 that
+	       looked like any other. It now gives no factor, and the hub corrects
+	       that gas with Moncrieff et al. (1997), as it does any gas the
+	       in-situ method cannot take. Applies to Ibrom et al. (2007) and to
+	       the Ibrom fallback inside Fratini et al. (2012); the Horst and
+	       Lenschow (2009) separation term no longer multiplies a missing
+	       factor into a number that no longer reads as missing.
+	- Fix: Fratini et al. (2012) for a period with no full w/T cospectrum set
+	       every correction factor to 1, Tau's and H's included, which it
+	       never computes. Tau and H now keep theirs, and each gas takes the
+	       method's own Ibrom et al. (2007) fallback (Fratini et al. 2012,
+	       Eq. 4), as it already did for a low flux or an implausible factor.
+	- Fix: A second hygrometer was corrected analytically whenever the
+	       primary's RH regression had failed, although the correction itself
+	       uses each hygrometer's own regression. The gate and the readiness
+	       report asked the primary's coefficients of every hygrometer; all
+	       three now ask HygrometerRhCoefficients - its own, else the
+	       project-wide set. Pinned by
+	       static_checks/test_insitu_fallbacks_static.py.
+	- Fix: A hygrometer with no humidity for a period had its RH regression
+	       evaluated at the error code, giving a cut-off of 0 or infinity and
+	       from those a factor of c1 WS / c2 + 1 or of 1, either passed off as
+	       an in-situ correction. It now has no cut-off for that period. A gas
+	       with no cut-off gets no in-situ factor from Ibrom et al. (2007),
+	       Horst (1997) or Fratini et al. (2012) - the formulas left the 1 their
+	       callers start from, Horst's combination kept the low-frequency
+	       factor alone, and Fratini's direct method came out at about 1 - and
+	       the hub corrects it with Moncrieff et al. (1997). The FCC run now
+	       ends by listing, per gas, every period corrected analytically
+	       instead of in situ, with the reason (no cut-off frequency, failed
+	       fit) and the timestamps, worker processes included. Nothing is
+	       written for a run without any.
+
 8.1.7 (2026-11-04)
 
     Engine:

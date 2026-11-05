@@ -96,12 +96,12 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     logical :: gas_ok
     integer :: n_insitu
     integer :: n_analytic
-    logical :: h2o_ok
     character(32), external :: IntToText
     character(16), external :: GasName
     character(12), external :: StatusLabel
     character(12), external :: OutcomeLabel
     logical, external :: GasHasSpectralFit
+    logical, external :: HygrometerHasRhFit
     include '../src_common/interfaces_1.inc'
 
     assessment_ready = .true.
@@ -116,11 +116,6 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         end do
     end if
 
-    !> Computed here rather than inside the assessment branch below, because
-    !> the per-gas lines read it whether or not an assessment is being made.
-    h2o_ok = h2o_classes >= 1 .and. &
-        RegPar(dum, dum)%e1 /= error .and. RegPar(dum, dum)%e2 /= error .and. &
-        RegPar(dum, dum)%e3 /= error
 
     if (FCCsetup%do_spectral_assessment) then
         !> The file is worth writing when any gas got a fit, not when every
@@ -133,8 +128,12 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
             if (.not. fcc_var_present(gas)) cycle
             gas_ok = GasHasSpectralFit(gas)
             !> A hygrometer needs the RH regression on top of its own fit:
-            !> that is what turns humidity into a cut-off frequency.
-            if (GasSlotIsWater(gas)) gas_ok = gas_ok .and. h2o_ok
+            !> that is what turns humidity into a cut-off frequency. Its own
+            !> regression, or the project-wide one it falls back to - the
+            !> pair the correction evaluates, not the primary's for all.
+            if (GasSlotIsWater(gas)) then
+                if (gas_ok) gas_ok = HygrometerHasRhFit(gas)
+            end if
             if (gas_ok) then
                 n_insitu = n_insitu + 1
             else
@@ -213,7 +212,9 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         !> the same question: the correction needs a fitted cut-off, and a
         !> hygrometer needs the RH regression on top of it.
         gas_ok = GasHasSpectralFit(gas)
-        if (GasSlotIsWater(gas)) gas_ok = gas_ok .and. h2o_ok
+        if (GasSlotIsWater(gas)) then
+            if (gas_ok) gas_ok = HygrometerHasRhFit(gas)
+        end if
         if (.not. fcc_var_present(gas)) then
             call EmitReportLine(report_unit, open_status, trim(GasName(gas)) // ': unavailable... NOT APPLIED')
         else
@@ -273,6 +274,91 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     write(*, '(a)') ' Spectral-correction diagnostics written to: ' // trim(FilePath)
     write(ulog, '(a)') ' Spectral-correction diagnostics written to: ' // trim(FilePath)
 end subroutine ReportSpectralAssessmentDiagnostics
+
+!*******************************************************************************
+!> The periods in which a gas the in-situ spectral correction was meant to take
+!> was corrected with Moncrieff et al. (1997) instead, one line per gas with
+!> the count, then each reason with the timestamps it applies to. Written at
+!> the end of the FCC run, once the workers' periods are merged in; a run
+!> without any writes nothing.
+!>
+!> The readiness report is written before the flux loop and can only say what
+!> the assessment fitted. A gas loses its correction here period by period -
+!> no humidity to find a hygrometer's cut-off from, a failed fit for this
+!> period's stability - and its factor used to read as a correction.
+subroutine ReportInsituFallbacks()
+    use m_fx_global_var
+    implicit none
+    integer :: gas
+    integer :: reason
+    integer :: i
+    integer :: n
+    integer :: nr
+    integer :: pos
+    logical :: first_reason
+    logical :: first_stamp
+    character(:), allocatable :: line
+    character(32), external :: IntToText
+    character(16), external :: GasName
+    character(20), parameter :: ReasonText(2) = &
+        [character(20) :: 'no cut-off frequency', 'failed fit']
+
+    if (InsituFallbackN < 1) return
+    call LogSay('')
+    call LogSay(' In-situ spectral correction not possible for some periods; ' // &
+        'corrected with Moncrieff et al. (1997) instead:')
+    do gas = firstGas, lastGas
+        n = count(InsituFallbacks(1:InsituFallbackN)%gas == gas)
+        if (n == 0) cycle
+        !> Sized once: a run can hold thousands of such periods, and growing
+        !> the line by concatenation would copy it for every one.
+        allocate(character(64 + 2 * 24 + 18 * n) :: line)
+        pos = 0
+        call Put('  ' // trim(GasName(gas)) // ': ' // trim(IntToText(n)))
+        if (n == 1) then
+            call Put(' period')
+        else
+            call Put(' periods')
+        end if
+        first_reason = .true.
+        do reason = InsituNoCutoff, InsituFitFailed
+            nr = 0
+            do i = 1, InsituFallbackN
+                if (InsituFallbacks(i)%gas == gas .and. InsituFallbacks(i)%reason == reason) &
+                    nr = nr + 1
+            end do
+            if (nr == 0) cycle
+            if (first_reason) then
+                call Put(' - ')
+            else
+                call Put('; ')
+            end if
+            first_reason = .false.
+            call Put(trim(ReasonText(reason)) // ':')
+            first_stamp = .true.
+            do i = 1, InsituFallbackN
+                if (InsituFallbacks(i)%gas /= gas .or. InsituFallbacks(i)%reason /= reason) cycle
+                if (first_stamp) then
+                    call Put(' ')
+                else
+                    call Put(', ')
+                end if
+                first_stamp = .false.
+                call Put(InsituFallbacks(i)%date // ' ' // InsituFallbacks(i)%time)
+            end do
+        end do
+        call LogSay(line(1:pos))
+        deallocate(line)
+    end do
+
+contains
+
+    subroutine Put(s)
+        character(*), intent(in) :: s
+        line(pos + 1:pos + len(s)) = s
+        pos = pos + len(s)
+    end subroutine Put
+end subroutine ReportInsituFallbacks
 
 !*******************************************************************************
 subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
