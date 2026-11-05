@@ -528,7 +528,8 @@ program EddyFlowRP
 
     !> Determine potential radiation, based on lat/long info from metadata file
     PotRad = PotentialRadiation(Metadata%lat, Metadata%lon, Metadata%utc_offset)
-    if (Metadata%utc_offset_assumed) then
+    !> Once, from the parent: every worker process runs this startup too.
+    if (Metadata%utc_offset_assumed .and. BatchIndex == 0) then
         write(utc_msg, '(f0.1)') Metadata%utc_offset
         call LogSay(' Note: the metadata give no UTC offset for the timestamps;' &
             // ' the potential radiation assumes ' // trim(utc_msg) // ' h from the longitude.')
