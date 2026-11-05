@@ -145,6 +145,7 @@ subroutine OxygenCorrectionKrypton(lEx)
     real(kind = dbl)  :: Cox
     integer :: gas
     logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
 
     !> Apply oxygen correction to Krypton and Lyman-alpha hygrometers,
     !> according to van Dijk et al. (2003, JAOT, eq. 13b)
@@ -163,12 +164,31 @@ subroutine OxygenCorrectionKrypton(lEx)
                 if (lEx%gas_instr(gas)%ko /= error &
                     .and. lEx%gas_instr(gas)%kw /= 0d0 &
                     .and. lEx%Ta > 0d0 .and. lEx%Bowen /= error &
-                    .and. lEx%lambda > 0d0) then
+                    .and. lEx%lambda > 0d0 .and. lEx%Cp > 0d0) then
+                    !> Cox = 1 + 0.23 (ko/kw) beta lambda / (cp T), with 0.23
+                    !> the oxygen mole fraction times M_O2 / M_air. The 1/cp
+                    !> was missing, which made the factor about 1 + 56 beta
+                    !> instead of 1 + 0.06 beta, negative for beta below
+                    !> -0.02; Horst's form below carries the same ratio as
+                    !> its 8 ~ lambda / (cp T).
                     Cox = 1d0 + 0.23d0 * lEx%gas_instr(gas)%ko &
                         / lEx%gas_instr(gas)%kw &
-                        * lEx%Bowen * lEx%lambda / lEx%Ta
+                        * lEx%Bowen * lEx%lambda / (lEx%Cp * lEx%Ta)
                     lEx%cov_w(gas) = Cox * lEx%cov_w(gas)
                     lEx%var(gas) = Cox**2 * lEx%var(gas)
+                    !> And the flux, which is what the correction is for: it
+                    !> scaled the covariance and variance columns only, while
+                    !> FH2O, LE and ET came from the uncorrected Level-0
+                    !> values. The ex record carries those uncorrected - RP
+                    !> leaves them alone when FCC follows - so this is the
+                    !> one place they are corrected.
+                    if (lEx%Flux0%gas(gas) /= error) &
+                        lEx%Flux0%gas(gas) = Cox * lEx%Flux0%gas(gas)
+                    if (gas == PrimaryWaterSlot()) then
+                        if (lEx%Flux0%LE /= error) lEx%Flux0%LE = Cox * lEx%Flux0%LE
+                        if (lEx%Flux0%ET /= error) lEx%Flux0%ET = Cox * lEx%Flux0%ET
+                        if (lEx%Flux0%E /= error) lEx%Flux0%E = Cox * lEx%Flux0%E
+                    end if
                     !> Alternative formulation by T.W. Horst
                     !> http://www.eol.ucar.edu/instrumentation/&
                     !> &sounding/isfs/isff-support-center/how-tos/&

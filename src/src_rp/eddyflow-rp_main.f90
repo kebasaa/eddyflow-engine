@@ -3107,7 +3107,7 @@ program EddyFlowRP
                     corr_passes = EddyFlowProj%corr_iter_max
                 !> Once per period, ahead of the passes: it scales the
                 !> covariances in place, so inside the loop it compounded.
-                call OxygenCorrectionKrypton_rp()
+                call OxygenCorrectionKrypton_rp(.true.)
                 do corr_pass = 1, corr_passes
                     if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
@@ -3162,7 +3162,7 @@ program EddyFlowRP
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)
-                    call OxygenCorrectionKrypton_rp()
+                    call OxygenCorrectionKrypton_rp(.false.)
                     call Fluxes1_rp()
                     call Fluxes23_rp()
                     do j = firstGas, lastGas

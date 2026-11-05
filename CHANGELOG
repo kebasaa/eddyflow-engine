@@ -58,6 +58,15 @@
 	       oxygen correction compounded the same way in both programs; it now
 	       runs once per period, before the passes (OxygenCorrectionKrypton).
 	       A single-pass run is unchanged.
+	- Fix: The krypton and Lyman-alpha oxygen correction of van Dijk et al.
+	       (2003) lacked the 1/cp in 1 + 0.23 (ko/kw) beta lambda / (cp T),
+	       which made it about 1 + 56 beta instead of 1 + 0.06 beta, and
+	       negative for beta below -0.02. It also scaled only the water
+	       covariance and variance columns, never the flux: FH2O, LE, E and ET
+	       came from the uncorrected Level 0. Both are corrected now, so LE
+	       and ET change for krypton and Lyman-alpha hygrometers. RP corrects
+	       the flux when it is the last program to touch it; when FCC follows,
+	       the ex record keeps Level 0 uncorrected and FCC corrects it once.
 
 8.1.7 (2026-11-04)
 

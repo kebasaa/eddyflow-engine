@@ -142,12 +142,16 @@ end subroutine Fluxes1_rp
 !              variance carried Cox to the power of the number of passes.
 !              Called before the first Fluxes1_rp of a period.
 !***************************************************************************
-subroutine OxygenCorrectionKrypton_rp()
+subroutine OxygenCorrectionKrypton_rp(scale_fluxes)
     use m_rp_global_var
     implicit none
+    !> Whether the Level-0 water fluxes are corrected here too: not when FCC
+    !> follows, which reads them back uncorrected and corrects them itself.
+    logical, intent(in) :: scale_fluxes
     real(kind = dbl)  :: Cox
     integer :: msl
     logical, external :: GasSlotIsWater
+    integer, external :: PrimaryWaterSlot
 
     !> Apply oxygen correction to Krypton and Lyman-alpha hygrometers,
     !> according to van Dijk et al. (2003, JAOT, eq. 13b).
@@ -168,11 +172,33 @@ subroutine OxygenCorrectionKrypton_rp()
                 !> another instrument's numbers.
                 if (E2Col(msl)%Instr%ko /= error .and. E2Col(msl)%Instr%kw /= 0d0 &
                     .and. Ambient%Ta > 0d0 .and. Ambient%Bowen /= error &
-                    .and. Ambient%lambda > 0) then
+                    .and. Ambient%lambda > 0 .and. RHO%a > 0d0 &
+                    .and. Ambient%RhoCp > 0d0) then
+                    !> Cox = 1 + 0.23 (ko/kw) beta lambda / (cp T), with 0.23
+                    !> the oxygen mole fraction times M_O2 / M_air and cp the
+                    !> moist air's, RhoCp / rho. The 1/cp was missing, which
+                    !> made the factor about 1 + 56 beta instead of
+                    !> 1 + 0.06 beta, negative for beta below -0.02; Horst's
+                    !> form below carries the same ratio as its 8.
                     Cox = 1d0 + 0.23d0 * E2Col(msl)%Instr%ko / E2Col(msl)%Instr%kw &
-                        * Ambient%Bowen * Ambient%lambda / Ambient%Ta
+                        * Ambient%Bowen * Ambient%lambda &
+                        / (Ambient%RhoCp / RHO%a * Ambient%Ta)
                     Stats%Cov(w, msl) = Cox * Stats%Cov(w, msl)
                     Stats%Cov(msl, msl) = Cox**2 * Stats%Cov(msl, msl)
+                    !> And the flux, which is what the correction is for: the
+                    !> Level-0 water flux and its LE/E/ET were computed from
+                    !> the uncorrected covariance, so the correction never
+                    !> reached them. Not when FCC follows: the ex record
+                    !> carries Level 0 uncorrected and FCC corrects it once.
+                    if (scale_fluxes) then
+                        if (Flux0%gas(msl) /= error) &
+                            Flux0%gas(msl) = Cox * Flux0%gas(msl)
+                        if (msl == PrimaryWaterSlot()) then
+                            if (Flux0%LE /= error) Flux0%LE = Cox * Flux0%LE
+                            if (Flux0%E /= error) Flux0%E = Cox * Flux0%E
+                            if (Flux0%ET /= error) Flux0%ET = Cox * Flux0%ET
+                        end if
+                    end if
                     !> Alternative formulation by T.W. Horst
                     !> http://www.eol.ucar.edu/instrumentation/sounding&
                     !> &/isfs/isff-support-center/how-tos/&

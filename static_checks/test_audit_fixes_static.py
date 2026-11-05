@@ -71,10 +71,41 @@ class TheIterationCompoundsNothing(unittest.TestCase):
         self.assertLess(fcc.index("call OxygenCorrectionKrypton(lEx)"),
                         fcc.index("do corr_pass = 1, corr_passes"))
         rp = self.RPMAIN
-        self.assertLess(rp.index("call OxygenCorrectionKrypton_rp()"),
+        self.assertLess(rp.index("call OxygenCorrectionKrypton_rp("),
                         rp.index("do corr_pass = 1, corr_passes"))
         # And ahead of the FCC-only branch's single Level 1.
-        self.assertEqual(rp.count("call OxygenCorrectionKrypton_rp()"), 2)
+        self.assertEqual(rp.count("call OxygenCorrectionKrypton_rp("), 2)
+
+
+class TheOxygenCorrectionHasItsHeatCapacityAndReachesTheFlux(unittest.TestCase):
+    """Cox = 1 + 0.23 (ko/kw) beta lambda / (cp T). The 1/cp was missing, and
+    the correction scaled the covariance and variance columns only, never
+    FH2O, LE or ET."""
+
+    RP1 = code("src_rp", "fluxes1_rp.f90")
+    FCC1 = code("src_fcc", "fluxes1.f90")
+    RPMAIN = code("src_rp", "eddyflow-rp_main.f90")
+
+    def test_the_formula_divides_by_cp(self):
+        self.assertIn("/ (Ambient%RhoCp / RHO%a * Ambient%Ta)", self.RP1)
+        self.assertIn("* lEx%Bowen * lEx%lambda / (lEx%Cp * lEx%Ta)", self.FCC1)
+        self.assertNotIn("* Ambient%Bowen * Ambient%lambda / Ambient%Ta", self.RP1)
+        self.assertNotIn("* lEx%Bowen * lEx%lambda / lEx%Ta", self.FCC1)
+
+    def test_the_water_flux_is_corrected(self):
+        fcc = body(self.FCC1, "subroutine OxygenCorrectionKrypton(", "end subroutine OxygenCorrectionKrypton")
+        self.assertIn("lEx%Flux0%gas(gas) = Cox * lEx%Flux0%gas(gas)", fcc)
+        self.assertIn("lEx%Flux0%LE = Cox * lEx%Flux0%LE", fcc)
+        rp = body(self.RP1, "subroutine OxygenCorrectionKrypton_rp(", "end subroutine OxygenCorrectionKrypton_rp")
+        self.assertIn("if (scale_fluxes) then", rp)
+        self.assertIn("Flux0%gas(msl) = Cox * Flux0%gas(msl)", rp)
+        self.assertIn("if (Flux0%LE /= error) Flux0%LE = Cox * Flux0%LE", rp)
+
+    def test_once_only_when_fcc_follows(self):
+        # RP corrects the flux when it is the last word on it; when FCC
+        # follows, the ex record carries Level 0 uncorrected for FCC.
+        self.assertIn("call OxygenCorrectionKrypton_rp(.true.)\n                do corr_pass", self.RPMAIN)
+        self.assertIn("call OxygenCorrectionKrypton_rp(.false.)\n                    call Fluxes1_rp()", self.RPMAIN)
 
 
 if __name__ == "__main__":
