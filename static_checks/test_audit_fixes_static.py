@@ -205,5 +205,16 @@ class PostFluxDespikingSeesThePublishedFluxes(unittest.TestCase):
         self.assertIn("if (pfd_csl >= firstGas) pfd_nee = Flux3%gas(pfd_csl)", self.MAIN)
 
 
+class NoFootprintWithoutStability(unittest.TestCase):
+    """Hsieh, Kormann-Meixner and Kljun ran on z/L or L = -9999."""
+
+    FOOT = code("src_common", "footprint_handle.f90")
+
+    def test_it_refuses_before_any_model(self):
+        guard = "if (ustar == error .or. ustar <= 0d0 .or. zL == error &"
+        self.assertIn(guard, self.FOOT)
+        self.assertLess(self.FOOT.index(guard), self.FOOT.index("if (foot_model_used == 'kljun_04' .and. &"))
+
+
 if __name__ == "__main__":
     unittest.main()
