@@ -141,6 +141,12 @@
 	       a missing VPD - no hygrometer and no biomet RH - became -999900 in the
 	       full output and "-9999.00" in FLUXNET, past the error label. The
 	       conversion now tests VPD itself.
+	- Fix: In a LI-COR GHG period whose first archive was skipped (Error 24 or
+	       25), the instruments' reference rates were never set, and the next
+	       archive was compared with uninitialised memory - which could drop a
+	       good period with Warning(116). A real rate change on that archive
+	       was also reported as Warning(116) rather than taken as the period's
+	       new rate. Both now follow the first archive actually read.
 
 8.1.7 (2026-11-04)
 

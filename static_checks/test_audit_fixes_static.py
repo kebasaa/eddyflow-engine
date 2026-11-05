@@ -249,5 +249,16 @@ class VpdIsConvertedOnItsOwnValue(unittest.TestCase):
         self.assertNotIn("if (lEx%Pa /= error) lEx%VPD", rex)
 
 
+class GhgRatesAreSetByTheFirstFileRead(unittest.TestCase):
+
+    def test_the_reference_follows_the_first_read_file(self):
+        imp = code("src_rp", "import_current_period.f90")
+        self.assertIn("FirstRead = .false.\n    rawfile_loop: do", imp)
+        self.assertIn("if (.not. FirstRead) then\n                        rate_changed = .true.", imp)
+        self.assertIn("if (.not. FirstRead) then\n                        PeriodInstrFreq = LocCol%instr%ac_freq", imp)
+        self.assertIn("                FirstRead = .true.\n", imp)
+        self.assertNotIn("if (CurrentFile == FirstFile) then\n                        PeriodInstrFreq", imp)
+
+
 if __name__ == "__main__":
     unittest.main()
