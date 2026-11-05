@@ -122,6 +122,16 @@
 	       (2000) took z/(-9999) for neutral and Kormann and Meixner (2001) ran
 	       at z/L = -9999, both producing plausible distances. A period without
 	       u*, z/L or L now has no footprint. Inherited from EddyPro.
+	- Fix: A very short analyser path length - a mistyped value, or dynamic
+	       metadata, which skips the static check - made the path-averaging
+	       transfer function NaN, which was set to the error code and then
+	       multiplied into the band-pass function. The correction factor came
+	       out near -1e-4: the flux flipped in sign and shrank to nothing,
+	       unflagged, under Moncrieff et al. (1997) and every method that falls
+	       back to it. The function now takes its limit, sqrt(1 - x/6), where
+	       its closed form cancels, and an error component is kept out of the
+	       product. Ordinary path lengths are unaffected. Inherited from
+	       EddyPro.
 
 8.1.7 (2026-11-04)
 

@@ -216,5 +216,21 @@ class NoFootprintWithoutStability(unittest.TestCase):
         self.assertLess(self.FOOT.index(guard), self.FOOT.index("if (foot_model_used == 'kljun_04' .and. &"))
 
 
+class AShortPathAveragesToOne(unittest.TestCase):
+    """A tiny path length made the path-averaging function NaN, then the
+    error code, which was multiplied into the band-pass function."""
+
+    TF = code("src_common", "bpcf_analytic_transfer_functions.f90")
+    AUX = code("src_common", "bpcf_aux_subs.f90")
+
+    def test_the_limit_is_taken_below_the_cancellation(self):
+        self.assertIn("where (2d0 * p * fp_irga(1:N) < 1d-7)", self.TF)
+        self.assertIn("BPTF(1:N)%LP(var)%wirga = dsqrt(1d0 - 2d0 * p * fp_irga(1:N) / 6d0)", self.TF)
+
+    def test_the_error_code_never_enters_the_product(self):
+        bp = body(self.AUX, "subroutine BandPassTransferFunction", "end subroutine BandPassTransferFunction")
+        self.assertIn("where (BPTF%LP(var1)%wirga == error .or. BPTF%LP(var2)%wirga == error)", bp)
+
+
 if __name__ == "__main__":
     unittest.main()

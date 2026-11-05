@@ -122,12 +122,27 @@ subroutine AnalyticLowPassTransferFunction(nf, N, var, LocInstr, loc_var_present
                 !> irga dynamic frequency response
                 BPTF(1:N)%LP(var)%dirga  = 1.d0 / dsqrt(1.d0 + (2.d0 * p * nf(1:N) /  irga_freq)**2 )
                 !> irga path-averaging
-                BPTF(1:N)%LP(var)%wirga = &
-                    dsqrt((3d0 + dexp(-2d0 * p * fp_irga(1:N)) - 4d0 / (2d0 * p * fp_irga(1:N)) * &
-                    (1d0 - dexp(-2d0 * p * fp_irga(1:N)))) / (2d0 * p * fp_irga(1:N)))
+                !>
+                !> For x = 2 pi fp below 1e-7 the closed form is three O(1)
+                !> terms cancelling to O(x), and for a very short path it went
+                !> negative or 0/0 - the NaN the guard below was added for. Its
+                !> limit there is sqrt(1 - x/6), the function tending to 1 as
+                !> the path vanishes, and that is what it now takes. Set to the
+                !> error code instead, it was multiplied into the band-pass
+                !> function, and the factor came out near -1e-4: a flux
+                !> flipped in sign and shrunk to nothing, flagged nowhere. An
+                !> ordinary path stays far above the threshold at any wind.
+                where (2d0 * p * fp_irga(1:N) < 1d-7)
+                    BPTF(1:N)%LP(var)%wirga = dsqrt(1d0 - 2d0 * p * fp_irga(1:N) / 6d0)
+                elsewhere
+                    BPTF(1:N)%LP(var)%wirga = &
+                        dsqrt((3d0 + dexp(-2d0 * p * fp_irga(1:N)) - 4d0 / (2d0 * p * fp_irga(1:N)) * &
+                        (1d0 - dexp(-2d0 * p * fp_irga(1:N)))) / (2d0 * p * fp_irga(1:N)))
+                end where
                 !> In case something went wrong with the sqrt above,
                 !> set NaN to error. Problem seen in support case
                 !> with exceedingly low (implausible) instrument path length.
+                !> BandPassTransferFunction keeps the error out of the product.
                 where (isnan(BPTF(1:N)%LP(var)%wirga))
                     BPTF(1:N)%LP(var)%wirga = error
                 end where

@@ -99,6 +99,13 @@ subroutine BandPassTransferFunction(BPTF, var1, var2, varout, nfreq)
                     * BPTF%LP(var1)%zoh_sonic * BPTF%LP(var2)%zoh_sonic &
                     * BPTF%HP(var1)           * BPTF%HP(var2) &
                     * BPTF%EXP(var1)          * BPTF%EXP(var2)
+    !> The path-averaging term is the one component set to the error code
+    !> when it cannot be computed. Multiplied in, -9999 made the product a
+    !> large negative number that no longer equals error, and the factor was
+    !> integrated from it; the frequency is skipped instead.
+    where (BPTF%LP(var1)%wirga == error .or. BPTF%LP(var2)%wirga == error)
+        BPTF%BP(varout) = error
+    end where
 end subroutine BandPassTransferFunction
 
 !***************************************************************************
