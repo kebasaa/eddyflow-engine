@@ -173,6 +173,15 @@
 	       are now tested as mole fractions (umol mol-1, water mmol mol-1), and
 	       the count limits are the same fractions of the samples the column
 	       should have in the period.
+	- Fix: The stationarity test (Foken and Wichura 1996) added a sub-period's
+	       error code into the mean sub-period covariance like a value, so a
+	       period with one sub-period missing - possible once the allowed
+	       missing data reaches about 15 %, or at 10 % when w and the gas are
+	       missing in adjacent halves of one - got a deviation of millions of
+	       percent and quality flag 2 instead of a test from the sub-periods
+	       present. The mean now covers the sub-periods with a covariance and
+	       needs at least two; u* is formed only where both its covariances
+	       exist. A complete period is unchanged. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 

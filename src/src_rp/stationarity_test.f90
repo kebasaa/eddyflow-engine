@@ -62,6 +62,7 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
 !    real(kind = dbl) :: CosTheta
     real(kind = dbl) :: GlbUstar
     real(kind = dbl) :: SubUstar
+    integer :: nv(GHGNumVar, GHGNumVar)
 
 
     call LogSayNoAdv('  Performing stationarity test..')
@@ -75,19 +76,37 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     !> Partial covariances from subsets and their averages
     subn = int(dble(nrow/ndiv))
     allocate(SubSet(subn, GHGNumVar))
+    !> Averaged over the sub-periods that have a covariance. A sub-period
+    !> without one returns the error code, which was added in like a value:
+    !> (5c - 9999) / 6 passed the error test below, and the period got a
+    !> deviation of millions of percent - flag 2 - instead of a test made
+    !> from the sub-periods there are. Fewer than two: not computable.
     AvrgCov = 0.d0
+    nv = 0
     do l = 1, ndiv
         do i = 1, subn
             SubSet(i, :) = LocSet(i + (subn*(l - 1)), :)
         end do
         call CovarianceMatrixNoError(SubSet, subn, GHGNumVar, SubCov, error)
-        AvrgCov = AvrgCov + SubCov
+        where (SubCov /= error)
+            AvrgCov = AvrgCov + SubCov
+            nv = nv + 1
+        end where
     end do
-    AvrgCov = AvrgCov / dble(ndiv)
+    where (nv >= 2)
+        AvrgCov = AvrgCov / dble(nv)
+    elsewhere
+        AvrgCov = error
+    end where
 
-    !> Ustar on the whole covariance and on partial covariances
-    SubUstar = (AvrgCov(u, w)**2 + AvrgCov(v, w)**2)**0.25d0
-    GlbUstar = (GlbCov(u, w)**2  + GlbCov(v, w)**2 )**0.25d0
+    !> Ustar on the whole covariance and on partial covariances, where both
+    !> of its covariances exist
+    SubUstar = error
+    if (AvrgCov(u, w) /= error .and. AvrgCov(v, w) /= error) &
+        SubUstar = (AvrgCov(u, w)**2 + AvrgCov(v, w)**2)**0.25d0
+    GlbUstar = error
+    if (GlbCov(u, w) /= error .and. GlbCov(v, w) /= error) &
+        GlbUstar = (GlbCov(u, w)**2  + GlbCov(v, w)**2 )**0.25d0
 
     !> Differences
     do i = u, GHGNumVar

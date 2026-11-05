@@ -307,5 +307,15 @@ class RFluxLimitsAreInItsUnitsAndPeriod(unittest.TestCase):
         self.assertIn("where (xout /= error) xout = xout * scale", ru)
 
 
+class StationarityAveragesTheSubPeriodsThereAre(unittest.TestCase):
+
+    def test_missing_sub_periods_are_left_out(self):
+        st = code("src_rp", "stationarity_test.f90")
+        self.assertIn("where (SubCov /= error)\n            AvrgCov = AvrgCov + SubCov\n            nv = nv + 1", st)
+        self.assertIn("AvrgCov = AvrgCov / dble(nv)", st)
+        self.assertNotIn("AvrgCov = AvrgCov / dble(ndiv)", st)
+        self.assertIn("if (AvrgCov(u, w) /= error .and. AvrgCov(v, w) /= error) &", st)
+
+
 if __name__ == "__main__":
     unittest.main()
