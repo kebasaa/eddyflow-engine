@@ -67,6 +67,19 @@
 	       and ET change for krypton and Lyman-alpha hygrometers. RP corrects
 	       the flux when it is the last program to touch it; when FCC follows,
 	       the ex record keeps Level 0 uncorrected and FCC corrects it once.
+	- Fix: Detrending of a column with missing rows - one slower than the file
+	       (instr_<K>_ac_freq), or with filtered samples. Linear detrending
+	       fitted the slope against the sample count and drew it against the
+	       row count, so a 1 Hz column in a 10 Hz file turned a real 5 ppm rise
+	       into a -45 ppm ramp, and a few filtered rows tilted any column. The
+	       running mean updated a slower column at a tenth of its samples'
+	       weight, and the exponential average decayed one step per sample
+	       instead of per elapsed row, both detrending it about ten times too
+	       weakly. After a leading gap of Tconst or more, both took their trend
+	       from uninitialised memory. Linear now regresses on the row offset,
+	       the running mean averages the valid samples in its window, and the
+	       exponential average decays by b**gap and starts at the first sample.
+	       A column without missing rows gives the same numbers as before.
 
 8.1.7 (2026-11-04)
 

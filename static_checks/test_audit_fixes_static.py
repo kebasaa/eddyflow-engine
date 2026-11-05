@@ -108,5 +108,35 @@ class TheOxygenCorrectionHasItsHeatCapacityAndReachesTheFlux(unittest.TestCase):
         self.assertIn("call OxygenCorrectionKrypton_rp(.false.)\n                    call Fluxes1_rp()", self.RPMAIN)
 
 
+class DetrendingRunsOnRowsNotSamples(unittest.TestCase):
+    """A column with missing rows - slower than the file, or filtered -
+    was fitted on sample counts and evaluated on rows (linear), updated at
+    the wrong weight (running mean), or decayed one step per sample
+    (exponential). The latter two also started from uninitialised memory
+    after a leading gap."""
+
+    FLUCT = code("src_common", "fluctuations.f90")
+
+    def test_linear_regresses_on_the_row_offset(self):
+        lin = body(self.FLUCT, "subroutine LinDetrend", "end subroutine LinDetrend")
+        self.assertIn("sumx1(j) = sumx1(j) + (Set(i, j)*(dble(i - imin)))", lin)
+        self.assertIn("(dble(i - imin) - sumtime(j) / dble(nn(j)))", lin)
+        self.assertNotIn("dble(nn(j) - 1)", lin)
+        self.assertNotIn("mm(j)", lin)
+
+    def test_running_mean_averages_the_valid_samples_of_a_gappy_column(self):
+        rm = body(self.FLUCT, "subroutine RunningMean", "end subroutine RunningMean")
+        self.assertIn("if (any(Set(1:N, k) == error)) then", rm)
+        self.assertIn("if (win_cnt > 0) Trend(i, k) = win_sum / dble(win_cnt)", rm)
+        self.assertIn("Trend = error", rm)
+
+    def test_exponential_decays_by_the_gap_and_has_a_start(self):
+        ew = body(self.FLUCT, "subroutine ExpWeightAvrg", "end subroutine ExpWeightAvrg")
+        self.assertIn("if (last_valid > 0) bk = b ** (i - last_valid)", ew)
+        self.assertIn("Trend(i, k) = bk * Trend(i - back, k) &", ew)
+        self.assertIn("if (Trend(i, k) == error) Trend(i, k) = Set(i, k)", ew)
+        self.assertIn("Trend = error", ew)
+
+
 if __name__ == "__main__":
     unittest.main()
