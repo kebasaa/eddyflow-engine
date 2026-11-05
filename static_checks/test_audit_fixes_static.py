@@ -334,6 +334,10 @@ class PlanarFitSectorsKeepTheirFrame(unittest.TestCase):
         self.assertIn("PFSetup%wsect_end(sec) = modulo(PFSetup%wsect_end(sec) - zero, 360)", rd)
         self.assertIn("if (PFSetup%wsect_end(sec) == 0) PFSetup%wsect_end(sec) = 360", rd)
 
+    def test_the_counterclockwise_fill_counts_down(self):
+        fx = code("src_rp", "fix_planarfit_sectors.f90")
+        self.assertIn("do sec2 = sec - 1, - N + 1, -1", fx)
+
 
 if __name__ == "__main__":
     unittest.main()

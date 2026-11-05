@@ -86,8 +86,10 @@ subroutine FixPlanarfitSectors(GoPlanarFit, N)
                     end if
                 end do
             elseif(PFSetup%fix == 'counterclockwise') then
-                !> Searches counterclockwise
-                do sec2 = sec - 1, - N + 1
+                !> Searches counterclockwise. With no step the loop ran
+                !> upwards from sec - 1 to -N + 1, that is not at all, and a
+                !> sector too thin to fit was double-rotated without a word.
+                do sec2 = sec - 1, - N + 1, -1
                     if (loc_go(sec2)) then
                         PFMat(:, :, sec) = loc_pfmat(:, :, sec2)
                         PFb(:, sec) = loc_pfb(:, sec2)

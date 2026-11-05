@@ -198,6 +198,10 @@
 	       neighbouring sector's matrix, and with a negative offset some
 	       directions fell in no sector and were double-rotated. The ends are
 	       now read back relative to the offset. Inherited from EddyPro.
+	- Fix: The counterclockwise planar-fit sector fill (pf_fix) never ran: its
+	       loop counted upwards from sec - 1 to -N + 1 without a step of -1,
+	       so a sector with too few periods was not given its neighbour's fit
+	       and was double-rotated without a message. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 
