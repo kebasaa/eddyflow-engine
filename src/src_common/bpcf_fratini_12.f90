@@ -235,6 +235,15 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         !> carve-out water has everywhere else in this work.
         do gas = firstGas, lastGas
             if (.not. loc_var_present(gas)) cycle
+            !> No cut-off this period. ExperimentalLPTF stands in a transfer
+            !> function of 1, so the direct factor came out at about 1 and
+            !> passed the plausibility band; the Ibrom fallback has no cut-off
+            !> to work from either. No factor, and the hub corrects the gas
+            !> analytically.
+            if (f_c(gas) == error) then
+                BPCF%of(gas) = error
+                cycle
+            end if
             if (GasSlotIsWater(gas)) then
                 !> This hygrometer's own latent heat flux. Screening
                 !> every water slot on the site's meant a second

@@ -266,6 +266,12 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     !> factor - its Ibrom et al. (2007) fit failed, for the stability of this
     !> period - joins the gases it could not take, and the analytic method
     !> below corrects it. Left as it was, the error code reached the flux.
+    !> So does one with no cut-off frequency this period, such as a hygrometer
+    !> with no humidity to evaluate its RH regression at.
+    !>
+    !> Each such period is noted for the report at the end of the run, which
+    !> names them: the readiness report only knows what the assessment fitted,
+    !> and a gas that loses its correction here does so period by period.
     if (app == 'EddyFlow-FCC') then
         select case (trim(adjustl(actual_hf_method)))
             case('horst_97', 'ibrom_07', 'fratini_12')
@@ -274,6 +280,11 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                     if (BPCF%of(gas) /= error) cycle
                     insitu_ok(gas) = .false.
                     n_analytic = n_analytic + 1
+                    if (f_c(gas) == error .or. f_c(gas) <= 0d0) then
+                        call StoreInsituFallback(gas, lEx%end_date, lEx%end_time, InsituNoCutoff)
+                    else
+                        call StoreInsituFallback(gas, lEx%end_date, lEx%end_time, InsituFitFailed)
+                    end if
                 end do
         end select
     end if

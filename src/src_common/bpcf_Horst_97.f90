@@ -114,10 +114,15 @@ subroutine BPCF_Horst97(measuring_height, displ_height, loc_var_present, wind_sp
     BPCF_Horst%of(firstGas:lastGas) = 1d0
     call CorrectionFactorsHorst97(BPCF_Horst, lEx)
 
-    !> Combine low freq (analytic) + high freq (in situ) correction factors
-    where (BPCF%of(firstGas:lastGas) /= error .and. BPCF_Horst%of(firstGas:lastGas) /= error)
+    !> Combine low freq (analytic) + high freq (in situ) correction factors.
+    !> A gas with no in-situ factor - no cut-off this period - gets none at
+    !> all rather than the low-frequency part alone, which would read as
+    !> corrected: the hub sees the error and corrects it analytically instead.
+    where (BPCF_Horst%of(firstGas:lastGas) == error)
+        BPCF%of(firstGas:lastGas) = error
+    elsewhere (BPCF%of(firstGas:lastGas) /= error)
         BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * BPCF_Horst%of(firstGas:lastGas)
-    elsewhere (BPCF_Horst%of(firstGas:lastGas) /= error)
+    elsewhere
         BPCF%of(firstGas:lastGas) = BPCF_Horst%of(firstGas:lastGas)
     end where
 end subroutine BPCF_Horst97

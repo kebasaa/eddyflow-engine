@@ -1,6 +1,6 @@
 """What the in-situ spectral corrections do when part of them is missing.
 
-Four ways a period's in-situ correction can lack an ingredient, and what each
+Five ways a period's in-situ correction can lack an ingredient, and what each
 must lead to. Each of these once led somewhere else, silently:
 
 1. A stalled Ibrom et al. (2007) fit. The solver is judged not to have moved
@@ -22,6 +22,12 @@ must lead to. Each of these once led somewhere else, silently:
    failed. The gate and the readiness report asked the primary's coefficients
    of every hygrometer, while the correction evaluated each one's own. All
    three now ask one rule.
+
+5. A period with no cut-off frequency. A hygrometer with no humidity had its
+   RH regression evaluated at the error code, and a gas with no cut-off kept
+   the factor of 1 its caller starts from. Now it has no factor, the hub
+   corrects it analytically, and the FCC run ends by listing every such
+   period, gas by gas, with the reason.
 
 Part of the EddyFlow engine's static checks.
 """
@@ -50,6 +56,9 @@ FRATINI = code("src_common", "bpcf_fratini_12.f90")
 HUB = code("src_common", "bpcf_bandpass_spectral_corrections.f90")
 SLOTS = code("src_common", "gas_slot_resolution.f90")
 REPORT = code("src_fcc", "spectral_assessment_diagnostics.f90")
+HORST = code("src_common", "bpcf_Horst_97.f90")
+PARALLEL = code("src_fcc", "fcc_parallel.f90")
+MAIN = code("src_fcc", "eddyflow-fcc_main.f90")
 
 
 class AStalledFitIsCaught(unittest.TestCase):
@@ -73,7 +82,8 @@ class AFailedFitGivesNoFactor(unittest.TestCase):
         fn = body(AUX, "subroutine CorrectionFactorsIbrom07", "end subroutine CorrectionFactorsIbrom07")
         for par in ("StPar", "UnPar"):
             self.assertIn("if (any(%s(1:2) == error)) then" % par, fn)
-        self.assertEqual(fn.count("lBPCF%of(gas) = error"), 2)
+        # One for each stability, and one for a missing cut-off (case 5).
+        self.assertEqual(fn.count("lBPCF%of(gas) = error"), 3)
         # The guard comes before the formula it protects.
         self.assertLess(fn.index("if (any(StPar(1:2) == error)) then"),
                         fn.index("lBPCF%of(gas) = StPar(1) * lEx%WS"))
@@ -130,6 +140,65 @@ class EveryHygrometerAsksOneRule(unittest.TestCase):
     def test_nothing_asks_the_primary_for_every_hygrometer(self):
         self.assertNotIn("rh_ok", HUB)
         self.assertNotIn("h2o_ok", REPORT)
+
+
+class AMissingCutoffGivesNoFactor(unittest.TestCase):
+    """5. A period with no cut-off frequency, such as a hygrometer with no
+    humidity to evaluate its RH regression at. The regression was evaluated
+    at the error code, and the formulas left the 1 their callers start from;
+    either way the period read as corrected. Now there is no factor, the hub
+    corrects the gas analytically, and the run ends by naming the periods."""
+
+    def test_no_humidity_no_cutoff(self):
+        arm = body(AUX, "case('iir')", "case('sigma')")
+        self.assertLess(arm.index("if (lRH == error) lRH = lEx%RH"),
+                        arm.index("if (lRH == error) cycle"))
+        self.assertLess(arm.index("if (lRH == error) cycle"),
+                        arm.index("f_c(gas) = dexp(A * lRH**2 + B * lRH + C)"))
+        self.assertIn("if (f_c(gas) <= 0d0 .or. f_c(gas) > huge(1d0)) f_c(gas) = error", arm)
+
+    def test_both_formulas_give_no_factor(self):
+        ibrom = body(AUX, "subroutine CorrectionFactorsIbrom07", "end subroutine CorrectionFactorsIbrom07")
+        horst = body(AUX, "subroutine CorrectionFactorsHorst97", "end subroutine CorrectionFactorsHorst97")
+        for fn in (ibrom, horst):
+            self.assertIn("if (f_c(gas) == error .or. f_c(gas) <= 0d0) then", fn)
+        self.assertNotIn("if (f_c(gas) == error) return", ibrom)
+        self.assertEqual(ibrom.count("lBPCF%of(gas) = error"), 3)
+        self.assertIn("lBPCF%of(gas) = error\n            cycle", horst)
+
+    def test_horst_carries_the_missing_factor(self):
+        self.assertIn("where (BPCF_Horst%of(firstGas:lastGas) == error)\n"
+                      "        BPCF%of(firstGas:lastGas) = error", HORST)
+
+    def test_fratini_keeps_no_direct_factor_without_a_cutoff(self):
+        loop = FRATINI[FRATINI.index("if (f_c(gas) == error) then"):]
+        self.assertTrue(loop.startswith("if (f_c(gas) == error) then\n"
+                                        "                BPCF%of(gas) = error\n"
+                                        "                cycle"))
+        self.assertLess(FRATINI.index("if (f_c(gas) == error) then"),
+                        FRATINI.index("BPCF%of(gas) <= min_bpcf_f12(gas)"))
+
+    def test_the_hub_notes_each_period_with_its_reason(self):
+        block = HUB[HUB.index("if (BPCF%of(gas) /= error) cycle"):HUB.index("if (n_analytic > 0) then")]
+        self.assertIn("call StoreInsituFallback(gas, lEx%end_date, lEx%end_time, InsituNoCutoff)", block)
+        self.assertIn("call StoreInsituFallback(gas, lEx%end_date, lEx%end_time, InsituFitFailed)", block)
+
+    def test_workers_hand_their_periods_back(self):
+        finish = body(PARALLEL, "subroutine FinishFccWorker", "end subroutine FinishFccWorker")
+        merge = body(PARALLEL, "subroutine MergeFccPieces", "end subroutine MergeFccPieces")
+        begins = body(PARALLEL, "subroutine FccPieceBegins", "end subroutine FccPieceBegins")
+        self.assertIn("InsituFallbackN = 0", begins)
+        # Written and read in the same place: after the despiking rows.
+        self.assertLess(finish.index("write(ud) PfdCacheN"), finish.index("write(ud) InsituFallbackN"))
+        self.assertIn("write(ud) InsituFallbacks(1:InsituFallbackN)", finish)
+        self.assertLess(merge.index("call StorePfdCache"), merge.index("read(ud) fallbacks"))
+        self.assertIn("call StoreInsituFallback(fallbacks(i)%gas, fallbacks(i)%date, &", merge)
+
+    def test_the_run_ends_by_naming_them(self):
+        self.assertLess(MAIN.index("call MergeFccPieces()"), MAIN.index("call ReportInsituFallbacks()"))
+        report = body(REPORT, "subroutine ReportInsituFallbacks", "end subroutine ReportInsituFallbacks")
+        self.assertIn("if (InsituFallbackN < 1) return", report)
+        self.assertIn("call Put(InsituFallbacks(i)%date // ' ' // InsituFallbacks(i)%time)", report)
 
 
 if __name__ == "__main__":

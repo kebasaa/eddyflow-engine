@@ -2013,6 +2013,17 @@ module m_typedef
         real(kind = dbl) :: le
     end type PfdCacheEntryType
 
+    !> One period in which a gas the in-situ spectral correction was meant to
+    !> take came back without a factor and was corrected analytically instead.
+    !> Collected over the FCC run, workers included, and reported at its end.
+    !> reason: 1 = no cut-off frequency for the period, 2 = failed fit.
+    type :: InsituFallbackType
+        integer :: gas
+        integer :: reason
+        character(10) :: date
+        character(5) :: time
+    end type InsituFallbackType
+
     type :: TLType
         !> Nominal time lag per gas, indexed by gas slot.
         real(kind = dbl) :: def_gas(GHGNumVar)

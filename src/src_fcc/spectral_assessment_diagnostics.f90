@@ -276,6 +276,91 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
 end subroutine ReportSpectralAssessmentDiagnostics
 
 !*******************************************************************************
+!> The periods in which a gas the in-situ spectral correction was meant to take
+!> was corrected with Moncrieff et al. (1997) instead, one line per gas with
+!> the count, then each reason with the timestamps it applies to. Written at
+!> the end of the FCC run, once the workers' periods are merged in; a run
+!> without any writes nothing.
+!>
+!> The readiness report is written before the flux loop and can only say what
+!> the assessment fitted. A gas loses its correction here period by period -
+!> no humidity to find a hygrometer's cut-off from, a failed fit for this
+!> period's stability - and its factor used to read as a correction.
+subroutine ReportInsituFallbacks()
+    use m_fx_global_var
+    implicit none
+    integer :: gas
+    integer :: reason
+    integer :: i
+    integer :: n
+    integer :: nr
+    integer :: pos
+    logical :: first_reason
+    logical :: first_stamp
+    character(:), allocatable :: line
+    character(32), external :: IntToText
+    character(16), external :: GasName
+    character(20), parameter :: ReasonText(2) = &
+        [character(20) :: 'no cut-off frequency', 'failed fit']
+
+    if (InsituFallbackN < 1) return
+    call LogSay('')
+    call LogSay(' In-situ spectral correction not possible for some periods; ' // &
+        'corrected with Moncrieff et al. (1997) instead:')
+    do gas = firstGas, lastGas
+        n = count(InsituFallbacks(1:InsituFallbackN)%gas == gas)
+        if (n == 0) cycle
+        !> Sized once: a run can hold thousands of such periods, and growing
+        !> the line by concatenation would copy it for every one.
+        allocate(character(64 + 2 * 24 + 18 * n) :: line)
+        pos = 0
+        call Put('  ' // trim(GasName(gas)) // ': ' // trim(IntToText(n)))
+        if (n == 1) then
+            call Put(' period')
+        else
+            call Put(' periods')
+        end if
+        first_reason = .true.
+        do reason = InsituNoCutoff, InsituFitFailed
+            nr = 0
+            do i = 1, InsituFallbackN
+                if (InsituFallbacks(i)%gas == gas .and. InsituFallbacks(i)%reason == reason) &
+                    nr = nr + 1
+            end do
+            if (nr == 0) cycle
+            if (first_reason) then
+                call Put(' - ')
+            else
+                call Put('; ')
+            end if
+            first_reason = .false.
+            call Put(trim(ReasonText(reason)) // ':')
+            first_stamp = .true.
+            do i = 1, InsituFallbackN
+                if (InsituFallbacks(i)%gas /= gas .or. InsituFallbacks(i)%reason /= reason) cycle
+                if (first_stamp) then
+                    call Put(' ')
+                else
+                    call Put(', ')
+                end if
+                first_stamp = .false.
+                call Put(InsituFallbacks(i)%date // ' ' // InsituFallbacks(i)%time)
+            end do
+        end do
+        call LogSay(line(1:pos))
+        deallocate(line)
+    end do
+
+contains
+
+    subroutine Put(s)
+        character(*), intent(in) :: s
+        line(pos + 1:pos + len(s)) = s
+        pos = pos + len(s)
+    end subroutine Put
+end subroutine ReportInsituFallbacks
+
+!*******************************************************************************
 subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
     use m_fx_global_var
     implicit none

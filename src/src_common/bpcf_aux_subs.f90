@@ -235,8 +235,16 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                 !> 20% apart, which is two RH classes.
                 lRH = lEx%rh_at(gas)
                 if (lRH == error) lRH = lEx%RH
+                !> No humidity this period, so no cut-off. Evaluated at the
+                !> error code the regression gave a cut-off of 0 or infinity,
+                !> and from those a factor of c1 WS / c2 + 1 or of 1, either
+                !> passed off as a correction. Left at error, the gas gets no
+                !> in-situ factor and the hub corrects it analytically.
+                if (lRH == error) cycle
                 lRH = lRH * 1d-2
                 f_c(gas) = dexp(A * lRH**2 + B * lRH + C)
+                !> An exponent out of range does the same from real humidity.
+                if (f_c(gas) <= 0d0 .or. f_c(gas) > huge(1d0)) f_c(gas) = error
             end do
             !> select relevant tranfer function parameters
             !> according to the month, for every configured gas
@@ -352,10 +360,14 @@ subroutine CorrectionFactorsHorst97(lBPCF, lEx)
     !> Correction factor per configured gas. f_c must be a real cutoff: an
     !> unclassified gas leaves it at the error sentinel, and dividing by that
     !> would produce a plausible-looking factor from a value that means
-    !> "not available".
+    !> "not available". Such a gas gets no factor rather than the 1 its
+    !> caller starts from, so the hub corrects it analytically.
     do gas = firstGas, lastGas
         if (.not. lEx%var_present(gas)) cycle
-        if (f_c(gas) == error .or. f_c(gas) <= 0d0) cycle
+        if (f_c(gas) == error .or. f_c(gas) <= 0d0) then
+            lBPCF%of(gas) = error
+            cycle
+        end if
         t_c = 1d0 / (2d0 * p * f_c(gas))
         lBPCF%of(gas) = (1d0 + 2d0 * p * lEx%WS * t_c * Nm / zeta )**alpha
     end do
@@ -392,7 +404,13 @@ subroutine CorrectionFactorsIbrom07(gas, lBPCF, lEx)
     if (.not. lEx%var_present(gas)) return
     !> An unclassified gas leaves f_c at the error sentinel; adding that to the
     !> denominator gives a plausible-looking factor from a missing value.
-    if (f_c(gas) == error) return
+    !> No factor either, though: returning left the 1 the callers start from,
+    !> which reads as a correction found to be nothing. With error the hub
+    !> corrects the gas analytically, as it does after a failed fit.
+    if (f_c(gas) == error .or. f_c(gas) <= 0d0) then
+        lBPCF%of(gas) = error
+        return
+    end if
 
     if (lEx%Flux0%zL >= 0d0) then
         !> A fit that failed leaves its parameters at the error code, and

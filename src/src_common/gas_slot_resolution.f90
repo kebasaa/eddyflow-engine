@@ -239,6 +239,37 @@ end function HygrometerHasRhFit
 
 !***************************************************************************
 !
+! \brief       Note one period a gas was corrected analytically instead of in
+!              situ, for the report at the end of the FCC run.
+! \author      Jonathan Muller
+! \note        reason is InsituNoCutoff or InsituFitFailed. Room for twice as
+!              many when full, as for the despiking cache, so a long run with
+!              many such periods does not copy the list every period.
+!***************************************************************************
+subroutine StoreInsituFallback(gas, date, time, reason)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas
+    character(*), intent(in) :: date
+    character(*), intent(in) :: time
+    integer, intent(in) :: reason
+    type(InsituFallbackType), allocatable :: tmp(:)
+
+    if (.not. allocated(InsituFallbacks)) allocate(InsituFallbacks(256))
+    if (InsituFallbackN >= size(InsituFallbacks)) then
+        allocate(tmp(2 * size(InsituFallbacks)))
+        tmp(1:InsituFallbackN) = InsituFallbacks(1:InsituFallbackN)
+        call move_alloc(tmp, InsituFallbacks)
+    end if
+    InsituFallbackN = InsituFallbackN + 1
+    InsituFallbacks(InsituFallbackN)%gas = gas
+    InsituFallbacks(InsituFallbackN)%reason = reason
+    InsituFallbacks(InsituFallbackN)%date = date
+    InsituFallbacks(InsituFallbackN)%time = time
+end subroutine StoreInsituFallback
+
+!***************************************************************************
+!
 ! \brief       The gas slot holding the site's primary water measurement.
 ! \author      Jonathan Muller
 ! \note        The hygrometer whose H, LE and ET carry the bare column names,

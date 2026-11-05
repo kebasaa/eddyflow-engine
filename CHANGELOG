@@ -1,23 +1,6 @@
-8.1.7 (2026-11-04)
+8.1.8 (2026-11-05)
 
     Engine:
-	- Change: The limit of detection after Langford et al. (2015) has its own
-	          switch, lod_meth in [Project] (0 none, the default; 1
-	          langford_15), and is no longer a random error method: ru_meth 6
-	          is gone and decodes as none. A run can now report one method's
-	          random error in rand_err_* / *_RANDUNC_HF and Langford's limit
-	          of detection beside it in lod_* / *_LOD. The far-lag random
-	          error behind the LoD is measured by LodLangford15 into fields of
-	          its own (lod_re), converted to flux units by the same routine as
-	          the random errors (ToFluxUnits, in Fluxes0), and spectrally
-	          corrected with them under ru_spec_corr. FCC no longer recomputes
-	          the LoD from rand_uncer, which is another method's estimate: it
-	          reads the _LOD family back from the ex record and divides out
-	          alpha. The ex record keeps its width. Express mode and metadata
-	          retrieval switch it off with the random errors. Every output is
-	          unchanged for a project without lod_meth. New fixture
-	          tests/regression/base_n_gas_lod.eddyflow; pinned by
-	          static_checks/test_langford_lod_static.py.
 	- Fix: The stable Ibrom et al. (2007) correction factor model was judged
 	       not to have moved when it sat at (1, 0.02), a point it never
 	       starts from; it starts at (6.5e-3, 3.0e-3). A stalled stable fit
@@ -43,6 +26,40 @@
 	       three now ask HygrometerRhCoefficients - its own, else the
 	       project-wide set. Pinned by
 	       static_checks/test_insitu_fallbacks_static.py.
+	- Fix: A hygrometer with no humidity for a period had its RH regression
+	       evaluated at the error code, giving a cut-off of 0 or infinity and
+	       from those a factor of c1 WS / c2 + 1 or of 1, either passed off as
+	       an in-situ correction. It now has no cut-off for that period. A gas
+	       with no cut-off gets no in-situ factor from Ibrom et al. (2007),
+	       Horst (1997) or Fratini et al. (2012) - the formulas left the 1 their
+	       callers start from, Horst's combination kept the low-frequency
+	       factor alone, and Fratini's direct method came out at about 1 - and
+	       the hub corrects it with Moncrieff et al. (1997). The FCC run now
+	       ends by listing, per gas, every period corrected analytically
+	       instead of in situ, with the reason (no cut-off frequency, failed
+	       fit) and the timestamps, worker processes included. Nothing is
+	       written for a run without any.
+
+8.1.7 (2026-11-04)
+
+    Engine:
+	- Change: The limit of detection after Langford et al. (2015) has its own
+	          switch, lod_meth in [Project] (0 none, the default; 1
+	          langford_15), and is no longer a random error method: ru_meth 6
+	          is gone and decodes as none. A run can now report one method's
+	          random error in rand_err_* / *_RANDUNC_HF and Langford's limit
+	          of detection beside it in lod_* / *_LOD. The far-lag random
+	          error behind the LoD is measured by LodLangford15 into fields of
+	          its own (lod_re), converted to flux units by the same routine as
+	          the random errors (ToFluxUnits, in Fluxes0), and spectrally
+	          corrected with them under ru_spec_corr. FCC no longer recomputes
+	          the LoD from rand_uncer, which is another method's estimate: it
+	          reads the _LOD family back from the ex record and divides out
+	          alpha. The ex record keeps its width. Express mode and metadata
+	          retrieval switch it off with the random errors. Every output is
+	          unchanged for a project without lod_meth. New fixture
+	          tests/regression/base_n_gas_lod.eddyflow; pinned by
+	          static_checks/test_langford_lod_static.py.
 
 8.1.6 (2026-11-04)
 
