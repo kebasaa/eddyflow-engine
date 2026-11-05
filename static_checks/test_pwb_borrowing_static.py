@@ -304,8 +304,8 @@ class TheAggregateSummaryCannotSwitchTheMethod(unittest.TestCase):
         source = code("src/src_rp/optimize_timelags.f90")
         block = source[source.index("if (toH2O(1, wsl)%def == error"):]
         self.assertIn("Meth%tlag == 'pwb'", block)
-        self.assertLess(block.index("Meth%tlag == 'pwb'"),
-                        block.index("Meth%tlag = 'maxcov'"))
+        # Nor any other method: an empty water table costs water only.
+        self.assertNotIn("Meth%tlag = 'maxcov'", block)
 
 
 if __name__ == "__main__":

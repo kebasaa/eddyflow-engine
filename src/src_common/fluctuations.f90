@@ -263,8 +263,14 @@ subroutine RunningMean(Set, Primes, Tconst, LocCol, N, M)
                 end where
                 cycle
             end if
-            !> First Rconst elements in the time series have a special treatment
-            do i = 1, Rconst
+            !> First Rconst elements in the time series have a special treatment.
+            !> No further than the period: a time constant longer than the
+            !> averaging period (timeconst=5000 s on 30 minutes is a valid
+            !> setting) made Rconst exceed the rows, and this wrote past the end
+            !> of Trend - a segmentation fault, first met in the CEC partition,
+            !> which detrends before the main step. The running mean is then
+            !> the mean of the period so far.
+            do i = 1, min(Rconst, N)
                 Trend(i, k) = 0.d0
                 cnt = 0
                 do j = 1, i
@@ -358,8 +364,14 @@ subroutine ExpWeightAvrg(Set, Primes, Tconst, LocCol, N, M)
     Trend = error
     do k = 1, M
         if (LocCol(k)%present) then
-            !> First Rconst elements in the time series have a special treatment
-            do i = 1, Rconst
+            !> First Rconst elements in the time series have a special treatment.
+            !> No further than the period: a time constant longer than the
+            !> averaging period (timeconst=5000 s on 30 minutes is a valid
+            !> setting) made Rconst exceed the rows, and this wrote past the end
+            !> of Trend - a segmentation fault, first met in the CEC partition,
+            !> which detrends before the main step. The running mean is then
+            !> the mean of the period so far.
+            do i = 1, min(Rconst, N)
                 Trend(i, k) = 0.d0
                 cnt = 0
                 do j = 1, i

@@ -115,8 +115,11 @@ class TheColumnsFollowTheOctantGas(unittest.TestCase):
                             "end function CecFlagsStomatalSign")
 
     def test_respiration_and_photosynthesis_are_co2_words(self):
+        # The species is looked up once per target, outside the compound
+        # condition, which gfortran need not evaluate in full.
+        self.assertIn("k_species = CecSlotSpecies(slots(k))", self.columns)
         branch = ("else if (k == cecTargetCarbon .and. "
-                  "trim(CecSlotSpecies(slots(k))) == 'CO2') then")
+                  "trim(k_species) == 'CO2') then")
         self.assertIn(branch, self.columns)
         self.assertLess(self.columns.index(branch),
                         self.columns.index("call Emit('Reco_cec' // trim(tag)"))

@@ -419,5 +419,30 @@ class PotentialRadiationKeepsSolarTime(unittest.TestCase):
         self.assertIn("lrad = PotentialRadiationAt(rad, date, time)", self.DATES)
 
 
+class AnEmptyWaterClassTableCostsOnlyWater(unittest.TestCase):
+    """With edge-pinned lags kept out, water's RH classes can all be empty;
+    that switched the whole run to covariance maximisation."""
+
+    def test_water_takes_its_unclassed_window_and_the_run_continues(self):
+        opt = code("src_rp", "optimize_timelags.f90")
+        tail = opt[opt.index("if (WaterSlotClassed(wsl)) then\n        if (toH2O(1, wsl)%def == error"):]
+        tail = tail[:tail.index("end subroutine OptimizeTimelags")]
+        self.assertIn("toH2O(1:MM, wsl) = toPasGas(wsl)", tail)
+        self.assertNotIn("call ExceptionHandler(43)", tail)
+        self.assertNotIn("Meth%tlag = 'maxcov'", tail)
+
+
+class ATimeConstantLongerThanThePeriodStaysInBounds(unittest.TestCase):
+    """timeconst longer than the averaging period made Rconst exceed the
+    rows, and the first-window loops wrote past the end of Trend."""
+
+    def test_first_window_is_bounded_by_the_rows(self):
+        fl = code("src_common", "fluctuations.f90")
+        for name in ("RunningMean", "ExpWeightAvrg"):
+            fn = body(fl, "subroutine %s" % name, "end subroutine %s" % name)
+            self.assertIn("do i = 1, min(Rconst, N)", fn)
+            self.assertNotIn("do i = 1, Rconst\n", fn)
+
+
 if __name__ == "__main__":
     unittest.main()

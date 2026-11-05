@@ -2069,6 +2069,7 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
     character(48) :: tag
     character(32), external :: CecSlotSpecies
     logical, external :: CecFlagsStomatalSign
+    character(32) :: k_species
 
     names = ''
     units = ''
@@ -2081,6 +2082,8 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
 
     do k = 1, ntarget
         if (slots(k) < firstGas .or. slots(k) > lastGas) cycle
+        !> Outside the condition: a function in one .and. need not be called.
+        k_species = CecSlotSpecies(slots(k))
         if (k == cecTargetWater) then
             if (pair%meth /= 1 .and. pair%meth /= 2) cycle
             call Emit('E_cec' // trim(tag), flux_label(slots(k)))
@@ -2091,7 +2094,7 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
             call Emit('r_ET_cec' // trim(tag), '[#]')
             call Emit('cec_ns_h2o' // trim(tag), '[%]')
             call Emit('qc_cec_h2o' // trim(tag), '[#]')
-        else if (k == cecTargetCarbon .and. trim(CecSlotSpecies(slots(k))) == 'CO2') then
+        else if (k == cecTargetCarbon .and. trim(k_species) == 'CO2') then
             if (pair%meth /= 1 .and. pair%meth /= 3) cycle
             call Emit('Reco_cec' // trim(tag), flux_label(slots(k)))
             call Emit('P_cec' // trim(tag), flux_label(slots(k)))

@@ -306,9 +306,27 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                 call LogSay('        aggregate time-lag summary. The half-hourly PWB table is')
                 call LogSay('        unaffected and is what this run uses.')
             else
-                call ExceptionHandler(43)
-                Meth%tlag = 'maxcov'
-                TimeLagOptSelected = .false.
+                !> Water's problem, so water's fallback: its window from all of
+                !> its determinations together, unclassed - what a second
+                !> hygrometer without classes already takes - and its declared
+                !> window if it has none either. Every other gas keeps the
+                !> window the optimisation found for it.
+                !>
+                !> This used to switch the whole run to covariance maximisation
+                !> and throw the other gases' windows away. Since lags pinned at
+                !> the search window's edge are kept out of the dataset, a short
+                !> or edge-bound water record leaves its classes empty far more
+                !> often, and with it every gas lost its optimised window.
+                if (toPasGas(wsl)%max > toPasGas(wsl)%min) then
+                    toH2O(1:MM, wsl) = toPasGas(wsl)
+                    call LogSay(' Alert> No H2O relative-humidity class had enough time-lag')
+                    call LogSay('        determinations. Water vapour uses one window for all')
+                    call LogSay('        humidities; the other gases keep their optimised windows.')
+                else
+                    call LogSay(' Alert> Too few H2O time-lag determinations to optimise its')
+                    call LogSay('        window. Water vapour keeps the window of the metadata;')
+                    call LogSay('        the other gases keep their optimised windows.')
+                end if
             end if
         end if
     end if
