@@ -273,5 +273,15 @@ class MahrtDividesByTheWindowsThatHaveData(unittest.TestCase):
         self.assertNotIn("dble(n_sub-1)", m98)
 
 
+class TheDropoutTestCanFlag(unittest.TestCase):
+
+    DO = code("src_rp", "test_amp_res_drop_out.f90")
+
+    def test_real_percentages_and_either_limit(self):
+        self.assertIn("Essentials%do_s_ctr(j) = 100d0 * dble(tot_drops_ctr(j)) / dble(nn * wdw_num)", self.DO)
+        self.assertIn("if (Essentials%do_s_ctr(j) >= do%hf1_lim &\n                .or. Essentials%do_s_ext(j) >= do%hf2_lim) then", self.DO)
+        self.assertNotIn("idint(dble(tot_drops", self.DO)
+
+
 if __name__ == "__main__":
     unittest.main()

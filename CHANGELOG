@@ -155,6 +155,13 @@
 	       grading the vitale_20 flag too severely. It now divides by the
 	       windows and sub-periods with data, and gives no estimate below two.
 	       A period with every window filled is unchanged.
+	- Fix: The dropout test (Vickers and Mahrt 1997) never raised its hard
+	       flag. Its percentages were an integer quotient of dropouts over
+	       samples, which is always 0, so the DO digit was always 0 and the
+	       *_DO percentages in the output read 0; and the extreme-value limit
+	       overwrote the central one's verdict. The percentages are real now
+	       and either limit raises the flag. The DO digit changes wherever the
+	       test is on. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 

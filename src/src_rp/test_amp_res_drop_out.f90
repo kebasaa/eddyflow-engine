@@ -207,18 +207,19 @@ subroutine TestAmpResDropOut(Set, N)
     do_hflags = 9
     do j = 1, GHGNumVar
         if (E2Col(j)%present) then
-            if (100.d0 * dble(idint(dble(tot_drops_ctr(j) / (nn * wdw_num)))) >= do%hf1_lim) then
+            !> Percentages in real arithmetic. The quotient was taken between
+            !> integers, and a window holds fewer dropouts than samples, so
+            !> it was always 0: no hard flag was ever raised and both
+            !> percentages read 0. And either limit raises the flag - the
+            !> extreme-value test used to overwrite the central one's verdict.
+            Essentials%do_s_ctr(j) = 100d0 * dble(tot_drops_ctr(j)) / dble(nn * wdw_num)
+            Essentials%do_s_ext(j) = 100d0 * dble(tot_drops_ext(j)) / dble(nn * wdw_num)
+            if (Essentials%do_s_ctr(j) >= do%hf1_lim &
+                .or. Essentials%do_s_ext(j) >= do%hf2_lim) then
                 do_hflags(j) = 1
             else
                 do_hflags(j) = 0
             end if
-            if (100.d0 * dble(idint(dble(tot_drops_ext(j) / (nn * wdw_num)))) >= do%hf2_lim) then
-                do_hflags(j) = 1
-            else
-                do_hflags(j) = 0
-            end if
-            Essentials%do_s_ctr(j) = 100.d0 * dble(idint(dble(tot_drops_ctr(j) / (nn * wdw_num))))
-            Essentials%do_s_ext(j) = 100.d0 * dble(idint(dble(tot_drops_ext(j) / (nn * wdw_num))))
         else
             Essentials%do_s_ctr(j) = error
             Essentials%do_s_ext(j) = error
