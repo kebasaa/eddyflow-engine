@@ -421,7 +421,7 @@ subroutine VitaleFlag(itc_flg, vars, raw_ok, rf_ok, OAFlag)
     integer, intent(out) :: OAFlag
     !> local variables
     logical :: sev_flag, mod_flag
-    real(kind = dbl) :: hz, scth1, scth2, m98
+    real(kind = dbl) :: hz, scth1, scth2, m98, nsamp
     integer :: islot, vslot
 
     sev_flag = .false.
@@ -441,13 +441,23 @@ subroutine VitaleFlag(itc_flg, vars, raw_ok, rf_ok, OAFlag)
     end if
 
     hz = Metadata%ac_freq
-    scth1 = hz * 60d0 * 30d0 * 0.04d0
-    scth2 = hz * 60d0 * 30d0 * 0.01d0
 
     do islot = 1, 3
         vslot = vars(islot)
         if (vslot <= 0) cycle
         if (.not. raw_ok) cycle
+
+        !> RFlux's count limits are fractions of a period - 4 % and 1 % of
+        !> its samples, a sixth and a twelfth of them for DDI - which it
+        !> spells as 30 minutes at the file rate. The samples this column
+        !> should have in this period, at its own rate; the 30-minute form
+        !> only when RP did not record them.
+        nsamp = hz * 60d0 * 30d0
+        if (vslot <= size(RFluxNominalSamples)) then
+            if (RFluxNominalSamples(vslot) > 0d0) nsamp = RFluxNominalSamples(vslot)
+        end if
+        scth1 = nsamp * 0.04d0
+        scth2 = nsamp * 0.01d0
 
         if (Essentials%KID(vslot) /= error) then
             sev_flag = sev_flag .or. (Essentials%KID(vslot) > 50d0)
@@ -461,8 +471,9 @@ subroutine VitaleFlag(itc_flg, vars, raw_ok, rf_ok, OAFlag)
             mod_flag = mod_flag .or. (Essentials%AL1(vslot) > 0.5d0 .and. Essentials%AL1(vslot) <= 0.75d0)
         end if
         if (Essentials%DDI(vslot) /= error) then
-            sev_flag = sev_flag .or. (Essentials%DDI(vslot) >= hz * 300d0)
-            mod_flag = mod_flag .or. (Essentials%DDI(vslot) >= hz * 150d0 .and. Essentials%DDI(vslot) < hz * 300d0)
+            sev_flag = sev_flag .or. (Essentials%DDI(vslot) >= nsamp / 6d0)
+            mod_flag = mod_flag .or. (Essentials%DDI(vslot) >= nsamp / 12d0 &
+                .and. Essentials%DDI(vslot) < nsamp / 6d0)
         end if
         if (Essentials%HF5(vslot) /= error .and. Essentials%HF10(vslot) /= error) then
             sev_flag = sev_flag .or. (Essentials%HF5(vslot) > scth1 .or. Essentials%HF10(vslot) > scth2)

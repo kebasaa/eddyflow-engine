@@ -283,5 +283,29 @@ class TheDropoutTestCanFlag(unittest.TestCase):
         self.assertNotIn("idint(dble(tot_drops", self.DO)
 
 
+class RFluxLimitsAreInItsUnitsAndPeriod(unittest.TestCase):
+    """RFlux's tolerances are in its reference units and its count limits
+    are fractions of a 30-minute period at the file rate."""
+
+    QC = code("src_common", "qc_flags_subs.f90")
+    RF = code("src_rp", "test_rflux_diagnostics.f90")
+    KID = code("src_rp", "kid.f90")
+
+    def test_counts_follow_the_columns_samples(self):
+        vf = body(self.QC, "subroutine VitaleFlag", "end subroutine VitaleFlag")
+        self.assertIn("if (RFluxNominalSamples(vslot) > 0d0) nsamp = RFluxNominalSamples(vslot)", vf)
+        self.assertIn("scth1 = nsamp * 0.04d0", vf)
+        self.assertIn("Essentials%DDI(vslot) >= nsamp / 6d0", vf)
+        self.assertNotIn("hz * 300d0", vf)
+        self.assertIn("RFluxNominalSamples(icol) = dble(N) * ColumnAcFreq(icol) / Metadata%ac_freq", self.RF)
+
+    def test_gases_are_tested_in_reference_units(self):
+        self.assertIn("call RFluxReferenceUnits(Set(:, icol), ref_col, N, icol)", self.RF)
+        self.assertIn("call RFluxReferenceUnits(Set(:, icol), ref_col, nrow, icol)", self.KID)
+        ru = body(self.RF, "subroutine RFluxReferenceUnits", "end subroutine RFluxReferenceUnits")
+        self.assertIn("if (E2Col(icol)%measure_type /= 'molar_density') return", ru)
+        self.assertIn("where (xout /= error) xout = xout * scale", ru)
+
+
 if __name__ == "__main__":
     unittest.main()

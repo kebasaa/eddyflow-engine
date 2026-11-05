@@ -162,6 +162,17 @@
 	       overwrote the central one's verdict. The percentages are real now
 	       and either limit raises the flag. The DO digit changes wherever the
 	       test is on. Inherited from EddyPro.
+	- Fix: The RFlux diagnostics behind the vitale_20 QC scheme (Vitale et al.
+	       2020) applied RFlux's numbers outside the units and period length
+	       they are stated for. The 1e-3 flat-line step and the 0.01 floor on
+	       the robust sigma were compared in the column's own units, so an
+	       open-path CH4 in mmol m-3 had nearly every step called flat and its
+	       spike counts nulled; the HF5/HF10 and DDI count limits were written
+	       for 30 minutes at the file rate, unreachable for a slower
+	       instrument and wrong for any other averaging length. Molar densities
+	       are now tested as mole fractions (umol mol-1, water mmol mol-1), and
+	       the count limits are the same fractions of the samples the column
+	       should have in the period.
 
 8.1.7 (2026-11-04)
 

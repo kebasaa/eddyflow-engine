@@ -525,6 +525,10 @@ module m_common_global_var
     type(DiagAnemType) :: DiagAnemometer
     type (QCType) :: QCFlag
     real(kind = dbl) :: f_c(GHGNumVar)
+    !> Samples each column should have in this period at its own rate, set
+    !> by RP's RFlux diagnostics. Their count limits are fractions of a
+    !> period, which RFlux writes out for 30 minutes at the file rate.
+    real(kind = dbl) :: RFluxNominalSamples(GHGNumVar) = -9999d0
     real(kind = dbl) :: f_2(GHGNumVar)
     !> Periods the in-situ spectral correction had to hand to the analytic
     !> one, gas by gas (StoreInsituFallback, ReportInsituFallbacks). Here

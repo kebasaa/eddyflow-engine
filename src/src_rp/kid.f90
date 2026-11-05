@@ -55,6 +55,7 @@ subroutine KID(Set, nrow, ncol)
     integer, external :: CountZeroCrossings
     real(kind = dbl) :: residuals(nrow, ncol)
     real(kind = dbl) :: kid_diffs(nrow)
+    real(kind = dbl) :: ref_col(nrow)
 
     do icol = u, ts
         call VariableStochasticDetrending(Set(:, icol), residuals(:, icol), nrow)
@@ -71,7 +72,10 @@ subroutine KID(Set, nrow, ncol)
         if (E2Col(icol)%present) then
             call VariableStochasticDetrending(Set(:, icol), residuals(:, icol), nrow)
             Essentials%ZCD(icol) = CountZeroCrossings(residuals(:, icol), nrow)
-            call VariableFlatlineCorrectedDiff(Set(:, icol), kid_diffs, nrow, nout)
+            !> The flat-line step is RFlux's 1e-3 in its reference units, so
+            !> the column is put in them first (RFluxReferenceUnits).
+            call RFluxReferenceUnits(Set(:, icol), ref_col, nrow, icol)
+            call VariableFlatlineCorrectedDiff(ref_col, kid_diffs, nrow, nout)
             call KurtosisNoError(kid_diffs, nrow, 1, Essentials%KID(icol), error)
         else
             Essentials%KID(icol) = error
