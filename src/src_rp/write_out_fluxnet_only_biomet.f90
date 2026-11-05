@@ -180,9 +180,7 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
     call AddDatum(csv_row, 'not_enough_data', separator)
 
     !> Potential Radiations
-    indx = DateTimeToHalfHourNumber(end_date, end_time) - 1
-    indx = max(indx, 2)
-    lrad = (PotRad(indx) + PotRad(indx - 1)) / 2
+    lrad = PotentialRadiationAt(PotRad, end_date, end_time)
     call AddFloatDatumToDataline(lrad, csv_row, EddyFlowProj%err_label)
 
     !> Daytime

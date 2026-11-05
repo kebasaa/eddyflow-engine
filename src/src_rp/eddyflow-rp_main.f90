@@ -171,6 +171,7 @@ program EddyFlowRP
     integer :: planFirst
     integer :: planLast
     character(32) :: RunPlan
+    character(16) :: utc_msg
     integer :: tlagn(E2NumVar)
     integer :: MaxNumFileRecords
     integer :: NextRawFileIndx
@@ -526,7 +527,12 @@ program EddyFlowRP
     if (EddyFlowProj%use_dynmd_file) call InitDynamicMetadata(NumDynRecords)
 
     !> Determine potential radiation, based on lat/long info from metadata file
-    PotRad = PotentialRadiation(Metadata%lat)
+    PotRad = PotentialRadiation(Metadata%lat, Metadata%lon, Metadata%utc_offset)
+    if (Metadata%utc_offset_assumed) then
+        write(utc_msg, '(f0.1)') Metadata%utc_offset
+        call LogSay(' Note: the metadata give no UTC offset for the timestamps;' &
+            // ' the potential radiation assumes ' // trim(utc_msg) // ' h from the longitude.')
+    end if
 
     !> Initialize output files for "user" variables (non-sensitive variables)
     !> if at least one such variable exists. Not in a pre-pass worker, for the

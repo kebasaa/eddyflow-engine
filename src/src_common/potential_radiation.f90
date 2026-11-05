@@ -34,13 +34,19 @@
 ! \test
 ! \todo
 !***************************************************************************
-function PotentialRadiation(latit) result(RP)
+function PotentialRadiation(latit, longit, utc_off) result(RP)
     use m_common_global_var
     implicit none
     !> in/out variables
     real(kind = dbl), intent(in) :: latit
+    !> Longitude [deg E] and the hours the timestamps are ahead of UTC
+    real(kind = dbl), intent(in) :: longit
+    real(kind = dbl), intent(in) :: utc_off
     !> local variables
     integer :: i
+    real(kind = dbl) :: t_h
+    real(kind = dbl) :: clock
+    real(kind = dbl) :: solar
     integer :: lDOY
     real(kind = dbl) :: lat_rad
     real(kind = dbl) :: rpot
@@ -53,10 +59,26 @@ function PotentialRadiation(latit) result(RP)
     real(kind = dbl), parameter :: solar_constant = 1376d0
     real(kind = dbl) :: RP(17568)
 
-    !> Compute potential radiation, based on lat/long, on a 30 min basis
+    !> Compute potential radiation, based on lat/long, on a 30 min basis.
+    !>
+    !> RP(i) is the radiation at the middle of the year's i-th half-hour -
+    !> the one that ENDS at i half-hours, which is how DateTimeToHalfHourNumber
+    !> numbers a period by its end - so a period reads its own RP. It used to
+    !> sit at i + 1/2 half-hours, and the readers averaged i - 1 and i - 2:
+    !> the period's start, a quarter of an hour early.
+    !>
+    !> And at apparent solar time, not clock time. Clock noon was taken for
+    !> solar noon whatever the longitude and time zone, and the equation of
+    !> time below was computed and never used: at a site on UTC far from
+    !> Greenwich the whole curve sat hours off, and where biomet has neither
+    !> Rg nor PPFD that curve decides day and night - and with it Burba's day
+    !> or night regression for an LI-7500.
     do i = 1, 17568
+        !> Hours since the start of the year, standard time of the timestamps
+        t_h = (dble(i) - 0.5d0) * 0.5d0
         !> Compute day
-        lDOY = (i / 48) + 1
+        lDOY = int(t_h / 24d0) + 1
+        clock = t_h - 24d0 * dble(lDOY - 1)
         !> Compute theta
         theta = 2d0 * p * (lDOY - 1d0) / 365d0;
         !> Compute equation of time
@@ -66,8 +88,12 @@ function PotentialRadiation(latit) result(RP)
         delta = 0.006918d0 - 0.399912d0 * dcos(theta) + 0.070257d0 * dsin(theta) &
              - 0.006758d0 * dcos(2d0 * theta) + 0.000907d0 * dsin(2d0 * theta) &
              -0.002697d0 * dcos(3d0 * theta) + 0.00148d0 * dsin(3d0 * theta)
-        !> Compute LAS
-        LAS = 12.d0 - (mod(i, 48) / 2.d0 + 0.25d0)
+        !> Apparent solar time: the longitude's offset from the time zone's
+        !> meridian, and the equation of time (Spencer 1971, in radians, so
+        !> 229.18 minutes per unit)
+        solar = clock + (longit / 15d0 - utc_off) + 229.18d0 * ET / 60d0
+        !> Compute LAS, hours from solar noon
+        LAS = 12.d0 - solar
         LAS = dabs(LAS)
         !> Compute omega
         omega = -15d0 * LAS

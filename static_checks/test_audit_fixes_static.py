@@ -395,5 +395,29 @@ class AGasWithoutACellFallsBackToAmbient(unittest.TestCase):
         self.assertEqual(loop.count("Ambient%Pcell_at(gas) = amb_P"), 2)
 
 
+class PotentialRadiationKeepsSolarTime(unittest.TestCase):
+    """Clock noon was taken for solar noon, the equation of time was
+    computed and unused, and the readers centred the value on the period's
+    start."""
+
+    PR = code("src_common", "potential_radiation.f90")
+    DATES = code("src_common", "date_subs.f90")
+
+    def test_apparent_solar_time(self):
+        self.assertIn("function PotentialRadiation(latit, longit, utc_off) result(RP)", self.PR)
+        self.assertIn("solar = clock + (longit / 15d0 - utc_off) + 229.18d0 * ET / 60d0", self.PR)
+        self.assertIn("LAS = 12.d0 - solar", self.PR)
+        self.assertIn("PotentialRadiation(Metadata%lat, Metadata%lon, Metadata%utc_offset)",
+                      code("src_rp", "eddyflow-rp_main.f90"))
+
+    def test_a_period_reads_its_own_half_hour(self):
+        self.assertIn("t_h = (dble(i) - 0.5d0) * 0.5d0", self.PR)
+        at = body(self.DATES, "function PotentialRadiationAt", "end function PotentialRadiationAt")
+        self.assertIn("PotentialRadiationAt = rad(indx)", at)
+        for rel in ("write_out_fluxnet.f90", "write_out_fluxnet_only_biomet.f90"):
+            self.assertNotIn("PotRad(indx - 1)", code("src_rp", rel))
+        self.assertIn("lrad = PotentialRadiationAt(rad, date, time)", self.DATES)
+
+
 if __name__ == "__main__":
     unittest.main()

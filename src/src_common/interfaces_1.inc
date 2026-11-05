@@ -389,13 +389,24 @@ interface
 end interface
 
 interface
-    function PotentialRadiation(latit) result(RP)
+    function PotentialRadiation(latit, longit, utc_off) result(RP)
         use m_common_global_var
         implicit none
         !> in/out variables
         real(kind = dbl), intent(in) :: latit
+        real(kind = dbl), intent(in) :: longit
+        real(kind = dbl), intent(in) :: utc_off
         real(kind = dbl) :: RP(17568)
     end function
+
+    !> The potential radiation of the period ending at date/time
+    real(kind = dbl) function PotentialRadiationAt(rad, date, time)
+        use m_common_global_var
+        implicit none
+        real(kind = dbl), intent(in) :: rad(17568)
+        character(*), intent(in) :: date
+        character(*), intent(in) :: time
+    end function PotentialRadiationAt
 end interface
 
 

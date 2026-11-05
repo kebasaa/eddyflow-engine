@@ -360,12 +360,9 @@ logical function IsDaytime(rad, date, time)
     character(*), intent(in) :: time
     !> local variables
     real(kind = dbl) :: lrad
-    integer :: indx
-    integer, external :: DateTimeToHalfHourNumber
+    real(kind = dbl), external :: PotentialRadiationAt
 
-    indx = DateTimeToHalfHourNumber(date, time) - 1
-    indx = max(indx, 2)
-    lrad = (rad(indx) + rad(indx - 1)) / 2
+    lrad = PotentialRadiationAt(rad, date, time)
 
     !> Now indx is known, use relevant radiation value to determine daytime
     if (lrad > 10d0) then
@@ -374,6 +371,30 @@ logical function IsDaytime(rad, date, time)
         IsDaytime = .false.
     end if
 end function IsDaytime
+
+!***************************************************************************
+!
+! \brief       Potential radiation of the period ending at date/time.
+! \author      Jonathan Muller
+! \note        PotentialRadiation's RP(i) belongs to the half-hour ending at i,
+!              the number DateTimeToHalfHourNumber gives a period's end, so this
+!              is one lookup. The three readers used to repeat an average of
+!              the two half-hours before, which centred it on the period's
+!              start.
+!***************************************************************************
+real(kind = dbl) function PotentialRadiationAt(rad, date, time)
+    use m_common_global_Var
+    implicit none
+    real(kind = dbl), intent(in) :: rad(17568)
+    character(*), intent(in) :: date
+    character(*), intent(in) :: time
+    integer :: indx
+    integer, external :: DateTimeToHalfHourNumber
+
+    indx = DateTimeToHalfHourNumber(date, time)
+    indx = min(max(indx, 1), size(rad))
+    PotentialRadiationAt = rad(indx)
+end function PotentialRadiationAt
 
 !***************************************************************************
 !

@@ -146,9 +146,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     call AddDatum(csv_row, trim(adjustl(Essentials%fname)), separator)
 
     !> Potential Radiations
-    indx = DateTimeToHalfHourNumber(Stats%date, Stats%time) - 1
-    indx = max(indx, 2)
-    lrad = (PotRad(indx) + PotRad(indx - 1)) / 2
+    lrad = PotentialRadiationAt(PotRad, Stats%date, Stats%time)
     call AddFloatDatumToDataline(lrad, csv_row, EddyFlowProj%err_label)
 
     !> Daytime

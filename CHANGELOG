@@ -245,6 +245,17 @@
 	       character tag appended to the header block by gen_metadata_tags.py,
 	       so the instrument and column tables move by one index and
 	       read_metadata_file.f90 takes the new origins.
+	- Fix: The potential radiation took clock noon for solar noon whatever the
+	       longitude and time zone, and computed the equation of time without
+	       using it; its readers then averaged the two half-hours before a
+	       period's end, centring the value on the period's start. At a site
+	       far from its time zone's meridian - or logging in UTC - the curve sat
+	       hours off, and where biomet has neither Rg nor PPFD it decides day
+	       and night: the NIGHT flag, and Burba's day or night regression for an
+	       LI-7500. It is now evaluated at apparent solar time from the longitude,
+	       the new utc_offset and the equation of time, at each period's middle.
+	       SW_IN_POT and the day/night flag move for every site. Inherited from
+	       EddyPro (LI-COR eddypro-engine issue 8).
 
 8.1.7 (2026-11-04)
 
