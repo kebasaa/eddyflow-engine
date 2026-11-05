@@ -133,6 +133,16 @@ subroutine ReadPlanarFitFile()
                 call ExceptionHandler(29)
                 return
             end if
+            !> Back to the frame the run compares in. The file states sector
+            !> ends as true bearings - the writer adds the north offset - while
+            !> WindSector compares them with the wind direction minus that
+            !> offset, as a run that fits the sectors itself stores them. Read
+            !> as written, every boundary moved by the offset again and the
+            !> wind in that band got its neighbour's rotation; with a negative
+            !> offset some directions fell in no sector at all. The last
+            !> sector closes the circle at 360.
+            PFSetup%wsect_end(sec) = modulo(PFSetup%wsect_end(sec) - zero, 360)
+            if (PFSetup%wsect_end(sec) == 0) PFSetup%wsect_end(sec) = 360
             !> Determine whether sector is to be excluded
             PFSetup%wsect_exclude(sec) = index(strg,'excluded') /= 0
 

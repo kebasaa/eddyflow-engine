@@ -327,5 +327,13 @@ class TheOptimiserKnowsAnEdgeWhenItSeesOne(unittest.TestCase):
         self.assertIn("dabs(lag - E2Col(gas)%min_tl) > halfSample", fn)
 
 
+class PlanarFitSectorsKeepTheirFrame(unittest.TestCase):
+
+    def test_a_reread_file_is_put_back_relative_to_the_offset(self):
+        rd = code("src_rp", "read_planar_fit_file.f90")
+        self.assertIn("PFSetup%wsect_end(sec) = modulo(PFSetup%wsect_end(sec) - zero, 360)", rd)
+        self.assertIn("if (PFSetup%wsect_end(sec) == 0) PFSetup%wsect_end(sec) = 360", rd)
+
+
 if __name__ == "__main__":
     unittest.main()

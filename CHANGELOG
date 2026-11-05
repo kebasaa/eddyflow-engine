@@ -190,6 +190,14 @@
 	       lag was pulled toward the edge. An edge is now within half a sample,
 	       as the optimiser's own diagnostic table already judged it.
 	       Inherited from EddyPro.
+	- Fix: A planar-fit file read back by a later run shifted every sector
+	       boundary by the north offset (pf_north_offset). The file states the
+	       sector ends as true bearings, while the run compares them with the
+	       wind direction minus the offset; read as written, the offset was
+	       applied twice, so wind near a boundary was rotated with the
+	       neighbouring sector's matrix, and with a negative offset some
+	       directions fell in no sector and were double-rotated. The ends are
+	       now read back relative to the offset. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 
