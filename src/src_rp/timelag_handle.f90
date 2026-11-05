@@ -71,6 +71,7 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     !> Row lag the water covariance is taken at: the gas's own where the two
     !> share an analyser, the hygrometer's where they do not.
     integer :: lagRow
+    logical :: same_analyser
     include '../src_common/interfaces_1.inc'
 
     skip_apply = pwb_detect_only_mode
@@ -251,7 +252,18 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             !> analysers is a compromise and ExceptionHandler(106) says so;
             !> declaring an H2O on the gas's own analyser makes ResolveGasRef
             !> prefer it and the two lags become one again.
-            if (E2Col(j)%instr%model == E2Col(msl)%instr%model) then
+            !>
+            !> "Same analyser" by identity where the records name their
+            !> instruments: two analysers of one model are two tubes, and the
+            !> model test sent a gas's water covariance down the other one's
+            !> lag. Unnamed records keep the model test, as EddyPro had it.
+            if (len_trim(E2Col(j)%instr_name) > 0 &
+                .and. len_trim(E2Col(msl)%instr_name) > 0) then
+                same_analyser = SameAnalyser(j, msl)
+            else
+                same_analyser = E2Col(j)%instr%model == E2Col(msl)%instr%model
+            end if
+            if (same_analyser) then
                 lagRow = RowLags(j)
             else
                 lagRow = RowLags(msl)

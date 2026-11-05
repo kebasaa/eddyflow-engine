@@ -376,5 +376,13 @@ class BorrowingPrecedesTheLaggedCovariances(unittest.TestCase):
         self.assertLess(borrow, th.index("Stats%tc_cov_tl = error"))
 
 
+class WaterCovarianceAsksWhichAnalyser(unittest.TestCase):
+
+    def test_named_records_are_matched_by_identity(self):
+        th = code("src_rp", "timelag_handle.f90")
+        self.assertIn("same_analyser = SameAnalyser(j, msl)", th)
+        self.assertNotIn("if (E2Col(j)%instr%model == E2Col(msl)%instr%model) then", th)
+
+
 if __name__ == "__main__":
     unittest.main()

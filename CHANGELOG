@@ -226,6 +226,11 @@
 	       evaluated at the lag it had just been found not to have - often its
 	       window's edge - while its flux used the borrowed one. Borrowing now
 	       comes first. Nothing changes with borrowing off.
+	- Fix: The lagged water covariance behind a gas's E_gas WPL term judged
+	       "same analyser" by model string, so with two analysers of one model
+	       a gas whose water reference was the other one took the water at its
+	       own lag instead of the hygrometer's. Named records are now matched by
+	       analyser identity; unnamed ones keep the model test.
 
 8.1.7 (2026-11-04)
 
