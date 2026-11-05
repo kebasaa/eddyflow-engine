@@ -220,6 +220,12 @@
 	       are carried from the last good one when there is nothing to
 	       extrapolate from, and a lag as long as the period leaves the column
 	       missing instead of being applied. Inherited from EddyPro.
+	- Fix: With conditional time-lag borrowing (tlag_borrow_meth) on, the
+	       lagged water and cell-temperature covariances were taken before a
+	       gas's lag was borrowed, so its E_gas and Hi_gas WPL terms were
+	       evaluated at the lag it had just been found not to have - often its
+	       window's edge - while its flux used the borrowed one. Borrowing now
+	       comes first. Nothing changes with borrowing off.
 
 8.1.7 (2026-11-04)
 

@@ -366,5 +366,15 @@ class TimelagWindowsComeFromClassesWithData(unittest.TestCase):
         self.assertIn("if (abs(RowLags(j)) >= nrow) then", th)
 
 
+class BorrowingPrecedesTheLaggedCovariances(unittest.TestCase):
+
+    def test_order(self):
+        th = code("src_rp", "timelag_handle.f90")
+        borrow = th.index("call BorrowTimelagBelowDetectionLimit(")
+        self.assertLess(th.index("call FluxDetectionLimit(Set, nrow, ncol)"), borrow)
+        self.assertLess(borrow, th.index("Stats%h2ocov_tl = error"))
+        self.assertLess(borrow, th.index("Stats%tc_cov_tl = error"))
+
+
 if __name__ == "__main__":
     unittest.main()
