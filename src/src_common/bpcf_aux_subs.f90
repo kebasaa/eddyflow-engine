@@ -217,15 +217,12 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
                 !> now, and the assessment file carries each one's `exp=`, so
                 !> the fallback below is for a hygrometer the assessment never
                 !> fitted rather than for all of them.
-                A = RegPar(gas, dum)%e1
-                B = RegPar(gas, dum)%e2
-                C = RegPar(gas, dum)%e3
-                if (A == error .or. B == error .or. C == error &
-                    .or. (A == 0d0 .and. B == 0d0 .and. C == 0d0)) then
-                    A = RegPar(dum, dum)%e1
-                    B = RegPar(dum, dum)%e2
-                    C = RegPar(dum, dum)%e3
-                end if
+                !> Own coefficients, else the project-wide set: the rule lives
+                !> in HygrometerRhCoefficients, so the hub's gate and the
+                !> readiness report ask exactly what this evaluates. With
+                !> neither, there is no cut-off to compute.
+                call HygrometerRhCoefficients(gas, A, B, C)
+                if (A == error) cycle
                 !> Each hygrometer's own humidity, not the primary's.
                 !>
                 !> The coefficients stay shared - one fit per project, the
@@ -398,8 +395,21 @@ subroutine CorrectionFactorsIbrom07(gas, lBPCF, lEx)
     if (f_c(gas) == error) return
 
     if (lEx%Flux0%zL >= 0d0) then
+        !> A fit that failed leaves its parameters at the error code, and
+        !> this formula turns -9999 into a factor of about WS + 1 that looks
+        !> like any other. No factor instead: the hub then corrects the gas
+        !> with the analytic method, as it does any gas the in-situ method
+        !> cannot take.
+        if (any(StPar(1:2) == error)) then
+            lBPCF%of(gas) = error
+            return
+        end if
         lBPCF%of(gas) = StPar(1) * lEx%WS / (StPar(2) + f_c(gas)) + 1d0
     else
+        if (any(UnPar(1:2) == error)) then
+            lBPCF%of(gas) = error
+            return
+        end if
         lBPCF%of(gas) = UnPar(1) * lEx%WS / (UnPar(2) + f_c(gas)) + 1d0
     end if
 end subroutine CorrectionFactorsIbrom07

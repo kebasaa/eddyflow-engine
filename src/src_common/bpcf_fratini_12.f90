@@ -261,7 +261,18 @@ subroutine BPCF_Fratini12(loc_var_present, LocInstr, wind_speed, t_air, ac_frequ
         if(allocated(BPTF)) deallocate(BPTF)
         if(allocated(hBPTF)) deallocate(hBPTF)
     else
-        BPCF%of(:) = 1d0
+        !> No full w/T cospectrum for this period, so no direct method. Each
+        !> gas gets the method's own fallback, Ibrom et al. (2007) (Fratini
+        !> et al. 2012, Eq. 4), from this period's fitted cut-off - the same
+        !> one the loop above takes for a low flux or an implausible factor.
+        !> This used to set every factor to 1, Tau's and H's included, which
+        !> the hub had already computed and which Fratini never touches.
+        !> A gas whose fit failed comes back as error, and the hub corrects it
+        !> analytically.
+        call RetrieveLPTFpars(lEx, 'iir', LocSetup)
+        do gas = firstGas, lastGas
+            if (loc_var_present(gas)) call CorrectionFactorsIbrom07(gas, BPCF, lEx)
+        end do
     end if
 
 contains

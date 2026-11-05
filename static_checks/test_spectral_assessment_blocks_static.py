@@ -188,11 +188,18 @@ class SecondHygrometerRoundTrip(unittest.TestCase):
 
         aux = code("src/src_common/bpcf_aux_subs.f90")
         arm = aux[aux.index("case('iir')"):aux.index("case('sigma')")]
-        self.assertIn("A = RegPar(gas, dum)%e1", arm,
-                      "the iir arm must take each hygrometer's own coefficients")
-        self.assertIn("A = RegPar(dum, dum)%e1", arm,
-                      "with the project-wide set as the fallback for a "
-                      "hygrometer the assessment never fitted")
+        self.assertIn("call HygrometerRhCoefficients(gas, A, B, C)", arm,
+                      "the iir arm must take each hygrometer's coefficients "
+                      "through the one rule the gate and the report ask")
+        rule = code("src/src_common/gas_slot_resolution.f90")
+        rule = rule[rule.index("subroutine HygrometerRhCoefficients"):
+                    rule.index("end subroutine HygrometerRhCoefficients")]
+        own = rule.index("A = RegPar(gas_slot, dum)%e1")
+        wide = rule.index("A = RegPar(dum, dum)%e1")
+        self.assertLess(own, wide,
+                        "its own coefficients first, with the project-wide "
+                        "set as the fallback for a hygrometer the assessment "
+                        "never fitted")
 
     def test_the_rh_relation_survives_the_file(self):
         """Fitting it per hygrometer is no use if the file cannot carry it."""

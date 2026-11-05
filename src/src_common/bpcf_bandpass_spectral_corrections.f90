@@ -65,8 +65,8 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     !> how many are left over for the analytic one.
     logical :: insitu_ok(GHGNumVar)
     logical :: analytic_only(GHGNumVar)
-    logical :: rh_ok
     logical, external :: GasHasSpectralFit
+    logical, external :: HygrometerHasRhFit
     integer :: n_analytic
     type(SpectralType) :: tmpBPCF
     !> The project's own BA/ZOH settings, as they were before any period
@@ -134,13 +134,6 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
         select case (trim(adjustl(actual_hf_method)))
             case('horst_97', 'ibrom_07', 'fratini_12')
                 call char2int(lEx%end_date(6:7), month, 2)
-                !> Asked of each record rather than of slot 6, which is water
-                !> only by convention: a project declaring its water elsewhere
-                !> skipped the check entirely and then used unfitted
-                !> coefficients.
-                rh_ok = RegPar(dum, dum)%e1 /= error &
-                    .and. RegPar(dum, dum)%e2 /= error &
-                    .and. RegPar(dum, dum)%e3 /= error
                 do gas = firstGas, lastGas
                     if (.not. loc_var_present(gas)) cycle
                     if (GasSlotIsWater(gas)) then
@@ -151,8 +144,16 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                         !> no fitted class at all still counted as correctable.
                         !> Same test the readiness report prints, so the report
                         !> and the correction cannot disagree.
+                        !>
+                        !> And the RH regression is this hygrometer's own, or
+                        !> the project-wide one it falls back to - the pair
+                        !> RetrieveLPTFpars evaluates. Asking every hygrometer
+                        !> for the primary's demoted a second one that had a
+                        !> fit of its own whenever the primary's had failed.
+                        !> Nested, not one .and.: a function in a compound
+                        !> condition need not be evaluated.
                         insitu_ok(gas) = GasHasSpectralFit(gas)
-                        if (.not. rh_ok) insitu_ok(gas) = .false.
+                        if (insitu_ok(gas)) insitu_ok(gas) = HygrometerHasRhFit(gas)
                     else if (LocSetup%SA%class(gas, month) < 1 .or. &
                         LocSetup%SA%class(gas, month) > MaxGasClasses) then
                         !> An unclassified gas has no fitted cutoff to look up,
@@ -216,7 +217,10 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
 
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
-                    where (ADDCF%of(firstGas:lastGas) < dabs(error))
+                    !> Not a gas left without a factor: -9999 times the
+                    !> separation term is no longer recognisable as missing.
+                    where (ADDCF%of(firstGas:lastGas) < dabs(error) &
+                        .and. BPCF%of(firstGas:lastGas) /= error)
                         BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * ADDCF%of(firstGas:lastGas)
                     end where
                 end if
@@ -230,7 +234,10 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                     detrending_time_constant, detrending_method, lEx, LocSetup)
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
-                    where (ADDCF%of(firstGas:lastGas) < dabs(error))
+                    !> Not a gas left without a factor: -9999 times the
+                    !> separation term is no longer recognisable as missing.
+                    where (ADDCF%of(firstGas:lastGas) < dabs(error) &
+                        .and. BPCF%of(firstGas:lastGas) /= error)
                         BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * ADDCF%of(firstGas:lastGas)
                     end where
                 end if
@@ -245,12 +252,31 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
 
                 if (LocSetup%SA%horst_lens09 /= 'none') then
                     call CF_HorstLenschow09(lEx, LocSetup)
-                    where (ADDCF%of(firstGas:lastGas) < dabs(error))
+                    !> Not a gas left without a factor: -9999 times the
+                    !> separation term is no longer recognisable as missing.
+                    where (ADDCF%of(firstGas:lastGas) < dabs(error) &
+                        .and. BPCF%of(firstGas:lastGas) /= error)
                         BPCF%of(firstGas:lastGas) = BPCF%of(firstGas:lastGas) * ADDCF%of(firstGas:lastGas)
                     end where
                 end if
             end if
     end select
+
+    !> A gas the in-situ method was meant to take but came back without a
+    !> factor - its Ibrom et al. (2007) fit failed, for the stability of this
+    !> period - joins the gases it could not take, and the analytic method
+    !> below corrects it. Left as it was, the error code reached the flux.
+    if (app == 'EddyFlow-FCC') then
+        select case (trim(adjustl(actual_hf_method)))
+            case('horst_97', 'ibrom_07', 'fratini_12')
+                do gas = firstGas, lastGas
+                    if (.not. insitu_ok(gas)) cycle
+                    if (BPCF%of(gas) /= error) cycle
+                    insitu_ok(gas) = .false.
+                    n_analytic = n_analytic + 1
+                end do
+        end select
+    end if
 
     !> The gases the in-situ method could not take. Moncrieff writes BPCF%of
     !> only for the gases its mask names, so running it after the in-situ pass

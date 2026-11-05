@@ -181,6 +181,64 @@ end function GasHasSpectralFit
 
 !***************************************************************************
 !
+! \brief       The RH/cut-off coefficients a hygrometer is corrected with.
+! \author      Jonathan Muller
+! \note        Its own, RegPar(gas, dum), when the assessment fitted it -
+!              none is the error code and they are not all zero - and
+!              otherwise the project-wide set, RegPar(dum, dum), which holds
+!              the primary's. The error code in all three when neither is
+!              usable.
+!
+!              One rule for the three places that ask: RetrieveLPTFpars, which
+!              evaluates it, the hub, which decides whether the hygrometer is
+!              corrected in situ at all, and the readiness report. The latter
+!              two used to test the project-wide set for every hygrometer, so
+!              a second one with a fit of its own was sent to the analytic
+!              method whenever the primary's had failed - while the correction
+!              would have used its own.
+!***************************************************************************
+subroutine HygrometerRhCoefficients(gas_slot, A, B, C)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    real(kind = dbl), intent(out) :: A
+    real(kind = dbl), intent(out) :: B
+    real(kind = dbl), intent(out) :: C
+
+    A = error
+    B = error
+    C = error
+    if (gas_slot >= firstGas .and. gas_slot <= lastGas) then
+        A = RegPar(gas_slot, dum)%e1
+        B = RegPar(gas_slot, dum)%e2
+        C = RegPar(gas_slot, dum)%e3
+    end if
+    if (A == error .or. B == error .or. C == error &
+        .or. (A == 0d0 .and. B == 0d0 .and. C == 0d0)) then
+        A = RegPar(dum, dum)%e1
+        B = RegPar(dum, dum)%e2
+        C = RegPar(dum, dum)%e3
+    end if
+    if (A == error .or. B == error .or. C == error) then
+        A = error
+        B = error
+        C = error
+    end if
+end subroutine HygrometerRhCoefficients
+
+!> Whether HygrometerRhCoefficients finds a usable set for this hygrometer.
+logical function HygrometerHasRhFit(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    real(kind = dbl) :: A, B, C
+
+    call HygrometerRhCoefficients(gas_slot, A, B, C)
+    HygrometerHasRhFit = A /= error
+end function HygrometerHasRhFit
+
+!***************************************************************************
+!
 ! \brief       The gas slot holding the site's primary water measurement.
 ! \author      Jonathan Muller
 ! \note        The hygrometer whose H, LE and ET carry the bare column names,
