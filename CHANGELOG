@@ -49,6 +49,15 @@
 	       variant; with none before the run the spike is flagged and left.
 	       Whether a run was already flagged now looks at the run, not only at
 	       the row before it.
+	- Fix: With the iterative correction on, RP's u* was multiplied by the
+	       square root of the momentum factor once per pass, from its own
+	       previous value: after four passes it carried the factor squared
+	       instead of its square root, and L, z/L, the footprint and the
+	       developed-turbulence test with it. It is now built from the Level-0
+	       value each pass, as FCC already did. The krypton and Lyman-alpha
+	       oxygen correction compounded the same way in both programs; it now
+	       runs once per period, before the passes (OxygenCorrectionKrypton).
+	       A single-pass run is unchanged.
 
 8.1.7 (2026-11-04)
 

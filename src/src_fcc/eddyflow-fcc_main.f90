@@ -751,6 +751,9 @@ Program EddyFlowFCC
         corr_passes = 1
         if (EddyFlowProj%corr_iter_meth) corr_passes = EddyFlowProj%corr_iter_max
         iter_zL = lEx%Flux0%zL
+        !> Once per period, ahead of the passes: it scales lEx in place, so
+        !> inside Fluxes1 it compounded with every pass.
+        call OxygenCorrectionKrypton(lEx)
         do corr_pass = 1, corr_passes
             if (corr_pass > 1) prev_gas_flux = Flux3%gas
 

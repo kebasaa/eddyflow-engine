@@ -313,7 +313,9 @@ class EveryHygrometerIsTreatedAsWater(unittest.TestCase):
         self.assertEqual(len(block), 2,
                          "the correction must loop over slots, not apply to "
                          "a single resolved one")
-        body = source[source.index("do msl = firstGas, lastGas"):]
+        # Its own routine, run once per period ahead of the correction passes.
+        routine = source[source.index("subroutine OxygenCorrectionKrypton_rp"):]
+        body = routine[routine.index("do msl = firstGas, lastGas"):]
         body = body[:body.index("end do")]
         self.assertIn("GasSlotIsWater(msl)", body)
         self.assertIn("E2Col(msl)%Instr%ko", body,

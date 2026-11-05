@@ -45,5 +45,37 @@ class MauderDespikingDrawsFromGoodSamples(unittest.TestCase):
         self.assertEqual(self.MAUDER.count("new_spike = .not. IsSpike(run_last, j)"), 2)
 
 
+class TheIterationCompoundsNothing(unittest.TestCase):
+    """The iterative correction calls Level 1 once per pass. RP's u* and
+    both programs' oxygen correction scaled their inputs in place, so they
+    were applied once per pass."""
+
+    RP1 = code("src_rp", "fluxes1_rp.f90")
+    FCC1 = code("src_fcc", "fluxes1.f90")
+    RPMAIN = code("src_rp", "eddyflow-rp_main.f90")
+    FCCMAIN = code("src_fcc", "eddyflow-fcc_main.f90")
+
+    def test_ustar_is_built_from_level_zero(self):
+        self.assertIn("Ambient%us = Flux0%ustar * dsqrt(BPCF%of(w_u))", self.RP1)
+        self.assertNotIn("Ambient%us = Ambient%us * dsqrt", self.RP1)
+
+    def test_the_oxygen_correction_is_its_own_routine(self):
+        for src, name, level1 in ((self.RP1, "OxygenCorrectionKrypton_rp", "Fluxes1_rp"),
+                                  (self.FCC1, "OxygenCorrectionKrypton", "Fluxes1")):
+            l1 = body(src, "subroutine %s(" % level1, "end subroutine %s\n" % level1)
+            self.assertNotIn("Cox", l1)
+            self.assertIn("subroutine %s(" % name, src)
+
+    def test_it_runs_once_before_the_passes(self):
+        fcc = self.FCCMAIN
+        self.assertLess(fcc.index("call OxygenCorrectionKrypton(lEx)"),
+                        fcc.index("do corr_pass = 1, corr_passes"))
+        rp = self.RPMAIN
+        self.assertLess(rp.index("call OxygenCorrectionKrypton_rp()"),
+                        rp.index("do corr_pass = 1, corr_passes"))
+        # And ahead of the FCC-only branch's single Level 1.
+        self.assertEqual(rp.count("call OxygenCorrectionKrypton_rp()"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
