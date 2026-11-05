@@ -721,13 +721,13 @@ end subroutine InitRandomSeed
 
 !***************************************************************************
 !
-! rief       The random error behind the limit of detection of Langford et
+! \brief       The random error behind the limit of detection of Langford et
 !              al. (2015), Sect. 2.2: RE_RMSE (or RE_SD) of the w-scalar
 !              cross-covariance far from the lag. Its own switch (lod_meth),
 !              independent of the random error method, and kept in its own
 !              fields, so a run can report both. The LoD is lod_alpha times
 !              it. See langford_noise.f90 for the method and the windows.
-! uthor      Jonathan Muller
+! \author      Jonathan Muller
 !***************************************************************************
 subroutine LodLangford15(Set, N, M)
     use m_rp_global_var

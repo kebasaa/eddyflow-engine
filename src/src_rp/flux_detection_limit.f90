@@ -172,13 +172,13 @@ end subroutine CrossCovarianceScatter
 
 !***************************************************************************
 !
-! rief       Detection limit after Langford et al. (2015): RE_RMSE (or
+! \brief       Detection limit after Langford et al. (2015): RE_RMSE (or
 !              RE_SD) of the cross-covariance far from each gas's lag, on the
 !              raw series, at 1x - a noise floor like Wienhold's sigma, which
 !              time-lag borrowing multiplies by its own SNR threshold.
 !              Same routine as the random error method of that name; see
 !              langford_noise.f90.
-! uthor      Jonathan Muller
+! \author      Jonathan Muller
 !***************************************************************************
 subroutine LangfordDetectionLimit(Set, nrow, ncol)
     use m_rp_global_var

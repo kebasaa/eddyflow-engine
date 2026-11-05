@@ -335,7 +335,7 @@ end subroutine InitEnv
 
 !***************************************************************************
 !
-! rief       Whether a command line switch is followed by its own value.
+! \brief       Whether a command line switch is followed by its own value.
 ! \note        -v and -h are not, and neither is anything that is not a
 !              switch at all - the project path above all. Every switch that
 !              IS listed here must also have a case in InitEnv's select, or

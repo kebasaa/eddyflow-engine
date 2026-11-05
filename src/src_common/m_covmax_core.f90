@@ -127,7 +127,7 @@ contains
     end subroutine CrossCovarianceSeries
 
     !***************************************************************************
-    !> rief Random flux error from the cross-covariance far from the lag,
+    !> \brief Random flux error from the cross-covariance far from the lag,
     !>        Langford et al. (2015), Sect. 2.2.
     !>
     !> The cross-covariance of (col1, col2) is taken over the two windows
@@ -195,7 +195,7 @@ contains
     end subroutine FarLagCovarianceNoise
 
     !***************************************************************************
-    !> rief Integral scale of a cross-correlation already normalised to one
+    !> \brief Integral scale of a cross-correlation already normalised to one
     !>        at lag zero, by the rule its_meth names.
     !>
     !> The three rules IntegralTurbulenceScale has always applied, moved here
@@ -233,7 +233,7 @@ contains
     end function IntegralScaleFromCorr
 
     !***************************************************************************
-    !> rief Limit of detection LoD = alpha * RE, Langford et al. (2015),
+    !> \brief Limit of detection LoD = alpha * RE, Langford et al. (2015),
     !>        keeping the error code where there is no random error.
     !***************************************************************************
     pure elemental function LimitOfDetection(re, alpha, err) result(lod)
