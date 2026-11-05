@@ -202,6 +202,13 @@
 	       loop counted upwards from sec - 1 to -N + 1 without a step of -1,
 	       so a sector with too few periods was not given its neighbour's fit
 	       and was double-rotated without a message. Inherited from EddyPro.
+	- Fix: PWB time lags let water borrow a trace gas's lag. Water was refused
+	       as a donor but not as a borrower, in the streaming pass, both
+	       sharing steps of the table builder and the aggregate summary, so a
+	       hygrometer whose detection was pending in a period - common for
+	       water - was aligned with CO2's lag (S4_instrument_shared) before its
+	       own carry-forward ran, moving LE, ET and every WPL water term. Water
+	       is now never borrowed for or from, as with tlag_borrow_meth.
 
 8.1.7 (2026-11-04)
 

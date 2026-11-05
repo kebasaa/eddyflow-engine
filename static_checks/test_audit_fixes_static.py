@@ -339,5 +339,18 @@ class PlanarFitSectorsKeepTheirFrame(unittest.TestCase):
         self.assertIn("do sec2 = sec - 1, - N + 1, -1", fx)
 
 
+class PwbNeverLendsALagToWater(unittest.TestCase):
+    """Water was refused as a donor but could still borrow."""
+
+    def test_water_is_skipped_as_a_borrower_everywhere(self):
+        stream = code("src_rp", "pwb_stream.f90")
+        table = code("src_rp", "pwb_timelag_handle.f90")
+        self.assertIn("if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle", stream)
+        self.assertIn("if (GasSlotIsWater(j)) cycle\n            do k = firstGas, lastGas", stream)
+        self.assertEqual(table.count("if (GasSlotIsWater(gas)) cycle\n        shared = 0"), 2)
+        summary = table[table.index("PwbSummarySource = 0"):]
+        self.assertIn("if (GasSlotIsWater(gas)) cycle\n        donor = 0", summary)
+
+
 if __name__ == "__main__":
     unittest.main()

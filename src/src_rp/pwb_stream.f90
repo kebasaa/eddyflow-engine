@@ -281,6 +281,11 @@ contains
         do j = firstGas, lastGas
             if (.not. ev%present(j)) cycle
             if (trim(PWBResult(j)%reliability_class) /= 'pending') cycle
+            !> Nor TO water: its lag is humidity-dependent and its own carry-forward
+            !> comes after this pass, so a water record pending this period took CO2's
+            !> lag - and LE, ET and every WPL water term with it - instead of its
+            !> own previous one. Water is never borrowed for or from.
+            if (GasSlotIsWater(j)) cycle
             do k = firstGas, lastGas
                 if (k == j) cycle
                 if (.not. ev%present(k)) cycle
