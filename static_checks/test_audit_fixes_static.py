@@ -194,5 +194,16 @@ class NoHygrometerMeansNoWaterColumns(unittest.TestCase):
                       code("src_fcc", "spectral_assessment_diagnostics.f90"))
 
 
+class PostFluxDespikingSeesThePublishedFluxes(unittest.TestCase):
+    """It banked Level 2, so its series did not match the outputs."""
+
+    MAIN = code("src_fcc", "eddyflow-fcc_main.f90")
+
+    def test_level_three_is_banked(self):
+        self.assertIn("pfd_nee, Flux3%H, Flux3%LE)", self.MAIN)
+        self.assertNotIn("Flux2%gas(PrimaryCarbonSlot()), Flux2%H, Flux2%LE", self.MAIN)
+        self.assertIn("if (pfd_csl >= firstGas) pfd_nee = Flux3%gas(pfd_csl)", self.MAIN)
+
+
 if __name__ == "__main__":
     unittest.main()

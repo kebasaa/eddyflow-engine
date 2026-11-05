@@ -41,6 +41,8 @@ Program EddyFlowFCC
     integer :: gas
     !> Iterative correction, twinned with eddyflow-rp_main.f90.
     integer :: corr_pass
+    integer :: pfd_csl
+    real(kind = dbl) :: pfd_nee
     integer :: corr_passes
     !> The spectral assessment per acquisition rate: pass, file-rate slot,
     !> and which file rates already have their Ibrom model
@@ -863,9 +865,20 @@ Program EddyFlowFCC
         !> Post-flux despiking (test_pfd) needs the whole run's series, so
         !> this period only banks its NEE/H/LE; PostProcessFluxDespiking
         !> below does the actual work once every period has been seen.
+        !>
+        !> The published Level-3 values, the ones the outputs carry. This
+        !> banked Level 2 - H without its spectral correction, closed-path CO2
+        !> and LE without theirs - so the despiking file's series and its
+        !> *_CLEANED columns did not match FC, H and LE, and since the test
+        !> works on log10(x + 1000) its flags differed too. The NEE column is
+        !> FC, without storage. With no CO2 record there is no carbon flux to
+        !> bank, rather than slot zero.
         if (EddyFlowProj%test_pfd .and. .not. lEx%not_enough_data) then
+            pfd_csl = PrimaryCarbonSlot()
+            pfd_nee = error
+            if (pfd_csl >= firstGas) pfd_nee = Flux3%gas(pfd_csl)
             call StorePfdCache(lEx%end_date, lEx%end_time, &
-                Flux2%gas(PrimaryCarbonSlot()), Flux2%H, Flux2%LE)
+                pfd_nee, Flux3%H, Flux3%LE)
         end if
 
     end do ex_loop

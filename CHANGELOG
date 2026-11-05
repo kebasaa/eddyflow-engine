@@ -108,6 +108,14 @@
 	       readiness report counted its classes as water's RH classes. With no
 	       hygrometer the LE/ET columns are now gated off (full output) or carry
 	       the error label (FLUXNET), and nothing else reads slot six as water.
+	- Fix: Post-flux despiking (test_pfd) despiked the Level-2 fluxes: H
+	       without its spectral correction, closed-path CO2 and LE without
+	       theirs. Its series and *_CLEANED columns therefore did not match the
+	       published FC, H and LE, and because the test works on
+	       log10(x + 1000) its spike flags differed as well. It now banks the
+	       Level-3 values the outputs carry. Its NEE column is FC, without the
+	       storage term. A project without CO2 banked slot zero; it now banks
+	       no carbon flux.
 
 8.1.7 (2026-11-04)
 
