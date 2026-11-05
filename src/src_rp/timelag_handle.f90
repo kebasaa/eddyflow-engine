@@ -301,6 +301,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
         !> filling remaining with error code.
         do j = u, pe
             if (E2Col(j)%present) then
+                !> A lag as long as the period leaves nothing to align, and
+                !> the loops below would index outside Set and TmpSet - which
+                !> a time-lag optimisation window built from empty RH classes
+                !> could ask for. The column is missing for the period instead.
+                if (abs(RowLags(j)) >= nrow) then
+                    TmpSet(1:nrow, j) = error
+                    cycle
+                end if
                 if (RowLags(j) >= 0) then
                     !> For positive lags
                     do i = 1, nrow - RowLags(j)

@@ -352,5 +352,19 @@ class PwbNeverLendsALagToWater(unittest.TestCase):
         self.assertIn("if (GasSlotIsWater(gas)) cycle\n        donor = 0", summary)
 
 
+class TimelagWindowsComeFromClassesWithData(unittest.TestCase):
+
+    def test_poor_classes_are_interpolated_between_good_ones(self):
+        opt = code("src_rp", "optimize_timelags.f90")
+        self.assertIn("if (h2o_n(cls, gas) <= min_numerosity) then", opt)
+        self.assertNotIn("if (h2o_n(cls, gas) == min_numerosity) then", opt)
+        self.assertIn("if (h2o_n(nxt, gas) > min_numerosity) exit", opt)
+        self.assertIn("toH2O(last + 1:MM, gas) = toH2O(last, gas)", opt)
+
+    def test_a_lag_as_long_as_the_period_is_not_shifted(self):
+        th = code("src_rp", "timelag_handle.f90")
+        self.assertIn("if (abs(RowLags(j)) >= nrow) then", th)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -209,6 +209,17 @@
 	       water - was aligned with CO2's lag (S4_instrument_shared) before its
 	       own carry-forward ran, moving LE, ET and every WPL water term. Water
 	       is now never borrowed for or from, as with tlag_borrow_meth.
+	- Fix: The time-lag optimisation filled sparse H2O relative-humidity
+	       classes from neighbours that could hold the error code. Its
+	       interpolation rewrote only a class with exactly the minimum count,
+	       leaving the real gaps as error, so a neighbour's average came out
+	       near -5000 s and the extrapolation of the top classes near
+	       +10000 s; SetTimelags accepted those windows, and the shift then
+	       wrote outside its arrays. Every class at or below the minimum is now
+	       interpolated between the good classes either side, the top classes
+	       are carried from the last good one when there is nothing to
+	       extrapolate from, and a lag as long as the period leaves the column
+	       missing instead of being applied. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 

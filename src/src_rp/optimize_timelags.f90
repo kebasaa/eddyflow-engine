@@ -55,6 +55,8 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
     integer :: nn
     integer :: first
     integer :: last
+    integer :: nxt
+    real(kind = dbl) :: wgt
     integer :: nup, ndw
     !> The report prints this number, so it lives in m_typedef where both
     !> can reach it.
@@ -228,23 +230,46 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
                 end do
                 !> Set initial classes equal to first good class
                 if (first > 1) toH2O(1:first - 1, gas) = toH2O(first, gas)
-                !> For intermediate classes, averages before and after
+                !> For intermediate classes, interpolated between the good
+                !> classes either side.
+                !>
+                !> Every class not above the minimum, not only one sitting
+                !> exactly at it: the test was ==, which rewrote a class that
+                !> had its count and left the real gaps standing - and those
+                !> held the error code, so a neighbour's average came out near
+                !> -5000 s and the extrapolation below near +10000 s, windows
+                !> the guard in SetTimelags accepts because min stays below
+                !> max. The class below is good or already filled by the time
+                !> it is used; the one above is the next good class.
                 if (last > first + 1) then
                     do cls = first + 1, last - 1
-                        if (h2o_n(cls, gas) == min_numerosity) then
-                            toH2O(cls, gas)%def = (toH2O(cls-1, gas)%def + toH2O(cls+1, gas)%def) * 0.5d0
-                            toH2O(cls, gas)%min = (toH2O(cls-1, gas)%min + toH2O(cls+1, gas)%min) * 0.5d0
-                            toH2O(cls, gas)%max = (toH2O(cls-1, gas)%max + toH2O(cls+1, gas)%max) * 0.5d0
+                        if (h2o_n(cls, gas) <= min_numerosity) then
+                            do nxt = cls + 1, last
+                                if (h2o_n(nxt, gas) > min_numerosity) exit
+                            end do
+                            wgt = 1d0 / dble(nxt - cls + 1)
+                            toH2O(cls, gas)%def = toH2O(cls-1, gas)%def &
+                                + (toH2O(nxt, gas)%def - toH2O(cls-1, gas)%def) * wgt
+                            toH2O(cls, gas)%min = toH2O(cls-1, gas)%min &
+                                + (toH2O(nxt, gas)%min - toH2O(cls-1, gas)%min) * wgt
+                            toH2O(cls, gas)%max = toH2O(cls-1, gas)%max &
+                                + (toH2O(nxt, gas)%max - toH2O(cls-1, gas)%max) * wgt
                         end if
                     end do
                 end if
-                !> Set traling classes to linear extrapolation of last 2 good ones
+                !> Set traling classes to linear extrapolation of last 2 good ones,
+                !> or to the last good one where the class before it holds no
+                !> window to extrapolate from.
                 if (last < MM .and. last > 2) then
+                    if (toH2O(last - 1, gas)%def == error .or. toH2O(last, gas)%def == error) then
+                        toH2O(last + 1:MM, gas) = toH2O(last, gas)
+                    else
                     do cls = last + 1, MM
                         toH2O(cls, gas)%def = 2d0 * toH2O(cls - 1, gas)%def - toH2O(cls - 2, gas)%def
                         toH2O(cls, gas)%min = 2d0 * toH2O(cls - 1, gas)%min - toH2O(cls - 2, gas)%min
                         toH2O(cls, gas)%max = 2d0 * toH2O(cls - 1, gas)%max - toH2O(cls - 2, gas)%max
                     end do
+                    end if
                 end if
             end if
         end if
