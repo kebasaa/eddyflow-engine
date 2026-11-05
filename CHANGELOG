@@ -90,6 +90,14 @@
 	       small). The conversion now comes first and all three are variances,
 	       as in EddyPro 6.2.2. Missing samples are no longer scaled into
 	       values.
+	- Fix: PWB applied every cached time lag at one acquisition rate. The
+	       cache's row lags were converted from seconds once, after the
+	       pre-pass, at the rate the last pre-pass period had, and the
+	       production pass shifted by those rows while reporting the right
+	       seconds. After a 10 -> 20 Hz change, every 10 Hz period was shifted
+	       by twice its lag; a saved table read by a later run carried the same
+	       rows, and a split pre-pass could differ from a serial one. The rows
+	       are now derived from the cached seconds at each period's own rate.
 
 8.1.7 (2026-11-04)
 

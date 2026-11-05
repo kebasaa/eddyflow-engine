@@ -154,5 +154,16 @@ class TheHaarTestComparesLikeWithLike(unittest.TestCase):
             self.assertIn("where (%s /= error) %s = %s**2" % (v, v, v), self.DS)
 
 
+class PwbCachedLagsFollowThePeriodsRate(unittest.TestCase):
+    """The cached row lags were converted once at the last pre-pass rate."""
+
+    STREAM = code("src_rp", "pwb_stream.f90")
+
+    def test_rows_come_from_seconds_at_this_rate(self):
+        self.assertIn("RowLags(j) = nint(ev%cache_used(j) * ev%ac_freq)", self.STREAM)
+        self.assertIn("pwb_raw_OwnRowLags(j) = RowLags(j)", self.STREAM)
+        self.assertNotIn("pwb_raw_OwnRowLags(j) = ev%cache_row(j)", self.STREAM)
+
+
 if __name__ == "__main__":
     unittest.main()

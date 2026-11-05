@@ -200,11 +200,22 @@ contains
                 lPwbResult = ev%res(j)
                 cache_hit(j) = .true.
                 PWBResult(j) = lPwbResult
-                RowLags(j) = ev%cache_row(j)
+                !> The lag in rows at THIS period's rate. The cache's row lag
+                !> was converted once, after the pre-pass, at whatever rate
+                !> the last pre-pass period had - so after a 10 -> 20 Hz
+                !> change every 10 Hz period was shifted by twice its lag
+                !> while TLag still reported the right seconds. A table read
+                !> back by a later run carried the same rows. The seconds are
+                !> what the cache settled; the rows follow from them here.
+                if (ev%cache_used(j) /= error) then
+                    RowLags(j) = nint(ev%cache_used(j) * ev%ac_freq)
+                else
+                    RowLags(j) = ev%cache_row(j)
+                end if
                 TLag(j) = ev%cache_used(j)
                 ActTLag(j) = ev%cache_actual(j)
                 DefTlagUsed(j) = ev%cache_default(j)
-                pwb_raw_OwnRowLags(j) = ev%cache_row(j)
+                pwb_raw_OwnRowLags(j) = RowLags(j)
                 if (trim(lPwbResult%reliability_class) == 'S1_optimal' .or. &
                     trim(lPwbResult%reliability_class) == 'S2_optimal' .or. &
                     trim(lPwbResult%reliability_class) == 'S4_instrument_shared') then
