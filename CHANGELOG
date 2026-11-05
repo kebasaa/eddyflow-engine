@@ -238,6 +238,13 @@
 	       other analyser's cell molar volume, and with it its WPL terms in RP
 	       and FCC, was off by a large factor. It now falls back to ambient
 	       temperature and pressure. A single-analyser project is unchanged.
+	- New: Metadata [Site] utc_offset, the hours the timestamps are ahead of
+	       UTC as standard time (daylight saving ignored), for the potential
+	       radiation. A file without it - older metadata, a GHG archive's own,
+	       an EddyPro project - takes round(longitude / 15) and says so. A
+	       character tag appended to the header block by gen_metadata_tags.py,
+	       so the instrument and column tables move by one index and
+	       read_metadata_file.f90 takes the new origins.
 
 8.1.7 (2026-11-04)
 

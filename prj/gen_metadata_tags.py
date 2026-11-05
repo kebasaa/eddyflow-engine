@@ -48,7 +48,7 @@ NUM_COLS = 200
 #: Declares the archive as extended. EddyPro cannot act on it - unknown keys
 #: are ignored, so this is for EddyFlow's own reasoning and for a human
 #: reading the file, not a compatibility gate.
-EXTRA_AC_HEADER = ["ghg_format_version"]
+EXTRA_AC_HEADER = ["ghg_format_version", "utc_offset"]
 
 #: The instrument's TRUE model, where instr_<k>_model states a generic
 #: stand-in that EddyPro will accept. EddyFlow prefers this and re-derives the

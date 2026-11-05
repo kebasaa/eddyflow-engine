@@ -683,6 +683,10 @@ module m_typedef
         !> needs to branch on the version to read the file correctly. It is
         !> here so a run can SAY what it was handed.
         character(16) :: ghg_format_version
+        !> Hours the timestamps are ahead of UTC, as standard time (no DST),
+        !> from [Site] utc_offset; round(lon / 15) when the file has none.
+        real(kind = dbl) :: utc_offset
+        logical :: utc_offset_assumed
         type(ColType) :: E2Col(E2NumVar)
     end type MetadataType
 
