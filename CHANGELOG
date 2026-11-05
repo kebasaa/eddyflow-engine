@@ -147,6 +147,14 @@
 	       good period with Warning(116). A real rate change on that archive
 	       was also reported as Warning(116) rather than taken as the period's
 	       new rate. Both now follow the first archive actually read.
+	- Fix: The Mahrt (1998) random error divided by the nominal six windows
+	       however many had data. A sub-window with no valid w/gas pairs - an
+	       open-path rain dropout, diagnostic filtering - left its sigma at 0
+	       and still counted, so the random error came out low (-17 % for a
+	       whole missing sub-period) and the nonstationarity ratio M98 high,
+	       grading the vitale_20 flag too severely. It now divides by the
+	       windows and sub-periods with data, and gives no estimate below two.
+	       A period with every window filled is unchanged.
 
 8.1.7 (2026-11-04)
 

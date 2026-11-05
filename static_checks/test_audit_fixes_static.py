@@ -260,5 +260,18 @@ class GhgRatesAreSetByTheFirstFileRead(unittest.TestCase):
         self.assertNotIn("if (CurrentFile == FirstFile) then\n                        PeriodInstrFreq", imp)
 
 
+class MahrtDividesByTheWindowsThatHaveData(unittest.TestCase):
+
+    RE = code("src_rp", "random_error_handle.f90")
+
+    def test_counts_not_nominal_sizes(self):
+        m98 = body(self.RE, "subroutine RU_Mahrt_98", "end subroutine RU_Mahrt_98")
+        self.assertIn("dsqrt(sigma_wi(sub_idx,:) / dble(nss(sub_idx,:) - 1))", m98)
+        self.assertIn("/ nsub_ok / dsqrt(dble(n_subsub))", m98)
+        self.assertIn("where (nbtw >= 2) sigma_btw = dsqrt(between_ss / dble(nbtw - 1))", m98)
+        self.assertNotIn("dble(n_subsub-1)", m98)
+        self.assertNotIn("dble(n_sub-1)", m98)
+
+
 if __name__ == "__main__":
     unittest.main()

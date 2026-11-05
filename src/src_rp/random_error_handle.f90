@@ -237,6 +237,12 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
     real(kind = dbl) :: grand_mean(GHGNumVar), between_ss(GHGNumVar)
     real(kind = dbl) :: sigma_wi(n_sub, GHGNumVar), sigma_btw(GHGNumVar)
     real(kind = dbl), allocatable :: sub_chunk(:,:), ss_chunk(:,:)
+    !> Valid sub-sub covariances per sub-period, valid sub-periods and valid
+    !> sub-period means, per variable. The divisors were the nominal six,
+    !> however many windows had data: an empty one left sigma_wi = 0 and
+    !> still counted, so RE came out low and M98 = sigma_btw / RE high, and
+    !> the vitale_20 grade was too severe.
+    integer :: nss(n_sub, GHGNumVar), nsub_ok, nbtw(GHGNumVar)
 
     sub_len    = nrow / n_sub
     subsub_len = sub_len / n_subsub
@@ -257,13 +263,19 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
         call AverageNoError(subsub_cov, n_subsub, GHGNumVar, sub_mean, error)
         sub_means(sub_idx, :) = sub_mean
         sigma_wi(sub_idx, :) = 0d0
+        nss(sub_idx, :) = 0
         do subsub_idx = 1, n_subsub
-            where (subsub_cov(subsub_idx,:) /= error .and. sub_mean /= error) &
+            where (subsub_cov(subsub_idx,:) /= error .and. sub_mean /= error)
                 sigma_wi(sub_idx,:) = sigma_wi(sub_idx,:) + &
                     (subsub_cov(subsub_idx,:) - sub_mean)**2
+                nss(sub_idx,:) = nss(sub_idx,:) + 1
+            end where
         end do
-        where (sigma_wi(sub_idx,:) > 0d0) &
-            sigma_wi(sub_idx,:) = dsqrt(sigma_wi(sub_idx,:) / dble(n_subsub-1))
+        where (nss(sub_idx,:) >= 2)
+            sigma_wi(sub_idx,:) = dsqrt(sigma_wi(sub_idx,:) / dble(nss(sub_idx,:) - 1))
+        elsewhere
+            sigma_wi(sub_idx,:) = error
+        end where
     end do
     deallocate(sub_chunk)
 
@@ -272,9 +284,11 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
 
     ! RE = mean of within-period sigmas / sqrt(n_subsub) (Mahrt 1998 Eq. 8)
     do gas_var = u, lastGas
-        if (E2Col(gas_var)%present) then
+        nsub_ok = count(sigma_wi(:, gas_var) /= error)
+        if (E2Col(gas_var)%present .and. nsub_ok > 0) then
             Essentials%rand_uncer(gas_var) = &
-                sum(sigma_wi(:, gas_var)) / n_sub / dsqrt(dble(n_subsub))
+                sum(sigma_wi(:, gas_var), mask = sigma_wi(:, gas_var) /= error) &
+                / nsub_ok / dsqrt(dble(n_subsub))
         else
             Essentials%rand_uncer(gas_var) = error
         end if
@@ -282,16 +296,20 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
 
     ! Between-sub-period sigma (sigma_btw, Mahrt 1998 Eq. 10)
     between_ss = 0d0
+    nbtw = 0
     do sub_idx = 1, n_sub
-        where (sub_means(sub_idx,:) /= error .and. grand_mean /= error) &
+        where (sub_means(sub_idx,:) /= error .and. grand_mean /= error)
             between_ss = between_ss + (sub_means(sub_idx,:) - grand_mean)**2
+            nbtw = nbtw + 1
+        end where
     end do
-    sigma_btw = 0d0
-    where (between_ss > 0d0) sigma_btw = dsqrt(between_ss / dble(n_sub-1))
+    sigma_btw = error
+    where (nbtw >= 2) sigma_btw = dsqrt(between_ss / dble(nbtw - 1))
 
     do gas_var = u, lastGas
         if (E2Col(gas_var)%present .and. Essentials%rand_uncer(gas_var) /= error &
-            .and. Essentials%rand_uncer(gas_var) > 0d0) then
+            .and. Essentials%rand_uncer(gas_var) > 0d0 &
+            .and. sigma_btw(gas_var) /= error) then
             Essentials%mahrt98_NR(gas_var) = &
                 sigma_btw(gas_var) / Essentials%rand_uncer(gas_var)
         else
