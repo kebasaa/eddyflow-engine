@@ -138,5 +138,21 @@ class DetrendingRunsOnRowsNotSamples(unittest.TestCase):
         self.assertIn("Trend = error", ew)
 
 
+class TheHaarTestComparesLikeWithLike(unittest.TestCase):
+    """The half windows were cut before the molar-density gases were
+    converted, and only the whole window's standard deviation was squared."""
+
+    DS = code("src_rp", "test_discontinuities.f90")
+
+    def test_conversion_precedes_the_half_windows(self):
+        self.assertLess(self.DS.index("XX(1:nn, gas) = XX(1:nn, gas) * StdVair * 1d3"),
+                        self.DS.index("XX_dw(i, :) = XX(i, :)"))
+        self.assertIn("where (XX(1:nn, gas) /= error) XX(1:nn, gas) = XX(1:nn, gas) * StdVair", self.DS)
+
+    def test_all_three_are_variances(self):
+        for v in ("Var", "Var_dw", "Var_up"):
+            self.assertIn("where (%s /= error) %s = %s**2" % (v, v, v), self.DS)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -80,6 +80,16 @@
 	       the running mean averages the valid samples in its window, and the
 	       exponential average decays by b**gap and starts at the first sample.
 	       A column without missing rows gives the same numbers as before.
+	- Fix: The Haar discontinuity test (Vickers and Mahrt 1997) cut its half
+	       windows before converting molar densities to mole fractions, and
+	       squared only the whole window's standard deviation. HaarVar was
+	       therefore not dimensionless - w with half-window sigmas of 0.05 and
+	       0.03 m s-1 scored about 8, a hard flag, where it should be 0.64 -
+	       molar-density H2O was hard-flagged in nearly every period, and real
+	       jumps in molar-density CO2 were missed (HaarAvr some 22 times too
+	       small). The conversion now comes first and all three are variances,
+	       as in EddyPro 6.2.2. Missing samples are no longer scaled into
+	       values.
 
 8.1.7 (2026-11-04)
 
