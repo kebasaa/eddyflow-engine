@@ -432,5 +432,17 @@ class AnEmptyWaterClassTableCostsOnlyWater(unittest.TestCase):
         self.assertNotIn("Meth%tlag = 'maxcov'", tail)
 
 
+class ATimeConstantLongerThanThePeriodStaysInBounds(unittest.TestCase):
+    """timeconst longer than the averaging period made Rconst exceed the
+    rows, and the first-window loops wrote past the end of Trend."""
+
+    def test_first_window_is_bounded_by_the_rows(self):
+        fl = code("src_common", "fluctuations.f90")
+        for name in ("RunningMean", "ExpWeightAvrg"):
+            fn = body(fl, "subroutine %s" % name, "end subroutine %s" % name)
+            self.assertIn("do i = 1, min(Rconst, N)", fn)
+            self.assertNotIn("do i = 1, Rconst\n", fn)
+
+
 if __name__ == "__main__":
     unittest.main()

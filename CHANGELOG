@@ -298,6 +298,13 @@
 	       classes more often. Water now takes one window from all its
 	       determinations, or its metadata window when it has too few, and the
 	       other gases keep theirs.
+	- Fix: Running-mean and exponential detrending crashed (segmentation
+	       fault) when the time constant was longer than the averaging period,
+	       for example timeconst=5000 s with 30-minute periods: the loop over
+	       the first time constant ran past the period's last row. The CEC
+	       partition, which detrends first, is where it showed. The loop now
+	       stops at the period's end, so the trend is the running mean of the
+	       period so far. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 
