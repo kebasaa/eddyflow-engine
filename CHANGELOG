@@ -231,6 +231,13 @@
 	       a gas whose water reference was the other one took the water at its
 	       own lag instead of the hygrometer's. Named records are now matched by
 	       analyser identity; unnamed ones keep the model test.
+	- Fix: A gas whose analyser has no cell record, or whose cell block has no
+	       reading in a period, fell back to the first cell block's temperature
+	       and pressure - whichever analyser owns cell record one - rather than
+	       to ambient air. With a low-pressure laser cell in record one, the
+	       other analyser's cell molar volume, and with it its WPL terms in RP
+	       and FCC, was off by a large factor. It now falls back to ambient
+	       temperature and pressure. A single-analyser project is unchanged.
 
 8.1.7 (2026-11-04)
 

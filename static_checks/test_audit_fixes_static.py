@@ -384,5 +384,16 @@ class WaterCovarianceAsksWhichAnalyser(unittest.TestCase):
         self.assertNotIn("if (E2Col(j)%instr%model == E2Col(msl)%instr%model) then", th)
 
 
+class AGasWithoutACellFallsBackToAmbient(unittest.TestCase):
+
+    def test_not_to_the_first_cell_block(self):
+        ac = code("src_rp", "air_and_cell_parameters.f90")
+        loop = ac[ac.index("do gas = firstGas, lastGas"):]
+        self.assertNotIn("= Ambient%Tcell\n", loop)
+        self.assertNotIn("= Ambient%Pcell\n", loop)
+        self.assertEqual(loop.count("Ambient%Tcell_at(gas) = amb_T"), 2)
+        self.assertEqual(loop.count("Ambient%Pcell_at(gas) = amb_P"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
