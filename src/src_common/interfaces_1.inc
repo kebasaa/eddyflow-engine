@@ -108,6 +108,29 @@ interface
         implicit none
     end function PrimaryWaterOutSlot
 
+    !> The primary water's presence, value and QC flag; false, error and
+    !> ierror when the project describes no water.
+    logical function PrimaryWaterIn(mask, n)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: n
+        logical, intent(in) :: mask(n)
+    end function PrimaryWaterIn
+
+    real(kind = dbl) function PrimaryWaterOf(vals, n)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: n
+        real(kind = dbl), intent(in) :: vals(n)
+    end function PrimaryWaterOf
+
+    integer function PrimaryWaterQC(vals, n)
+        use m_common_global_var
+        implicit none
+        integer, intent(in) :: n
+        integer, intent(in) :: vals(n)
+    end function PrimaryWaterQC
+
     !> Every hygrometer with its column suffix, in one call. Header and rows
     !> in both executables walk this; getting the list right and the naming
     !> wrong shifts the file exactly as getting the list wrong does.

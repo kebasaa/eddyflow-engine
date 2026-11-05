@@ -98,6 +98,16 @@
 	       by twice its lag; a saved table read by a later run carried the same
 	       rows, and a split pre-pass could differ from a serial one. The rows
 	       are now derived from the cached seconds at each period's own rate.
+	- Fix: A project without a hygrometer took another gas for its water.
+	       PrimaryWaterOutSlot falls back to slot six, which holds whatever the
+	       sixth record is - N2O in a CH4 + N2O project - so the full output's
+	       ET was that gas's flux times 0.0648, and LE/ET carried its QC flag
+	       and spectral correction factor, in RP and FCC alike. PWB gated that
+	       gas by humidity, the time-lag optimiser forced it present as the
+	       humidity record and kept it out of the gases' dataset, and the
+	       readiness report counted its classes as water's RH classes. With no
+	       hygrometer the LE/ET columns are now gated off (full output) or carry
+	       the error label (FLUXNET), and nothing else reads slot six as water.
 
 8.1.7 (2026-11-04)
 

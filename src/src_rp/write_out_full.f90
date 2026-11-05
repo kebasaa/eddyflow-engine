@@ -151,10 +151,10 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end if
 
     !> LE
-    if(OutVarPresent(PrimaryWaterOutSlot())) then
+    if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) then
         call WriteDatumFloat(Flux3%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
-        call WriteDatumInt(QCFlag%gas(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
+        call WriteDatumInt(PrimaryWaterQC(QCFlag%gas, size(QCFlag%gas)), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         if (RUsetup%meth /= 'none') then
             call WriteDatumFloat(rep_le, field_val, EddyFlowProj%err_label)
@@ -195,7 +195,7 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> storage fluxes
     call WriteDatumFloat(Stor%H, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    if(OutVarPresent(PrimaryWaterOutSlot())) then
+    if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) then
         call WriteDatumFloat(Stor%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
@@ -279,8 +279,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     end if
     call WriteDatumFloat(Ambient%Va, field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
-    if (Flux3%gas(PrimaryWaterOutSlot()) /= error) then
-        call WriteDatumFloat(Flux3%gas(PrimaryWaterOutSlot()) * h2o_to_ET, field_val, EddyFlowProj%err_label)
+    if (PrimaryWaterOf(Flux3%gas, size(Flux3%gas)) /= error) then
+        call WriteDatumFloat(PrimaryWaterOf(Flux3%gas, size(Flux3%gas)) * h2o_to_ET, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
@@ -385,14 +385,14 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     call WriteDatumFloat(BPCF%of(w_ts), field_val, EddyFlowProj%err_label)
     call AddDatum(csv_row, field_val, separator)
     !> LE
-    if(OutVarPresent(PrimaryWaterOutSlot())) then
+    if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) then
         call WriteDatumFloat(Flux0%LE, field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
         !> The column is gated on the resolved water slot two lines up, so its
         !> correction factor has to come from the same slot. w_h2o is the
         !> historical sixth, which is water only when record two happens to
         !> hold it.
-        call WriteDatumFloat(BPCF%of(PrimaryWaterOutSlot()), field_val, EddyFlowProj%err_label)
+        call WriteDatumFloat(PrimaryWaterOf(BPCF%of, size(BPCF%of)), field_val, EddyFlowProj%err_label)
         call AddDatum(csv_row, field_val, separator)
     end if
     !> Gases: uncorrected flux and its spectral correction factor. BPCF%of is

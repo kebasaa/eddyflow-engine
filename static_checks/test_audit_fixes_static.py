@@ -165,5 +165,34 @@ class PwbCachedLagsFollowThePeriodsRate(unittest.TestCase):
         self.assertNotIn("pwb_raw_OwnRowLags(j) = ev%cache_row(j)", self.STREAM)
 
 
+class NoHygrometerMeansNoWaterColumns(unittest.TestCase):
+    """PrimaryWaterOutSlot falls back to slot six, which holds another gas
+    in a project without water: LE/ET were gated on it and ET was filled
+    with that gas's flux times 0.0648."""
+
+    WRITERS = [("src_fcc", "write_out_full_fcc.f90"), ("src_fcc", "init_out_files.f90"),
+               ("src_fcc", "write_out_fluxnet_fcc.f90"), ("src_rp", "write_out_full.f90"),
+               ("src_rp", "write_out_fluxnet.f90"), ("src_rp", "init_outfiles_rp.f90")]
+
+    def test_writers_ask_the_real_water(self):
+        for parts in self.WRITERS:
+            src = code(*parts)
+            self.assertNotIn("PrimaryWaterOutSlot()", src, parts[1])
+            self.assertIn("PrimaryWater", src, parts[1])
+
+    def test_the_helpers_decline_without_water(self):
+        slots = code("src_common", "gas_slot_resolution.f90")
+        for name in ("PrimaryWaterIn", "PrimaryWaterOf", "PrimaryWaterQC"):
+            fn = body(slots, "function %s(" % name, "end function %s" % name)
+            self.assertIn("if (wsl < firstGas .or. wsl > n) return", fn)
+
+    def test_nothing_else_takes_slot_six_for_water(self):
+        self.assertIn("HumiditySlot = gas == PrimaryWaterSlot()", code("src_rp", "pwb_timelag_handle.f90"))
+        self.assertIn("if (wsl >= firstGas) E2Col(wsl)%present = .true.", code("src_rp", "optimize_timelags.f90"))
+        self.assertIn("wsl = PrimaryWaterSlot()", code("src_rp", "add_to_timelag_opt_dataset.f90"))
+        self.assertIn("'H2O RH classes: no hygrometer configured... NOT APPLIED'",
+                      code("src_fcc", "spectral_assessment_diagnostics.f90"))
+
+
 if __name__ == "__main__":
     unittest.main()

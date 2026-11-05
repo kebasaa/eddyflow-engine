@@ -144,7 +144,8 @@ class WaterIsResolvedInTheAssessment(unittest.TestCase):
 
     def test_the_diagnostics_resolve_the_water_record(self):
         src = read("src/src_fcc/spectral_assessment_diagnostics.f90")
-        self.assertIn("PrimaryWaterOutSlot()", src)
+        # The real hygrometer, zero without one - not the slot-six fallback.
+        self.assertIn("wsl = PrimaryWaterSlot()", src)
         self.assertNotIn("MeanBinSpecAvailable(cls, h2o)", src)
         self.assertNotIn("RegPar(h2o, cls)", src)
 

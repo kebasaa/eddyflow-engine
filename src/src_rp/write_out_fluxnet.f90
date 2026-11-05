@@ -598,13 +598,13 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(PrimaryWaterOutSlot())%present) then
-        call AddFloatDatumToDataline(BPCF%of(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
+    if (PrimaryWaterIn(E2Col%present, size(E2Col))) then
+        call AddFloatDatumToDataline(PrimaryWaterOf(BPCF%of, size(BPCF%of)), csv_row, EddyFlowProj%err_label)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
-    if (E2Col(PrimaryWaterOutSlot())%present) then
-        call AddFloatDatumToDataline(BPCF%of(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
+    if (PrimaryWaterIn(E2Col%present, size(E2Col))) then
+        call AddFloatDatumToDataline(PrimaryWaterOf(BPCF%of, size(BPCF%of)), csv_row, EddyFlowProj%err_label)
     else
         call AddDatum(csv_row, trim(adjustl(EddyFlowProj%err_label)), separator)
     end if
@@ -766,8 +766,10 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> three are water fluxes. Only the tail from FC onwards is per gas.
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, w), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(Essentials%CorrDiff(u, ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(Essentials%CorrDiff(u, PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(PrimaryWaterOf(Essentials%CorrDiff(u, :), size(Essentials%CorrDiff, 2)), &
+        csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(PrimaryWaterOf(Essentials%CorrDiff(u, :), size(Essentials%CorrDiff, 2)), &
+        csv_row, EddyFlowProj%err_label)
     do j = 1, nFluxnetLayoutSlots
         call AddFloatDatumToDataline(Essentials%CorrDiff(u, FluxnetLayoutSlots(j)), &
                                      csv_row, EddyFlowProj%err_label)
@@ -814,8 +816,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> water fluxes carry the water flag, then one per configured gas.
     call AddIntDatumToDataline(QCFlag%tau, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(QCFlag%H, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%gas(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)     !< This is for LE
-    call AddIntDatumToDataline(QCFlag%gas(PrimaryWaterOutSlot()), csv_row, EddyFlowProj%err_label)     !< This is for ET
+    call AddIntDatumToDataline(PrimaryWaterQC(QCFlag%gas, size(QCFlag%gas)), csv_row, EddyFlowProj%err_label)     !< This is for LE
+    call AddIntDatumToDataline(PrimaryWaterQC(QCFlag%gas, size(QCFlag%gas)), csv_row, EddyFlowProj%err_label)     !< This is for ET
     do j = 1, nFluxnetLayoutSlots
         call AddIntDatumToDataline(QCFlag%gas(FluxnetLayoutSlots(j)), &
                                    csv_row, EddyFlowProj%err_label)

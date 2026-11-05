@@ -288,7 +288,7 @@ subroutine InitOutFiles_rp()
         end if
 
         !> LE
-        if(OutVarPresent(PrimaryWaterOutSlot())) then
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) then
             call AddDatum(header1, ',', separator)
             call AddDatum(header2, 'LE,qc_LE', separator)
             call AddDatum(header3, '[W+1m-2],[#]', separator)
@@ -332,9 +332,9 @@ subroutine InitOutFiles_rp()
         call AddDatum(header1, 'storage_fluxes', separator)
         call AddDatum(header2,'H_strg', separator)
         call AddDatum(header3,'[W+1m-2]', separator)
-        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header1, '', separator)
-        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header2,'LE_strg', separator)
-        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2]', separator)
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) call AddDatum(header1, '', separator)
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) call AddDatum(header2,'LE_strg', separator)
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) call AddDatum(header3,'[W+1m-2]', separator)
         do k = 1, n_fo_slots
             gas = fo_slots(k)
             if(.not. OutVarPresent(gas)) cycle
@@ -406,9 +406,9 @@ subroutine InitOutFiles_rp()
         call AddDatum(header2,'un_Tau,Tau_scf,un_H,H_scf', separator)
         call AddDatum(header3,'[kg+1m-1s-2],[#],[W+1m-2],[#]', separator)
         !> LE
-        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header1, ',', separator)
-        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header2,'un_LE,LE_scf', separator)
-        if(OutVarPresent(PrimaryWaterOutSlot())) call AddDatum(header3,'[W+1m-2],[#]', separator)
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) call AddDatum(header1, ',', separator)
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) call AddDatum(header2,'un_LE,LE_scf', separator)
+        if(PrimaryWaterIn(OutVarPresent, size(OutVarPresent))) call AddDatum(header3,'[W+1m-2],[#]', separator)
         !> Uncorrected gas fluxes (Level 0) and spectral correction factors
         do k = 1, n_fo_slots
             gas = fo_slots(k)

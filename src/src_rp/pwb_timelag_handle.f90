@@ -207,10 +207,12 @@ end subroutine GatePwbWaterRH
 !> Every water slot, plus the designated hygrometer's slot whatever it holds.
 logical function HumiditySlot(gas)
     integer, intent(in) :: gas
-    integer, external :: PrimaryWaterOutSlot
+    integer, external :: PrimaryWaterSlot
     logical, external :: GasSlotIsWater
 
-    HumiditySlot = gas == PrimaryWaterOutSlot()
+    !> The designated hygrometer, never the fallback slot six: with no water
+    !> that holds another gas, and PWB gated it by humidity as if it were.
+    HumiditySlot = gas == PrimaryWaterSlot()
     if (.not. HumiditySlot) HumiditySlot = GasSlotIsWater(gas)
 end function HumiditySlot
 

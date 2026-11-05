@@ -917,6 +917,60 @@ end function PrimaryWaterOutSlot
 
 !***************************************************************************
 !
+! \brief       Whether the site's primary water is present in a mask.
+! \author      Jonathan Muller
+! \note        For the one-per-site LE/ET columns. PrimaryWaterOutSlot falls
+!              back to the historical sixth slot when the project describes
+!              no water, which was right while that slot could only hold
+!              water: with a CH4 + N2O project N2O sits there, and the LE/ET
+!              columns were gated - and filled - from it. False with no water.
+!***************************************************************************
+logical function PrimaryWaterIn(mask, n)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: n
+    logical, intent(in) :: mask(n)
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
+
+    PrimaryWaterIn = .false.
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas .or. wsl > n) return
+    PrimaryWaterIn = mask(wsl)
+end function PrimaryWaterIn
+
+!> The primary water's entry of a per-slot array; error with no water.
+real(kind = dbl) function PrimaryWaterOf(vals, n)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: n
+    real(kind = dbl), intent(in) :: vals(n)
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
+
+    PrimaryWaterOf = error
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas .or. wsl > n) return
+    PrimaryWaterOf = vals(wsl)
+end function PrimaryWaterOf
+
+!> The primary water's QC flag; ierror with no water.
+integer function PrimaryWaterQC(vals, n)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: n
+    integer, intent(in) :: vals(n)
+    integer, external :: PrimaryWaterSlot
+    integer :: wsl
+
+    PrimaryWaterQC = ierror
+    wsl = PrimaryWaterSlot()
+    if (wsl < firstGas .or. wsl > n) return
+    PrimaryWaterQC = vals(wsl)
+end function PrimaryWaterQC
+
+!***************************************************************************
+!
 ! \brief       Every hygrometer the project describes, with its column suffix.
 ! \author      Jonathan Muller
 ! \note        H, LE and ET used to be one column each, computed from the

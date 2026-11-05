@@ -79,8 +79,11 @@ subroutine OptimizeTimelags(toSet, nrow, actn, M, h2o_n, MM, cls_size)
 
     !> The site's water is forced present here so its RH-class treatment below
     !> runs; slot six is water only when record two holds it.
-    wsl = PrimaryWaterOutSlot()
-    E2Col(wsl)%present = .true.
+    !> The site's water, or none: with no hygrometer the fallback slot six
+    !> holds another gas, which this used to force present and treat as the
+    !> humidity record. WaterSlotClassed below declines slot 0.
+    wsl = PrimaryWaterSlot()
+    if (wsl >= firstGas) E2Col(wsl)%present = .true.
 
     !> Every class starts at nothing counted, before the gas loop rather than
     !> inside the RH block below - h2o_n is intent(out), so this routine owes

@@ -58,7 +58,6 @@ subroutine WriteOutFluxnetFcc(lEx)
     integer :: gas
     !> The site's water record. LE and ET are one per site and follow it;
     !> they used to read the sixth slot, which is water by convention only.
-    integer :: wsl
     integer :: vi
     !> Hygrometers and their column suffixes, from WaterOutSlots, and how many
     !> of them are not the designated one.
@@ -441,11 +440,12 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> Spectral correction factors. The two water entries are LE and ET,
     !> which take the site's water record - not slot six, which holds water
     !> only when record two happens to.
-    wsl = PrimaryWaterOutSlot()
+    !> With no water at all, the error label: the fallback slot six holds
+    !> another gas then, whose factor these columns used to carry.
     call AddFloatDatumToDataline(BPCF%of(w_u), csv_row, EddyFlowProj%err_label)
     call AddFloatDatumToDataline(BPCF%of(w_ts), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(BPCF%of(wsl), csv_row, EddyFlowProj%err_label)
-    call AddFloatDatumToDataline(BPCF%of(wsl), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(PrimaryWaterOf(BPCF%of, size(BPCF%of)), csv_row, EddyFlowProj%err_label)
+    call AddFloatDatumToDataline(PrimaryWaterOf(BPCF%of, size(BPCF%of)), csv_row, EddyFlowProj%err_label)
     do jg = firstGas, nRowVar
         gas = rowVar(jg)
         call AddFloatDatumToDataline(BPCF%of(gas), csv_row, EddyFlowProj%err_label)
@@ -544,8 +544,8 @@ subroutine WriteOutFluxnetFcc(lEx)
     !> the two water fluxes, then one per configured gas.
     call AddIntDatumToDataline(QCFlag%tau, csv_row, EddyFlowProj%err_label)
     call AddIntDatumToDataline(QCFlag%H, csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%gas(wsl), csv_row, EddyFlowProj%err_label)
-    call AddIntDatumToDataline(QCFlag%gas(wsl), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(PrimaryWaterQC(QCFlag%gas, size(QCFlag%gas)), csv_row, EddyFlowProj%err_label)
+    call AddIntDatumToDataline(PrimaryWaterQC(QCFlag%gas, size(QCFlag%gas)), csv_row, EddyFlowProj%err_label)
     do jg = firstGas, nRowVar
         gas = rowVar(jg)
         call AddIntDatumToDataline(QCFlag%gas(gas), csv_row, EddyFlowProj%err_label)

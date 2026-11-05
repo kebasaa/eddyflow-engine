@@ -120,7 +120,8 @@ class TheRebuildReadsTheSettledTable(unittest.TestCase):
         self.assertIn("row%tlag(gas) = error", gate)
         self.assertIn("row%RH(gas) = error", gate)
         slot = body_of(MOD, "function HumiditySlot", "end function HumiditySlot")
-        self.assertIn("PrimaryWaterOutSlot", slot)
+        # The designated hygrometer, never the fallback slot six.
+        self.assertIn("PrimaryWaterSlot()", slot)
         self.assertIn("GasSlotIsWater(gas)", slot)
 
     def test_the_search_is_a_cursor_not_a_scan(self):

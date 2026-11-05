@@ -50,7 +50,10 @@ subroutine AddToTimelagOptDataset(TimelagOpt, nrow, n)
     real(kind = dbl), external :: PeriodWaterRH
     include '../src_common/interfaces.inc'
 
-    wsl = PrimaryWaterOutSlot()
+    !> Zero with no hygrometer, so no gas is taken for water: the fallback
+    !> slot six holds another gas then, which this kept out of the gases'
+    !> dataset and filed as water.
+    wsl = PrimaryWaterSlot()
     TimelagOpt(n)%RH = error
 
     !> What the preliminary time-lag assessment's table shows: every lag the

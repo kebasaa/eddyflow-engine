@@ -234,8 +234,10 @@ subroutine InitExVars(StartTimestamp, EndTimestamp, NumRecords, NumValidRecords,
             if (FCCMetadata%ac_freq <= 0) FCCMetadata%ac_freq = lEx%ac_freq
             !> From the site's water record. Was lEx%instr(ih2o), the water
             !> role of the retired five-wide instrument numbering.
-            FCCMetadata%H2oPathType = &
-                lEx%gas_instr(PrimaryWaterOutSlot())%path_type
+            !> Only from a hygrometer: with no water the fallback slot six
+            !> holds another gas, whose path type is not water's.
+            if (PrimaryWaterSlot() >= firstGas) &
+                FCCMetadata%H2oPathType = lEx%gas_instr(PrimaryWaterSlot())%path_type
             !> And every slot's own, for the routines that must not assume the
             !> primary's - FitRh2Fco fits one hygrometer per slot now.
             do gas = firstGas, lastGas
