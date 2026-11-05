@@ -80,7 +80,7 @@ module m_eddypro_import
     !> The record format this import writes. It must not exceed
     !> MaxSupportedIniVer, or the file we have just written is refused by
     !> Fatal error(96) the moment it is read back.
-    character(*), parameter :: ImportedIniVer = '5.1.0'
+    character(*), parameter :: ImportedIniVer = '5.2.0'
 
     !> EddyPro has four gas slots and no more.
     integer, parameter :: nEddyProGasSlots = 4

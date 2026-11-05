@@ -46,6 +46,17 @@
 !              each. Nothing here may make an octant depend on the scalar being
 !              accumulated.
 !
+!              The octant gas is CO2 by default, as in the paper. A pairing
+!              may name carbonyl sulfide instead (experimental): stomata take
+!              it up as they take up CO2, so c' < 0 in a moist ejection still
+!              reads as air that passed through them. Unlike CO2, though, many
+!              soils take COS up too, and soil uptake carried in a moist
+!              ejection then lands in the stomatal octant - so COS octants are
+!              sound only where the ground is a net COS source or negligible.
+!              With CO2 octants a COS target needs no such assumption: its own
+!              sign never enters the sort, and soil uptake or emission comes
+!              out as a non-stomatal component of either sign.
+!
 !              Split in three because the three parts belong in three places:
 !              BuildCecPrimes and ExtractCecDescriptor run in RP, on the raw
 !              high-frequency series; ApplyCecDescriptor runs wherever the final
@@ -638,7 +649,9 @@ end function CecPairingIsUnresolved
 
 !> Water on 1 and 2, carbon on 1 and 3, extras whenever the pairing runs at
 !> all: an extra species needs the octants, not the choice of which of the two
-!> gases that define them is itself reported.
+!> gases that define them is itself reported. 4 takes that to its end - a
+!> pairing kept only to sort the parcels a carbonyl sulfide flux is split
+!> over, reporting neither of its own two.
 logical function CecTargetIsWanted(k, meth)
     integer, intent(in) :: k
     integer, intent(in) :: meth

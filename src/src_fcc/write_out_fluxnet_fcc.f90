@@ -89,8 +89,8 @@ subroutine WriteOutFluxnetFcc(lEx)
     integer :: n_cec_pairs
     integer :: n_cec_fields
     type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
-    real(kind = dbl) :: cec_values(MaxNumCecTargets * 6 + 9)
-    logical :: cec_is_int(MaxNumCecTargets * 6 + 9)
+    real(kind = dbl) :: cec_values(MaxNumCecTargets * 7 + 9)
+    logical :: cec_is_int(MaxNumCecTargets * 7 + 9)
     include '../src_common/interfaces_1.inc'
 
 

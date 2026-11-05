@@ -721,7 +721,7 @@ module m_typedef
     !> gas records, 1-based, so they survive a project being re-ordered in a
     !> way raw column numbers would not.
     type :: CECPairType
-        integer :: meth   !< 0 off, 1 water and carbon, 2 water only, 3 carbon only
+        integer :: meth   !< 0 off, 1 water and carbon, 2 water only, 3 carbon only, 4 extras only
         !> Named for the role, not the species: these are record indices and
         !> a bare `co2` reads as the retired slot constant of the same name.
         integer :: carbon !< gas record; 0 = the designated CO2

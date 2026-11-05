@@ -416,7 +416,10 @@ module m_common_global_var
     !> 5.0.0 is the record format: gases, cell measurements and diagnostics are
     !> described by indexed records rather than one column per fixed role. The
     !> GUI migrates a 4.x file on open and saves it in this format.
-    character(5), parameter :: MaxSupportedIniVer = '5.1.0'
+    !> 5.2.0: a CEC pairing's octant gas (cec_<i>_co2) may name carbonyl
+    !> sulfide, and cec_<i>_meth may be 4, extras only. An older engine would
+    !> swap the first for CO2 without a word, so it has to refuse the file.
+    character(5), parameter :: MaxSupportedIniVer = '5.2.0'
     type(DateType), parameter :: &
         tsNull= DateType(0, 0, 0, 0, 0)
     type(InstrumentType), parameter :: &

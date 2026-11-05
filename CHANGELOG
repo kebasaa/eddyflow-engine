@@ -1,6 +1,39 @@
 8.1.8 (2026-11-05)
 
     Engine:
+	- New (experimental): A Conditional Eddy Covariance pairing may name
+	       carbonyl sulfide as its octant gas (cec_<i>_co2 naming a COS
+	       record), sorting moist ejections by the sign of COS' instead of
+	       CO2'. Sound only where the ground is a net COS source or
+	       negligible: soil uptake carried in a moist ejection sorts as
+	       stomatal. CO2 stays the default, and the automatic pairings are
+	       unchanged. Such a pairing's suffix carries the species
+	       (_miro_mga4_6_2_cos), and its COS block is named like an extra
+	       species - cos_nonstomatal_cec, cos_stomatal_cec, cos_total_cec,
+	       r_cos_cec, cec_ns_cos, qc_cec_cos - not Reco/P/NEE. A pairing that
+	       names any other species there used to be given the designated CO2
+	       silently; it still is, now with Warning(123).
+	- New: cec_<i>_meth=4, extras only: a pairing kept to sort the parcels
+	       its extra species are split over, reporting neither of its own two
+	       gases.
+	- New (experimental): cec_sign_<stem><tag> after qc_cec_<stem><tag> for
+	       every carbonyl sulfide target: 1 when its stomatal component came
+	       out as emission, 0 for uptake or none, the error code when there
+	       is no component. Leaves are not known to emit COS while their
+	       stomata work, so these are the periods to look at: noise, soil
+	       uptake misattributed by COS octants, or a senescent canopy. Values
+	       are reported either way.
+	- Fix: A CEC pairing with four extra species wrote a shorter essentials
+	       row than its header: the row buffers held six fields per target
+	       where every target has seven, and the emitters stop silently at
+	       the end of the buffer, so FCC misread every field after it. Sized
+	       MaxNumCecTargets * 7 + 9 in all three row writers.
+	- Change: Project format 5.2.0 (MaxSupportedIniVer and the EddyPro
+	       import's stamp), so an older engine refuses a project with a COS
+	       octant gas rather than swapping it for CO2. Warnings 113 and 114
+	       say "octant gas" where they said carbon dioxide. Pinned by
+	       static_checks/test_cec_octant_species_static.py; regression fixture
+	       tests/regression/base_cec_cos_octants.eddyflow.
 	- Fix: The stable Ibrom et al. (2007) correction factor model was judged
 	       not to have moved when it sat at (1, 0.02), a point it never
 	       starts from; it starts at (6.5e-3, 3.0e-3). A stalled stable fit
