@@ -241,5 +241,13 @@ class AbsoluteLimitsCountWhatTheyRemove(unittest.TestCase):
         self.assertNotIn("    if (RPsetup%filter_al) then\n        where (E2Col(u:lastGas)%present)", al)
 
 
+class VpdIsConvertedOnItsOwnValue(unittest.TestCase):
+
+    def test_the_guard_reads_vpd(self):
+        rex = code("src_common", "read_ex_record.f90")
+        self.assertIn("if (lEx%VPD /= error) lEx%VPD = lEx%VPD * 1d2", rex)
+        self.assertNotIn("if (lEx%Pa /= error) lEx%VPD", rex)
+
+
 if __name__ == "__main__":
     unittest.main()

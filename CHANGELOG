@@ -137,6 +137,10 @@
 	       counts beside them, but were zeroed exactly when the test removed
 	       values and showed a count when it only flagged. Fluxes and the flag
 	       string were unaffected.
+	- Fix: FCC converted VPD to Pa on the condition that Pa was available, so
+	       a missing VPD - no hygrometer and no biomet RH - became -999900 in the
+	       full output and "-9999.00" in FLUXNET, past the error label. The
+	       conversion now tests VPD itself.
 
 8.1.7 (2026-11-04)
 
