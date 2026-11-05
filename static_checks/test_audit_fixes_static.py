@@ -317,5 +317,15 @@ class StationarityAveragesTheSubPeriodsThereAre(unittest.TestCase):
         self.assertIn("if (AvrgCov(u, w) /= error .and. AvrgCov(v, w) /= error) &", st)
 
 
+class TheOptimiserKnowsAnEdgeWhenItSeesOne(unittest.TestCase):
+
+    def test_half_a_sample_not_exact_equality(self):
+        to = code("src_rp", "add_to_timelag_opt_dataset.f90")
+        self.assertNotIn("Essentials%used_timelag(gas) /= E2Col(gas)%max_tl", to)
+        self.assertEqual(to.count("if (OffWindowEdge(gas)) TimelagOpt(n)%tlag(gas) = Essentials%used_timelag(gas)"), 2)
+        fn = body(to, "logical function OffWindowEdge", "end function OffWindowEdge")
+        self.assertIn("dabs(lag - E2Col(gas)%min_tl) > halfSample", fn)
+
+
 if __name__ == "__main__":
     unittest.main()

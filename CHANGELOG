@@ -182,6 +182,14 @@
 	       present. The mean now covers the sub-periods with a covariance and
 	       needs at least two; u* is formed only where both its covariances
 	       exist. A complete period is unchanged. Inherited from EddyPro.
+	- Fix: The time-lag optimiser kept lags pinned at its search window's edge
+	       in the dataset it fits the nominal lag and window to. It recognised
+	       an edge only by exact equality, and a lag is a whole number of
+	       samples while most derived windows (nominal - 2 s, separation-based
+	       bounds) are not, so the test almost never fired and the optimised
+	       lag was pulled toward the edge. An edge is now within half a sample,
+	       as the optimiser's own diagnostic table already judged it.
+	       Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 
