@@ -55,7 +55,7 @@ subroutine InitFluxnetFile_rp()
     integer :: n_cec_pairs
     integer :: cec_slots(MaxNumCecTargets)
     type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
-    character(48) :: cec_tag
+    character(96) :: cec_tag
     character(8) :: cec_kstr
     character(64) :: usg(NumUserVar)
     character(LongOutstringLen) :: csv_row

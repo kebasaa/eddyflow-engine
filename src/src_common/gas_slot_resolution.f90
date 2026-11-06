@@ -1456,7 +1456,9 @@ subroutine CecPairs(pairs, npairs)
     integer :: gas
     integer :: occurrence
     integer :: repeat
-    character(48) :: base
+    character(96) :: base
+    character(96) :: bases(MaxNumCecPairs)
+    character(96) :: names(MaxNumCecPairs)
     character(160) :: pairLine
     integer, external :: PrimaryCarbonSlot
     integer, external :: CecWaterOnAnalyserOf
@@ -1570,22 +1572,42 @@ subroutine CecPairs(pairs, npairs)
         call ExceptionHandler(114)
     end if
 
-    !> Suffixes last, in two passes: whether a name needs an occurrence number
-    !> depends on how many pairings share the analyser, which the first of them
-    !> cannot know.
+    !> Suffixes last, in three passes, because whether a name needs more than
+    !> its analyser depends on the pairings after it.
+    !>
+    !> The analyser of the octant gas first (and its species, when it is not
+    !> CO2). Where two pairings share that, one whose water sits on another
+    !> analyser says which: _miro_mga4_6_2_h2o_li7200_1. That is the case of
+    !> one gas split twice, once with each instrument's water, and a reader
+    !> should not need the project file to tell the two apart. Whatever is
+    !> still shared after that - two hygrometers on one analyser - is numbered.
+    !> A pairing that shares nothing keeps the name it always had.
     do i = 1, npairs
-        base = CecPairBaseTag(pairs(i)%carbon_slot, i)
+        bases(i) = CecPairBaseTag(pairs(i)%carbon_slot, i)
+    end do
+    do i = 1, npairs
+        names(i) = bases(i)
+        repeat = 0
+        do k = 1, npairs
+            if (trim(bases(k)) == trim(bases(i))) repeat = repeat + 1
+        end do
+        if (repeat > 1) then
+            base = CecWaterTagOf(pairs(i)%water_slot, pairs(i)%carbon_slot)
+            if (len_trim(base) > 0) names(i) = trim(bases(i)) // '_h2o_' // trim(base)
+        end if
+    end do
+    do i = 1, npairs
         repeat = 0
         occurrence = 0
         do k = 1, npairs
-            if (trim(CecPairBaseTag(pairs(k)%carbon_slot, k)) /= trim(base)) cycle
+            if (trim(names(k)) /= trim(names(i))) cycle
             repeat = repeat + 1
             if (k <= i) occurrence = occurrence + 1
         end do
         if (repeat == 1) then
-            pairs(i)%tag = '_' // trim(base)
+            pairs(i)%tag = '_' // trim(names(i))
         else
-            write(pairs(i)%tag, '(a,i0)') '_' // trim(base) // '_', occurrence
+            write(pairs(i)%tag, '(a,i0)') '_' // trim(names(i)) // '_', occurrence
         end if
     end do
 
@@ -1671,7 +1693,7 @@ contains
     !> COS-octant pairings on one analyser read as two partitions of different
     !> things rather than as a first and a second of the same one. A CO2
     !> pairing's suffix is what it always was.
-    character(48) function CecPairBaseTag(csl, ordinal)
+    character(96) function CecPairBaseTag(csl, ordinal)
         integer, intent(in) :: csl
         integer, intent(in) :: ordinal
         integer :: r
@@ -1693,6 +1715,34 @@ contains
             CecPairBaseTag = trim(CecPairBaseTag) // '_' // trim(species)
         end if
     end function CecPairBaseTag
+
+    !> The analyser the water sits on, when it is a named one and not the
+    !> octant gas's own; blank otherwise. What tells apart two pairings that
+    !> sort by one octant gas but read different water.
+    character(96) function CecWaterTagOf(wsl, csl)
+        integer, intent(in) :: wsl
+        integer, intent(in) :: csl
+        integer :: rw, rc
+        character(96) :: own
+
+        CecWaterTagOf = ''
+        rw = wsl - firstGas + 1
+        rc = csl - firstGas + 1
+        if (rw < 1 .or. rw > min(EddyFlowProj%gas_num, MaxNumGases)) return
+        CecWaterTagOf = EddyFlowProj%gas(rw)%instr
+        call lowercase(CecWaterTagOf)
+        if (len_trim(CecWaterTagOf) == 0 &
+            .or. trim(CecWaterTagOf) == 'none' &
+            .or. trim(CecWaterTagOf) == 'other') then
+            CecWaterTagOf = ''
+            return
+        end if
+        own = ''
+        if (rc >= 1 .and. rc <= min(EddyFlowProj%gas_num, MaxNumGases)) &
+            own = EddyFlowProj%gas(rc)%instr
+        call lowercase(own)
+        if (trim(own) == trim(CecWaterTagOf)) CecWaterTagOf = ''
+    end function CecWaterTagOf
 
 end subroutine CecPairs
 
@@ -1783,6 +1833,87 @@ logical function CecFlagsStomatalSign(slot)
 
     CecFlagsStomatalSign = trim(CecSlotSpecies(slot)) == 'COS'
 end function CecFlagsStomatalSign
+
+!***************************************************************************
+!
+! \brief       Whether a period's octants, sorted by a gas other than CO2,
+!              look like noise: 1 yes, 0 no, the error code when there is
+!              nothing to judge (the period was rejected).
+! \author      Jonathan Muller
+! \note        Sorting a gas by its own sign puts every moist ejection that
+!              gained it in O1 and every one that lost it in O2, so its two
+!              sample fluxes always have opposite signs. Where the sort carries
+!              a surface signature - uptake by the canopy - one of them
+!              dominates. Where the sign is mostly instrument noise they cancel
+!              and the octant gas's own ratio sits at -1. Every other gas of
+!              the pairing is then split over parcels sorted at random, and
+!              comes out near 50/50 whatever the truth, under a quality code
+!              that says nothing is wrong. That is what this flags.
+!
+!              The width is the default singular band, 0.2, fixed rather than
+!              the user's: switching that rejection off must not switch this
+!              warning off with it. A sparse octant (the occupancy fallback)
+!              is the opposite of noise, so it reads 0.
+!
+!              CO2 is never asked: there a ratio near -1 is respiration and
+!              photosynthesis of similar size, which Zahn et al. (2022) treat
+!              as a problem of the carbon split alone, not as empty octants.
+!***************************************************************************
+integer function CecOctantNoiseFlag(pair, descriptor)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(in) :: pair
+    type(CECDescriptorType), intent(in) :: descriptor
+
+    real(kind = dbl), parameter :: noiseBand = 0.2d0
+    real(kind = dbl) :: r
+    integer :: status
+
+    CecOctantNoiseFlag = nint(error)
+    if (pair%meth == 0) return
+    status = descriptor%target(cecTargetCarbon)%status
+    if (status == cec_all_stomatal .or. status == cec_all_nonstomatal) then
+        CecOctantNoiseFlag = 0
+        return
+    end if
+    r = descriptor%target(cecTargetCarbon)%r
+    if (status == cec_rejected .or. r == error) return
+    CecOctantNoiseFlag = merge(1, 0, abs(r + 1d0) < noiseBand)
+end function CecOctantNoiseFlag
+
+!***************************************************************************
+!
+! \brief       Warning(124), once per pairing per run, the first time a
+!              pairing's octant gas sorts like noise.
+! \author      Jonathan Muller
+! \note        The flag itself is written per period as cec_noisy_octants;
+!              this is so the run log says it at all, because the columns it
+!              casts doubt on carry quality code 1.
+!***************************************************************************
+subroutine CecWarnNoisyOctants(pair, descriptor, ordinal)
+    use m_common_global_var
+    implicit none
+    type(CECResolvedPairType), intent(in) :: pair
+    type(CECDescriptorType), intent(in) :: descriptor
+    integer, intent(in) :: ordinal
+
+    logical, save :: warned(MaxNumCecPairs) = .false.
+    character(32) :: species
+    character(160) :: line
+    character(32), external :: CecSlotSpecies
+    integer, external :: CecOctantNoiseFlag
+
+    if (ordinal < 1 .or. ordinal > MaxNumCecPairs) return
+    if (warned(ordinal)) return
+    species = CecSlotSpecies(pair%carbon_slot)
+    if (trim(species) == 'CO2') return
+    if (CecOctantNoiseFlag(pair, descriptor) /= 1) return
+    warned(ordinal) = .true.
+    write(line, '(a,i0,a)') '  Warning(124)> CEC pairing ', ordinal, &
+        ' (' // trim(adjustl(pair%tag)) // ') in this period.'
+    call LogSay(trim(line))
+    call ExceptionHandler(124)
+end subroutine CecWarnNoisyOctants
 
 !***************************************************************************
 !
@@ -2066,10 +2197,11 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
     integer :: slots(MaxNumCecTargets)
     character(64) :: stem
     character(64) :: gas_tags(GHGNumVar)
-    character(48) :: tag
+    character(96) :: tag
     character(32), external :: CecSlotSpecies
     logical, external :: CecFlagsStomatalSign
     character(32) :: k_species
+    character(32) :: octant_species
 
     names = ''
     units = ''
@@ -2133,6 +2265,10 @@ subroutine CecOutputColumns(pair, flux_label, names, units, nnames)
     call Emit('cec_n_o2' // trim(tag), '[#]')
     call Emit('cec_frac_o1' // trim(tag), '[#]')
     call Emit('cec_frac_o2' // trim(tag), '[#]')
+    !> Octants sorted by a gas other than CO2: 1 where they sorted like noise
+    !> (CecOctantNoiseFlag). A CO2 pairing's columns are what they always were.
+    octant_species = CecSlotSpecies(pair%carbon_slot)
+    if (trim(octant_species) /= 'CO2') call Emit('cec_noisy_octants' // trim(tag), '[#]')
 
 contains
 
@@ -2185,6 +2321,9 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
     integer :: slots(MaxNumCecTargets)
     real(kind = dbl) :: sc
     logical, external :: CecFlagsStomatalSign
+    character(32), external :: CecSlotSpecies
+    integer, external :: CecOctantNoiseFlag
+    character(32) :: octant_species
 
     values = error
     is_int = .false.
@@ -2230,6 +2369,8 @@ subroutine CecRowValues(pair, descriptor, flux, flux_sc, values, is_int, nvalues
     call EmitCount(descriptor%n_O2)
     call EmitScaled(descriptor%frac_O1, 1d0)
     call EmitScaled(descriptor%frac_O2, 1d0)
+    octant_species = CecSlotSpecies(pair%carbon_slot)
+    if (trim(octant_species) /= 'CO2') call EmitCount(CecOctantNoiseFlag(pair, descriptor))
 
 contains
 
