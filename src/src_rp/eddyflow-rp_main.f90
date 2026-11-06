@@ -2853,6 +2853,10 @@ program EddyFlowRP
                             StDiff%w_gas(CecPairList(cec_p)%carbon_slot), &
                             StDiff%w_gas(CecPairList(cec_p)%water_slot), &
                             CECDescriptor(cec_p), EddyFlowProj%cec)
+                        !> Octants sorted by COS that sort like noise: said once
+                        !> in the log, flagged per period in the output.
+                        call CecWarnNoisyOctants(CecPairList(cec_p), &
+                            CECDescriptor(cec_p), cec_p)
                     end do
                     if (allocated(CecPrimes)) deallocate(CecPrimes)
                 end if

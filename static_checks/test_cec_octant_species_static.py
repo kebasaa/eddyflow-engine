@@ -104,6 +104,169 @@ class TheOctantGasMayBeCarbonylSulfide(unittest.TestCase):
                       self.pairs)
 
 
+def pair_suffixes(pairs):
+    """The suffix rule of CecPairs, for (octant analyser, octant species,
+    water analyser) per pairing, in pairing order.
+
+    The octant gas's analyser (and species, when not CO2); where two
+    pairings share that, a water on another named analyser is appended;
+    whatever is still shared is numbered.
+    """
+    def named(instrument):
+        return bool(instrument) and instrument not in ("none", "other")
+
+    bases = []
+    for ordinal, (octant, species, _) in enumerate(pairs, start=1):
+        base = octant if named(octant) else "pair%d" % ordinal
+        if species != "CO2":
+            base += "_" + species.lower()
+        bases.append(base)
+    names = []
+    for base, (octant, _, water) in zip(bases, pairs):
+        name = base
+        if bases.count(base) > 1 and named(water) and water != octant:
+            name = base + "_h2o_" + water
+        names.append(name)
+    out = []
+    for i, name in enumerate(names):
+        if names.count(name) == 1:
+            out.append("_" + name)
+        else:
+            out.append("_%s_%d" % (name, names[:i + 1].count(name)))
+    return out
+
+
+class SeveralVersionsOfOneGasAreToldApart(unittest.TestCase):
+    """One gas split several ways - by CO2 and by COS octants, or with each
+    analyser's water - comes out under names a reader can tell apart."""
+
+    def setUp(self):
+        self.pairs = between(code(RESOLVER), "subroutine CecPairs(",
+                             "end subroutine CecPairs")
+
+    def test_the_regression_fixture(self):
+        #> base_cec_cos_octants: the MIRO's CO2 pairing, the LI-7200's, and
+        #> COS octants on the MIRO twice - once with its own water, once with
+        #> the LI-7200's.
+        self.assertEqual(
+            pair_suffixes([("miro_mga4_6_2", "CO2", "miro_mga4_6_2"),
+                           ("li7200_1", "CO2", "li7200_1"),
+                           ("miro_mga4_6_2", "COS", "miro_mga4_6_2"),
+                           ("miro_mga4_6_2", "COS", "li7200_1")]),
+            ["_miro_mga4_6_2", "_li7200_1", "_miro_mga4_6_2_cos",
+             "_miro_mga4_6_2_cos_h2o_li7200_1"])
+
+    def test_a_pairing_that_shares_nothing_keeps_its_name(self):
+        self.assertEqual(pair_suffixes([("li7200_1", "CO2", "li7500_1")]),
+                         ["_li7200_1"])
+
+    def test_two_hygrometers_on_one_analyser_are_numbered(self):
+        self.assertEqual(pair_suffixes([("irga", "CO2", "irga"),
+                                        ("irga", "CO2", "irga")]),
+                         ["_irga_1", "_irga_2"])
+        self.assertEqual(pair_suffixes([("irga", "CO2", "irga"),
+                                        ("irga", "CO2", "hyg"),
+                                        ("irga", "CO2", "hyg")]),
+                         ["_irga", "_irga_h2o_hyg_1", "_irga_h2o_hyg_2"])
+
+    def test_an_unnamed_analyser_never_collides(self):
+        self.assertEqual(pair_suffixes([("none", "CO2", "x"), ("", "CO2", "x")]),
+                         ["_pair1", "_pair2"])
+
+    def test_the_passes_are_base_then_water_then_number(self):
+        start = self.pairs.index("bases(i) = CecPairBaseTag(pairs(i)%carbon_slot, i)")
+        water = self.pairs.index(
+            "if (len_trim(base) > 0) names(i) = trim(bases(i)) // '_h2o_' // trim(base)")
+        number = self.pairs.index(
+            "write(pairs(i)%tag, '(a,i0)') '_' // trim(names(i)) // '_', occurrence")
+        self.assertLess(start, water)
+        self.assertLess(water, number)
+        self.assertIn("base = CecWaterTagOf(pairs(i)%water_slot, pairs(i)%carbon_slot)",
+                      self.pairs)
+        self.assertIn("if (trim(own) == trim(CecWaterTagOf)) CecWaterTagOf = ''",
+                      self.pairs)
+
+    def test_the_names_have_room_for_it(self):
+        self.assertIn("character(96) :: tag", read("src/src_common/m_typedef.f90"))
+        self.assertIn("character(96) function CecPairBaseTag(csl, ordinal)", self.pairs)
+        self.assertIn("character(96) :: cec_tag", read("src/src_rp/init_fluxnet_file_rp.f90"))
+        for path in ("src/src_rp/init_outfiles_rp.f90", "src/src_fcc/init_out_files.f90"):
+            self.assertIn("character(128) :: cec_names(", read(path))
+
+
+ALL_STOMATAL = 2
+ALL_NONSTOMATAL = 3
+REJECTED = 0
+
+
+def octant_noise_flag(status, ratio, error=-9999):
+    """cec_noisy_octants for one period, from the octant gas's own target."""
+    if status in (ALL_STOMATAL, ALL_NONSTOMATAL):
+        return 0
+    if status == REJECTED or ratio is None:
+        return error
+    return 1 if abs(ratio + 1) < 0.2 else 0
+
+
+class NoisyCosOctantsAreFlagged(unittest.TestCase):
+    """COS octants that sort like noise split every other gas near 50/50 under
+    quality code 1. Seen on the CH-LAE night data: COS's own ratio at -0.93 to
+    -0.996 every period, and water under those octants at 0.94 to 0.97 where
+    the CO2 octants gave 1.1 to 6.3. So it is flagged per period and warned
+    about once."""
+
+    def setUp(self):
+        resolver = code(RESOLVER)
+        self.flag = between(resolver, "integer function CecOctantNoiseFlag(",
+                            "end function CecOctantNoiseFlag")
+        self.warn = between(resolver, "subroutine CecWarnNoisyOctants(",
+                            "end subroutine CecWarnNoisyOctants")
+        self.columns = between(resolver, "subroutine CecOutputColumns(",
+                               "end subroutine CecOutputColumns")
+        self.rows = between(resolver, "subroutine CecRowValues(",
+                            "end subroutine CecRowValues")
+
+    def test_the_rule(self):
+        self.assertEqual(octant_noise_flag(4, -0.99), 1)   # singular: noise
+        self.assertEqual(octant_noise_flag(1, -0.85), 1)   # band switched off
+        self.assertEqual(octant_noise_flag(1, -0.5), 0)    # a real asymmetry
+        self.assertEqual(octant_noise_flag(ALL_STOMATAL, None), 0)
+        self.assertEqual(octant_noise_flag(REJECTED, None), -9999)
+
+    def test_the_fortran_is_the_rule(self):
+        self.assertIn("real(kind = dbl), parameter :: noiseBand = 0.2d0", self.flag)
+        self.assertIn("status = descriptor%target(cecTargetCarbon)%status", self.flag)
+        self.assertIn("if (status == cec_all_stomatal .or. status == cec_all_nonstomatal) then",
+                      self.flag)
+        self.assertIn("if (status == cec_rejected .or. r == error) return", self.flag)
+        self.assertIn("CecOctantNoiseFlag = merge(1, 0, abs(r + 1d0) < noiseBand)", self.flag)
+        #> Fixed, not the user's band: switching that rejection off must not
+        #> switch the warning off with it.
+        self.assertNotIn("singular_band", self.flag)
+
+    def test_header_and_row_carry_it_under_the_same_condition(self):
+        self.assertIn("if (trim(octant_species) /= 'CO2') "
+                      "call Emit('cec_noisy_octants' // trim(tag), '[#]')", self.columns)
+        self.assertIn("if (trim(octant_species) /= 'CO2') "
+                      "call EmitCount(CecOctantNoiseFlag(pair, descriptor))", self.rows)
+        for block in (self.columns, self.rows):
+            self.assertIn("octant_species = CecSlotSpecies(pair%carbon_slot)", block)
+        #> Last, after the octant fractions, so no existing column moves.
+        self.assertLess(self.columns.index("call Emit('cec_frac_o2' // trim(tag), '[#]')"),
+                        self.columns.index("cec_noisy_octants"))
+
+    def test_it_is_said_once_per_pairing_in_the_log(self):
+        self.assertIn("logical, save :: warned(MaxNumCecPairs) = .false.", self.warn)
+        self.assertIn("if (trim(species) == 'CO2') return", self.warn)
+        self.assertIn("call ExceptionHandler(124)", self.warn)
+        self.assertIn("case(124)", read(HANDLER))
+        main = read("src/src_rp/eddyflow-rp_main.f90")
+        self.assertLess(main.index("call ExtractCecDescriptor(CecPairList(cec_p)"),
+                        main.index("call CecWarnNoisyOctants(CecPairList(cec_p)"))
+        self.assertIn("subroutine CecWarnNoisyOctants(pair, descriptor, ordinal)",
+                      read("src/src_common/interfaces_1.inc"))
+
+
 class TheColumnsFollowTheOctantGas(unittest.TestCase):
     def setUp(self):
         resolver = code(RESOLVER)

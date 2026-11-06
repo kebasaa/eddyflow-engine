@@ -223,6 +223,7 @@ FIXTURES="
 base_rec
 base_cec_cos
 base_cec_cos_octants
+base_cec_cos_versions
 base_no_gas
 base_no_water
 base_lead_gap

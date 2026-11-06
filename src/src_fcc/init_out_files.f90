@@ -73,7 +73,7 @@ subroutine InitOutFiles(lEx)
     integer :: n_cec_pairs
     integer :: n_cec_cols
     type(CECResolvedPairType) :: cec_pairs(MaxNumCecPairs)
-    character(64) :: cec_names(MaxNumCecTargets * 8 + 8)
+    character(128) :: cec_names(MaxNumCecTargets * 8 + 8)
     character(32) :: cec_units(MaxNumCecTargets * 8 + 8)
     include '../src_common/interfaces_1.inc'
 

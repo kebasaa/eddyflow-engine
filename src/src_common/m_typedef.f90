@@ -740,7 +740,9 @@ module m_typedef
         integer :: water_slot
         integer :: n_extra
         integer :: extra_slot(MaxNumCecExtra)
-        character(48) :: tag
+        !> Room for an analyser, a species and a second analyser:
+        !> _miro_mga4_6_2_cos_h2o_li7200_1, and longer instrument ids.
+        character(96) :: tag
     end type CECResolvedPairType
 
     type :: CECSetupType

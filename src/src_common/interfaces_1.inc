@@ -221,6 +221,16 @@ interface
         integer, intent(out) :: nvalues
     end subroutine CecExRowValues
 
+    !> Warning(124) the first time a pairing's non-CO2 octant gas sorts like
+    !> noise.
+    subroutine CecWarnNoisyOctants(pair, descriptor, ordinal)
+        use m_common_global_var
+        implicit none
+        type(CECResolvedPairType), intent(in) :: pair
+        type(CECDescriptorType), intent(in) :: descriptor
+        integer, intent(in) :: ordinal
+    end subroutine CecWarnNoisyOctants
+
     integer function CecSignalColumnFor(gas_slot)
         use m_common_global_var
         implicit none

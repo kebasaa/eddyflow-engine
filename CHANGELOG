@@ -1,3 +1,49 @@
+8.1.9 (2026-11-05)
+
+    Engine:
+	- New (experimental): cec_noisy_octants<tag>, after cec_frac_o2, for every
+	       CEC pairing whose octants are sorted by a gas other than CO2. It is
+	       1 in a period where that gas's own two octant fluxes cancelled -
+	       its ratio within 0.2 of -1 - meaning its sign in the moist updrafts
+	       was mostly instrument noise: the other gases of the pairing are then
+	       split near 50/50 whatever the truth, under quality code 1. 0 where
+	       the sort carried a signal or an octant was too sparse to fill, the
+	       error code where the period was rejected. The width is fixed, not
+	       the singular band, so switching that off does not switch this off.
+	       Warning(124) says so once per pairing per run. Found on CH-LAE
+	       night data: COS's own ratio at -0.93 to -0.996 in every period and
+	       water under those octants at 0.94 to 0.97, where CO2 octants gave
+	       1.1 to 6.3. CO2 pairings are unchanged. Pinned by
+	       static_checks/test_cec_octant_species_static.py.
+	- New: regression fixture base_cec_cos_versions - one COS channel split
+	       three ways, as the GUI saves that table.
+	- Change: Two CEC pairings that sort by the same octant gas - one gas split
+	       twice, once with each analyser's water - are told apart by the
+	       water's analyser rather than by a number:
+	       _miro_mga4_6_2_cos_h2o_li7200_1 beside _miro_mga4_6_2_cos. Only the
+	       pairing whose water sits on another analyser takes it; what is
+	       still shared after that (two hygrometers on one analyser) is
+	       numbered _1, _2 as before. A pairing that shares its octant gas's
+	       analyser with no other keeps its name. Pair suffixes hold 96
+	       characters and CEC column names 128, so the longer names are not
+	       truncated. Pinned by static_checks/test_cec_octant_species_static.py.
+	- Fix: When the time-lag optimisation could fill none of water vapour's
+	       relative-humidity classes, it switched the whole run to covariance
+	       maximisation (Alert 43) and dropped every gas's optimised window.
+	       With lags pinned at the search window's edge now kept out of the
+	       dataset - the intent of EddyPro's own gate, which its exact
+	       comparison defeated - a short or edge-bound water record empties its
+	       classes more often. Water now takes one window from all its
+	       determinations, or its metadata window when it has too few, and the
+	       other gases keep theirs.
+	- Fix: Running-mean and exponential detrending crashed (segmentation
+	       fault) when the time constant was longer than the averaging period,
+	       for example timeconst=5000 s with 30-minute periods: the loop over
+	       the first time constant ran past the period's last row. The CEC
+	       partition, which detrends first, is where it showed. The loop now
+	       stops at the period's end, so the trend is the running mean of the
+	       period so far. Inherited from EddyPro.
+
 8.1.8 (2026-11-05)
 
     Engine:
@@ -289,22 +335,6 @@
 	       the new utc_offset and the equation of time, at each period's middle.
 	       SW_IN_POT and the day/night flag move for every site. Inherited from
 	       EddyPro (LI-COR eddypro-engine issue 8).
-	- Fix: When the time-lag optimisation could fill none of water vapour's
-	       relative-humidity classes, it switched the whole run to covariance
-	       maximisation (Alert 43) and dropped every gas's optimised window.
-	       With lags pinned at the search window's edge now kept out of the
-	       dataset - the intent of EddyPro's own gate, which its exact
-	       comparison defeated - a short or edge-bound water record empties its
-	       classes more often. Water now takes one window from all its
-	       determinations, or its metadata window when it has too few, and the
-	       other gases keep theirs.
-	- Fix: Running-mean and exponential detrending crashed (segmentation
-	       fault) when the time constant was longer than the averaging period,
-	       for example timeconst=5000 s with 30-minute periods: the loop over
-	       the first time constant ran past the period's last row. The CEC
-	       partition, which detrends first, is where it showed. The loop now
-	       stops at the period's end, so the trend is the running mean of the
-	       period so far. Inherited from EddyPro.
 
 8.1.7 (2026-11-04)
 
