@@ -1,3 +1,10 @@
+8.1.10 (2026-11-06)
+
+    Engine:
+	- Version bump to 8.1.10, to match EddyFlow GUI 8.1.10. No change to the
+	  computation. The version constant is one character wider, for the two-digit
+	  patch number.
+
 8.1.9 (2026-11-05)
 
     Engine:
