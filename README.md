@@ -1,5 +1,6 @@
 ![Fortran](https://img.shields.io/badge/Fortran-%23734F96.svg?style=for-the-badge&logo=fortran&logoColor=white)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![DOI](https://zenodo.org/badge/1274358482.svg)](https://doi.org/10.5281/zenodo.24011229)
 
 ![EddyFlow Logo](img/app-logo.svg)
 
@@ -16,12 +17,8 @@ EddyFlow consists of 4 repositories:
 - [eddyflow-engine](https://github.com/kebasaa/eddyflow-engine) (current repository): The engine behind it all
 - [eddyflow-gui](https://github.com/kebasaa/eddyflow-gui): The Qt6 GUI
 - [eddyflow-documentation](https://github.com/kebasaa/eddyflow-documentation): The documentation of the software and its usage
+  It provides the [documentation website](https://kebasaa.github.io/eddyflow-documentation/)
 - [eddyflow-build-script](https://github.com/kebasaa/eddyflow-build-script): This builds the software binaries (currently Windows only)
-
-## License
-
-This fork of EddyPro 6.2.2 (newly branded EddyFlow) is released with and will retain the
-[GNU General Public License (GPL) v3.0](LICENSE).
 
 ## Source Code Repository
 
@@ -220,3 +217,12 @@ In order to help users who want to cite EddyFlow on posters or publications, we 
 More information is available at the help website [EddyFlow help](https://kebasaa.github.io/eddyflow-documentation/).
 
 See also the [CHANGELOG](CHANGELOG).
+
+## How to Cite
+
+Muller, J.D. (2026). *eddyflow-engine: EddyFlow flux processing engine*. DOI: https://doi.org/10.5281/zenodo.24011229
+
+## License
+
+This software is distributed under the [GNU General Public License (GPL) v3.0](LICENSE). Any modification of the code in this repository may only be released under the same license, and with attribution of authorship of the original code (i.e., citation above).
+
