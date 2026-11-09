@@ -106,6 +106,7 @@ module m_production_parallel
     public :: ReadProdVerdicts, FindProdVerdict, RemoveWorkerRoots
     public :: RemoveStaleWorkerRoots
     public :: SetProdRemoteWindow
+    public :: ProdParentOutDir
 
     !> Both files are read back by the same binary in the same run, so the
     !> format never has to survive a version change; the magic guards against a
@@ -1019,6 +1020,13 @@ contains
         if (dir(1:min(len(dir), n)) /= WorkerMainOut(1:n)) return
         dir = trim(ParentMainOut) // dir(n + 1:len_trim(dir))
     end subroutine ToParentTree
+
+    !> Worker: the parent's output folder, which its per-period files go to
+    !> (ToParentTree). Empty anywhere else.
+    character(PathLen) function ProdParentOutDir()
+        ProdParentOutDir = ''
+        if (len_trim(WorkerMainOut) > 0) ProdParentOutDir = ParentMainOut
+    end function ProdParentOutDir
 
     !> The context file sits in the parent's temporary folder, which a worker
     !> knows as --batch-tmp.

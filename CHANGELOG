@@ -1,9 +1,30 @@
 8.1.10 (2026-11-06)
 
     Engine:
-	- Version bump to 8.1.10, to match EddyFlow GUI 8.1.10. No change to the
-	  computation. The version constant is one character wider, for the two-digit
-	  patch number.
+	- Version bump to 8.1.10, to match EddyFlow GUI 8.1.10. The version
+	  constant is one character wider, for the two-digit patch number.
+	- Fix: A run stops as soon as a disk its output goes to has less than
+	       1 GB left, saying which disk and how much. Every process writing a
+	       pass checks at the top of each period (at most every two seconds),
+	       a production worker also its parent's folder, where its per-period
+	       files go; FCC checks each record. On CH-LAE a network share filled
+	       while 24 workers wrote raw datasets: every file after that came
+	       out empty, nothing reported an error, and each period took sixteen
+	       minutes instead of twenty seconds. The disk is watched rather than
+	       the writes because a full share accepts writes it then loses.
+	- New: The raw datasets of the first period the parent writes are
+	       measured and projected over the periods still to come that have a
+	       raw file. If they will not fit, the run stops there - before a
+	       production pass is split, so no worker starts - and says what to
+	       change. The projection is logged either way.
+	- Fix: The parallel pool's one-day timeout counted only finished pieces,
+	       so it stopped the CH-LAE run with all 24 workers still going, only
+	       slowly. A worker getting one period further now resets it too, and
+	       a pass that really is stuck is reported with how far each running
+	       worker got and the last it printed, rather than as "No pre-pass
+	       worker has finished within a day", which also misnamed the
+	       production pass.
+	       Pinned by static_checks/test_output_disk_guard_static.py.
 
 8.1.9 (2026-11-05)
 

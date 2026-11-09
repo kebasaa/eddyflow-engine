@@ -894,6 +894,7 @@ optimize_timelags.o: \
 	m_rp_global_var.o
 out_raw_data.o: \
 	out_raw_data.f90 \
+	batch_pool.o \
 	m_rp_global_var.o
 output_spectral_assessment_results.o: \
 	output_spectral_assessment_results.f90 \

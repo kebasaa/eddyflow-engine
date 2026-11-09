@@ -35,6 +35,7 @@
 !***************************************************************************
 subroutine OutRawData(date, time, Set, nrow, ncol, level)
     use m_rp_global_var
+    use m_batch_pool, only: NoteRawOutputBytes
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow, ncol
@@ -98,5 +99,8 @@ subroutine OutRawData(date, time, Set, nrow, ncol, level)
         write(udf,*) OutSet(i, 1: num_var)
     end do
     close(udf)
+    !> The largest output a run writes: the parent sizes the whole run's from
+    !> the first period's (CheckOutputWillFit).
+    call NoteRawOutputBytes(RawPath)
     call LogSay(' Done.')
 end subroutine OutRawData

@@ -43,7 +43,7 @@ module m_batch_pool
     use m_common_global_var
     use m_ghg_prefetch, only: GhgPrefetchCleanup
     use m_remote_source, only: RemoteCleanup
-    use m_process_os, only: ProcessSelfId, ParentGone, ProcessAlive
+    use m_process_os, only: ProcessSelfId, ParentGone, ProcessAlive, DiskFreeBytes
     implicit none
     private
 
@@ -57,15 +57,18 @@ module m_batch_pool
     public :: MaxChunks
     public :: ProgressBegin, ProgressAt, ProgressEnd
     public :: PeriodsWithFile, SetPeriodSample, ClearPeriodSample, PeriodSampled
+    public :: StopIfOutputDiskFull, NoteRawOutputBytes, CheckOutputWillFit
 
     !> More workers than this is never a throughput win on a machine that also
     !> has to feed them raw data, and it multiplies the per-worker cost of
     !> listing the raw directory.
     integer, parameter :: MaxWorkers = 32
 
-    !> Roughly one second per tick, so this is a full day of waiting. A
-    !> pre-pass over a season legitimately takes hours; a worker that has hung
-    !> should still not hold the parent for ever.
+    !> Roughly one second per tick, so this is a full day in which no worker
+    !> finished a piece or got one period further through it. Counting only
+    !> finished pieces stopped a run whose workers were all still going, only
+    !> slowly - on CH-LAE, writing to a full network share, at a period every
+    !> sixteen minutes, so that no piece could end within the day.
     integer, parameter :: MaxWaitTicks = 86400
 
 
@@ -123,6 +126,25 @@ module m_batch_pool
 
     !> A worker's own, for its piece's progress file.
     integer(8) :: PieceLastNote = 0
+
+    !> Parent: the running pieces' progress added up when last looked at, so
+    !> a wait can tell a slow pass from a stuck one.
+    integer(8) :: LastProgSum = -1
+
+    !> Below this much room on the disk an output goes to, a run stops. Files
+    !> written to a full disk - a network share, at least - come out empty or
+    !> cut short with no error to the program, so the disk has to be watched
+    !> rather than the writes. A gibibyte is several periods of every output
+    !> there is, raw datasets included, from every worker at once between two
+    !> looks.
+    integer(8), parameter :: MinFreeOutputBytes = 1073741824_8
+    !> When the disks were last looked at; at most every two seconds, since
+    !> a stretch without data goes by many periods a second.
+    integer(8) :: LastDiskCheck = 0
+    !> Parent: raw-dataset bytes written in the period under way, and whether
+    !> the whole run's have been projected yet - see CheckOutputWillFit.
+    integer(8) :: RawBytesThisPeriod = 0
+    logical :: OutputFitChecked = .false.
 
     !> The preliminary time-lag assessment walks a random sample of a
     !> pre-pass's periods, not all of them (SetPeriodSample). While a sample is
@@ -564,6 +586,7 @@ contains
         if (allocated(PieceProg)) deallocate(PieceProg)
         allocate(PieceProg(NumChunks))
         PieceProg = 0
+        LastProgSum = -1
         LastLivenessCheck = 0
         NextChunk = 2
         call LaunchChunks(kind, min(nEff - 1, NumChunks - 1))
@@ -888,14 +911,13 @@ contains
             call PollPrepassPool(nEff, .false., progressed)
             if (progressed) ticks = 0
             if (PoolDone >= NumChunks) exit
+            if (WorkersAdvanced()) ticks = 0
             call ProgressSay(.false.)
 
             call system(comm_sleep)
             ticks = ticks + 1
             if (ticks > MaxWaitTicks) then
-                call LogSay('')
-                call LogSay(' No pre-pass worker has finished within a day.')
-                error stop 'Parallel pre-pass timed out.'
+                call StopStalledPool(kind)
             end if
         end do
         !> Every piece is in, so is the pass's every period - except that the
@@ -1112,12 +1134,11 @@ contains
             call PollPrepassPool(PoolEff - 1, .true., progressed)
             if (k < NextChunk .and. .not. Running(k)) exit
             if (progressed) ticks = 0
+            if (WorkersAdvanced()) ticks = 0
             call system(comm_sleep)
             ticks = ticks + 1
             if (ticks > MaxWaitTicks) then
-                call LogSay('')
-                call LogSay(' No worker has finished within a day.')
-                error stop 'Parallel pass timed out.'
+                call StopStalledPool(PoolKind)
             end if
         end do
     end subroutine WaitForBatchPiece
@@ -1142,12 +1163,11 @@ contains
             call PollPrepassPool(0, .true., progressed)
             if (count(Running) == 0) exit
             if (progressed) ticks = 0
+            if (WorkersAdvanced()) ticks = 0
             call system(comm_sleep)
             ticks = ticks + 1
             if (ticks > MaxWaitTicks) then
-                call LogSay('')
-                call LogSay(' No worker has finished within a day.')
-                error stop 'Parallel pass timed out.'
+                call StopStalledPool(PoolKind)
             end if
         end do
         deallocate(Running, LaunchedAt, SuspectAt)
@@ -1455,6 +1475,180 @@ contains
         call FinishBatchWorker()
         stop 3
     end subroutine StopIfParentGone
+
+    !***************************************************************************
+    !> \brief Stop the run as soon as a disk its output goes to runs low.
+    !>
+    !> Called at the top of every period by every process writing the pass,
+    !> parent and workers alike, with the folders it writes to - a production
+    !> worker writes its per-period files into its parent's. On CH-LAE a share
+    !> filled while 24 workers wrote raw datasets to it: from then on every
+    !> file came out empty, nothing reported an error, and each period took
+    !> sixteen minutes instead of twenty seconds, until the parent gave up a
+    !> day later. Stopping at once leaves a run that says why.
+    !>
+    !> A worker that stops here fails, and its parent then stops the run with
+    !> what the worker printed - this.
+    !***************************************************************************
+    subroutine StopIfOutputDiskFull(dir, other)
+        character(*), intent(in) :: dir
+        !> A second folder, which may be on another disk; empty for none.
+        character(*), intent(in), optional :: other
+        integer(8) :: now
+        integer(8) :: rate
+
+        call system_clock(now, rate)
+        if (LastDiskCheck > 0 .and. now - LastDiskCheck < 2 * rate) return
+        LastDiskCheck = now
+        call StopIfDirLow(dir)
+        if (present(other)) call StopIfDirLow(other)
+    end subroutine StopIfOutputDiskFull
+
+    subroutine StopIfDirLow(dir)
+        character(*), intent(in) :: dir
+        integer(8) :: free
+
+        if (len_trim(dir) == 0) return
+        free = DiskFreeBytes(trim(dir))
+        if (free < 0 .or. free >= MinFreeOutputBytes) return
+        !> Ends the progress line the period loop may have left open.
+        call LogSay('')
+        call LogSay(' The disk this run writes to has only ' // trim(SizeText(free)) &
+            // ' left:')
+        call LogSay('   ' // trim(dir))
+        call LogSay(' Stopping now. Files written to a full disk come out empty or')
+        call LogSay(' cut short, and nothing says so. Free some space, or turn off')
+        call LogSay(' output you do not need - raw datasets are by far the largest -')
+        call LogSay(' or choose an output folder with more room, and run again.')
+        error stop 'The output disk is full.'
+    end subroutine StopIfDirLow
+
+    !***************************************************************************
+    !> \brief Parent: count a raw-dataset file just written towards this
+    !>        period's total, for CheckOutputWillFit.
+    !***************************************************************************
+    subroutine NoteRawOutputBytes(path)
+        character(*), intent(in) :: path
+
+        if (BatchIndex > 0 .or. OutputFitChecked) return
+        RawBytesThisPeriod = RawBytesThisPeriod + FileBytes(path)
+    end subroutine NoteRawOutputBytes
+
+    !***************************************************************************
+    !> \brief Parent: once the first period has written its raw datasets,
+    !>        refuse a run whose raw datasets will not fit on the disk.
+    !>
+    !> Called at the end of every period the parent processes, before a
+    !> production pass is split, so the answer comes before any worker
+    !> starts. Raw datasets dwarf everything else a run writes - eleven
+    !> megabytes a level a period at 20 Hz on CH-LAE, so 77 a period with all
+    !> seven levels, and about two terabytes over the run - and they are the
+    !> one output whose size one period tells. `nLeft` is the periods still
+    !> to come that have a raw file; a period with a file that turns out not
+    !> to be usable makes this an overestimate, which is the safe side.
+    !>
+    !> Projected once; a period that wrote no raw dataset - one skipped, or
+    !> a run that writes none - does not count as the first.
+    !***************************************************************************
+    subroutine CheckOutputWillFit(dir, nLeft)
+        character(*), intent(in) :: dir
+        integer, intent(in) :: nLeft
+        integer(8) :: need
+        integer(8) :: free
+        integer(8) :: perPeriod
+        character(16) :: CountString
+
+        if (BatchIndex > 0 .or. OutputFitChecked) return
+        if (RawBytesThisPeriod <= 0) return
+        OutputFitChecked = .true.
+        perPeriod = RawBytesThisPeriod
+        RawBytesThisPeriod = 0
+        need = perPeriod * max(0, nLeft)
+        free = DiskFreeBytes(trim(dir))
+        if (free < 0) return
+
+        write(CountString, '(i0)') max(0, nLeft)
+        call LogSay('  Raw datasets: about ' // trim(SizeText(perPeriod)) &
+            // ' a period, so about ' // trim(SizeText(need)) // ' for the ' &
+            // trim(CountString) // ' periods still to come;')
+        call LogSay('  ' // trim(SizeText(free)) // ' free on the output disk.')
+        if (need <= free - MinFreeOutputBytes) return
+
+        call LogSay('')
+        call LogSay(' The raw datasets this run is set to write will not fit on the')
+        call LogSay(' disk of the output folder:')
+        call LogSay('   ' // trim(dir))
+        call LogSay(' Stopping before the disk fills, which would leave every file')
+        call LogSay(' written after that empty. Write fewer raw-dataset levels - each')
+        call LogSay(' is a copy of the whole raw series - or none, choose an output')
+        call LogSay(' folder with more room, or free some space, and run again.')
+        error stop 'Not enough room on the output disk for the raw datasets.'
+    end subroutine CheckOutputWillFit
+
+    !> A byte count the way a person reads one: MB below a gigabyte, GB below
+    !> a terabyte, TB above.
+    character(32) function SizeText(bytes)
+        integer(8), intent(in) :: bytes
+
+        if (bytes < 1073741824_8) then
+            write(SizeText, '(f0.1,a)') real(bytes, dbl) / 1048576d0, ' MB'
+        else if (bytes < 1099511627776_8) then
+            write(SizeText, '(f0.1,a)') real(bytes, dbl) / 1073741824d0, ' GB'
+        else
+            write(SizeText, '(f0.2,a)') real(bytes, dbl) / 1099511627776d0, ' TB'
+        end if
+        if (SizeText(1:1) == '.') SizeText = '0' // SizeText(1:len(SizeText) - 1)
+    end function SizeText
+
+    !***************************************************************************
+    !> \brief Parent: has any running piece got further since the last look?
+    !>
+    !> Each worker notes how far into its piece it is (NotePieceProgress), so
+    !> a pass whose workers are slow but going can be told from one whose
+    !> workers are stuck. Pieces only ever advance; their sum drops only when
+    !> one finishes, and a finished piece counts as progress of its own.
+    !***************************************************************************
+    logical function WorkersAdvanced()
+        integer :: k
+        integer(8) :: s
+
+        WorkersAdvanced = .false.
+        if (.not. allocated(PieceProg) .or. .not. allocated(Running)) return
+        s = 0
+        do k = 2, min(NextChunk - 1, NumChunks)
+            if (.not. Running(k)) cycle
+            call ReadPieceProgress(k)
+            s = s + PieceProg(k)
+        end do
+        WorkersAdvanced = s > LastProgSum
+        LastProgSum = s
+    end function WorkersAdvanced
+
+    !***************************************************************************
+    !> \brief Parent: stop a pass in which nothing has moved for a day, and say
+    !>        where each running worker had got to.
+    !***************************************************************************
+    subroutine StopStalledPool(kind)
+        character(*), intent(in) :: kind
+        integer :: k
+        character(16) :: KString
+        character(16) :: DoneString
+        character(16) :: OfString
+
+        call LogSay('')
+        call LogSay(' For a day no worker has finished a piece or got a single')
+        call LogSay(' period further through one. Still running:')
+        do k = 2, min(NextChunk - 1, NumChunks)
+            if (.not. Running(k)) cycle
+            write(KString, '(i0)') k
+            write(DoneString, '(i0)') PieceProg(k)
+            write(OfString, '(i0)') ChunkEnd(k) - ChunkStart(k)
+            call LogSay('  worker ' // trim(KString) // ': ' // trim(DoneString) &
+                // ' of ' // trim(OfString) // ' periods. The last it printed:')
+            call DumpWorkerStdout(kind, k, 3)
+        end do
+        error stop 'Parallel pass stalled.'
+    end subroutine StopStalledPool
 
     !***************************************************************************
     !> \brief Stop unless this worker was launched for pre-pass `kind`.

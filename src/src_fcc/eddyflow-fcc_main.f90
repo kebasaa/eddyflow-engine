@@ -30,7 +30,7 @@ Program EddyFlowFCC
     use m_remote_source, only: RemoteCleanup
     use m_batch_pool, only: WaitPrepassBatches, TopUpPrepassBatches, &
         StopIfParentGone, FinishBatchWorker, ProgressBegin, ProgressAt, &
-        ProgressEnd
+        ProgressEnd, StopIfOutputDiskFull
     use m_fcc_parallel, only: CaptureFccContext, TryFccFluxSplit, &
         FccWorkerStart, FccPieceBegins, FinishFccWorker, MergeFccPieces, &
         StartBinnedSplit, GetBinnedFile, FinishBinnedSplit, RunBinnedReadWorker
@@ -685,6 +685,9 @@ Program EddyFlowFCC
             end if
             if (i == BatchSliceStart) call FccPieceBegins()
         end if
+        !> As in RP: stop as soon as the disk the output goes to runs low,
+        !> rather than write files that come out empty.
+        call StopIfOutputDiskFull(Dir%main_out)
 
         !> Read record from essentials file
         call ReadExRecord('', uex, -1, lEx, ValidRecord, EndOfFileReached)
