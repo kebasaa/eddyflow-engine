@@ -25,6 +25,15 @@
 	       worker has finished within a day", which also misnamed the
 	       production pass.
 	       Pinned by static_checks/test_output_disk_guard_static.py.
+	- Fix: A parallel PWB time-lag pre-pass crashed with a segmentation
+	       fault after every piece had finished, when the parent's own first
+	       piece of the range had no usable period. The period labels the
+	       workers' periods are merged into were allocated on the first period
+	       the parent recorded itself, so on CH-LAE below canopy, whose first
+	       two days were all dropped, they did not exist. They are allocated
+	       with the dataset now, before the pass. A serial run, and a parallel
+	       run whose first piece had one usable period, were not affected.
+	       Pinned by static_checks/test_pwb_merge_empty_parent_static.py.
 
 8.1.9 (2026-11-05)
 

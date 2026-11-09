@@ -682,6 +682,14 @@ program EddyFlowRP
     if (Meth%tlag == 'pwb') then
         PwbTimelagOptSize = size(RawTimeSeries) - 1
         allocate(PwbTimelagOpt(PwbTimelagOptSize))
+        !> Each row's period, here with the rows rather than on the first
+        !> period this process records itself. A parallel pre-pass appends
+        !> the workers' periods after the parent's own slice, and that slice
+        !> may have none - CH-LAE below canopy, whose first two days were all
+        !> dropped, crashed in the merge on labels nobody had allocated.
+        allocate(PwbOptDate(PwbTimelagOptSize), PwbOptTime(PwbTimelagOptSize))
+        PwbOptDate = ''
+        PwbOptTime = ''
         PwbTimelagN = 0
     end if
 
@@ -3381,6 +3389,8 @@ program EddyFlowRP
         deallocate(toSet)
         deallocate(toH2On)
         deallocate(PwbTimelagOpt)
+        if (allocated(PwbOptDate)) deallocate(PwbOptDate)
+        if (allocated(PwbOptTime)) deallocate(PwbOptTime)
     end if
 
     !***************************************************************************

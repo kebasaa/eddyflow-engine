@@ -235,8 +235,11 @@ subroutine RecordPwbTimelagOptPeriod(TimelagOpt, nrow, n)
     integer, intent(in) :: nrow, n
     type(TimeLagOptType), intent(inout) :: TimelagOpt(nrow)
 
-    if (.not. allocated(PwbOptDate)) allocate(PwbOptDate(nrow), PwbOptTime(nrow))
-    if (n < 1 .or. n > nrow) return
+    !> The labels are allocated with the dataset, before the pass - not here,
+    !> where a parent whose own slice records nothing would never reach.
+    if (.not. allocated(PwbOptDate) .or. .not. allocated(PwbOptTime)) &
+        error stop 'The PWB period labels were not allocated before the pass.'
+    if (n < 1 .or. n > nrow .or. n > size(PwbOptDate)) return
 
     !> No lags yet: the rebuild fills them from the settled table.
     TimelagOpt(n)%tlag = error
