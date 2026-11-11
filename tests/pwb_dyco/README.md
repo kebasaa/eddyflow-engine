@@ -13,7 +13,7 @@ starts dyco draws, and the engine's chain runs on exactly those.
 ## Running it
 
 ```
-cd prj && mingw32-make pwbcmp           # builds obj/win/pwb_compare.exe
+cmake --build --preset release --target pwbcmp   # builds obj/win/pwb_compare.exe
 ```
 
 dyco must be checked out as `dyco-main` beside the repository root (it is

@@ -21,7 +21,7 @@ has to run before the shift, and the LoD has to see the detrending the flux
 saw - Langford's Fig. 2c shows the LoD moving with it.
 
 Known answers for the arithmetic are in ``src/src_tools/langford_check_main.f90``
-(``mingw32-make langfordcheck``), run below when built.
+(``cmake --build --preset release --target langfordcheck``), run below when built.
 
 Part of the EddyFlow engine's static checks.
 """
@@ -211,7 +211,7 @@ class TheOutputs(unittest.TestCase):
 
 class KnownAnswers(unittest.TestCase):
 
-    @unittest.skipUnless(DRIVER.exists(), "langford_check not built (mingw32-make langfordcheck)")
+    @unittest.skipUnless(DRIVER.exists(), "langford_check not built (cmake --build --preset release --target langfordcheck)")
     def test_the_driver_passes(self):
         r = subprocess.run([str(DRIVER)], capture_output=True, text=True, timeout=600)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

@@ -5,7 +5,7 @@ chain - the unit-root test, the AR fits, the pre-whitened CCF - against RFlux's
 frozen output. It deliberately stops at the bootstrap, because the engine and
 R share no random stream. This goes the rest of the way: dyco is run with a
 stub generator that records the block starts it draws, the engine's chain
-(obj/<os>/pwb_compare, built with `mingw32-make pwbcmp`) is run on exactly those
+(obj/<os>/pwb_compare, built with `cmake --build --preset release --target pwbcmp`) is run on exactly those
 starts, and every quantity both produce is compared:
 
   * the unit-root decision, the three AR orders and first coefficients, the
@@ -359,7 +359,7 @@ def main():
     ap.add_argument("--no-stage1", action="store_true", help="only stage 2")
     args = ap.parse_args()
     if not DRIVER.exists():
-        print("pwb_compare driver not built: run `mingw32-make pwbcmp` in prj/")
+        print("pwb_compare driver not built: run `cmake --build --preset release --target pwbcmp`")
         return 2
 
     cases = [] if args.no_stage1 else list(synthetic_cases()) + list(real_cases(args.files))

@@ -16,7 +16,7 @@ Measured at the Yatir shape (36 000 rows at 20 Hz, a 0-25 s window, a gas on
 one row in twenty): 0.27 s -> 0.036 s per gas per period, 7.3x. With ten gases
 that is about 2.7 s of every period of a time-lag optimisation pre-pass.
 
-The proof is ``covmax_bitexact`` (``mingw32-make covmaxcheck``): the old
+The proof is ``covmax_bitexact`` (``cmake --build --preset release --target covmaxcheck``): the old
 per-lag path frozen verbatim, compared on raw bits over 10 812 cases at
 error-code densities from none to all. It ran clean.
 
@@ -37,7 +37,7 @@ CORE = ROOT / "src" / "src_common" / "m_covmax_core.f90"
 HANDLE = ROOT / "src" / "src_rp" / "timelag_handle.f90"
 STATS = ROOT / "src" / "src_common" / "stats_operator_no_error.f90"
 HARNESS = ROOT / "src" / "src_tools" / "covmax_bitexact_main.f90"
-MAKEFILE = ROOT / "prj" / "Makefile"
+CMAKELISTS = ROOT / "CMakeLists.txt"
 DRIVER = ROOT / "obj" / "win" / "covmax_bitexact.exe"
 
 
@@ -112,9 +112,11 @@ class TheProofIsKeptAndRuns(unittest.TestCase):
         self.assertIn("transfer(a(k), 0_int64) /= transfer(b(k), 0_int64)", read(HARNESS))
 
     def test_it_is_linked_against_the_shipped_object(self):
-        self.assertIn("covmaxcheck : m_numeric_kinds.o m_covmax_core.o", read(MAKEFILE))
+        build = read(CMAKELISTS)
+        self.assertIn("eddyflow_common_objects(covmax_core_objects m_numeric_kinds m_covmax_core)", build)
+        self.assertIn("eddyflow_fixture(covmaxcheck covmax_bitexact covmax_bitexact_main.f90 ${covmax_core_objects})", build)
 
-    @unittest.skipUnless(DRIVER.exists(), "covmax_bitexact not built (mingw32-make covmaxcheck)")
+    @unittest.skipUnless(DRIVER.exists(), "covmax_bitexact not built (cmake --build --preset release --target covmaxcheck)")
     def test_the_shipped_routine_is_bit_identical(self):
         r = subprocess.run([str(DRIVER)], capture_output=True, text=True, timeout=600)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

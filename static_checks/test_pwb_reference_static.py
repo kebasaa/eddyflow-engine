@@ -26,7 +26,7 @@ The bootstrap is deliberately not compared. It has no RNG stream in common
 with R, which is exactly how dyco's own reference test treats it.
 
 Skipped when dyco is not checked out beside this repository, or when the
-driver has not been built (`mingw32-make pwbref`).
+driver has not been built (`cmake --build --preset release --target pwbref`).
 """
 
 import ast
@@ -136,7 +136,7 @@ def run_driver(fixture_gz):
 @unittest.skipUnless(FIXTURES.exists(),
                      "dyco not checked out beside this repository")
 @unittest.skipUnless(DRIVER.exists(),
-                     "pwb_reference driver not built (mingw32-make pwbref)")
+                     "pwb_reference driver not built (cmake --build --preset release --target pwbref)")
 class PwbMatchesRflux(unittest.TestCase):
 
     @classmethod
@@ -208,7 +208,7 @@ class PwbMatchesRflux(unittest.TestCase):
 
 
 @unittest.skipUnless(DRIVER.exists(),
-                     "pwb_reference driver not built (mingw32-make pwbref)")
+                     "pwb_reference driver not built (cmake --build --preset release --target pwbref)")
 class TheSmootherFollowsZoo(unittest.TestCase):
     """The one part of the chain no frozen R value reaches.
 
@@ -248,7 +248,7 @@ class TheDriverProvesTheCoreIsIndependent(unittest.TestCase):
     """m_pwb_core must not reach for engine state.
 
     The driver links it against m_numeric_kinds and nothing else, so this is
-    already enforced by the build - but only for whoever runs `make pwbref`.
+    already enforced by the build - but only for whoever builds the pwbref target.
     Stated here it is enforced for everyone.
     """
 
@@ -266,21 +266,24 @@ class TheDriverProvesTheCoreIsIndependent(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
     def test_the_driver_is_not_part_of_either_executable(self):
-        #> src_common is a wildcard in the makefile, so a program unit there
+        #> src_common is globbed whole into the build, so a program unit there
         #> would be linked into both binaries and neither would have one main.
         self.assertTrue((ROOT / "src/src_tools/pwb_reference_main.f90").exists())
         self.assertFalse((ROOT / "src/src_common/pwb_reference_main.f90").exists())
-        makefile = (ROOT / "prj/makefile").read_text(encoding="utf-8")
-        self.assertIn("pwbref :", makefile)
-        self.assertNotIn("pwbref", makefile.split("all : ")[1].splitlines()[0])
+        build = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn("eddyflow_fixture(pwbref pwb_reference pwb_reference_main.f90 ${pwb_core_objects})", build)
+        #> Every fixture is left out of the default build.
+        fixture = build.split("function(eddyflow_fixture ")[1].split("endfunction()")[0]
+        self.assertIn("EXCLUDE_FROM_ALL", fixture)
 
     def test_the_driver_does_not_land_in_bin(self):
         #> bin/ holds what a user runs. One unshipped test binary sitting
         #> beside the two real ones invites somebody to ship it.
-        makefile = (ROOT / "prj/makefile").read_text(encoding="utf-8")
-        recipe = makefile.split("pwbref :")[1].split(chr(10) + chr(10))[0]
-        self.assertIn("$(OBJS_DIR)$(PWBREF_EXE)", recipe)
-        self.assertNotIn("$(EXE_DIR)$(PWBREF_EXE)", recipe)
+        build = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn('set(EDDYFLOW_FIXTURE_DIR "${PROJECT_SOURCE_DIR}/obj/${OS_DIR}" CACHE PATH', build)
+        fixture = build.split("function(eddyflow_fixture ")[1].split("endfunction()")[0]
+        self.assertIn('RUNTIME_OUTPUT_DIRECTORY "${EDDYFLOW_FIXTURE_DIR}"', fixture)
+        self.assertNotIn("EDDYFLOW_BIN_DIR", fixture)
 
 
 if __name__ == "__main__":

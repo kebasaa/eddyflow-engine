@@ -31,7 +31,7 @@ def code(path):
 CORE = code("src/src_common/m_pwb_core.f90")
 PWB = code("src/src_rp/pwb_timelag_handle.f90")
 DRIVER = code("src/src_tools/pwb_compare_main.f90")
-MAKE = read("prj/Makefile")
+BUILD = read("CMakeLists.txt")
 COMPARE = read("tests/pwb_dyco/compare.py")
 
 
@@ -71,7 +71,8 @@ class TheDriverRunsTheSameChain(unittest.TestCase):
         self.assertIn("margin = max(trail, nint(2d0 * Metadata%ac_freq))", PWB)
 
     def test_it_links_against_the_core_alone(self):
-        self.assertIn("pwbcmp : m_numeric_kinds.o m_pwb_core.o", MAKE)
+        self.assertIn("eddyflow_common_objects(pwb_core_objects m_numeric_kinds m_pwb_core)", BUILD)
+        self.assertIn("eddyflow_fixture(pwbcmp pwb_compare pwb_compare_main.f90 ${pwb_core_objects})", BUILD)
         self.assertNotIn("use m_rp_global_var", DRIVER)
 
 

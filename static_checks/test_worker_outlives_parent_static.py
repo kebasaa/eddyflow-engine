@@ -40,7 +40,7 @@ PARALLEL = ROOT / "src" / "src_rp" / "prepass_parallel.f90"
 # what is checked here is read from both.
 POOL = ROOT / "src" / "src_common" / "batch_pool.f90"
 MAIN = ROOT / "src" / "src_rp" / "eddyflow-rp_main.f90"
-MAKEFILE = ROOT / "prj" / "Makefile"
+CMAKELISTS = ROOT / "CMakeLists.txt"
 
 
 def read(path):
@@ -60,8 +60,9 @@ def publics(path):
 
 
 class TheTwoPlatformFilesAgree(unittest.TestCase):
-    """One is compiled per platform and gen_makefile_deps.py reads only the
-    Windows one, so they must declare the same module and the same names."""
+    """One is compiled per platform, so a build on any one machine checks
+    the callers against only one of them: they must declare the same module
+    and the same names."""
 
     def test_same_module(self):
         for path in (WIN, POSIX):
@@ -72,17 +73,17 @@ class TheTwoPlatformFilesAgree(unittest.TestCase):
         self.assertTrue({"processselfid", "watchparent", "parentgone"} <= publics(WIN))
 
     def test_neither_uses_another_engine_module(self):
-        """Their Makefile rule is the source alone; a `use` of an engine module
-        in either would need a dependency the generator never sees for posix."""
+        """They sit below every engine module: a `use` of one in either file
+        would be a dependency that only one platform's build ever exercises."""
         for path in (WIN, POSIX):
             uses = re.findall(r"(?im)^\s*use\b[\s,]*(?:intrinsic\s*::\s*)?(\w+)", code(path))
             self.assertEqual({u.lower() for u in uses}, {"iso_c_binding"}, path.name)
 
-    def test_the_makefile_picks_one_by_platform(self):
-        mk = read(MAKEFILE)
-        self.assertIn("OS_SRC_DIR_f90d1 = ../src/src_os/$(OS_FAMILY)/", mk)
-        self.assertIn("OS_FAMILY = win", mk)
-        self.assertIn("OS_FAMILY = posix", mk)
+    def test_the_build_picks_one_by_platform(self):
+        build = read(CMAKELISTS)
+        self.assertIn('"${SRC}/src_os/${OS_FAMILY}/*.f90"', build)
+        self.assertIn("set(OS_FAMILY win)", build)
+        self.assertIn("set(OS_FAMILY posix)", build)
 
 
 class TheParentIsNamedAndWatched(unittest.TestCase):

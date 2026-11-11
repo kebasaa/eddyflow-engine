@@ -12,14 +12,13 @@ that work, and what became of each item, is in
 
 ## Every new source file
 
-```bash
-python prj/gen_makefile_deps.py
-```
-
-Then run `static_checks/test_makefile_deps_static.py` **before trusting any
-build**. Without the regenerated rule, make treats the object as up to date the
-moment the file exists and silently links the previous compile. This has bitten
-`gas_slot_resolution.o` and `parse_month_grouping.o`.
+Put it in one of the folders `CMakeLists.txt` globs (`src_common`, `src_rp`,
+`src_fcc`, `src_os/<family>`) and build: CMake picks it up and works out its
+`use` and `include` dependencies itself. `static_checks/test_cmake_build_static.py`
+fails for a source anywhere else, which would never be compiled. The old
+Makefile needed a generated rule per object, and a missing one silently linked
+the previous compile; that bit `gas_slot_resolution.o` and
+`parse_month_grouping.o`, and cannot happen with CMake.
 
 The related trap, which no generator can catch: after editing a source file,
 check that the binary is actually newer than it before drawing a conclusion
@@ -120,17 +119,17 @@ out why.
 
 ## Verifying
 
-Build from `prj/` in PowerShell, with `C:\Users\jonmuell\mingw64\bin` on
+Build from the repository root, with `C:\Users\jonmuell\mingw64\bin` on
 `PATH`:
 
 ```bash
-mingw32-make rp; mingw32-make fcc
+cmake --preset release; cmake --build --preset release
 ```
 
 Then, in the order of what each actually catches:
 
-- **`test_makefile_deps_static.py`** — first, after adding any file. A missing
-  rule means the binary just tested is the previous one.
+- **`test_cmake_build_static.py`** — first, after adding any file. A source
+  outside the globbed folders is never compiled.
 - **`test_ini_tag_collisions_static.py`** — runs `gen_project_tags.py --check`
   and asserts the record origin. Fails if a key landed above it.
 - **`test_ex_record_layout_static.py`** — fails until `HISTORICAL` moves with
