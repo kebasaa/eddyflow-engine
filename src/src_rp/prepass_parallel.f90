@@ -260,6 +260,15 @@ contains
         character(10), allocatable :: sdate(:)
         character(5), allocatable :: stime(:)
 
+        !> The parent's own slice may have recorded no period, so nothing on
+        !> its way here can be trusted to have allocated the labels. Writing
+        !> through an unallocated one was a segfault after every worker had
+        !> finished; this says what is wrong instead.
+        if (.not. allocated(PwbOptDate) .or. .not. allocated(PwbOptTime)) &
+            error stop 'The PWB period labels were not allocated before the merge.'
+        if (size(PwbOptDate) < nmax .or. size(PwbOptTime) < nmax) &
+            error stop 'The PWB period labels were not allocated before the merge.'
+
         do k = 2, nChunks
             open(newunit = u, file = trim(BatchDumpPath(kind, k)), &
                 form = 'unformatted', access = 'stream', status = 'old', &

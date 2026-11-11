@@ -48,12 +48,12 @@
 !***************************************************************************
 module m_process_os
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_intptr_t, c_ptr, &
-        c_loc, c_sizeof
+        c_loc, c_sizeof, c_char, c_int64_t, c_null_char
     implicit none
     private
 
     public :: ProcessSelfId, WatchParent, ParentGone, RequestFullSpeed
-    public :: ProcessAlive
+    public :: ProcessAlive, DiskFreeBytes
 
     !> SYNCHRONIZE, the only right WaitForSingleObject needs. Asking for no
     !> more means it cannot be refused on a process the same user started.
@@ -117,6 +117,18 @@ module m_process_os
             integer(c_intptr_t), value :: h
             integer(c_int) :: w_CloseHandle
         end function w_CloseHandle
+
+        !> The three ULARGE_INTEGERs are passed by reference; the first is what
+        !> this user may still write, after any quota.
+        function w_GetDiskFreeSpaceExA(dir, avail, total, totalFree) &
+                bind(C, name = 'GetDiskFreeSpaceExA')
+            import :: c_char, c_int, c_int64_t
+            character(kind = c_char), dimension(*), intent(in) :: dir
+            integer(c_int64_t), intent(out) :: avail
+            integer(c_int64_t), intent(out) :: total
+            integer(c_int64_t), intent(out) :: totalFree
+            integer(c_int) :: w_GetDiskFreeSpaceExA
+        end function w_GetDiskFreeSpaceExA
     end interface
 
 contains
@@ -204,5 +216,29 @@ contains
         ok = w_SetProcessInformation(w_GetCurrentProcess(), PROCESS_POWER_THROTTLING, &
             c_loc(state), int(c_sizeof(state), c_int32_t))
     end subroutine RequestFullSpeed
+
+    !***************************************************************************
+    !> \brief How many bytes this user may still write to the disk holding
+    !>        `dir`; -1 when that cannot be found out.
+    !>
+    !> What the user may write, not what the disk has: on a network share
+    !> with a quota the two differ, and the quota is what runs out. A folder
+    !> on a share works as well as a drive letter. A path this call cannot
+    !> take - one outside the ANSI code page, say - answers -1, and the
+    !> caller then checks nothing rather than stopping a run it cannot judge.
+    !***************************************************************************
+    integer(8) function DiskFreeBytes(dir)
+        character(*), intent(in) :: dir
+        integer(c_int64_t) :: avail
+        integer(c_int64_t) :: total
+        integer(c_int64_t) :: totalFree
+        integer(c_int) :: ok
+
+        DiskFreeBytes = -1
+        if (len_trim(dir) == 0) return
+        ok = w_GetDiskFreeSpaceExA(trim(dir) // c_null_char, avail, total, totalFree)
+        if (ok == 0_c_int) return
+        DiskFreeBytes = int(avail, 8)
+    end function DiskFreeBytes
 
 end module m_process_os

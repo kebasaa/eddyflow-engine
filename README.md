@@ -1,5 +1,6 @@
 ![Fortran](https://img.shields.io/badge/Fortran-%23734F96.svg?style=for-the-badge&logo=fortran&logoColor=white)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![DOI](https://zenodo.org/badge/1274358482.svg)](https://doi.org/10.5281/zenodo.24011229)
 
 ![EddyFlow Logo](img/app-logo.svg)
 
@@ -7,34 +8,34 @@
 
 EddyFlow is a powerful open source software application for processing eddy covariance data. It computes fluxes of water vapor (evapotranspiration), carbon dioxide, and other trace gases, and energy with the Eddy Covariance method.
 
-EddyFlow is based on EddyPro, for which [LI-COR Biosciences](http://www.licor.com) has not published upstream updates for several years (No open source code since 2019 and no binaries since 2022). This repository is an actively maintained fork of EddyPro 6.2.2 that continues development while gratefully acknowledging LI-COR, ECO2S, and the original EddyFlow authors for creating and releasing EddyFlow.eddypro originates from [ECO<sub>2</sub>S](http://gaia.agraria.unitus.it/eco2s), the Eddy COvariance COmmunity Software project, which was developed as part of the Infrastructure for Measurement of the European Carbon Cycle (IMECC-EU) research project. We gratefully acknowledge the [IMECC](http://imecc.ipsl.jussieu.fr/index.html) consortium, the ECO<sub>2</sub>S development team, the [University of Tuscia](https://www.unitus.it) (Italy) and scientists around the world who assisted with development and testing of the original version of this software.
+EddyFlow is based on EddyPro, for which [LI-COR Biosciences](http://www.licor.com) has not published upstream updates for several years (No open source code since 2019 and no binaries since 2022). This repository is an actively maintained fork of EddyPro 6.2.2 that continues development while gratefully acknowledging LI-COR, ECO2S, and the original EddyPro authors for creating and releasing EddyPro. EddyPro originates from [ECO<sub>2</sub>S](http://gaia.agraria.unitus.it/eco2s), the Eddy COvariance COmmunity Software project, which was developed as part of the Infrastructure for Measurement of the European Carbon Cycle (IMECC-EU) research project. We gratefully acknowledge the [IMECC](http://imecc.ipsl.jussieu.fr/index.html) consortium, the ECO<sub>2</sub>S development team, the [University of Tuscia](https://www.unitus.it) (Italy) and scientists around the world who assisted with development and testing of the original version of this software.
 
 ## EddyFlow repositories
 
-EddyFlow consists of 4 repositories:
+EddyFlow is a cross-platform application (Windows, Linux and macOS), which consists of a set of command line programs and a graphical user interface (GUI), kept in 4 repositories:
 
 - [eddyflow-engine](https://github.com/kebasaa/eddyflow-engine) (current repository): The engine behind it all
 - [eddyflow-gui](https://github.com/kebasaa/eddyflow-gui): The Qt6 GUI
 - [eddyflow-documentation](https://github.com/kebasaa/eddyflow-documentation): The documentation of the software and its usage
-- [eddyflow-build-script](https://github.com/kebasaa/eddyflow-build-script): This builds the software binaries (currently Windows only)
+  It provides the [documentation website](https://kebasaa.github.io/eddyflow-documentation/)
+- [eddyflow-build-script](https://github.com/kebasaa/eddyflow-build-script): This builds the software binaries for Windows, Linux and macOS
 
-## License
+## What the engine does
 
-This fork of EddyPro 6.2.2 (newly branded EddyFlow) is released with and will retain the
-[GNU General Public License (GPL) v3.0](LICENSE).
+The engine is two command line programs. `eddyflow_rp` reads the raw data and writes the fluxes of every averaging period; `eddyflow_fcc` applies the flux and cospectral corrections that need the whole run. Beyond the processing options listed in the [GUI README](https://github.com/kebasaa/eddyflow-gui#data-processing-options-in-eddyflow), the engine:
 
-## Source Code Repository
-
-EddyFlow is a fully cross-platform application, which consists of a set of command line programs and a graphical user interface (GUI).
-
-The source code is developed using two independent Git repositories, namely:
-
-  - [EddyFlow-engine](https://github.com/kebasaa/EddyFlow-engine)
-  - [EddyFlow-gui](https://github.com/kebasaa/EddyFlow-gui)
+- splits a run across all processor cores (`-j`): the planar-fit and time-lag pre-passes, the production pass and the flux computation of `eddyflow_fcc` run in worker processes, with output identical to a single-process run
+- reads inputs from a Google Drive or Dropbox folder shared with "anyone with the link"; the output folder must be local
+- runs EddyPro projects directly (see below)
+- handles projects with any number of gases, each with its own unit, limits and moisture reference
+- handles LI-COR GHG files whose acquisition frequency changes part way, assessing the spectra at each rate
+- detects the time lag of slow gases at their own rate, and can let a gas that has no usable lag take that of another gas on the same analyser
+- reports random uncertainty by several methods and, beside them, a limit of detection after Langford et al. (2015)
+- corrects many errors that EddyPro 6.2.2 contained (see [Corrections to EddyPro 6.2.2](#corrections-to-eddypro-622))
 
 ## Installing EddyFlow
 
-You can download EddyFlow from the GUI [releases .7z file](https://github.com/kebasaa/eddyflow-gui/), the contained folder is fully portable and does not require installation.
+You can download EddyFlow from the GUI [releases](https://github.com/kebasaa/eddyflow-gui/releases) page. On Windows it is a portable `.7z` archive that does not require installation; Linux packages (`.deb`, `.rpm`, `.snap`) and a macOS `.dmg` are provided as well.
 
 To build the EddyFlow engine separately, follow these instructions:
 
@@ -46,6 +47,8 @@ To compile the Engine use [gfortran](https://gcc.gnu.org/wiki/GFortran)
     $ cd prj
     $ make rp
     $ make fcc
+
+(`make all` builds both. On Windows with MinGW the command is `mingw32-make`.)
 
 ## Running the engines from the command line
 
@@ -63,6 +66,9 @@ Command line arguments:
 - `-c`, `--caller`: use `gui` to mirror GUI behavior; omit it to use the console default.
 - `-s`, `--system`: host operating system, one of `win`, `linux`, or `mac`.
 - `-e`, `--environment`: EddyFlow environment directory containing folders such as `ini` and `tmp`; if omitted, the engine defaults to `..`.
+- `-m`, `--mode`: `embedded` or `desktop` mode.
+- `-j`, `--jobs`: how many worker processes a run may be split across. `0`, or leaving it out, uses as many as there are processor cores; `1` runs serially.
+- `-v`, `--version`: print the version. `-h`, `--help`: print a short help.
 - Final positional argument: path to the EddyFlow project file (`*.eddyflow`).
 
 ### Running an EddyPro project
@@ -100,7 +106,7 @@ For a full Advanced mode run, run `eddyflow_rp` first. Run `eddyflow_fcc` afterw
 
 To successfully run EddyFlow, the program installation folder must contain the following command line utilities under the 'bin' sub-directory:
 
-- 7-zip
+- 7-zip (Windows only)
 - Quazip
 - Zlib
 
@@ -118,105 +124,56 @@ License: [LGPL](https://www.7-zip.org/license.txt).
 
 You can run EddyFlow using sample data files available at the [eddyflow-build-script](https://github.com/kebasaa/eddyflow-build-script) repository.
 
-## Data Processing Options in EddyFlow
+## Corrections to EddyPro 6.2.2
 
-+ Axis rotation for sonic anemometer tilt correction
-  - Double rotation
-  - Triple rotation
-  - Sector-wise planar fit (Wilczak et al., 2001)
-  - Sector-wise planar fit with no velocity bias (van Dijk et al., 2004)
+EddyFlow corrects errors that EddyPro 6.2.2 contained. These are the ones whose effect on results is the largest, as recorded in the [CHANGELOG](CHANGELOG), which has the details of each:
 
-+ Detrending of raw time series
-  - Block averaging
-  - Linear detrending
-  - Running mean
-  - Exponential running mean
++ Time lag
+  - The optimiser recognised a lag pinned at the edge of its search window only by exact equality, which almost never held, so such lags stayed in the data the nominal lag and window are fitted to and pulled the result towards the edge (8.1.8).
+  - Sparse relative-humidity classes for water vapour were filled from neighbours still holding the error code, giving lags of about -5000 s and +10000 s that were accepted and then written outside their arrays (8.1.8).
 
-+ Compensation of time lag between sonic anemometer and gas analyzer measurements
-  - Pre-whitening block-bootstrap time lag detection (Vitale et al. 2024)
-  - Automatic time lag optimization (optionally as a function of RH for H<sub>2</sub>O)
-  - Maximum covariance with default (circular correlation)
-  - Maximum covariance without default
-  - Constant
-  - None (option to not apply compensation)
++ Rotation
+  - A planar-fit file read back by a later run shifted every sector boundary by the north offset, so wind near a boundary was rotated with the neighbouring sector's matrix (8.1.8).
+  - The counterclockwise fill of sectors with too few periods (`pf_fix`) never ran, so such a sector was double-rotated without a message (8.1.8).
 
-+ Statistical tests for raw time series data (Vickers and Mahrt, 1997)
-  - Spike count/removal (Mauder et al., 2013)
-  - Amplitude resolution
-  - Dropouts
-  - Absolute limits
-  - Skewness and kurtosis
-  - Discontinuities
-  - Time lags
-  - Angle of attack
-  - Steadiness of horizontal wind
-  - Individually selectable and customizable
++ Quality control
+  - The dropout test never raised its hard flag, and its percentages in the output read 0 (8.1.8).
+  - The stationarity test added a sub-period's error code into the mean covariance like a value, giving a deviation of millions of percent and quality flag 2 for a period with a missing sub-period (8.1.8).
 
-+ Compensation for air density fluctuations
-  - Webb et al., 1980 (open path) / Ibrom et al., 2007a (closed path)
-  - Use (or convert to) mixing ratio (Burba et al., 2012)
-  - Optional off-season upatake correction for LI-7500 (Burba et al., 2008)
-  - None (option to not apply compensation)
++ Spectral correction
+  - A very short or mistyped analyser path length made the correction factor negative and tiny, so the flux flipped sign and shrank to nothing without a flag (8.1.8).
 
-+ Correction for frequency response (attenuation)
-  - Analytic high-pass filtering correction (Moncrieff et al., 2004)
-  - Low-pass filtering, select and configure:
-    - Moncrieff et al. (1997)
-    - Massmann (2000)
-    - Horst (1997)
-    - Ibrom et al. (2007b)
-    - Horst and Lenschow (2009)
-    - Fratini et. al. (2012)
-    - Eugster and Senn (1995)
++ Day and night
+  - The potential radiation took clock noon for solar noon. Where biomet has neither global radiation nor PPFD it decides day and night, so the NIGHT flag, and Burba's day or night regression for an LI-7500, were wrong at sites far from their time zone's meridian (8.1.8).
 
-+ Quality control tests for fluxes according to Foken et al. (2004)
-  - Flagging according to Carbo Europe standard (Mauder and Foken, 2004)
-  - Flagging according to Foken (2003)
-  - Flagging after Göckede et al. (2004)
++ Footprint
+  - Footprints were written for periods without u\*, z/L or L, from distances computed on the error code (8.1.8).
 
-+ Random uncertainty estimation
-  - Mann and Lenschow (1994)
-  - Finkelstein and Sims (2001)
++ Density corrections
+  - With the WPL correction switched off, only the designated hygrometer obeyed the switch; every other gas was still density-corrected (8.1.3).
 
-+ Flux footprint estimation
-  - Kljun et al. (2004)
-  - Kormann and Meixner (2001)
-  - Hsieh et al. (2000)
-  
-+ ET & NEE Partitioning
-  - Conditional Eddy Covariance (Zahn et al. 2022), over any number of
-    CO2/H2O channel pairings, and extending to any further species measured
-    alongside them - carbonyl sulfide included
++ Detrending
+  - Running-mean and exponential detrending crashed when the time constant was longer than the averaging period (8.1.9).
 
-+ Other options applied in both Express and/or Advanced Mode include:
-  - Sonic temperature correction for humidity following van Dijk et al. (2004)
-  - Spectroscopic correction for LI-7700 following McDermitt et al. (2011)
-  - Angle of attack corrections for Gill anemometers following Nakai et al. (2006)
-  - Angle of attack corrections for Gill anemometers following Nakai and Shimoyama (2012)
-  - Inclusion of biomet data for improved flux computation/correction
++ Output files
+  - The metadata file had two layouts depending on whether `eddyflow_fcc` follows `eddyflow_rp`, with columns under the wrong names and different units; EddyPro 7 has the same split (8.1.3).
 
-+ Available outputs
-  - Full (rich) output with fluxes, quality flags and much more (standard format
-    or available results only)
-  - FLUXNET output (complying latest FLUXNET format definition)
-  - Ameriflux format
-  - GHG Europe format
-  - Raw data statistics
-  - Full length spectra and co-spectra
-  - Binned spectra and co-spectra
-  - Binned ogives
-  - Ensemble averaged spectra
-  - Ensemble averaged cospectra, fitted models and ideal (Kaimal) cospectra
-  - Details of steady state and turbulence tests
-  - Raw data time series after each statistical tests/correction
-  - Averaged biomet data
+How EddyFlow compares with EddyUH is in [docs/eddyuh-comparison.md](docs/eddyuh-comparison.md); that comparison was written for version 8.0.0.
 
 ## EddyFlow Trademark and Logo Policy
 
-In order to help users who want to cite EddyFlow on posters or publications, we provide the [EddyFlow logo as vector graphic](img/logo/app-logo.svg) for the proper use of the EddyFlow wordmark and logo.
+In order to help users who want to cite EddyFlow on posters or publications, we provide the [EddyFlow logo as vector graphic](img/app-logo.svg) for the proper use of the EddyFlow wordmark and logo.
 
 ## Want to Know More?
 
 More information is available at the help website [EddyFlow help](https://kebasaa.github.io/eddyflow-documentation/).
 
 See also the [CHANGELOG](CHANGELOG).
+
+## How to Cite
+
+Muller, J.D. (2026). *eddyflow-engine: EddyFlow flux processing engine*. DOI: https://doi.org/10.5281/zenodo.24011229
+
+## License
+
+This software is distributed under the [GNU General Public License (GPL) v3.0](LICENSE). Any modification of the code in this repository may only be released under the same license, and with attribution of authorship of the original code (i.e., citation above).

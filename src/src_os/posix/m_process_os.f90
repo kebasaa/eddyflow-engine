@@ -47,7 +47,7 @@ module m_process_os
     private
 
     public :: ProcessSelfId, WatchParent, ParentGone, RequestFullSpeed
-    public :: ProcessAlive
+    public :: ProcessAlive, DiskFreeBytes
 
     integer, save :: parent_pid = 0
 
@@ -120,5 +120,68 @@ contains
     !***************************************************************************
     subroutine RequestFullSpeed()
     end subroutine RequestFullSpeed
+
+    !***************************************************************************
+    !> \brief How many bytes this user may still write to the disk holding
+    !>        `dir`; -1 when that cannot be found out.
+    !>
+    !> Asked of df rather than statvfs: struct statvfs is laid out differently
+    !> on Linux and macOS, and -P fixes df's columns on both. The available
+    !> column is what an unprivileged user may still write, which is the
+    !> figure that runs out. Read from the end of the line - the capacity
+    !> column is the one ending in %, and available is just before it - so a
+    !> file system name with a space in it does not shift the columns.
+    !***************************************************************************
+    integer(8) function DiskFreeBytes(dir)
+        character(*), intent(in) :: dir
+        character(64) :: scratch
+        character(1024) :: line
+        integer :: u
+        integer :: io_status
+        integer :: cmd_status
+        integer :: i
+        integer :: pct
+        integer :: first
+        integer(8) :: kb
+
+        DiskFreeBytes = -1
+        if (len_trim(dir) == 0) return
+        write(scratch, '(a,i0,a)') '/tmp/eddyflow_df_', int(p_getpid()), '.txt'
+        call execute_command_line('df -Pk "' // trim(dir) // '" > ' // trim(scratch) &
+            // ' 2>/dev/null', exitstat = cmd_status)
+        if (cmd_status /= 0) return
+        open(newunit = u, file = trim(scratch), status = 'old', action = 'read', &
+            iostat = io_status)
+        if (io_status /= 0) return
+        read(u, '(a)', iostat = io_status)
+        if (io_status == 0) read(u, '(a)', iostat = io_status) line
+        close(u, status = 'delete')
+        if (io_status /= 0) return
+
+        pct = 0
+        do i = 2, len_trim(line)
+            if (line(i:i) == '%' .and. line(i - 1:i - 1) /= ' ') then
+                pct = i
+                exit
+            end if
+        end do
+        if (pct == 0) return
+        !> Back over the capacity token, the spaces before it, and then the
+        !> available token itself.
+        i = pct
+        do while (i > 1 .and. line(i:i) /= ' ')
+            i = i - 1
+        end do
+        do while (i > 1 .and. line(i:i) == ' ')
+            i = i - 1
+        end do
+        first = i
+        do while (first > 1 .and. line(first - 1:first - 1) /= ' ')
+            first = first - 1
+        end do
+        read(line(first:i), *, iostat = io_status) kb
+        if (io_status /= 0 .or. kb < 0) return
+        DiskFreeBytes = kb * 1024_8
+    end function DiskFreeBytes
 
 end module m_process_os

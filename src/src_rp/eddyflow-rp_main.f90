@@ -60,10 +60,11 @@ program EddyFlowRP
         ReadProdContext, ProdPieceBegins, FinishProdWorker, MergeProdPieces, &
         KeepPwbEvidence, FinishEvidenceWorker, KeepPwbVerdict, &
         ReplayProdEvidence, ReadProdVerdicts, FindProdVerdict, &
-        RemoveStaleWorkerRoots, SetProdRemoteWindow
+        RemoveStaleWorkerRoots, SetProdRemoteWindow, ProdParentOutDir
     use m_pwb_stream, only: PwbVerdictType, PwbTakeVerdict, PwbApplyVerdict, &
         PwbEvidenceOnly, PwbLastEvidence
-    use m_batch_pool, only: PeriodSampled, ClearPeriodSample
+    use m_batch_pool, only: PeriodSampled, ClearPeriodSample, PeriodsWithFile, &
+        StopIfOutputDiskFull, CheckOutputWillFit
     use m_tlag_preassess, only: DrawTlagSample, WriteTlagPreassessTable, &
         WritePwbPreassessTable
     !use netcdf
@@ -681,6 +682,14 @@ program EddyFlowRP
     if (Meth%tlag == 'pwb') then
         PwbTimelagOptSize = size(RawTimeSeries) - 1
         allocate(PwbTimelagOpt(PwbTimelagOptSize))
+        !> Each row's period, here with the rows rather than on the first
+        !> period this process records itself. A parallel pre-pass appends
+        !> the workers' periods after the parent's own slice, and that slice
+        !> may have none - CH-LAE below canopy, whose first two days were all
+        !> dropped, crashed in the merge on labels nobody had allocated.
+        allocate(PwbOptDate(PwbTimelagOptSize), PwbOptTime(PwbTimelagOptSize))
+        PwbOptDate = ''
+        PwbOptTime = ''
         PwbTimelagN = 0
     end if
 
@@ -2171,6 +2180,11 @@ program EddyFlowRP
             call StopIfParentGone()
         end if
 
+        !> Every process writing this pass, parent or worker, stops as soon as
+        !> a disk its output goes to runs low - see StopIfOutputDiskFull. A
+        !> production worker's per-period files go to its parent's folder.
+        call StopIfOutputDiskFull(Dir%main_out, ProdParentOutDir())
+
         !> Some logging
         if (EddyFlowProj%run_mode /= 'md_retrieval') then
             write(*, '(a)')
@@ -3280,6 +3294,11 @@ program EddyFlowRP
         if (allocated(DiagSet))  deallocate(DiagSet)
         if (allocated(UserSet))  deallocate(UserSet)
 
+        !> Once a period has written its raw datasets, the parent knows how
+        !> much the rest of the run will - and whether it fits. Before the
+        !> split below, so no worker starts on a run that cannot finish.
+        if (BatchIndex == 0) call CheckRawOutputWillFit()
+
         !> The head is behind the parent once a period has been fully
         !> processed: every output file is open and its layout fixed.
         if (ProdSplitArmed .and. .not. InitializeStorage) then
@@ -3370,6 +3389,8 @@ program EddyFlowRP
         deallocate(toSet)
         deallocate(toH2On)
         deallocate(PwbTimelagOpt)
+        if (allocated(PwbOptDate)) deallocate(PwbOptDate)
+        if (allocated(PwbOptTime)) deallocate(PwbOptTime)
     end if
 
     !***************************************************************************
@@ -3483,6 +3504,26 @@ contains
     !> Called once, after the first fully processed period. On success the
     !> workers are running and this process carries on with the first piece.
     !***************************************************************************
+    !***************************************************************************
+    !> \brief Parent: project the run's raw datasets from the period just
+    !> written, over the periods still to come that have a raw file, and stop
+    !> if they will not fit - see CheckOutputWillFit.
+    !***************************************************************************
+    subroutine CheckRawOutputWillFit()
+        logical, allocatable :: has(:)
+        integer :: nLeft
+
+        nLeft = 0
+        if (rpEndTimestampIndx > pcount + 1) then
+            allocate(has(pcount + 1:rpEndTimestampIndx - 1))
+            call PeriodsWithFile(pcount + 1, rpEndTimestampIndx, MasterTimeSeries, &
+                size(MasterTimeSeries), RawFileList, NumRawFiles, has)
+            nLeft = count(has)
+            deallocate(has)
+        end if
+        call CheckOutputWillFit(Dir%main_out, nLeft)
+    end subroutine CheckRawOutputWillFit
+
     subroutine TryProdSplit()
         character(128) :: why
         integer :: forced
