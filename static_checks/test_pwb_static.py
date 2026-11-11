@@ -199,7 +199,7 @@ class PwbStaticIntegrationTests(unittest.TestCase):
     def test_timelag_handle_falls_back_and_makefile_references_source(self):
         handler = read("src/src_rp/timelag_handle.f90") + read("src/src_rp/pwb_stream.f90")
         main = read("src/src_rp/eddyflow-rp_main.f90")
-        makefile = read("prj/Makefile")
+        build = read("CMakeLists.txt")
         self.assertIn("case ('pwb')", handler)
         self.assertIn("call PwbDetectGas", handler)
         self.assertIn("call CovMax", handler)
@@ -217,7 +217,9 @@ class PwbStaticIntegrationTests(unittest.TestCase):
         self.assertNotIn("call GetPwbFinalResult", handler)
         self.assertNotIn("pwb_prepass_loop", main)
         self.assertNotIn("PreparePwbBatch", main)
-        self.assertIn("pwb_timelag_handle.o", makefile)
+        # Built because the RP glob takes every source in src_rp.
+        self.assertTrue((ROOT / "src/src_rp/pwb_timelag_handle.f90").is_file())
+        self.assertIn('file(GLOB RP_SOURCES     CONFIGURE_DEPENDS "${SRC}/src_rp/*.f90")', build)
 
 
 if __name__ == "__main__":

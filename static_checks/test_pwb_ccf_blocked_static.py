@@ -25,7 +25,7 @@ Two things make the bitwise claim true, and both are pinned here:
   The default target has no FMA instruction, so nothing fuses today; the build
   says -ffp-contract=off so that a future -march cannot change that silently.
 
-The proof is ``ccf_bitexact`` (``mingw32-make ccfcheck``): the pre-rewrite
+The proof is ``ccf_bitexact`` (``cmake --build --preset release --target ccfcheck``): the pre-rewrite
 routine frozen verbatim, compared with the shipped one on the raw bits of every
 element over 6331 cases - random shapes, every window edge for small n, zero
 variance, the production shape. It ran clean.
@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 CORE = ROOT / "src" / "src_common" / "m_pwb_core.f90"
 HARNESS = ROOT / "src" / "src_tools" / "ccf_bitexact_main.f90"
-MAKEFILE = ROOT / "prj" / "Makefile"
+CMAKELISTS = ROOT / "CMakeLists.txt"
 DRIVER = ROOT / "obj" / "win" / "ccf_bitexact.exe"
 
 
@@ -83,15 +83,15 @@ class TheLagsAreSummedInBlocks(unittest.TestCase):
         self.assertIn("if (n - abs(lag) <= 1) ccf(lag) = 0d0", CCF)
 
     def test_nothing_asks_for_reassociation(self):
-        mk = read(MAKEFILE)
+        build = read(CMAKELISTS)
         for flag in ("-ffast-math", "-Ofast", "-fassociative-math"):
-            self.assertNotIn(flag, mk)
+            self.assertNotIn(flag, build)
 
 
 class NoMultiplyAndAddIsFused(unittest.TestCase):
 
     def test_the_build_forbids_contraction(self):
-        flags = re.search(r"(?m)^CFLAGS = (.*)$", read(MAKEFILE)).group(1)
+        flags = re.search(r"(?s)\nset\(EDDYFLOW_FFLAGS\b(.*?)\)", read(CMAKELISTS)).group(1)
         self.assertIn("-ffp-contract=off", flags)
 
 
@@ -108,9 +108,11 @@ class TheProofIsKeptAndRuns(unittest.TestCase):
         self.assertIn("transfer(a(k), 0_int64) /= transfer(b(k), 0_int64)", read(HARNESS))
 
     def test_it_is_linked_against_the_shipped_object(self):
-        self.assertRegex(read(MAKEFILE), r"ccfcheck : m_numeric_kinds\.o m_pwb_core\.o")
+        build = read(CMAKELISTS)
+        self.assertIn("eddyflow_common_objects(pwb_core_objects m_numeric_kinds m_pwb_core)", build)
+        self.assertIn("eddyflow_fixture(ccfcheck ccf_bitexact ccf_bitexact_main.f90 ${pwb_core_objects})", build)
 
-    @unittest.skipUnless(DRIVER.exists(), "ccf_bitexact not built (mingw32-make ccfcheck)")
+    @unittest.skipUnless(DRIVER.exists(), "ccf_bitexact not built (cmake --build --preset release --target ccfcheck)")
     def test_the_shipped_routine_is_bit_identical(self):
         r = subprocess.run([str(DRIVER)], capture_output=True, text=True, timeout=600)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

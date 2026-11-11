@@ -41,14 +41,14 @@ To build the EddyFlow engine separately, follow these instructions:
 
 ### Engine
 
-To compile the Engine use [gfortran](https://gcc.gnu.org/wiki/GFortran)
-(The GNU Fortran compiler) and run:
+The engine needs [gfortran](https://gcc.gnu.org/wiki/GFortran) (the GNU Fortran compiler), CMake 3.21 or later and Ninja. From the repository root, run:
 
-    $ cd prj
-    $ make rp
-    $ make fcc
+    $ cmake --preset release
+    $ cmake --build --preset release
 
-(`make all` builds both. On Windows with MinGW the command is `mingw32-make`.)
+This builds `eddyflow_rp` and `eddyflow_fcc` into `bin/<os>/`. The `checks` preset builds the same two with gfortran's subscript and runtime checks compiled in, into the same folder. The test drivers that some static checks run are separate targets, built into `obj/<os>/`, for example `cmake --build --preset release --target pwbref`.
+
+On Windows, put the MinGW folder with `gfortran.exe` on `PATH` first. WinLibs' GCC builds include CMake and Ninja too.
 
 ## Running the engines from the command line
 

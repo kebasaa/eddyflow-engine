@@ -103,3 +103,9 @@ src/src_rp/deprecated
 /RFlux-master
 /dyco-main
 /EddyPro_sample_data
+
+### CMAKE ###
+# Build trees, one per preset (CMakePresets.json), and each machine's own
+# toolchain presets.
+/build
+/CMakeUserPresets.json

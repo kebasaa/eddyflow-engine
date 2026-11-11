@@ -1,0 +1,30 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release: bin/<os>/eddyflow_rp and eddyflow_fcc",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "EDDYFLOW_CHECKS": "OFF"
+      }
+    },
+    {
+      "name": "checks",
+      "displayName": "Release flags plus subscript and runtime checks, into the same bin/<os>",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/checks",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "EDDYFLOW_CHECKS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "checks", "configurePreset": "checks" }
+  ]
+}

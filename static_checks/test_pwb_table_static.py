@@ -23,8 +23,9 @@ table is scanned as before.
 
 That rests on every append going through one place that keeps the order flag
 and the minutes column true, and on no row's key ever changing - which these
-checks pin - and is proven by ``pwb_table_check`` (``mingw32-make
-pwbtablecheck``), which compares every lookup with a scan from row 1.
+checks pin - and is proven by ``pwb_table_check`` (``cmake --build --preset
+release --target pwbtablecheck``), which compares every lookup with a scan
+from row 1.
 
 Part of the EddyFlow engine's static checks.
 """
@@ -141,7 +142,7 @@ class LookupIsTheFirstMatch(unittest.TestCase):
         self.assertIn("do i = lo, PwbTimelagCacheN", b)
         self.assertIn("if (PwbCacheMinutes(i) /= key) exit", b)
 
-    @unittest.skipUnless(DRIVER.exists(), "pwb_table_check not built (mingw32-make pwbtablecheck)")
+    @unittest.skipUnless(DRIVER.exists(), "pwb_table_check not built (cmake --build --preset release --target pwbtablecheck)")
     def test_the_shipped_routines_return_the_scanned_row(self):
         r = subprocess.run([str(DRIVER)], capture_output=True, text=True, timeout=600)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

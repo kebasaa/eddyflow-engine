@@ -29,7 +29,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 OVERRIDE = ROOT / "src" / "src_os" / "win" / "setlocale_override.f90"
 POSIX = ROOT / "src" / "src_os" / "posix"
-MAKEFILE = ROOT / "prj" / "Makefile"
+CMAKELISTS = ROOT / "CMakeLists.txt"
 
 
 def code(path):
@@ -49,8 +49,12 @@ class TheOverrideIsWhatTheLinkerBinds(unittest.TestCase):
         for f in POSIX.glob("*.f90"):
             self.assertNotIn("'setlocale'", f.read_text(encoding="utf-8"), f.name)
 
-    def test_the_makefile_compiles_it(self):
-        self.assertIn("setlocale_override.o:", MAKEFILE.read_text(encoding="utf-8"))
+    def test_the_build_compiles_it(self):
+        #> Every source in src_os/<family>, and the family is win on Windows.
+        build = CMAKELISTS.read_text(encoding="utf-8").replace("\r\n", "\n")
+        self.assertIn('file(GLOB OS_SOURCES     CONFIGURE_DEPENDS "${SRC}/src_os/${OS_FAMILY}/*.f90")', build)
+        self.assertIn("if(WIN32)\n    set(OS_FAMILY win)", build)
+        self.assertIn("add_library(engine_common OBJECT ${COMMON_SOURCES} ${OS_SOURCES})", build)
 
 
 class AQueryNeverPointsAtMemoryThatCanBeFreed(unittest.TestCase):
