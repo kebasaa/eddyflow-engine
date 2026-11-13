@@ -87,9 +87,13 @@ subroutine WriteVariablesFCC()
     integer :: slot
     integer :: month_class(12)
     integer :: month_nclass
+    integer :: donor
     logical :: month_ok
     logical :: dirExists
     logical, external :: GasSlotIsWater
+    logical, external :: SpectralTubeMates
+    character(32), external :: GasRecordLabel
+    character(32), external :: IntToText
 
 
     !> Spectra analysis time period
@@ -399,6 +403,46 @@ subroutine WriteVariablesFCC()
         end if
         FCCsetup%SA%class(slot, JAN:DEC) = month_class
         FCCsetup%SA%nclass(slot) = month_nclass
+    end do
+
+    !> Whose fitted transfer function each gas is corrected with.
+    !>
+    !> Automatic unless the record says otherwise: the gas's own fit, or with
+    !> sa_auto_source on, a tube-mate's when its own is implausible. A record
+    !> may instead name its own fit (0) or a donor record. The donor must be
+    !> on the same analyser - tube, cell and sensor response are what the fit
+    !> measures, and they belong to the analyser, not to the species - and
+    !> water is on neither side, its cut-off depending on humidity through
+    !> wall sorption. A donor that breaks either rule is reported and the gas
+    !> stays automatic: one bad pairing must not end a run, nor quietly
+    !> correct a gas with another analyser's response.
+    FCCsetup%SA%source = SASourceAuto
+    FCCsetup%SA%auto_source = .false.
+    if (SNTagFound(10)) FCCsetup%SA%auto_source = nint(SNTags(10)%value) == 1
+    do gas = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        slot = firstGas + gas - 1
+        if (.not. SNTagFound(fccGasOriginN + (gas - 1) * fccGasLeapN + 6)) cycle
+        donor = nint(SNTags(fccGasOriginN + (gas - 1) * fccGasLeapN + 6)%value)
+        if (donor < 0) cycle
+        if (GasSlotIsWater(slot)) cycle
+        if (donor == 0) then
+            FCCsetup%SA%source(slot) = SASourceOwn
+            cycle
+        end if
+        if (donor > min(EddyFlowProj%gas_num, MaxNumGases) .or. donor == gas) then
+            call LogSay(' Warning: gas_' // trim(IntToText(gas)) // '_sa_source=' // &
+                trim(IntToText(donor)) // ' names no other gas record; ' // &
+                trim(GasRecordLabel(slot)) // ' stays automatic.')
+            cycle
+        end if
+        if (.not. SpectralTubeMates(slot, firstGas + donor - 1)) then
+            call LogSay(' Warning: ' // trim(GasRecordLabel(slot)) // &
+                ' cannot take its spectral transfer function from ' // &
+                trim(GasRecordLabel(firstGas + donor - 1)) // &
+                ': only a non-water gas on the same analyser can lend one. It stays automatic.')
+            cycle
+        end if
+        FCCsetup%SA%source(slot) = firstGas + donor - 1
     end do
 
     !> Whether to keep or delete parent fluxnet file

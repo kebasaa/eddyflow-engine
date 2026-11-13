@@ -276,8 +276,10 @@ class EveryConfiguredGasCanBeClassified(unittest.TestCase):
                       "a refused list must leave no month classed")
 
     def test_the_lookup_rejects_an_invalid_class(self):
+        #> The class looked up is that of the gas whose fit is used, which is
+        #> the gas itself unless it takes a tube-mate's (SpectralSourceSlot).
         source = read("src/src_common/bpcf_bandpass_spectral_corrections.f90")
-        self.assertIn("LocSetup%SA%class(gas, month) < 1", source,
+        self.assertIn("LocSetup%SA%class(src, month) < 1", source,
                       "an unclassified gas must be treated as a missing fit; "
                       "class 0 indexes RegPar out of bounds")
 

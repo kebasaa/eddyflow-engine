@@ -1033,6 +1033,14 @@ module m_typedef
         logical :: ibrom_model
         logical :: in_situ
         logical :: subperiod
+        !> Whose fitted transfer function each gas slot is corrected with:
+        !> SASourceAuto, SASourceOwn, or the slot of a tube-mate on the same
+        !> analyser (gas_<i>_sa_source). SpectralSourceSlot resolves it.
+        integer :: source(E2NumVar)
+        !> Whether a gas left on SASourceAuto takes the best-resolved
+        !> tube-mate's transfer function when its own fit is implausible
+        !> (sa_auto_source).
+        logical :: auto_source
     end type SASetupType
 
     type :: FCCsetupType

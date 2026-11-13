@@ -112,8 +112,15 @@ RP_GAS_NUMERIC = [
   + [f"drift_inv_{k}" for k in range(7)] \
   + ["step_lim"]
 RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
+#: sa_source is the gas record whose fitted transfer function this gas is
+#: corrected with: absent is automatic, 0 the gas's own, j > 0 record j. A
+#: gas whose spectra are too noisy to fit (COS, N2O) takes the cut-off of a
+#: tube-mate that can be fitted, because tube, cell and sensor response
+#: belong to the analyser rather than to the species. Water never takes part:
+#: its cut-off depends on humidity through wall sorption.
 FCC_GAS_NUMERIC = [
     "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",
+    "sa_source",
 ]
 #> The months this gas pools before a transfer function is fitted, written as
 #> a group list: `1-12` is one group over the calendar, `1-6,7-12` is two. A
@@ -276,6 +283,14 @@ FIXED_TAGS = {
         #: default; slot 21 is the one skipped between me_file (20) and
         #: pf_start_time (22).
         21: "test_stor_clean",
+    },
+    "FCC.SNTags": {
+        #: Whether a gas left on automatic takes a tube-mate's transfer
+        #: function when its own fit is implausible (0 off, 1 on). Slot 10
+        #: has been blank since before the flat per-gas keys were retired;
+        #: their retirement left 16-54 blank too, so the "full" remark under
+        #: EPPrjCTags below no longer holds for this table.
+        10: "sa_auto_source",
     },
     "EPPrjCTags": {
         #: Post-flux despiking (RFlux's despiking(variant="v1"), Vitale et

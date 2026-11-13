@@ -94,6 +94,8 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     character(128) :: Filename
     character(32) :: method
     logical :: gas_ok
+    logical :: corrected_ok
+    integer :: donor
     integer :: n_insitu
     integer :: n_analytic
     character(32), external :: IntToText
@@ -102,6 +104,8 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
     character(12), external :: OutcomeLabel
     logical, external :: GasHasSpectralFit
     logical, external :: HygrometerHasRhFit
+    logical, external :: GasInsituWithSource
+    character(64), external :: DonorNote
     include '../src_common/interfaces_1.inc'
 
     assessment_ready = .true.
@@ -218,6 +222,14 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
         if (GasSlotIsWater(gas)) then
             if (gas_ok) gas_ok = HygrometerHasRhFit(gas)
         end if
+        !> PASS/FAIL is this gas's own fit; the outcome is what corrects it,
+        !> which may be a tube-mate's fit (SpectralSourceSlot) - in situ when
+        !> a gas that failed borrows a good one, analytic when the donor it
+        !> names has nothing.
+        corrected_ok = gas_ok
+        donor = 0
+        if (.not. GasSlotIsWater(gas)) &
+            corrected_ok = GasInsituWithSource(gas, donor)
         if (.not. fcc_var_present(gas)) then
             call EmitReportLine(report_unit, open_status, trim(GasName(gas)) // ': unavailable... NOT APPLIED')
         else
@@ -228,7 +240,8 @@ subroutine ReportSpectralAssessmentDiagnostics(assessment_ready)
                 trim(IntToText(FCCsetup%SA%nclass(gas))) // ', valid classes=' // &
                 trim(IntToText(gas_classes)) // '... ' // &
                 trim(StatusLabel(gas_ok, 'FAIL')) // &
-                '  -> corrected ' // trim(OutcomeLabel(gas_ok)))
+                '  -> corrected ' // trim(OutcomeLabel(corrected_ok)) // &
+                trim(DonorNote(donor)))
             if (.not. gas_ok .and. SADiagRejectedFlux(gas) > 0) &
                 call ReportFluxLimitSuggestions(report_unit, open_status, gas)
         end if
@@ -399,6 +412,7 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
     real(kind = dbl), external :: SpectralFluxQuantile
     real(kind = dbl), external :: RoundFluxLimitDown
     real(kind = dbl), external :: RoundFluxLimitUp
+    character(16), external :: GasName
 
     do stability = SADiagUnstable, SADiagStable
         n = SADiagFluxCandidateCount(stability, gas)
@@ -464,6 +478,14 @@ subroutine ReportFluxLimitSuggestions(report_unit, open_status, gas)
             trim(suggested_min_text) // ' (10th percentile; review before applying).')
         if (upper_limited) call EmitReportLine(report_unit, open_status, '  Suggested ' // trim(max_label) // '=' // &
             trim(suggested_max_text) // ' (99th percentile; current upper limit excludes eligible records).')
+        !> Gathered for the end of the run as well, where they are the last
+        !> thing printed instead of one block among thousands of period lines.
+        call AddRunSuggestion('flux', trim(GasName(gas)) // ' (' // trim(stability_label) // &
+            '): ' // trim(min_label) // '=' // trim(suggested_min_text) // ', now ' // &
+            trim(current_min_text) // ' (10th percentile of eligible fluxes).')
+        if (upper_limited) call AddRunSuggestion('flux', trim(GasName(gas)) // ' (' // &
+            trim(stability_label) // '): ' // trim(max_label) // '=' // trim(suggested_max_text) // &
+            ', now ' // trim(current_max_text) // ' (99th percentile; the current limit excludes eligible records).')
         call EmitReportLine(report_unit, open_status, '  Projected accepted records=' // trim(IntToText(projected)) // &
             ', valid classes=' // trim(IntToText(valid_classes)) // ' at sa_min_smpl=' // &
             trim(IntToText(FCCsetup%SA%min_smpl)) // '.')
@@ -511,7 +533,7 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
 
     if (.not. FCCsetup%SA%automatic_config) return
 
-    changes_written = any(SAAutoApplyMin) .or. any(SAAutoApplyMax)
+    changes_written = any(SAAutoApplyMin) .or. any(SAAutoApplyMax) .or. any(SAAutoSource > 0)
     if (changes_written) then
         call LogSay(' Automatic spectral configuration: updating output project file.')
         do gas = firstGas, lastGas
@@ -527,6 +549,14 @@ subroutine ApplyAutomaticSpectralConfiguration(output_project)
             call WriteAutomaticSpectralSetting(output_project, trim(max_label), current_max, &
                 SAAutoMax(gas), &
                 '99th-percentile eligible flux maximum')
+        end do
+        !> A gas left on automatic whose own transfer function looks
+        !> implausible is given the tube-mate ReportSpectralSources suggested.
+        !> Written as a record key, which an automatic gas does not have yet,
+        !> so it has to be added to its section rather than rewritten.
+        do gas = firstGas, lastGas
+            if (SAAutoSource(gas) <= 0) cycle
+            call WriteAutomaticSpectralSource(output_project, gas, SAAutoSource(gas))
         end do
         call EditIniFile(trim(output_project), 'automatic_spectra_config', '0')
         call AppendAutomaticSpectralConfigDiagnostic('Automatic spectral configuration: applied to output project: ' // &
@@ -566,6 +596,58 @@ subroutine WriteAutomaticSpectralSetting(output_project, tag, original, replacem
     write(*, '(a)') trim(line)
     write(ulog, '(a)') trim(line)
 end subroutine WriteAutomaticSpectralSetting
+
+!*******************************************************************************
+!> gas_<i>_sa_source=<j> in the output project: `gas` takes the transfer
+!> function of `donor`, both gas slots.
+!*******************************************************************************
+subroutine WriteAutomaticSpectralSource(output_project, gas, donor)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: output_project
+    integer, intent(in) :: gas
+    integer, intent(in) :: donor
+    character(32) :: tag
+    character(16) :: value
+    character(512) :: line
+    character(32), external :: GasRecordLabel
+
+    write(tag, '(a,i0,a)') 'gas_', gas - firstGas + 1, '_sa_source'
+    write(value, '(i0)') donor - firstGas + 1
+    call SetIniKeyInSection(trim(output_project), 'FluxCorrection_SpectralAnalysis_General', &
+        trim(tag), trim(value))
+    line = '  ' // trim(tag) // ': automatic -> ' // trim(value) // ' (' // &
+        trim(GasRecordLabel(gas)) // ' takes ' // trim(GasRecordLabel(donor)) // &
+        '''s transfer function; its own looks implausible).'
+    call AppendAutomaticSpectralConfigDiagnostic(trim(line))
+    write(*, '(a)') trim(line)
+    write(ulog, '(a)') trim(line)
+end subroutine WriteAutomaticSpectralSource
+
+!*******************************************************************************
+!> Write into the output project the transfer-function sources automatic
+!> selection applied in this run (SAAppliedSource), as gas_<i>_sa_source.
+!>
+!> Unlike the suggestions ApplyAutomaticSpectralConfiguration writes, these
+!> are not advice for the next run: they are what corrected this one, so they
+!> are saved whatever automatic_spectra_config says. The project kept beside
+!> the results then names every gas's source outright, and still reproduces
+!> them if automatic selection is later switched off.
+!*******************************************************************************
+subroutine SaveAppliedSpectralSources(output_project)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: output_project
+    integer :: gas
+
+    if (.not. any(SAAppliedSource > 0)) return
+    call LogSay(' Transfer-function sources chosen automatically in this run: ' // &
+        'saved to the output project.')
+    do gas = firstGas, lastGas
+        if (SAAppliedSource(gas) <= 0) cycle
+        call WriteAutomaticSpectralSource(output_project, gas, SAAppliedSource(gas))
+    end do
+end subroutine SaveAppliedSpectralSources
 
 !*******************************************************************************
 subroutine AppendAutomaticSpectralConfigDiagnostic(line)
@@ -804,3 +886,262 @@ character(12) function OutcomeLabel(in_situ)
         OutcomeLabel = 'analytically'
     end if
 end function OutcomeLabel
+
+!*******************************************************************************
+!> Whether a non-water gas is corrected in situ in any month, and through
+!> whose fit: `donor` is the first tube-mate SpectralSourceSlot hands it in a
+!> month that has a cut-off, 0 when its own fit serves throughout.
+!>
+!> The readiness report's "corrected in situ" has to follow the source the
+!> correction reads. Asked of the gas's own fit, a COS whose fit failed but
+!> which takes CO2's would be reported as corrected analytically, and one
+!> whose named donor has nothing would be reported as in situ.
+!*******************************************************************************
+logical function GasInsituWithSource(gas, donor)
+    use m_fx_global_var
+    implicit none
+    integer, intent(in) :: gas
+    integer, intent(out) :: donor
+    integer :: month
+    integer :: src
+    integer :: cls
+    integer, external :: SpectralSourceSlot
+
+    GasInsituWithSource = .false.
+    donor = 0
+    do month = 1, 12
+        src = SpectralSourceSlot(gas, month, FCCsetup%SA)
+        cls = FCCsetup%SA%class(src, month)
+        if (cls < 1 .or. cls > MaxGasClasses) cycle
+        if (RegPar(src, cls)%fc == error) cycle
+        GasInsituWithSource = .true.
+        if (src /= gas .and. donor == 0) donor = src
+    end do
+end function GasInsituWithSource
+
+!*******************************************************************************
+!> " with CO2_2 (miro_mga1_5_2)'s transfer function", or nothing for 0.
+!*******************************************************************************
+character(64) function DonorNote(donor)
+    use m_fx_global_var
+    implicit none
+    integer, intent(in) :: donor
+    character(32), external :: GasRecordLabel
+
+    DonorNote = ''
+    if (donor <= 0) return
+    DonorNote = ' with ' // trim(GasRecordLabel(donor)) // '''s transfer function'
+end function DonorNote
+
+!*******************************************************************************
+!> Keep a suggestion for the end of the run. `section` is 'sources' or 'flux'.
+!> Past MaxRunSuggestions the rest are dropped - they were printed where they
+!> were made, so nothing is lost but the repeat.
+!*******************************************************************************
+subroutine AddRunSuggestion(section, line)
+    use m_fx_global_var
+    implicit none
+    character(*), intent(in) :: section
+    character(*), intent(in) :: line
+
+    if (RunSuggestionN >= MaxRunSuggestions) return
+    RunSuggestionN = RunSuggestionN + 1
+    RunSuggestionSection(RunSuggestionN) = section
+    RunSuggestions(RunSuggestionN) = line
+end subroutine AddRunSuggestion
+
+!*******************************************************************************
+!> Every suggestion the run made, as its very last message before the banner.
+!> Nothing when there is none.
+!*******************************************************************************
+subroutine ReportRunSuggestions()
+    use m_fx_global_var
+    implicit none
+    integer :: i
+    integer :: k
+    character(8), parameter :: Sections(2) = [character(8) :: 'sources', 'flux']
+    character(96), parameter :: Headings(2) = [character(96) :: &
+        ' Spectral transfer functions that look implausible (gas_<i>_sa_source):', &
+        ' Flux limits for the spectral assessment:']
+
+    if (RunSuggestionN < 1) return
+    call LogSay('')
+    call LogSay(' Suggested settings (review before applying)')
+    call LogSay(' -------------------------------------------')
+    do k = 1, size(Sections)
+        if (.not. any(RunSuggestionSection(1:RunSuggestionN) == Sections(k))) cycle
+        call LogSay(trim(Headings(k)))
+        do i = 1, RunSuggestionN
+            if (RunSuggestionSection(i) /= Sections(k)) cycle
+            call LogSay('   ' // trim(RunSuggestions(i)))
+        end do
+    end do
+end subroutine ReportRunSuggestions
+
+!*******************************************************************************
+!> Which gases are corrected with a tube-mate's transfer function, and which
+!> would be: one line per gas and run of months with the same answer, logged
+!> now and - where it is a suggestion - kept for the end of the run.
+!>
+!> Called once by the parent, after the assessment is read or fitted and
+!> before the context is handed to workers. Workers re-evaluate the same rule
+!> per period from the same RegPar, so they need no report of their own.
+!>
+!> Also records, for ApplyAutomaticSpectralConfiguration, the donor a gas left
+!> on automatic would take: the one suggested for the most months.
+!*******************************************************************************
+subroutine ReportSpectralSources()
+    use m_fx_global_var
+    implicit none
+    integer :: gas
+    integer :: month
+    integer :: m0
+    integer :: used
+    integer :: sugg
+    integer :: cur_used
+    integer :: cur_sugg
+    integer :: first_used
+    integer :: counts(GHGNumVar)
+    logical :: header
+    logical :: all_same
+    logical, external :: GasSlotIsWater
+    integer, external :: SpectralSourceSlot
+    integer, external :: SpectralSuggestedSource
+
+    SAAutoSource = 0
+    SAAppliedSource = 0
+    if (.not. FCCsetup%SA%in_situ) return
+    header = .false.
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (GasSlotIsWater(gas)) cycle
+        if (EddyFlowProj%gas(gas - firstGas + 1)%col <= 0) cycle
+        counts = 0
+        m0 = 1
+        cur_used = SpectralSourceSlot(gas, 1, FCCsetup%SA)
+        cur_sugg = SpectralSuggestedSource(gas, 1, FCCsetup%SA)
+        if (cur_sugg > 0) counts(cur_sugg) = counts(cur_sugg) + 1
+        first_used = cur_used
+        all_same = .true.
+        do month = 2, 12
+            used = SpectralSourceSlot(gas, month, FCCsetup%SA)
+            sugg = SpectralSuggestedSource(gas, month, FCCsetup%SA)
+            if (sugg > 0) counts(sugg) = counts(sugg) + 1
+            if (used /= first_used) all_same = .false.
+            if (used /= cur_used .or. sugg /= cur_sugg) then
+                call SourceRange(gas, m0, month - 1, cur_used, cur_sugg)
+                m0 = month
+                cur_used = used
+                cur_sugg = sugg
+            end if
+        end do
+        call SourceRange(gas, m0, 12, cur_used, cur_sugg)
+        if (FCCsetup%SA%source(gas) == SASourceAuto .and. .not. FCCsetup%SA%auto_source &
+            .and. maxval(counts) > 0) SAAutoSource(gas) = maxloc(counts, 1)
+        !> What automatic selection did, when it did the same thing all year:
+        !> one gas_<i>_sa_source states it exactly. A gas switched for some
+        !> months only stays automatic in the output project - the key has no
+        !> months - and the copy's sa_auto_source=1 repeats the same choice.
+        if (FCCsetup%SA%source(gas) == SASourceAuto .and. FCCsetup%SA%auto_source &
+            .and. all_same .and. first_used /= gas) SAAppliedSource(gas) = first_used
+    end do
+
+contains
+
+    !> One line for months m1..m2 of `gas`, which take `used`'s fit and for
+    !> which `sugg` is suggested (0: none). Silent when the gas takes its own
+    !> fit and nothing better is suggested.
+    subroutine SourceRange(gas, m1, m2, used, sugg)
+        integer, intent(in) :: gas
+        integer, intent(in) :: m1
+        integer, intent(in) :: m2
+        integer, intent(in) :: used
+        integer, intent(in) :: sugg
+        integer :: other
+        character(256) :: line
+        character(48) :: status
+        character(32), external :: GasRecordLabel
+
+        if (used == gas .and. sugg == 0) return
+        if (used /= gas) then
+            other = used
+        else
+            other = sugg
+        end if
+
+        if (used /= gas .and. FCCsetup%SA%source(gas) > 0) then
+            status = 'applied: set by user'
+        else if (used /= gas) then
+            status = 'applied: automatic'
+        else if (FCCsetup%SA%source(gas) == SASourceOwn) then
+            status = 'not applied: "Own assessment" set by user'
+        else
+            status = 'not applied: automatic selection is off'
+        end if
+
+        line = trim(GasRecordLabel(gas)) // ' ' // trim(MonthSpan(m1, m2)) // &
+            ': own ' // trim(FitText(gas, m1)) // ' -> ' // &
+            trim(GasRecordLabel(other)) // ': ' // trim(FitText(other, m1)) // &
+            '  [' // trim(status) // ']'
+
+        if (.not. header) then
+            call LogSay('')
+            call LogSay(' Spectral transfer functions taken from tube-mates on the same analyser:')
+            header = .true.
+        end if
+        call LogSay('  ' // trim(line))
+        if (sugg > 0) call AddRunSuggestion('sources', trim(line))
+    end subroutine SourceRange
+
+    !> "Fn 0.036, fc 0.00199 Hz" for a gas's own class of `month`
+    character(64) function FitText(slot, month)
+        integer, intent(in) :: slot
+        integer, intent(in) :: month
+        integer :: cls
+
+        cls = FCCsetup%SA%class(slot, month)
+        FitText = 'no fit'
+        if (cls < 1 .or. cls > MaxGasClasses) return
+        if (RegPar(slot, cls)%fc == error) return
+        FitText = 'Fn ' // trim(ShortReal(RegPar(slot, cls)%Fn)) // ', fc ' // &
+            trim(ShortReal(RegPar(slot, cls)%fc)) // ' Hz'
+    end function FitText
+
+    !> Three significant figures or so, with the leading zero gfortran's F0.d
+    !> leaves out
+    character(24) function ShortReal(x)
+        real(kind = dbl), intent(in) :: x
+        character(24) :: t
+
+        if (x == error) then
+            ShortReal = 'n/a'
+            return
+        end if
+        if (dabs(x) >= 0.1d0) then
+            write(t, '(f0.3)') x
+        else if (dabs(x) >= 0.01d0) then
+            write(t, '(f0.4)') x
+        else
+            write(t, '(f0.5)') x
+        end if
+        t = adjustl(t)
+        if (t(1:1) == '.') t = '0' // trim(t)
+        if (t(1:2) == '-.') t = '-0' // trim(t(2:))
+        ShortReal = t
+    end function ShortReal
+
+    !> "Jan-Dec", "Mar", "Apr-Sep"
+    character(8) function MonthSpan(m1, m2)
+        integer, intent(in) :: m1
+        integer, intent(in) :: m2
+        character(3), parameter :: Names(12) = [character(3) :: 'Jan', 'Feb', &
+            'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+        if (m1 == m2) then
+            MonthSpan = Names(m1)
+        else
+            MonthSpan = Names(m1) // '-' // Names(m2)
+        end if
+    end function MonthSpan
+
+end subroutine ReportSpectralSources

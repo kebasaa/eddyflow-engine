@@ -2485,3 +2485,230 @@ contains
     end subroutine EmitReal
 
 end subroutine CecExRowValues
+
+!***************************************************************************
+!
+! \brief       Whether two gas slots may share a spectral transfer function.
+! \author      Jonathan Muller
+! \note        The in-situ transfer function is the gas's spectrum against
+!              the sonic temperature's, so what it measures is the tube, the
+!              cell and the sensor's response - all of them the analyser's,
+!              none of them the species'. Gases drawn through one analyser
+!              share them, and only those: another analyser has another
+!              tube, flow and cell. Water is on neither side, because its
+!              cut-off depends on humidity through wall sorption, which the
+!              passive gases do not have.
+!
+!              A slot is its own tube-mate, so the reference search can take
+!              the gas itself as a candidate. Matched by the analyser the
+!              records name, never by model, which cannot tell two LI-7200s
+!              at one site apart - the rule PWB time-lag borrowing keeps.
+!***************************************************************************
+logical function SpectralTubeMates(slot_a, slot_b)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: slot_a
+    integer, intent(in) :: slot_b
+    integer :: ra
+    integer :: rb
+    character(32) :: ia
+    character(32) :: ib
+    logical, external :: GasSlotIsWater
+
+    SpectralTubeMates = .false.
+    ra = slot_a - firstGas + 1
+    rb = slot_b - firstGas + 1
+    if (ra < 1 .or. ra > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    if (rb < 1 .or. rb > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    if (GasSlotIsWater(slot_a)) return
+    if (GasSlotIsWater(slot_b)) return
+    if (EddyFlowProj%gas(ra)%col <= 0) return
+    if (EddyFlowProj%gas(rb)%col <= 0) return
+    ia = EddyFlowProj%gas(ra)%instr
+    ib = EddyFlowProj%gas(rb)%instr
+    call lowercase(ia)
+    call lowercase(ib)
+    ia = adjustl(ia)
+    ib = adjustl(ib)
+    !> An unnamed analyser cannot be matched, and matching every unnamed one
+    !> to every other would pair gases that share nothing.
+    if (len_trim(ia) == 0) return
+    if (trim(ia) == 'none' .or. trim(ia) == 'other') return
+    SpectralTubeMates = trim(ia) == trim(ib)
+end function SpectralTubeMates
+
+!***************************************************************************
+!
+! \brief       A gas slot as the log names it: "COS (miro_mga1_5_2)".
+! \author      Jonathan Muller
+!***************************************************************************
+character(32) function GasRecordLabel(gas_slot)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    character(64) :: names(GHGNumVar)
+    character(32) :: name
+    integer :: rec
+    include 'interfaces_1.inc'
+
+    GasRecordLabel = ''
+    rec = gas_slot - firstGas + 1
+    if (rec < 1 .or. rec > min(EddyFlowProj%gas_num, MaxNumGases)) return
+    call SpectralGasNames(names)
+    name = names(gas_slot)(1:min(len_trim(names(gas_slot)), len(name)))
+    call uppercase(name)
+    if (len_trim(name) == 0) write(name, '(a,i0)') 'Gas ', rec
+    if (len_trim(EddyFlowProj%gas(rec)%instr) > 0) then
+        GasRecordLabel = trim(name) // ' (' // &
+            trim(adjustl(EddyFlowProj%gas(rec)%instr)) // ')'
+    else
+        GasRecordLabel = name
+    end if
+end function GasRecordLabel
+
+!***************************************************************************
+!
+! \brief       Whether a gas's fit for one month class can stand as a
+!              transfer function, by the rule SaFnMin states.
+! \author      Jonathan Muller
+! \note        A cut-off that is missing or not positive is no fit at all,
+!              and an Fn below SaFnMin is a ratio that is wrong already at the
+!              low frequencies the fit normalises on: noise or drift, not
+!              attenuation.
+!***************************************************************************
+logical function SpectralFitUsable(gas_slot, cls)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    integer, intent(in) :: cls
+
+    SpectralFitUsable = .false.
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+    if (cls < 1 .or. cls > MaxGasClasses) return
+    if (RegPar(gas_slot, cls)%fc == error) return
+    if (RegPar(gas_slot, cls)%fc <= 0d0) return
+    if (RegPar(gas_slot, cls)%Fn == error) return
+    SpectralFitUsable = RegPar(gas_slot, cls)%Fn >= SaFnMin
+end function SpectralFitUsable
+
+!***************************************************************************
+!
+! \brief       The best-resolved usable fit on a gas's analyser this month:
+!              the tube-mate (the gas itself included) whose fit for its own
+!              class of `month` has the highest Fn. 0 when there is none.
+! \author      Jonathan Muller
+! \note        Best-resolved rather than "the analyser's CO2", for the same
+!              reason the time-lag donor is: a fixed species is wrong on an
+!              analyser that does not measure it, or measures it badly. Ties
+!              go to the lower slot, so the choice does not depend on how a
+!              loop happens to run.
+!***************************************************************************
+integer function SpectralTubeReference(gas_slot, month, SA)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    integer, intent(in) :: month
+    type(SASetupType), intent(in) :: SA
+    integer :: cand
+    integer :: cls
+    real(kind = dbl) :: best_fn
+    logical, external :: SpectralTubeMates
+    logical, external :: SpectralFitUsable
+
+    SpectralTubeReference = 0
+    if (month < 1 .or. month > 12) return
+    best_fn = -1d0
+    do cand = firstGas, lastGas
+        if (cand - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (.not. SpectralTubeMates(gas_slot, cand)) cycle
+        cls = SA%class(cand, month)
+        if (.not. SpectralFitUsable(cand, cls)) cycle
+        if (RegPar(cand, cls)%Fn > best_fn) then
+            best_fn = RegPar(cand, cls)%Fn
+            SpectralTubeReference = cand
+        end if
+    end do
+end function SpectralTubeReference
+
+!***************************************************************************
+!
+! \brief       The tube-mate a gas should take its transfer function from in
+!              `month`, or 0 when its own fit is plausible or nothing better
+!              is on its analyser.
+! \author      Jonathan Muller
+! \note        Implausible is: no usable fit of its own (SpectralFitUsable),
+!              or a cut-off more than 1/SaFcRatioMin times off the
+!              best-resolved tube-mate's. One analyser gives one response, so
+!              the cut-offs of its gases should agree; a factor of four apart
+!              is a fit following something other than attenuation.
+!
+!              A suggestion only. Whether it is taken is SpectralSourceSlot's
+!              question, and the end-of-run suggestions report it either way.
+!***************************************************************************
+integer function SpectralSuggestedSource(gas_slot, month, SA)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    integer, intent(in) :: month
+    type(SASetupType), intent(in) :: SA
+    integer :: ref
+    integer :: own_cls
+    integer :: ref_cls
+    real(kind = dbl) :: ratio
+    integer, external :: SpectralTubeReference
+    logical, external :: SpectralFitUsable
+
+    SpectralSuggestedSource = 0
+    if (month < 1 .or. month > 12) return
+    ref = SpectralTubeReference(gas_slot, month, SA)
+    if (ref == 0 .or. ref == gas_slot) return
+    own_cls = SA%class(gas_slot, month)
+    if (.not. SpectralFitUsable(gas_slot, own_cls)) then
+        SpectralSuggestedSource = ref
+        return
+    end if
+    ref_cls = SA%class(ref, month)
+    ratio = RegPar(gas_slot, own_cls)%fc / RegPar(ref, ref_cls)%fc
+    if (ratio < SaFcRatioMin .or. ratio > 1d0 / SaFcRatioMin) &
+        SpectralSuggestedSource = ref
+end function SpectralSuggestedSource
+
+!***************************************************************************
+!
+! \brief       The gas slot whose fitted transfer function `gas_slot` is
+!              corrected with in `month`.
+! \author      Jonathan Muller
+! \note        The donor the project names; the gas itself when it asks for
+!              its own fit; and when it is left automatic, the suggested
+!              tube-mate if sa_auto_source is on and there is one, else
+!              itself. Water is always its own.
+!
+!              Asked where the correction reads a cut-off - the hub's gate,
+!              RetrieveLPTFpars and the readiness report - and never by the
+!              fitter or the assessment file's writer and reader: the file
+!              keeps every gas's own fit, so a bad one stays visible. The
+!              caller reads RegPar at the returned slot's OWN class for the
+!              month, since each gas pools its months its own way.
+!***************************************************************************
+integer function SpectralSourceSlot(gas_slot, month, SA)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    integer, intent(in) :: month
+    type(SASetupType), intent(in) :: SA
+    integer :: suggested
+    logical, external :: GasSlotIsWater
+    integer, external :: SpectralSuggestedSource
+
+    SpectralSourceSlot = gas_slot
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+    if (GasSlotIsWater(gas_slot)) return
+    if (SA%source(gas_slot) > 0) then
+        SpectralSourceSlot = SA%source(gas_slot)
+        return
+    end if
+    if (SA%source(gas_slot) == SASourceOwn) return
+    if (.not. SA%auto_source) return
+    suggested = SpectralSuggestedSource(gas_slot, month, SA)
+    if (suggested > 0) SpectralSourceSlot = suggested
+end function SpectralSourceSlot

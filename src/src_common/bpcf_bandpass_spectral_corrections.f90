@@ -67,6 +67,9 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
     logical :: analytic_only(GHGNumVar)
     logical, external :: GasHasSpectralFit
     logical, external :: HygrometerHasRhFit
+    integer, external :: SpectralSourceSlot
+    !> The gas whose fitted transfer function a gas is corrected with
+    integer :: src
     integer :: n_analytic
     type(SpectralType) :: tmpBPCF
     !> The project's own BA/ZOH settings, as they were before any period
@@ -154,14 +157,25 @@ subroutine BandPassSpectralCorrections(measuring_height, displ_height, &
                         !> condition need not be evaluated.
                         insitu_ok(gas) = GasHasSpectralFit(gas)
                         if (insitu_ok(gas)) insitu_ok(gas) = HygrometerHasRhFit(gas)
-                    else if (LocSetup%SA%class(gas, month) < 1 .or. &
-                        LocSetup%SA%class(gas, month) > MaxGasClasses) then
-                        !> An unclassified gas has no fitted cutoff to look up,
-                        !> and class 0 is not a valid RegPar index. Treat it as
-                        !> the missing fit it is.
-                        insitu_ok(gas) = .false.
-                    else if (RegPar(gas, LocSetup%SA%class(gas, month))%fc == error) then
-                        insitu_ok(gas) = .false.
+                    else
+                        !> The fit this gas is corrected with: its own, or a
+                        !> tube-mate's (SpectralSourceSlot), looked up in that
+                        !> gas's own class for the month. The same pair
+                        !> RetrieveLPTFpars reads, so the gate and the
+                        !> correction cannot disagree. A donor with no fit
+                        !> this month leaves the gas to the analytic method,
+                        !> not to its own fit, which was set aside as
+                        !> untrustworthy.
+                        src = SpectralSourceSlot(gas, month, LocSetup%SA)
+                        if (LocSetup%SA%class(src, month) < 1 .or. &
+                            LocSetup%SA%class(src, month) > MaxGasClasses) then
+                            !> An unclassified gas has no fitted cutoff to look
+                            !> up, and class 0 is not a valid RegPar index.
+                            !> Treat it as the missing fit it is.
+                            insitu_ok(gas) = .false.
+                        else if (RegPar(src, LocSetup%SA%class(src, month))%fc == error) then
+                            insitu_ok(gas) = .false.
+                        end if
                     end if
                     if (.not. insitu_ok(gas)) n_analytic = n_analytic + 1
                 end do

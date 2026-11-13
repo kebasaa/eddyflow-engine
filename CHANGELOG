@@ -1,3 +1,44 @@
+Unreleased
+
+    Engine:
+	- New: A gas can be corrected with the spectral transfer function of
+	       another gas on the same analyser. On CH-LAE the MIRO's COS and N2O
+	       fits came out at fc 0.002 and 0.035 Hz with Fn 0.04-0.07, which is
+	       noise, against 0.54 Hz and Fn 0.46 for the MIRO's own CO2. Tube,
+	       cell and sensor response belong to the analyser, not the species,
+	       so the noisy gases can take the CO2 fit. gas_<i>_sa_source in
+	       [FluxCorrection_SpectralAnalysis_General] names the donor record (0
+	       is the gas's own fit; absent is automatic). Only a non-water gas
+	       on the same named analyser can lend or borrow: water's cut-off
+	       depends on humidity through wall sorption. A pairing that breaks
+	       either rule is warned about and ignored. The hub's in-situ gate
+	       and RetrieveLPTFpars both read the donor's fit in the donor's own
+	       month class, so they cannot disagree. A donor with no fit for a
+	       month leaves the gas to the analytic method, not to its own fit.
+	       The assessment file still records every gas's own fit.
+	- New: sa_auto_source (off by default). A gas left on automatic takes
+	       the best-resolved tube-mate's transfer function when its own
+	       looks implausible: Fn below 0.2, or a cut-off more than four times
+	       off that tube-mate's. One analyser gives one response, so its
+	       gases' cut-offs should agree. Which gases take another's fit, or
+	       would, is logged after the assessment is read or fitted, and with
+	       automatic_spectra_config on, the suggestion is written into the
+	       output project as gas_<i>_sa_source. A source automatic selection
+	       actually applied, in every month, is always written into the
+	       output project's processing_*.eddyflow, whatever
+	       automatic_spectra_config says: it is what corrected this run, so
+	       the project kept with the results names it.
+	- Change: Every suggestion a run makes - the transfer-function sources
+	          above and the flux limits for the spectral assessment - is
+	          printed together as its very last message, before "Program
+	          EddyFlow executed gracefully". The flux-limit suggestions came
+	          out with the readiness report, before the period loop, under
+	          thousands of period lines.
+	- New: SetIniKeyInSection adds a key to its section when it is missing.
+	       EditIniFile only rewrites lines that are there, and an automatic
+	       gas has no gas_<i>_sa_source line.
+	  Pinned by static_checks/test_sa_source_static.py.
+
 8.2.0 (2026-11-11)
 
     Engine:

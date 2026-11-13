@@ -543,6 +543,23 @@ module m_common_global_var
     integer :: InsituFallbackN = 0
     real(kind = dbl) :: StPar(2) = error
     real(kind = dbl) :: UnPar(2) = error
+    !> Where a gas's spectral transfer function comes from (SASetupType%source).
+    !> Automatic is the default: the gas's own fit unless sa_auto_source is on
+    !> and that fit is implausible beside a tube-mate's.
+    integer, parameter :: SASourceAuto = -1
+    integer, parameter :: SASourceOwn = 0
+    !> When a passive gas's fit is implausible (SpectralSuggestedSource). Fn is
+    !> the fitted low-frequency level of the gas/temperature spectral ratio:
+    !> well below 1 means the ratio is wrong where the fit normalises, which no
+    !> attenuation produces - noise or drift does. And gases drawn through one
+    !> analyser share its tube, cell and response, so their cut-offs should
+    !> agree; one more than four times off the best-resolved tube-mate's is
+    !> not attenuation either. On CH-LAE, COS (Fn 0.036, 0.002 Hz) and N2O
+    !> (Fn 0.069, 0.035 Hz) beside the MIRO's CO2 (Fn 0.46, 0.54 Hz).
+    !> Mirrored in the interface's spectralassessmentfile.cpp, and a static
+    !> test holds the two to the same values.
+    real(kind = dbl), parameter :: SaFnMin = 0.2d0
+    real(kind = dbl), parameter :: SaFcRatioMin = 0.25d0
 
     !> tags of the [Project] group of processing.eddypro file
     integer, parameter :: Npn = 573
@@ -585,7 +602,7 @@ module m_common_global_var
     integer, parameter :: agcRecLeapN   = 1
     integer, parameter :: agcRecLeapC   = 2
     integer, parameter :: gasTailLeapN  = 1
-    integer, parameter :: fccGasLeapN   = 6
+    integer, parameter :: fccGasLeapN   = 7
     integer, parameter :: fccGasLeapC   = 1
     !> END GENERATED ProjectRecordOrigins
     logical :: EPPrjNTagFound(Npn)
