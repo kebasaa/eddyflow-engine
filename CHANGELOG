@@ -183,6 +183,14 @@ Unreleased
 	       line number, with the row), and a table with no rows. Six of them
 	       used to stop the run with no message.
 	  Pinned by static_checks/test_pwb_table_roundtrip_static.py.
+	- Fix: The "denoised ensemble averaged spectrum" columns of the spectral
+	       assessment showed the raw spectrum. SubtractHighFreqNoise copied
+	       the raw ensemble over the whole denoised one for any gas slot
+	       with no noise range - every unused slot - so the first such slot
+	       after a denoised gas undid it. The copy is now made once, before
+	       the loop. The transfer-function fits read the long spectra, which
+	       were denoised in place, and are unchanged.
+	  Pinned by static_checks/test_hf_noise_subtraction_static.py.
 
 8.2.0 (2026-11-11)
 

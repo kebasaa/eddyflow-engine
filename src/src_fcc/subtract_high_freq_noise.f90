@@ -56,6 +56,15 @@ subroutine SubtractHighFreqNoise(Spec, nrow, ncol, nlong, N, nclass, nbins)
     real(kind = dbl) :: noise(nrow)
 
 
+    !> Every gas starts from its raw ensemble; those with a noise range get
+    !> their own slice replaced below. This copy used to be the else branch
+    !> of the loop, made whole-array for every gas without a range - and
+    !> every unused slot is one, so the first such slot after a denoised gas
+    !> put that gas's raw spectrum back. The "denoised" ensemble columns of
+    !> the spectral assessment were the raw ones. The fits, which read lSpec,
+    !> were not affected.
+    dMeanBinSpec = MeanBinSpec
+
     !> Linear regression of high frequency spectral range
     do gas = firstGas, lastGas
         if (FCCsetup%SA%hfn_fmin(gas) > 0d0) then
@@ -108,8 +117,6 @@ subroutine SubtractHighFreqNoise(Spec, nrow, ncol, nlong, N, nclass, nbins)
                     end do
                 end if
             end do
-        else
-            dMeanBinSpec = MeanBinSpec
         end if
     end do
 end subroutine SubtractHighFreqNoise
