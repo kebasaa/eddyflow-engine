@@ -424,7 +424,6 @@ contains
         integer :: gas
         integer :: g2
         integer :: s
-        integer :: lag
         integer :: d
         integer :: L
         integer :: glo
@@ -452,7 +451,6 @@ contains
         logical :: sumOpen
         real(kind = dbl) :: dmed
         logical :: done(E2NumVar)
-        type(CumCovRec) :: r
         character(64) :: msg
 
         !> The files written here are plain CSV, header first, so every reader
@@ -469,13 +467,10 @@ contains
                 access = 'stream', status = 'old', iostat = ios)
             if (ios /= 0) cycle
             do
-                read(u2, iostat = ios) r%ord, r%date, r%time, r%gas, r%ustar, &
-                    r%csonic, r%cgas, r%sst, r%lag1, r%wmin, r%wmax, r%lo, r%hi
-                if (ios /= 0) exit
-                if (allocated(r%ccf)) deallocate(r%ccf)
-                allocate(r%ccf(r%lo:r%hi))
-                read(u2, iostat = ios) r%ccf
-                if (ios /= 0) exit
+                !> Straight into the next slot, grown first if it is full. A
+                !> record read into a local and then assigned was a deep copy
+                !> of its function for nothing, and gfortran could not see that
+                !> the local's function was always allocated by then.
                 if (nrec >= size(recs)) then
                     allocate(tmp(2 * size(recs)))
                     do i = 1, nrec
@@ -496,8 +491,17 @@ contains
                     end do
                     call move_alloc(tmp, recs)
                 end if
+                read(u2, iostat = ios) recs(nrec + 1)%ord, recs(nrec + 1)%date, &
+                    recs(nrec + 1)%time, recs(nrec + 1)%gas, recs(nrec + 1)%ustar, &
+                    recs(nrec + 1)%csonic, recs(nrec + 1)%cgas, recs(nrec + 1)%sst, &
+                    recs(nrec + 1)%lag1, recs(nrec + 1)%wmin, recs(nrec + 1)%wmax, &
+                    recs(nrec + 1)%lo, recs(nrec + 1)%hi
+                if (ios /= 0) exit
+                if (allocated(recs(nrec + 1)%ccf)) deallocate(recs(nrec + 1)%ccf)
+                allocate(recs(nrec + 1)%ccf(recs(nrec + 1)%lo:recs(nrec + 1)%hi))
+                read(u2, iostat = ios) recs(nrec + 1)%ccf
+                if (ios /= 0) exit
                 nrec = nrec + 1
-                recs(nrec) = r
             end do
             close(u2, status = 'delete')
         end do
@@ -770,13 +774,17 @@ contains
         character(16) :: a
         character(16) :: b
 
+        !> The first segment opens at the start, each later one at the bound
+        !> before it - carried from the previous turn rather than read as
+        !> segBound(s - 1), which -Wdo-subscript flags at s = 1 even under a
+        !> guard.
+        a = 'start'
         do s = 1, nSeg
-            a = 'start'
             b = 'end'
-            if (s > 1) a = DayStamp(segBound(s - 1))
             if (s < nSeg) b = DayStamp(segBound(s))
             write(us, '(a, a, i0, a, a, a, a, a, i0, a, f0.4)') trim(GasTag(gas)), ',', s, &
                 ',', trim(a), ',', trim(b), ',', nUsed(s), ',', segLag(s, gas)
+            a = b
         end do
     end subroutine WriteCumCovSegments
 
