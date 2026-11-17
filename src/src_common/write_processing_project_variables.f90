@@ -845,6 +845,10 @@ end subroutine ReadCecRecords
 !              Anything that is not a positive integer is dropped rather than
 !              refused: an extra species that cannot be resolved costs the
 !              project a column, not the run.
+! \note        The GUI writes a list with a comma in it quoted ("6,4"), and the
+!              INI reader keeps quotes inside a value. A quote left in front of
+!              the first number fails the integer read and drops the whole
+!              list, so quotes are separators here, like the commas.
 !***************************************************************************
 subroutine ParseCecExtraList(text, tok, ntok)
     character(*), intent(in) :: text
@@ -860,7 +864,8 @@ subroutine ParseCecExtraList(text, tok, ntok)
     ntok = 0
     buf = text
     do i = 1, len_trim(buf)
-        if (buf(i:i) == ',' .or. buf(i:i) == ';') buf(i:i) = ' '
+        if (buf(i:i) == ',' .or. buf(i:i) == ';' .or. buf(i:i) == '"' &
+            .or. buf(i:i) == "'") buf(i:i) = ' '
     end do
     if (len_trim(buf) == 0) return
 

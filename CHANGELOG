@@ -1,6 +1,12 @@
 Unreleased
 
     Engine:
+	- Fix: A quoted list in the project now parses. The GUI quotes a value
+	       with a comma in it (cec_<i>_extra="5,4"), and the quotes reached
+	       the parsers, so a CEC pairing with two or more extra gases ran
+	       with none, without a warning. A quoted gas_<i>_sa_months list was
+	       refused the same way. Quotes are now read as separators.
+	  Pinned by static_checks/test_quoted_list_values_static.py.
 	- New: A gas can be corrected with the spectral transfer function of
 	       another gas on the same analyser. On CH-LAE the MIRO's COS and N2O
 	       fits came out at fc 0.002 and 0.035 Hz with Fn 0.04-0.07, which is
