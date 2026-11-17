@@ -227,12 +227,11 @@ module m_rp_global_var
     end type SpecSampleRowsType
     type(SpecSampleRowsType) :: SpecSamples(E2NumVar)
     !> How many rows each column was moved up by when FixDatasetForSpectra
-    !> interpolated its gaps: ReplaceGapWithLinearInterpolation removes a
-    !> column's leading error rows by shifting the rest of it up. A slower
-    !> column nearly always opens with a few empty rows before its first
-    !> sample, so in the interpolated set its sample k sits SpecLead rows
-    !> above where SpecSamples recorded it - and w, which opens with none,
-    !> does not move.
+    !> interpolated its gaps. It used to be each column's count of leading
+    !> error rows, which ReplaceGapWithLinearInterpolation removed by shifting
+    !> the rest of the column up. FixDatasetForSpectra now interpolates each
+    !> column over its own span and takes one common window, so nothing moves
+    !> and this is zero; SlowColumnSpectra still subtracts it.
     integer :: SpecLead(E2NumVar) = 0
     type(PWBTimelagCacheEntryType), allocatable :: PwbTimelagCache(:)
     integer :: PwbTimelagCacheN = 0

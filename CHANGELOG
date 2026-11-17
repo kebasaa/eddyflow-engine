@@ -191,6 +191,31 @@ Unreleased
 	       the loop. The transfer-function fits read the long spectra, which
 	       were denoised in place, and are unchanged.
 	  Pinned by static_checks/test_hf_noise_subtraction_static.py.
+	- Fix: A gas's (co)spectra could be computed out of step with w.
+	       FixDatasetForSpectra interpolated each column over all its rows,
+	       and the interpolation drops a column's leading error rows by
+	       moving the rest of it up, so any column that opened on a gap was
+	       paired with w that many rows out of step - in its cospectrum and
+	       in the covariance the cospectrum is divided by. A negative time
+	       lag opens a column with exactly such a gap, so for it the move
+	       undid the lag compensation; data missing or filtered at the start
+	       of a period did the same by however many rows it was. On CH-LAE
+	       the MIRO's normalising covariance matched its flux in 19-49 % of
+	       the half-hours, the sonic's and the LI analyser's in 72-93 %.
+	       Each column is now interpolated over its own span, nothing
+	       moves, and every (co)spectrum is computed on one window where
+	       all columns have data, which also replaces the trim by the
+	       spread of the time lags. A period whose columns share data on
+	       fewer than two thirds of its rows gets no (co)spectra, with a
+	       log line. Binned and full (co)spectra, ogives, the degraded
+	       covariances and the FCC transfer functions fitted from them move
+	       for the affected periods; fluxes do not, since they never pass
+	       through here.
+	       With power_of_two on, a cospectrum is still normalised by the
+	       covariance of the power-of-two rows it was computed on (32768 of
+	       36000 at 20 Hz), not by the flux's, so the two can differ a
+	       little even where nothing was out of step.
+	  Pinned by static_checks/test_spectra_common_window_static.py.
 
 8.2.0 (2026-11-11)
 

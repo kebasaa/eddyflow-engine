@@ -128,8 +128,8 @@ program EddyFlowRP
     real(kind = dbl), allocatable :: CecPrimes(:, :)
     logical :: cec_ok
     integer :: SpecRow
-    integer :: Nmax
-    integer :: Nmin
+    !> First row of E2Primes in the window the (co)spectra are computed on.
+    integer :: SpecLo
     integer :: max_nsmpl
     integer :: pfn
     !> How the two assessment pre-passes were split across worker processes.
@@ -3005,48 +3005,56 @@ program EddyFlowRP
             if (RPsetup%do_spectral_analysis) then
                 SpecCol = E2Col
 
-                !> Replace gaps with linear interpolation of neighbouring data
+                !> Replace gaps with linear interpolation of neighbouring data,
+                !> inside the one window [SpecLo, SpecLo + N2 - 1] on which
+                !> every column has data - the lag-shift error rows at either
+                !> end included, which the trim by the spread of RowLags here
+                !> used to approximate after the columns had already moved.
                 call FixDatasetForSpectra(E2Primes, &
-                    size(E2Primes, 1), size(E2Primes, 2), N2)
+                    size(E2Primes, 1), size(E2Primes, 2), SpecLo, N2)
 
-                !> Set length of dataset by stripping
-                !> trailing/leading error codes
-                Nmax = maxval(RowLags)
-                Nmin = minval(RowLags)
-                max_nsmpl = N2 - (Nmax - Nmin)
-                if(RPsetup%power_of_two) then
-                    !> Calculate power-of-two closest to number of
-                    !> available samples
-                    call PowerOfTwo(max_nsmpl, SpecRow)
+                !> A window under two thirds of the period is the one-third
+                !> rule FixDatasetForSpectra applies to each column, applied
+                !> to what the columns have in common: gaps at opposite ends
+                !> of two columns can pass it one at a time and not together.
+                if (N2 < (2 * size(E2Primes, 1)) / 3) then
+                    call LogSay('  (Co)spectra skipped: the columns share data on fewer than two thirds of the period.')
+                    Essentials%degH(:) = error
                 else
-                    !> use all samples
-                    SpecRow = max_nsmpl
+                    max_nsmpl = N2
+                    if(RPsetup%power_of_two) then
+                        !> Calculate power-of-two closest to number of
+                        !> available samples
+                        call PowerOfTwo(max_nsmpl, SpecRow)
+                    else
+                        !> use all samples
+                        SpecRow = max_nsmpl
+                    end if
+
+                    !> Which row of E2Primes the spectral set starts at. A slower
+                    !> column's samples are located relative to E2Primes, and this
+                    !> is what carries that phase across the trim.
+                    SpecRowOffset = SpecLo - 1
+                    !> Recalculate basic statistics with PeriodRecords=SpecRow
+                    !> as number of observations
+                    allocate(SpecSet(SpecRow, pe))
+                    SpecSet(1: SpecRow, :) = E2Primes(SpecLo: SpecLo + SpecRow - 1, :)
+                    call BasicStats(SpecSet, &
+                        size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
+
+                    !> Calculate spectra and cospectra and output them all
+                    !> Pass the whole gas block, not just the four legacy slots:
+                    !> SpectralAnalysis loops u..GHGNumVar internally, so a
+                    !> narrower slice reads past the end of the array as soon as a
+                    !> project describes more than four gases.
+                    call SpectralAnalysis(Stats%date, Stats%time, bf, &
+                        SpecSet(:, u:lastGas), size(SpecSet, 1), lastGas)
+                    if (allocated(SpecSet)) deallocate(SpecSet)
+
+                    !> Reset stats to Stats7, after the parenthesis
+                    !> of spectral analysis
+                    Stats = Stats7
                 end if
-
-                Nmin = - Nmin
-                !> Which row of E2Primes the spectral set starts at. A slower
-                !> column's samples are located relative to E2Primes, and this
-                !> is what carries that phase across the trim.
-                SpecRowOffset = Nmin
-                !> Recalculate basic statistics with PeriodRecords=SpecRow
-                !> as number of observations
-                allocate(SpecSet(SpecRow, pe))
-                SpecSet(1: SpecRow, :) = E2Primes(Nmin + 1: Nmin + SpecRow, :)
-                call BasicStats(SpecSet, &
-                    size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
-
-                !> Calculate spectra and cospectra and output them all
-                !> Pass the whole gas block, not just the four legacy slots:
-                !> SpectralAnalysis loops u..GHGNumVar internally, so a
-                !> narrower slice reads past the end of the array as soon as a
-                !> project describes more than four gases.
-                call SpectralAnalysis(Stats%date, Stats%time, bf, &
-                    SpecSet(:, u:lastGas), size(SpecSet, 1), lastGas)
-                if (allocated(SpecSet)) deallocate(SpecSet)
-
-                !> Reset stats to Stats7, after the parenthesis
-                !> of spectral analysis
-                Stats = Stats7
             else
                 Essentials%degH(:) = error
             end if
