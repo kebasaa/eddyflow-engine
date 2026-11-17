@@ -83,9 +83,11 @@ subroutine PostProcessStorClean()
     integer :: dot, open_status
     integer(8), external :: PeriodMinutes, ModalPeriodStep
     character(32), external :: GasOutputLabel
-    character(LongOutstringLen) :: hdr
+    character(LineLen), allocatable :: hdr
     character(32) :: species
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(hdr)
     if (StorCacheN < 20) then
         !> Too short for a whole-run, time-of-day-binned outlier test to
         !> mean anything - RFlux's own cleanFlux() warns below ten days of

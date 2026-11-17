@@ -653,6 +653,13 @@ subroutine ReadMeasurementRecords()
     EddyFlowProj%diag_num = min(max(EddyFlowProj%diag_num, 0), MaxNumDiagCols)
     EddyFlowProj%agc_num  = min(max(EddyFlowProj%agc_num,  0), MaxNumAgcCols)
 
+    !> The slot layout follows the gas count from here on: the cell slots, te
+    !> and pe sit right after the project's last gas, so the per-period arrays
+    !> are as wide as the project, not the ceiling. Before anything below
+    !> addresses a slot. An express run adds at most three records later,
+    !> inside the four the layout always keeps.
+    call SetSlotLayout(EddyFlowProj%gas_num)
+
     do i = 1, MaxNumGases
         EddyFlowProj%gas(i) = GasRecordType('none', 'none', nint(error), 0, 0, &
                                             error, error, 0, error)

@@ -41,7 +41,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     !> in/out variables
     integer, intent(in) :: N
     logical, intent(in) :: printout
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: win_len
     integer, parameter :: step = 100 !window advancement in samples
@@ -73,9 +73,9 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     integer :: hflags(u:lastGas)
     real(kind = dbl) :: Mean(E2NumVar) = 0.d0
     real(kind = dbl) :: StDev(E2NumVar) = 0.d0
-    real(kind = dbl) :: LocMean(N, E2NumVar)
-    real(kind = dbl) :: LocStDev(N, E2NumVar)
-    logical :: IsSpike(N, E2NumVar)
+    real(kind = dbl) :: LocMean(N, pe)
+    real(kind = dbl) :: LocStDev(N, pe)
+    logical :: IsSpike(N, pe)
     real(kind = dbl) :: m = 0.d0
     real(kind = dbl) :: q = 0.d0
     real(kind = dbl) :: adv_lim(E2NumVar)
@@ -96,7 +96,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     wdw_num = idint(dble(N - nn) / 1d2) + 1  !> number of wins for current file
 
     !> initializations
-    allocate(XX(nn, E2NumVar))
+    allocate(XX(nn, pe))
     XX = error
 
     LocMean = 0d0
@@ -120,7 +120,7 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
     do wdw = 1, wdw_num
         !> pick up the dataset from Set for current win
         do i = 1, nn
-            where(E2Col(:)%present)
+            where(E2Col(1:pe)%present)
                 XX(i, :) = Set(i + step * (wdw - 1), :)
             end where
         end do
@@ -136,26 +136,26 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
 
         !> stick window values only to central elements
         do i = imin, imax
-            where(E2Col(:)%present)
-                LocMean(i, :)  = Mean(:)
-                LocStDev(i, :) = StDev(:)
+            where(E2Col(1:pe)%present)
+                LocMean(i, :)  = Mean(1:pe)
+                LocStDev(i, :) = StDev(1:pe)
             end where
         end do
         !> special case first window
         if (wdw == 1) then
             do i = 1, imin
-                where(E2Col(:)%present)
-                    LocMean(i, :)  = Mean(:)
-                    LocStDev(i, :) = StDev(:)
+                where(E2Col(1:pe)%present)
+                    LocMean(i, :)  = Mean(1:pe)
+                    LocStDev(i, :) = StDev(1:pe)
                 end where
             end do
         end if
         !> special case last window
         if (wdw == wdw_num) then
             do i = imax, N
-                where(E2Col(:)%present)
-                    LocMean(i, :)  = Mean(:)
-                    LocStDev(i, :) = StDev(:)
+                where(E2Col(1:pe)%present)
+                    LocMean(i, :)  = Mean(1:pe)
+                    LocStDev(i, :) = StDev(1:pe)
                 end where
             end do
         end if

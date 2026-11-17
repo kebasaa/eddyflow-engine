@@ -39,7 +39,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     !> in/out variables
     integer, intent(in) :: N
     logical, intent(in) :: printout
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: max_pass = 10
     integer :: passes = 0
@@ -61,7 +61,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     real(kind = dbl) :: m
     real(kind = dbl) :: q
     logical :: again
-    logical :: IsSpike(N, E2NumVar)
+    logical :: IsSpike(N, pe)
     logical :: new_spike
     real(kind = dbl), allocatable :: tmpx(:)
 

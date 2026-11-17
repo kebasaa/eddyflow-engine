@@ -65,7 +65,7 @@ subroutine DespikeConsecutiveDiff(Set, N, printout)
     !> in/out variables
     integer, intent(in) :: N
     logical, intent(in) :: printout
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: i
     integer :: j
@@ -76,9 +76,11 @@ subroutine DespikeConsecutiveDiff(Set, N, printout)
     integer :: hflags(u:lastGas)
     real(kind = dbl) :: step_lim(E2NumVar)
     real(kind = dbl), external :: ColumnAcFreq
-    character(LongOutstringLen) :: skipped
+    character(LineLen), allocatable :: skipped
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(skipped)
     if (printout) write(*, '(a)') '   Spike detection/removal test, &
         &method: consecutive difference..'
     if (printout) write(ulog, '(a)') '   Spike detection/removal test, &

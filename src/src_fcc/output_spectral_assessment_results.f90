@@ -75,13 +75,15 @@ subroutine OutputSpectralAssessmentResults(nbins)
     character(32) :: rh_label
     character(PathLen) :: FilePath
     character(PathLen) :: SpecDir
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
     character(DatumLen) :: datum
     logical :: proceed
     logical, external :: GasHasSpectralFit
     include '../src_common/interfaces_1.inc'
 
     !> Create output directory
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     mkdir_status = CreateDir('"' // Dir%main_out(1:len_trim(Dir%main_out)) // '"')
     SpecDir = Dir%main_out(1:len_trim(Dir%main_out)) // SubDirSpecAn // slash
     mkdir_status = CreateDir('"' // SpecDir(1:len_trim(SpecDir)) // '"')

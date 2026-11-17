@@ -57,13 +57,13 @@ subroutine InitOutFiles(lEx)
     character(8) :: w_tags(GHGNumVar)
     integer :: n_w_slots
     !> Statistical-flag legends, shared with WriteOutFullFcc.
-    character(LongOutstringLen) :: flag_legend
-    character(LongOutstringLen) :: tl_legend
+    character(LineLen), allocatable :: flag_legend
+    character(LineLen), allocatable :: tl_legend
     integer :: n_flag_vars
     integer :: n_tl_vars
-    character(LongOutstringLen) :: header1
-    character(LongOutstringLen) :: header2
-    character(LongOutstringLen) :: header3
+    character(LineLen), allocatable :: header1
+    character(LineLen), allocatable :: header2
+    character(LineLen), allocatable :: header3
     character(64) :: custom_label
     character(32) :: custom_unit
     character(2) :: utf8_mu
@@ -77,6 +77,8 @@ subroutine InitOutFiles(lEx)
     character(32) :: cec_units(MaxNumCecTargets * 8 + 8)
     include '../src_common/interfaces_1.inc'
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(flag_legend, tl_legend, header1, header2, header3)
     utf8_mu = char(194) // char(181)
 
     e2sg(u)    = 'u_'

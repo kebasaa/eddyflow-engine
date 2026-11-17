@@ -1012,8 +1012,10 @@ end subroutine WriteRatePassSpectra
 !> as the header skip both callers need.
 subroutine CheckExFileVintage()
     implicit none
-    character(LongOutstringLen) :: header
+    character(LineLen), allocatable :: header
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(header)
     header = ''
     read(uex, '(a)', iostat = open_status) header
     if (open_status /= 0) call ExceptionHandler(60)
@@ -1031,8 +1033,10 @@ subroutine CheckExFileVintageAt(path)
 
     integer :: unt
     integer :: ios
-    character(LongOutstringLen) :: header
+    character(LineLen), allocatable :: header
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(header)
     open(newunit = unt, file = path, status = 'old', iostat = ios)
     if (ios /= 0) call ExceptionHandler(60)
     header = ''

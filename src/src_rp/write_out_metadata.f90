@@ -39,11 +39,13 @@ subroutine WriteOutMetadata(init_string)
     !> local variables
     integer :: gas
 !    integer :: prof
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     character(DatumLen) :: field_val
     include '../src_common/interfaces.inc'
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     call clearstr(csv_row)
     call AddDatum(csv_row, init_string, separator)
 

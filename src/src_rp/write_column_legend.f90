@@ -60,7 +60,7 @@ subroutine WriteColumnLegend()
     integer :: gas
     integer :: rec
     character(PathLen) :: Legend_Path
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     character(32) :: gas_tag(GHGNumVar)
     integer :: waterSlots(GHGNumVar)
     character(8) :: waterTags(GHGNumVar)
@@ -72,6 +72,8 @@ subroutine WriteColumnLegend()
     integer, external :: PrimaryWaterSlot
     integer, external :: PrimaryCarbonSlot
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     Legend_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
                 // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &
                 // Legend_FilePadding // Timestamp_FilePadding // CsvExt

@@ -148,6 +148,10 @@ program EddyFlowRP
     !> asked for, the worst relative change at the last comparison, and the
     !> previous pass's gas fluxes to compare against.
     integer :: corr_pass
+    !> The gas slots' presence for the spectral corrections, which take it
+    !> GHGNumVar wide. Past the project's last gas those slots are the cells
+    !> now (SetSlotLayout), and a cell is not a gas to correct.
+    logical :: GasSlotPresent(GHGNumVar)
     integer :: corr_passes
     real(kind = dbl) :: iter_dev
     real(kind = dbl) :: prev_gas_flux(GHGNumVar)
@@ -926,9 +930,9 @@ program EddyFlowRP
 
                 !> Allocate arrays for actual data processing
                 if (.not. allocated(E2Set)) &
-                    allocate(E2Set(PeriodRecords, E2NumVar))
+                    allocate(E2Set(PeriodRecords, pe))
                 if (.not. allocated(E2Primes)) &
-                    allocate(E2Primes(PeriodRecords, E2NumVar))
+                    allocate(E2Primes(PeriodRecords, pe))
                 if (.not. allocated(DiagSet)) &
                     allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
@@ -1538,7 +1542,7 @@ program EddyFlowRP
 
                 !> Allocate arrays for actual data processing
                 if (.not. allocated(E2Set)) &
-                    allocate(E2Set(PeriodRecords, E2NumVar))
+                    allocate(E2Set(PeriodRecords, pe))
                 if (.not. allocated(DiagSet)) &
                     allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
@@ -2408,9 +2412,9 @@ program EddyFlowRP
 
         !> Allocate arrays for actual data processing
         if (.not. allocated(E2Set))    &
-            allocate(E2Set(PeriodRecords, E2NumVar))
+            allocate(E2Set(PeriodRecords, pe))
         if (.not. allocated(E2Primes)) &
-            allocate(E2Primes(PeriodRecords, E2NumVar))
+            allocate(E2Primes(PeriodRecords, pe))
         if (.not. allocated(DiagSet))  &
             allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
@@ -2888,10 +2892,10 @@ program EddyFlowRP
 
             !> ===== 6.2 QC tests =============================================
             !> Calculate Kurtosis Index on differenced variables
-            call KID(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
+            call KID(E2Set(:, 1:lastGas), size(E2Set, 1), lastGas)
 
             !> Calculate Longest Gap Duration
-            call LongestGapDuration(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
+            call LongestGapDuration(E2Set(:, 1:lastGas), size(E2Set, 1), lastGas)
 
             !> ===== 6.3 CONDITIONAL EDDY COVARIANCE ==========================
             !> Before the run's own detrending, because the partition screens
@@ -2975,14 +2979,14 @@ program EddyFlowRP
             !> full second dimension - that is E2NumVar, half as wide again as
             !> the GHGNumVar columns handed over, so the explicit-shape dummy
             !> inside read past the end of them. Matches the KID call above.
-            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), GHGNumVar)
+            call Fisher(E2Primes(:, 1:lastGas), size(E2Primes, 1), lastGas)
 
             !> Cross-correlation R^2 test for repeated values - informational
             !> only (see cross_corr_test.f90's own header), so gated the
             !> same as its sibling raw-signal diagnostics rather than
             !> always spending the two extra CCF passes per variable.
             if (Test%rf) &
-                call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+                call CrossCorrTest(E2Primes(:, 1:lastGas), size(E2Primes, 1), lastGas)
 
             !> Calculate Mahrt's random error and Nonstationarity ratio anyway.
             call RU_Mahrt_98(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
@@ -3026,7 +3030,7 @@ program EddyFlowRP
                 SpecRowOffset = Nmin
                 !> Recalculate basic statistics with PeriodRecords=SpecRow
                 !> as number of observations
-                allocate(SpecSet(SpecRow, E2NumVar))
+                allocate(SpecSet(SpecRow, pe))
                 SpecSet(1: SpecRow, :) = E2Primes(Nmin + 1: Nmin + SpecRow, :)
                 call BasicStats(SpecSet, &
                     size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
@@ -3197,8 +3201,10 @@ program EddyFlowRP
                     if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
                     !> Low-pass and high-pass spectral correction factors
+                    GasSlotPresent = E2Col(u:GHGNumVar)%present
+                    GasSlotPresent(lastGas + 1:) = .false.
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
+                        Metadata%d, GasSlotPresent, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, corr_pass == 1, E2Col(u:GHGNumVar)%instr, 1)
@@ -3242,8 +3248,10 @@ program EddyFlowRP
                     !> Those gases cannot use in-situ spectral corrections
                     !> (FCC-only): compute with BPCF=1.0, then zero the ones
                     !> that can so FCC corrects those later.
+                    GasSlotPresent = E2Col(u:GHGNumVar)%present
+                    GasSlotPresent(lastGas + 1:) = .false.
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
+                        Metadata%d, GasSlotPresent, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)

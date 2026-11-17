@@ -58,7 +58,7 @@ subroutine InitFluxnetFile_rp()
     character(96) :: cec_tag
     character(8) :: cec_kstr
     character(64) :: usg(NumUserVar)
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     include '../src_common/interfaces.inc'
 
 
@@ -67,6 +67,8 @@ subroutine InitFluxnetFile_rp()
     !> nothing. Every column name in this file comes from FluxnetLayoutTags,
     !> which SelectFluxnetGasSlots derives per record.
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     do j = 1, NumUserVar
         usg(j) = SafeFluxnetCustomLabel(j)
         call lowercase(usg(j))

@@ -46,10 +46,12 @@ subroutine InitContinuousDataset(PathIn, ErrString, hnrow)
     integer :: io_status
     integer :: read_status
     integer :: i
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
 
 
     !> Open file
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     open(udf, file = PathIn(1:len_trim(PathIn)), status = 'old', &
         iostat = io_status)
     if (io_status /= 0 ) then

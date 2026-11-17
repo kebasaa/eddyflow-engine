@@ -215,7 +215,13 @@ module m_typedef
     !> after ts, and lastGas is GHGNumVar by construction rather than by
     !> coincidence - the two were separately maintained literals before.
     integer, parameter :: firstGas = NumAnemVar + 1
-    integer, parameter :: lastGas  = GHGNumVar
+    !> The ceiling of the gas block. lastGas below is the project's: the
+    !> slot layout closes up to the gases a project configures (SetSlotLayout),
+    !> so the cell slots, te and pe follow its last gas rather than slot 132,
+    !> and every per-period dataset is as wide as the project, not the
+    !> ceiling. Declarations - type components, module arrays - stay sized by
+    !> the Max* constants and are indexed with the run-time bounds.
+    integer, parameter :: MaxLastGas = GHGNumVar
     !> The four gas slots EddyPro had, by position.
     !>
     !> They were co2, h2o, ch4, n2o and gas4 - names that read as species and
@@ -243,8 +249,8 @@ module m_typedef
     !> firstCell + (k-1)*NumCellPerInstr + {0,1,2,3}, in the order
     !> cell_t, int_t_1, int_t_2, int_p. Use CellSlot() rather than arithmetic
     !> at the call site.
-    integer, parameter :: firstCell = lastGas + 1
-    integer, parameter :: lastCell  = firstCell + MaxNumCellSlots - 1
+    integer, parameter :: MaxFirstCell = MaxLastGas + 1
+    integer, parameter :: MaxLastCell  = MaxFirstCell + MaxNumCellSlots - 1
 
     !> `moist_ref` value meaning "the biomet relative humidity", as opposed to
     !> a gas slot holding a hygrometer.
@@ -259,13 +265,29 @@ module m_typedef
 
     !> The first instrument's cell slots keep their historical names, so code
     !> that predates per-instrument cells still addresses instrument 1.
-    integer, parameter :: tc  = firstCell
-    integer, parameter :: ti1 = firstCell + 1
-    integer, parameter :: ti2 = firstCell + 2
-    integer, parameter :: pi  = firstCell + 3
-    integer, parameter :: pc  = firstCell + 3
-    integer, parameter :: te  = lastCell + 1
-    integer, parameter :: pe  = lastCell + 2
+    integer, parameter :: MaxTe = MaxLastCell + 1
+    integer, parameter :: MaxPe = MaxLastCell + 2
+
+    !> The run-time slot layout. The defaults are the ceiling's layout, which
+    !> is what a program that never reads a project (the test drivers) gets;
+    !> SetSlotLayout closes it up to the project's gases.
+    integer :: lastGas   = MaxLastGas
+    integer :: firstCell = MaxFirstCell
+    integer :: lastCell  = MaxLastCell
+    integer :: tc  = MaxFirstCell
+    integer :: ti1 = MaxFirstCell + 1
+    integer :: ti2 = MaxFirstCell + 2
+    integer :: pi  = MaxFirstCell + 3
+    integer :: pc  = MaxFirstCell + 3
+    integer :: te  = MaxLastCell + 1
+    integer :: pe  = MaxLastCell + 2
+
+    !> How long an output line can get for this project: LongOutstringLen's
+    !> formula at the project's gas count rather than the ceiling's. The
+    !> output buffers are sized by it, so a four-gas project's are 86 kB, not
+    !> 596 kB - and every AddDatum scans its buffer's length (len_trim), which
+    !> made that size the cost of writing a row. SetSlotLayout sets it.
+    integer :: LineLen = LongOutstringLen
 
     !> The anemometer's slot in ExType%instr. There used to be four more -
     !> ico2, ih2o, ich4, igas4 - a second, five-wide numbering of the *same*
@@ -301,7 +323,7 @@ module m_typedef
     !> one file and h2o in another and read as two different things. Nothing
     !> refers to them now.
     integer, parameter :: w_firstGas = firstGas
-    integer, parameter :: w_lastGas  = lastGas
+    integer :: w_lastGas  = MaxLastGas
 
     !> Other labels
     integer, parameter :: fink_sims = 1
@@ -2357,6 +2379,34 @@ module m_typedef
     end type fluxnetChunksType
 
 contains
+
+    !***************************************************************************
+    !> \brief Close the slot layout up to the project's ngas gases.
+    !>
+    !> u, v, w, ts and the gas slots keep their numbers; the cell block, te and
+    !> pe follow the last gas. At least four gas slots stay, because the
+    !> historical fallbacks address histGas1..4 by position. Output does not
+    !> change: every file is written from the configured gases and the cells
+    !> keep their order. Only how wide the per-period datasets are does, and
+    !> how long the output buffers are (LineLen).
+    !***************************************************************************
+    subroutine SetSlotLayout(ngas)
+        integer, intent(in) :: ngas
+
+        lastGas = firstGas + max(4, min(ngas, MaxNumGases)) - 1
+        w_lastGas = lastGas
+        firstCell = lastGas + 1
+        lastCell = firstCell + MaxNumCellSlots - 1
+        tc  = firstCell
+        ti1 = firstCell + 1
+        ti2 = firstCell + 2
+        pi  = firstCell + 3
+        pc  = firstCell + 3
+        te  = lastCell + 1
+        pe  = lastCell + 2
+        LineLen = 65536 + 2048 * lastGas &
+            + 32 * ((lastGas - firstGas + 1) * (lastGas - firstGas)) / 2
+    end subroutine SetSlotLayout
 
     character(32) function InstrumentModelBase(model)
         implicit none

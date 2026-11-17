@@ -57,8 +57,8 @@ subroutine InitOutFiles_rp()
     integer :: n_fo_slots
     !> Statistical-flag legends, shared with WriteOutFull so the units row
     !> names exactly the digits the data row carries.
-    character(LongOutstringLen) :: flag_legend
-    character(LongOutstringLen) :: tl_legend
+    character(LineLen), allocatable :: flag_legend
+    character(LineLen), allocatable :: tl_legend
     integer :: n_flag_vars
     integer :: n_tl_vars
     !> Statistics-file layout: the slots st1..st7 carry, and the name each
@@ -68,7 +68,7 @@ subroutine InitOutFiles_rp()
     integer :: st_gas(GHGNumVar)
     integer :: n_st_gas
     character(64) :: st_name(E2NumVar)
-    character(LongOutstringLen) :: stats_header
+    character(LineLen), allocatable :: stats_header
     character(64) :: usg(NumUserVar)
     character(64) :: user_header(NumUserVar)
     character(32) :: user_unit(NumUserVar)
@@ -76,10 +76,10 @@ subroutine InitOutFiles_rp()
     character(32) :: gas_mixr_label(GHGNumVar), gas_dens_label(GHGNumVar)
     real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(2) :: utf8_mu
-    character(LongOutstringLen) :: header1
-    character(LongOutstringLen) :: header2
-    character(LongOutstringLen) :: header3
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: header1
+    character(LineLen), allocatable :: header2
+    character(LineLen), allocatable :: header3
+    character(LineLen), allocatable :: dataline
     logical :: proceed
     integer :: cec_p
     integer :: cec_k
@@ -91,6 +91,8 @@ subroutine InitOutFiles_rp()
     include '../src_common/interfaces.inc'
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(flag_legend, tl_legend, stats_header, header1, header2, header3, dataline)
     utf8_mu = char(194) // char(181)
 
     !> Convenient strings

@@ -100,7 +100,8 @@ subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
     !> The shift ReplaceGapWithLinearInterpolation is about to apply to each
     !> column: it removes leading error rows by moving the column up.
     SpecLead = 0
-    do j = 1, GHGNumVar
+    !> j <= lastGas: past the project's last gas the slots are cells now.
+    do j = 1, lastGas
         if (.not. SpecCol(j)%present) cycle
         do i = 1, nrow
             if (Set(i, j) /= error) exit
@@ -110,7 +111,7 @@ subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
 
     !> nrow2 is the smallest nrow of all columns
     nrow2 = nrow
-    do j = 1, GHGNumVar
+    do j = 1, lastGas
         if (SpecCol(j)%present) then
             call ReplaceGapWithLinearInterpolation(Set(1:nrow, j), size(Set, 1), tnrow, error)
             if (tnrow < nrow2) nrow2 = tnrow

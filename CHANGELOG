@@ -23,6 +23,17 @@ Unreleased
 	          the FLUXNET-sized one, since each row append costs the
 	          buffer's length. base_rec: 17.1 s -> 14.5 s per run. Peak
 	          memory 98 -> 179 MB, from the larger static buffers.
+	- Change: Memory and time follow the gases a project has, not the
+	          ceiling; results bitwise unchanged (the slot layout on the 76
+	          regression fixtures that run). The variable
+	          slots close up after the project's last gas (SetSlotLayout),
+	          so the per-period datasets and their copies are as wide as
+	          the project. The output line buffers are sized from the
+	          project's gas count (LineLen, at least the 65536 characters
+	          of the 64-gas build for any project) and live on the heap.
+	          base_rec (4 gases): 15.7 s -> 10.7 s per run, peak working
+	          set 179 -> 100 MB, peak commit 246 -> 157 MB. The 64-gas
+	          build took 17.2 s, 98 MB and 132 MB.
 	- New: Planar-fit extras after innFLUX (Striednig et al. 2020, Sect.
 	       2.3.1 and Fig. 1), both off by default. pf_mw_num/pf_mw_width
 	       fit N overlapping moving windows instead of the sectors (innFLUX:

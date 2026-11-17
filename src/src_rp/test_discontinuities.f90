@@ -38,7 +38,7 @@ subroutine TestDiscontinuities(Set, N)
     implicit none
     !> in/out variables
     integer, intent(in) :: N
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: i = 0
     integer :: j = 0
@@ -82,15 +82,16 @@ subroutine TestDiscontinuities(Set, N)
     !> u, v, w, ts and every gas slot. The early exit below counts against
     !> this rather than against the array width.
     nvars_tested = (ts - u + 1) + (lastGas - firstGas + 1)
-    allocate(XX(nn, GHGNumVar))
-    allocate(XX_dw(nn/2, GHGNumVar))
-    allocate(XX_up(nn/2, GHGNumVar))
+    !> As wide as the project's gases: the slots past lastGas are cells now.
+    allocate(XX(nn, lastGas))
+    allocate(XX_dw(nn/2, lastGas))
+    allocate(XX_up(nn/2, lastGas))
     
     do wdw = 1, wdw_num
         npoints_par = 0
         !> Full window
         do i = 1, nn
-            XX(i, u:GHGNumVar) = Set(i + 100 * (wdw - 1), u:GHGNumVar)
+            XX(i, u:lastGas) = Set(i + 100 * (wdw - 1), u:lastGas)
         end do
         !> Convert instantaneous molar densities into mole fractions using
         !> standard air molar volume. The 1d3 is the umol basis every gas but
@@ -135,16 +136,16 @@ subroutine TestDiscontinuities(Set, N)
         !> not dimensionless, and for w with half-window sigmas of 0.05 and
         !> 0.03 m s-1 about 8 - a hard flag - where EddyPro 6.2.2, which used
         !> variances throughout, gave 0.64. An error code is not squared.
-        where (Var /= error) Var = Var**2
+        where (Var(1:lastGas) /= error) Var(1:lastGas) = Var(1:lastGas)**2
         !> Half windows variances
         call StDevNoError(XX_dw, size(XX_dw, 1), size(XX_dw, 2), Var_dw, error)
         call StDevNoError(XX_up, size(XX_up, 1), size(XX_up, 2), Var_up, error)
-        where (Var_dw /= error) Var_dw = Var_dw**2
-        where (Var_up /= error) Var_up = Var_up**2
+        where (Var_dw(1:lastGas) /= error) Var_dw(1:lastGas) = Var_dw(1:lastGas)**2
+        where (Var_up(1:lastGas) /= error) Var_up(1:lastGas) = Var_up(1:lastGas)**2
 
         !> Haar functions
-        HaarAvr(:) = Mean_dw(:) - Mean_up(:)
-        HaarVar(:) = (Var_dw(:) - Var_up(:)) / Var(:)
+        HaarAvr(1:lastGas) = Mean_dw(1:lastGas) - Mean_up(1:lastGas)
+        HaarVar(1:lastGas) = (Var_dw(1:lastGas) - Var_up(1:lastGas)) / Var(1:lastGas)
 
         !> Hard/soft flags for discontinuities beyond prescribed thresholds
         do j = u, v
@@ -190,8 +191,9 @@ subroutine TestDiscontinuities(Set, N)
 
     ! Pack one digit per variable into the flag strings; absent variables
     ! are marked 9.
+    !> j <= lastGas: past the project's last gas the slots are cells now.
     do j = 1, GHGNumVar
-        if (.not. E2Col(j)%present) then
+        if (j > lastGas .or. .not. E2Col(j)%present) then
             hflags(j) = 9
             sflags(j) = 9
         end if

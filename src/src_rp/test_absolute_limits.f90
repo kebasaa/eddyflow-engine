@@ -39,7 +39,7 @@ subroutine TestAbsoluteLimits(Set, N, printout)
     implicit none
     !> in/out variables
     integer, intent(in) :: N
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     logical :: printout
     !> local variables
     integer :: i = 0

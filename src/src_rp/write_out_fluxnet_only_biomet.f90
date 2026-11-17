@@ -139,7 +139,7 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
     integer :: int_doy
     real(kind = dbl) :: float_doy
     character(32) :: char_doy
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     character(14) :: tsIso
     real(kind = dbl) :: lrad
     integer :: j
@@ -156,6 +156,8 @@ subroutine WriteFluxnetOnlyBiometRow(start_date, start_time, end_date, &
     logical :: cec_is_int(MaxNumCecTargets * 7 + 9)
     include '../src_common/interfaces.inc'
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     call clearstr(csv_row)
 
     !> Start/end imestamps

@@ -42,11 +42,13 @@ subroutine WriteOutUserStats(unt, string, N, AddHeader)
     logical, intent(inout) :: AddHeader
     !> local variables
     integer :: j = 0
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     if (AddHeader) then
         call AddUserStatsHeader()
         AddHeader = .false.
@@ -86,9 +88,11 @@ subroutine AddUserStatsHeader()
     use m_rp_global_var
     implicit none
     !> local variables
-    character(LongOutstringLen) :: headerline
+    character(LineLen), allocatable :: headerline
     integer :: j
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(headerline)
     call clearstr(headerline)
     headerline = 'filename,date,time,DOY,n_samples'
     do j = 1, NumUserVar

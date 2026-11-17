@@ -36,7 +36,7 @@ subroutine WriteOutMetadataFcc(lEx)
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
 
     !> local variables
     integer :: gas
@@ -44,6 +44,8 @@ subroutine WriteOutMetadataFcc(lEx)
     include '../src_common/interfaces_1.inc'
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     call clearstr(csv_row)
     !> Preliminary timestmap information
     write(field_val, *) lEx%fname(1:len_trim(lEx%fname))

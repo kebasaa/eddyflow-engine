@@ -42,14 +42,16 @@ subroutine InitBiometOut()
     integer :: i
     integer :: dot
     character(PathLen) :: Test_Path
-    character(LongOutstringLen) :: header1
-    character(LongOutstringLen) :: header2
-    character(LongOutstringLen) :: head1_utf8
-    character(LongOutstringLen) :: head2_utf8
+    character(LineLen), allocatable :: header1
+    character(LineLen), allocatable :: header2
+    character(LineLen), allocatable :: head1_utf8
+    character(LineLen), allocatable :: head2_utf8
 
 
     !>==========================================================================
     !> EddyFlow's biomet output
+    !> On the heap, at this project's line length (LineLen).
+    allocate(header1, header2, head1_utf8, head2_utf8)
     if (EddyFlowProj%out_biomet .and. nbVars > 0) then
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &
                   // EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) &

@@ -429,16 +429,18 @@ subroutine DetectFeasibleSpectraAndCospectra(DoSpectrum, DoCospectrum)
 
     !> Decision based on variables availability
     !> Spectra
+    !> To lastGas: past the project's last gas the slots are cells now
+    !> (SetSlotLayout), and the cells never had (co)spectra.
     DoSpectrum = .false.
-    where (SpecCol(u:GHGNumVar)%present)
-        DoSpectrum(u:GHGNumVar) = .true.
+    where (SpecCol(u:lastGas)%present)
+        DoSpectrum(u:lastGas) = .true.
     end where
 
     !> Cospectra
     DoCospectrum = .false.
     if (SpecCol(w)%present) then
-        where (SpecCol(u:GHGNumVar)%present)
-            DoCospectrum(u:GHGNumVar) = .true.
+        where (SpecCol(u:lastGas)%present)
+            DoCospectrum(u:lastGas) = .true.
         end where
     end if
 end subroutine DetectFeasibleSpectraAndCospectra

@@ -60,8 +60,14 @@ subroutine BasicStats(Set, nrow, ncol, nfold, printout)
         end if
     end if
 
-    !> raw covariances on original time series
-    call CovarianceMatrixNoError(Set, size(Set, 1), size(Set, 2), Stats%Cov, error)
+    !> raw covariances on original time series. Into the leading ncol x ncol
+    !> block: the set is as wide as the project (pe, SetSlotLayout), Stats%Cov
+    !> as wide as the ceiling, and the dummy is explicit-shape - handing it
+    !> the whole matrix would lay ncol-long columns across E2NumVar-long ones.
+    !> The rest is no variable at all, which is what the error code says.
+    Stats%Cov = error
+    call CovarianceMatrixNoError(Set, size(Set, 1), size(Set, 2), &
+        Stats%Cov(1:ncol, 1:ncol), error)
 
     if (nfold <= 6) then
         !> mean values (only before detrending, after is deleterious)

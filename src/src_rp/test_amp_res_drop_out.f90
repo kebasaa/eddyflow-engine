@@ -39,7 +39,7 @@ subroutine TestAmpResDropOut(Set, N)
     implicit none
     !> in/out variables
     integer, intent(in) :: N
-    real(kind = dbl), intent(in) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(in) :: Set(N, pe)
     !> local variables
     integer :: i = 0
     integer :: win_len = 0
@@ -86,31 +86,32 @@ subroutine TestAmpResDropOut(Set, N)
     tot_drops_ext = 0
     tot_drops_ctr = 0
     tot_mptbins = 0
-    allocate(XX(nn, GHGNumVar))
+    !> As wide as the project's gases: the slots past lastGas are cells now.
+    allocate(XX(nn, lastGas))
     !> Main cycle, looping over the moving window
     do wdw = 1, wdw_num
         amp_res = 0
         nmptbins = 0
         ndrops = 0
         do i = 1, nn
-            XX(i, u:GHGNumVar) = Set(i + idint(dble(nn / 2)) * (wdw - 1), u:GHGNumVar)
+            XX(i, u:lastGas) = Set(i + idint(dble(nn / 2)) * (wdw - 1), u:lastGas)
         end do
         !> Ranges
-        MaxX = maxval(XX, dim = 1)
-        MinX = minval(XX, dim = 1)
-        RangeX(:) = MaxX(:) - MinX(:)
+        MaxX(1:lastGas) = maxval(XX, dim = 1)
+        MinX(1:lastGas) = minval(XX, dim = 1)
+        RangeX(1:lastGas) = MaxX(1:lastGas) - MinX(1:lastGas)
         !> Mean values
-        Mean = sum(XX, dim = 1)
-        Mean = Mean / dble(nn)
+        Mean(1:lastGas) = sum(XX, dim = 1)
+        Mean(1:lastGas) = Mean(1:lastGas) / dble(nn)
         !> Standard deviations
         Var = 0.d0
         do i = 1, nn
-            Var(:) = Var(:) + (XX(i, :) - Mean(:))**2
+            Var(1:lastGas) = Var(1:lastGas) + (XX(i, :) - Mean(1:lastGas))**2
         end do
-        Var(:) = Var(:) / dble(nn - 1)
-        StDev = dsqrt(Var)
+        Var(1:lastGas) = Var(1:lastGas) / dble(nn - 1)
+        StDev(1:lastGas) = dsqrt(Var(1:lastGas))
         !> Interval amplitudes and limits
-        do j = u, GHGNumVar
+        do j = u, lastGas
             if(RangeX(j) < (dble(ar%lim) * StDev(j))) then
                 MinIntX(j) = MinX(j)
                 MaxIntX(j) = MaxX(j)
@@ -122,7 +123,7 @@ subroutine TestAmpResDropOut(Set, N)
             end if
         end do
         !> Count data and drop-outs in the bins
-        do j = u, GHGNumVar
+        do j = u, lastGas
             drop = 0
             do i = 1, nn
                 put_in_bin: do bin = 1, ar%bins
@@ -144,7 +145,7 @@ subroutine TestAmpResDropOut(Set, N)
         !> central bins (10%<x<90%); here, 10 = do_extlim_dw, 90 = do_extlim_up
         SumX = 0
         binmax(:) = ar%bins - (ar%bins / 10)
-        do j = u, GHGNumVar
+        do j = u, lastGas
             ext_bin_detect: do bin = 1, ar%bins
                 SumX(j) = SumX(j) + amp_res(bin, j)
                 if (dble(SumX(j)) <= (do%extlim_dw*(dble(nn / 100)))) then
@@ -160,7 +161,7 @@ subroutine TestAmpResDropOut(Set, N)
         !> Summation of dropout-flagged values, in the extreme and central intervals
         ndrops_ext = 0
         ndrops_ctr = 0
-        do j = u, GHGNumVar
+        do j = u, lastGas
             if(binmin(j) > 0 .and. binmax(j) >= binmin(j)) then
                 do bin = 1, binmin(j)
                     ndrops_ext(j) = ndrops_ext(j) + ndrops(bin, j)
@@ -179,7 +180,7 @@ subroutine TestAmpResDropOut(Set, N)
 
         !> Amplitude resolution
         !> Store information about empty bins
-        do j = u, GHGNumVar
+        do j = u, lastGas
             do bin = 1, ar%bins
                 if (amp_res(bin, j) == 0) nmptbins(j) = nmptbins(j) + 1
             end do
@@ -191,8 +192,9 @@ subroutine TestAmpResDropOut(Set, N)
 
     !> Flag the variable if the num of empty bins is larger than threshold
     ar_hflags = 9
+    !> j <= lastGas: past the project's last gas the slots are cells now.
     do j = u, GHGNumVar
-        if (E2Col(j)%present) then
+        if (j <= lastGas .and. E2Col(j)%present) then
             if(1d2 * (dble(tot_mptbins(j))) / dble(ar%bins * wdw_num) >= ar%hf_lim) then
                 ar_hflags(j) = 1
             else
@@ -206,7 +208,7 @@ subroutine TestAmpResDropOut(Set, N)
     !> Flags the variable if the num of dropouts is larger than threshold
     do_hflags = 9
     do j = 1, GHGNumVar
-        if (E2Col(j)%present) then
+        if (j <= lastGas .and. E2Col(j)%present) then
             !> Percentages in real arithmetic. The quotient was taken between
             !> integers, and a window holds fewer dropouts than samples, so
             !> it was always 0: no hard flag was ever raised and both
