@@ -65,6 +65,7 @@ module m_lagpeak_core
     public :: ZeroPhaseSmooth
     public :: PeakPadding
     public :: FindCovPeak
+    public :: FokenRelDev
 
     !> Length of the moving average innFLUX runs over the derivative of the
     !> covariance function to decide whether its peak is a maximum or a
@@ -341,5 +342,84 @@ contains
             end select
         end do
     end subroutine FindCovPeak
+
+    !***************************************************************************
+    !> \brief Steady-state test as innFLUX computes it (steady_state_test.m;
+    !>        Foken and Wichura 1996): |mean of the nsub sub-period covariances
+    !>        - the whole period's| / |the whole period's|, on w and c with c
+    !>        shifted by lag rows. innFLUX uses five sub-periods.
+    !>
+    !> Pairs where either value is err are skipped, and each covariance takes
+    !> the mean of its own valid pairs. err when the whole-period covariance is
+    !> zero or a sub-period has fewer than two pairs.
+    !***************************************************************************
+    pure function FokenRelDev(w, c, n, lag, nsub, err) result(sst)
+        integer, intent(in) :: n
+        integer, intent(in) :: lag
+        integer, intent(in) :: nsub
+        real(kind = dbl), intent(in) :: w(n)
+        real(kind = dbl), intent(in) :: c(n)
+        real(kind = dbl), intent(in) :: err
+        real(kind = dbl) :: sst
+        real(kind = dbl) :: total
+        real(kind = dbl) :: sub
+        real(kind = dbl) :: msub
+        integer :: k0
+        integer :: k1
+        integer :: m
+        integer :: j
+        integer :: a
+        integer :: b
+        logical :: ok
+
+        sst = err
+        if (nsub < 1 .or. abs(lag) >= n) return
+        !> The pairs w(k), c(k + lag) that exist.
+        k0 = max(1, 1 - lag)
+        k1 = min(n, n - lag)
+        m = (k1 - k0 + 1) / nsub
+        if (m < 2) return
+        call PairCov(k0, k1, total, ok)
+        if (.not. ok .or. total == 0d0) return
+        msub = 0d0
+        do j = 1, nsub
+            a = k0 + (j - 1) * m
+            b = a + m - 1
+            call PairCov(a, b, sub, ok)
+            if (.not. ok) return
+            msub = msub + sub
+        end do
+        msub = msub / dble(nsub)
+        sst = abs((msub - total) / total)
+
+    contains
+
+        pure subroutine PairCov(ka, kb, cv, okk)
+            integer, intent(in) :: ka
+            integer, intent(in) :: kb
+            real(kind = dbl), intent(out) :: cv
+            logical, intent(out) :: okk
+            real(kind = dbl) :: sw
+            real(kind = dbl) :: sc
+            real(kind = dbl) :: swc
+            integer :: k
+            integer :: np
+
+            sw = 0d0
+            sc = 0d0
+            swc = 0d0
+            np = 0
+            do k = ka, kb
+                if (w(k) == err .or. c(k + lag) == err) cycle
+                np = np + 1
+                sw = sw + w(k)
+                sc = sc + c(k + lag)
+                swc = swc + w(k) * c(k + lag)
+            end do
+            okk = np >= 2
+            cv = 0d0
+            if (okk) cv = swc / dble(np) - (sw / dble(np)) * (sc / dble(np))
+        end subroutine PairCov
+    end function FokenRelDev
 
 end module m_lagpeak_core

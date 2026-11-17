@@ -1,6 +1,53 @@
 Unreleased
 
     Engine:
+	- New: Planar-fit extras after innFLUX (Striednig et al. 2020, Sect.
+	       2.3.1 and Fig. 1), both off by default. pf_mw_num/pf_mw_width
+	       fit N overlapping moving windows instead of the sectors (innFLUX:
+	       360 of 30 degrees); a period is rotated with the window centred
+	       nearest its wind direction. pf_boot_n/pf_boot_seed bootstrap the
+	       pitch and roll angles per sector (new pure module m_pfboot,
+	       xorshift64 seeded per sector). Both are written into the
+	       planar-fit file. A moving-window file is read back with its own
+	       windows, so reusing it gives the same rotation. With both off,
+	       the file is unchanged. PFMat and PFb now hold up to 360 rotations
+	       (MaxNumPfSect); user sectors stay at 36. Fixtures base_pf_mw and
+	       base_pf_boot. Pinned by static_checks/test_pf_extras_static.py.
+	- New: Per-period cross-covariance functions, after innFLUX's step 1
+	       covariance files (Striednig et al. 2020). Off unless a gas asks
+	       (gas_<i>_out_ccf=1). One file per averaging period in
+	       eddyflow_ccf/: w against each selected gas at every
+	       out_ccf_decim-th lag (default 1) within +/- out_ccf_max_lag_s
+	       (default 200 s), before the time lag is applied. A production
+	       worker writes into the parent's folder, like the cospectra.
+	       Fixture base_ccf_out.
+	- New: Time lag method 6 (tlag_meth=6), the time lag from cumulated
+	       cross-covariances after innFLUX (Striednig et al. 2020, Sect. 2.3.2;
+	       after Park et al. 2013). A pre-pass computes each period's
+	       cross-covariance over the gas's time lag optimization window and
+	       records u*, the sonic and gas completeness and the steady-state
+	       relative deviation. Every period passing all four filters
+	       (tlag_cum_min_ustar 0.3, _min_compl_sonic 0.95, _min_compl_gas 0.5,
+	       _max_sst 0.3, innFLUX's values) has its |function| summed per date
+	       segment (tlag_cum_segments), and the Hamming-smoothed peak
+	       (tlag_cum_filter_len 15) is the segment's lag. Records go to a
+	       scratch file per process and are summed by the parent in period
+	       order, so a split pre-pass gives the same lags. New files:
+	       _cumcov_timelags, _cumcov_function_<gas>. Method code 6 in the
+	       Fluxnet file. New module m_cumcov.
+	- New: Clock-drift correction of that lag (tlag_drift_meth=1, off by
+	       default), after innFLUX v1.2.0's driftfix tool (unpublished;
+	       M. Graus, M. Striednig). The reference gases' per-period lags
+	       (gas_<i>_tlag_drift_ref) are smoothed with a robust LOWESS
+	       (Cleveland 1979) and split at jumps (tlag_drift_jump_thr, -0.8 s
+	       per day), then smoothed over tlag_drift_span_d days (5). The drift,
+	       relative to its median and bounded by tlag_drift_max_s (10 s), shifts
+	       each period's function before summing and is added back after. New
+	       file _tlag_drift. New module m_driftfix_core. tests/innflux/compare.py
+	       stage 2: engine and port of the MATLAB tool agree to 1e-12 s and
+	       recover an injected drift and jump within 0.2 s RMS.
+	       Pinned by static_checks/test_cumcov_static.py; fixtures base_cumcov
+	       and base_cumcov_drift.
 	- New: Two optional column groups at the end of the FLUXNET file, after
 	       innFLUX (Striednig et al. 2020). Each is off by default and has its
 	       own switch in [RawProcess_Settings].

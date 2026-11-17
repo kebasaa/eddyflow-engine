@@ -45,10 +45,13 @@ subroutine SortWindBySector(Wind, nrow, NumElem, WindBySect)
     integer :: i = 0
     integer :: sec = 0
     real(kind = dbl) :: WindDir
+    real(kind = dbl) :: twd
+    real(kind = dbl) :: centre
+    real(kind = dbl) :: dd
 
 
     call LogSay(' Sorting wind data by sector..')
-    write(LogInteger, '(i2)') PFSetup%num_sec
+    write(LogInteger, '(i4)') PFSetup%num_sec
     write(*, '(a, i1, a)') '  '// trim(adjustl(LogInteger)) &
         // ' wind sector(s) selected.'
     write(ulog, '(a, i1, a)') '  '// trim(adjustl(LogInteger)) &
@@ -61,6 +64,22 @@ subroutine SortWindBySector(Wind, nrow, NumElem, WindBySect)
             !> Calculate wind direction from Wind
             call SingleWindDirection(Wind(i, u:w), &
                 E2Col(u)%instr%north_offset + magnetic_declination, WindDir)
+
+            !> Moving windows (after innFLUX, Striednig et al. 2020): a period
+            !> belongs to every window whose centre is within half the width,
+            !> so the windows overlap.
+            if (PFSetup%mw_num > 0) then
+                twd = WindDir - PFSetup%north_offset
+                do sec = 1, PFSetup%mw_num
+                    centre = dble(sec - 1) * 360d0 / dble(PFSetup%mw_num)
+                    dd = abs(modulo(twd - centre + 180d0, 360d0) - 180d0)
+                    if (dd < 0.5d0 * PFSetup%mw_width) then
+                        NumElem(sec) = NumElem(sec) + 1
+                        WindBySect(NumElem(sec), u:w, sec) = Wind(i, u:w)
+                    end if
+                end do
+                cycle
+            end if
 
             !> Retrieve wind sector
             call WindSector(WindDir, sec)

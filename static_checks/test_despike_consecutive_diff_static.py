@@ -183,8 +183,9 @@ class TheKeysAreWhereTheyWereSaidToBe(unittest.TestCase):
         #> silently re-points every later per-gas setting of every gas.
         gen = read(GEN)
         block = gen[gen.index("RP_GAS_NUMERIC = ["):gen.index("RP_GAS_TEXT")]
-        self.assertRegex(block, r'\+ \["step_lim"\]\s*$',
-                         "step_lim is no longer the last entry")
+        # step_lim keeps offset 25; the innFLUX keys came after it, appended.
+        self.assertRegex(block, r'\+ \["step_lim"\] \\\n  \+ \["tlag_drift_ref", "out_ccf"\]\s*$',
+                         "something was inserted at or before step_lim")
         self.assertLess(block.index("sr_lim"), block.index("step_lim"))
 
     def test_the_reader_takes_the_offset_from_the_generated_stride(self):

@@ -110,3 +110,113 @@ def step1_lag(w, c, max_lag, search_range, filter_length, detrend=True):
     c_prime = np.where(np.isfinite(c_prime), c_prime, 0.0)
     cov_wc = xcov_unbiased(w_prime, c_prime, max_lag)
     return find_covariance_peak(cov_wc, max_lag, search_range, filter_length, 0), cov_wc
+
+
+# --------------------------------------------------------------------------
+# tools/driftfix/innFLUX_driftfix.m (innFLUX v1.2.0, 2023; based on a routine
+# by M. Graus, adapted by M. Striednig; not in Striednig et al. 2020).
+# --------------------------------------------------------------------------
+
+def rlowess(x, y, span, niter=5):
+    """MATLAB smooth(x, y, span, 'rlowess'): local linear fits over the span
+    nearest points in index order, tricube weights on the distance in x
+    scaled by the window's largest, then niter bisquare robustness passes on
+    residuals scaled by 6 * median |residual| (Cleveland 1979)."""
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    n = len(x)
+    if n < 3:
+        return y.copy()
+    k = max(2, min(int(span), n))
+    rw = np.ones(n)
+    ys = y.copy()
+    for it in range(niter + 1):
+        for i in range(n):
+            lo = i - (k - 1) // 2
+            hi = lo + k - 1
+            if lo < 0:
+                lo, hi = 0, k - 1
+            if hi > n - 1:
+                hi, lo = n - 1, n - k
+            xs = x[lo:hi + 1]
+            dmax = max(abs(x[i] - x[lo]), abs(x[hi] - x[i]))
+            if dmax > 0:
+                wt = (1 - (np.abs(xs - x[i]) / (dmax * 1.0000001)) ** 3) ** 3
+            else:
+                wt = np.ones(len(xs))
+            wt = wt * rw[lo:hi + 1]
+            sw = wt.sum()
+            if sw <= 0:
+                ys[i] = y[i]
+                continue
+            sx = (wt * xs).sum()
+            sy = (wt * y[lo:hi + 1]).sum()
+            sxx = (wt * xs * xs).sum()
+            sxy = (wt * xs * y[lo:hi + 1]).sum()
+            den = sw * sxx - sx * sx
+            if abs(den) <= 1e-12 * max(1.0, abs(sw * sxx)):
+                ys[i] = sy / sw
+            else:
+                ys[i] = (sy * sxx - sx * sxy) / den + (sw * sxy - sx * sy) / den * x[i]
+        if it == niter:
+            break
+        res = y - ys
+        mad = np.median(np.abs(res))
+        if mad <= 0:
+            break
+        r = np.abs(res) / (6 * mad)
+        rw = np.where(r < 1, (1 - r ** 2) ** 2, 0.0)
+    return ys
+
+
+def driftfix(px, py, t, span1d, span, thr):
+    """The drift at times t from reference lags (px, py), innFLUX's steps:
+    one-day rlowess, jumps where y(t) - y(t + 1 day) < thr placed at the
+    midpoint of the 10 %/90 % rise within two days (MATLAB risetime stands
+    there), then rlowess with the long span inside each stretch."""
+    px = np.asarray(px, float)
+    py = np.asarray(py, float)
+    t = np.asarray(t, float)
+    n = len(t)
+    s1 = rlowess(px, py, span1d)
+    y1 = np.interp(t, px, s1)
+    rising = np.zeros(n, bool)
+    for i in range(n):
+        if t[i] + 1 <= t[-1]:
+            rising[i] = y1[i] - np.interp(t[i] + 1, t, y1) < thr
+    jumps = []
+    if not (rising[0] or rising[-1]):
+        i = 0
+        while i < n - 1:
+            if not rising[i] and rising[i + 1]:
+                s = i + 1
+                e = s
+                while e < n - 1 and t[e + 1] <= t[s] + 2:
+                    e += 1
+                seg = y1[s:e + 1]
+                l10 = seg.min() + 0.1 * (seg.max() - seg.min())
+                l90 = seg.min() + 0.9 * (seg.max() - seg.min())
+                lt = s + int(np.argmin(seg))
+                while lt < e and y1[lt] < l10:
+                    lt += 1
+                ut = lt
+                while ut < e and y1[ut] < l90:
+                    ut += 1
+                jumps.append((lt + ut + 3) // 2 - 1)      # the engine's 1-based (lt+ut+1)/2
+                while i < n - 1 and rising[i + 1]:
+                    i += 1
+            i += 1
+    drift = np.full(n, np.nan)
+    bounds = [0] + jumps + [n]
+    for k in range(len(bounds) - 1):
+        a, b = bounds[k], bounds[k + 1]
+        if b <= a:
+            continue
+        t_lo = -np.inf if k == 0 else t[a]
+        t_hi = np.inf if k == len(bounds) - 2 else t[b]
+        m = (px >= t_lo) & (px < t_hi)
+        if not m.any():
+            continue
+        sw = rlowess(px[m], py[m], span) if m.sum() >= 3 else py[m]
+        drift[a:b] = np.interp(t[a:b], px[m], sw)
+    return drift, len(jumps)

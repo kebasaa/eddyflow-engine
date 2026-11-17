@@ -87,13 +87,14 @@ class ItStaysAModifierNotAMethod(unittest.TestCase):
 
     def test_no_new_timelag_method_was_added(self):
         #> EddyPro has four methods and the importer maps its tlag_meth=2 onto
-        #> maxcov. A fifth EddyFlow method is pwb; a sixth would need an
-        #> importer decision that nothing has made.
+        #> maxcov. A fifth EddyFlow method is pwb; the sixth is cumcov, the
+        #> cumulated covariance after innFLUX, which no EddyPro project can
+        #> name, so the importer has nothing to decide for it.
         methods = re.findall(r"Meth%tlag = '([a-z_&]+)'", READER)
         self.assertEqual(
             sorted(set(methods)),
             sorted({"none", "constant", "maxcov&default", "maxcov",
-                    "tlag_opt", "pwb"}),
+                    "tlag_opt", "pwb", "cumcov"}),
             "the set of time-lag methods changed: %s" % sorted(set(methods)))
 
     def test_the_importer_does_not_write_it(self):

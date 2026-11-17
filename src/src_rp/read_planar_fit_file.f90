@@ -56,6 +56,15 @@ subroutine ReadPlanarFitFile()
     if (open_status == 0) then
         call LogSay(' planar fit file found, reading rotation matrices..')
 
+        !> A moving-window file (after innFLUX) carries its own layout: the
+        !> windows it was fitted with are applied, not the project's.
+        if (ReadMovingWindows()) then
+            close(udf)
+            call LogSay(' Done.')
+            return
+        end if
+        rewind(udf)
+
         !> Read number of sectors from relevant line
         do
             read(udf, '(a)', iostat = io_status) dataline
@@ -168,4 +177,74 @@ subroutine ReadPlanarFitFile()
             // 'computed from this dataset instead of being read.')
     end if
     call LogSay(' Done.')
+contains
+
+    !> True when the file is a moving-window file and was read; the
+    !> project's own pf_mw_* settings then give way to the file's.
+    logical function ReadMovingWindows()
+        integer :: n
+        integer :: k
+        integer :: ios
+        integer :: nmw
+        integer :: nb
+        integer :: seedf
+        integer :: ne
+        real(kind = dbl) :: width
+        real(kind = dbl) :: centre
+        real(kind = dbl) :: vals(14)
+        character(ShortInstringLen) :: line
+        character(32) :: word
+
+        ReadMovingWindows = .false.
+        nmw = 0
+        do
+            read(udf, '(a)', iostat = ios) line
+            if (ios /= 0) return
+            if (index(line, 'Moving_window_sectors:') /= 0) then
+                read(line(index(line, ':') + 1:), *, iostat = ios) nmw, word, width
+                if (ios /= 0 .or. nmw <= 0 .or. nmw > MaxNumPfSect) return
+                exit
+            end if
+            if (index(line, 'Rotation matrices') /= 0) return
+        end do
+        do
+            read(udf, '(a)', iostat = ios) line
+            if (ios /= 0) return
+            if (index(line, 'North_offset:') /= 0) &
+                read(line(index(line, ':') + 1:), *, iostat = ios) PFSetup%north_offset
+            if (index(line, 'Bootstrap:') /= 0) then
+                read(line(index(line, ':') + 1:), *, iostat = ios) nb, word, seedf
+                if (ios == 0) then
+                    PFSetup%boot_n = nb
+                    PFSetup%boot_seed = seedf
+                end if
+            end if
+            if (index(line, 'window,centre_deg') /= 0) exit
+        end do
+        if (PFSetup%mw_num > 0 .and. (PFSetup%mw_num /= nmw &
+            .or. abs(PFSetup%mw_width - width) > 1d-6)) &
+            call LogSay('  Note: the planar-fit file''s moving windows differ from ' &
+                // 'the project''s pf_mw_* settings; the file''s are applied.')
+        PFSetup%mw_num = nmw
+        PFSetup%mw_width = width
+        PFSetup%num_sec = nmw
+        do n = 1, nmw
+            read(udf, *, iostat = ios) k, centre, ne, vals
+            if (ios /= 0 .or. k /= n) then
+                Meth%rot = 'double_rotation'
+                call ExceptionHandler(29)
+                ReadMovingWindows = .true.
+                return
+            end if
+            PFb(1:3, n) = vals(1:3)
+            PFStdAlpha(n) = vals(4)
+            PFStdBeta(n) = vals(5)
+            PFMat(1, 1:3, n) = vals(6:8)
+            PFMat(2, 1:3, n) = vals(9:11)
+            PFMat(3, 1:3, n) = vals(12:14)
+        end do
+        write(LogInteger, '(i6)') nmw
+        call LogSay('  ' // trim(adjustl(LogInteger)) // ' moving window(s) found.')
+        ReadMovingWindows = .true.
+    end function ReadMovingWindows
 end subroutine ReadPlanarFitFile

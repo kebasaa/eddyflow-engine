@@ -42,7 +42,10 @@ def body(name):
 class APlanarFitWorkerSkipsTheTimeLagPrepass(unittest.TestCase):
 
     def test_the_time_lag_block_admits_only_the_parent_and_to_workers(self):
-        i = MAIN.index("if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and.")
+        # The cumulated-covariance lag (tlag_meth 6, innFLUX) runs the same
+        # pre-pass, so CumCovGenerate joined the condition.
+        i = MAIN.index("if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate &\n"
+                       "        .or. CumCovGenerate) .and.")
         head = MAIN[i:MAIN.index("then", i) + 4]
         self.assertIn("(BatchIndex == 0 .or. BatchKind == 'to')", head)
 

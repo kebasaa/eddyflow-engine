@@ -37,6 +37,11 @@
 !                      CrossCovarianceSeries over the window the peak search
 !                      needs, exactly as CovMax does.
 !                      -> "series <lag> <found> <cov at lag>"
+!              drift   npt n span1d span thr
+!                      then npt lines "px py", then n lines "t".
+!                      SegmentedDrift (m_driftfix_core), after innFLUX
+!                      v1.2.0's driftfix tool.
+!                      -> "drift <njump> <ok>" then n lines "<drift>"
 !
 !              Lags in rows, EddyFlow's sign: positive = scalar delayed.
 !              Error code -9999. Built by the CMake target innfluxcmp.
@@ -46,6 +51,7 @@ program innflux_compare
     use m_numeric_kinds
     use m_covmax_core, only: CrossCovarianceSeries
     use m_lagpeak_core, only: FindCovPeak, PeakPadding
+    use m_driftfix_core, only: SegmentedDrift
     implicit none
     real(kind = dbl), parameter :: err = -9999d0
     character(len = 512) :: path
@@ -67,6 +73,16 @@ program innflux_compare
     real(kind = dbl), allocatable :: cov(:)
     real(kind = dbl), allocatable :: w(:)
     real(kind = dbl), allocatable :: c(:)
+    real(kind = dbl), allocatable :: px(:)
+    real(kind = dbl), allocatable :: py(:)
+    real(kind = dbl), allocatable :: t(:)
+    real(kind = dbl), allocatable :: drift(:)
+    real(kind = dbl) :: thr
+    integer :: npt
+    integer :: span1d
+    integer :: span
+    integer :: njump
+    logical :: ok
 
     call get_command_argument(1, path)
     if (len_trim(path) == 0) then
@@ -108,6 +124,22 @@ program innflux_compare
                     idbl /= 0, err, lag, found)
                 write(*, '(a, i0, 1x, l1, 1x, es24.16)') 'series ', lag, found, cov(lag)
                 deallocate(w, c, cov)
+            case ('drift')
+                read(u, *) npt, n, span1d, span, thr
+                allocate(px(npt), py(npt), t(n), drift(n))
+                do k = 1, npt
+                    read(u, *) px(k), py(k)
+                end do
+                do k = 1, n
+                    read(u, *) t(k)
+                end do
+                call SegmentedDrift(px, py, npt, t, n, span1d, span, thr, err, &
+                    drift, njump, ok)
+                write(*, '(a, i0, 1x, l1)') 'drift ', njump, ok
+                do k = 1, n
+                    write(*, '(es24.16)') drift(k)
+                end do
+                deallocate(px, py, t, drift)
             case default
                 write(*, '(a)') 'unknown case kind ' // trim(kind)
                 stop 2

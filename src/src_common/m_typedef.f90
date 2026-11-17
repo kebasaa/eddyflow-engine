@@ -96,6 +96,8 @@ module m_typedef
 
     !> u, v, w, ts + the gas slots + the per-instrument cell slots + air_t, air_p
     integer, parameter :: E2NumVar = NumAnemVar + MaxNumGases + MaxNumCellSlots + 2
+    !> Most boundaries tlag_cum_segments may state.
+    integer, parameter :: MaxCumSegments = 64
     integer, parameter :: MaxNumDiag = 6
     !> Highest variable index, and therefore the width of every array indexed by
     !> variable: the anemometric block followed by the gas slots.
@@ -174,6 +176,9 @@ module m_typedef
     !> column beside it printed uninitialised memory.
     integer, parameter :: toMinH2OClassN = 15
     integer, parameter :: MaxNumWSect = 36
+    !> Planar-fit rotations: the user's sectors, or up to 360 moving windows
+    !> (pf_mw_num, after innFLUX).
+    integer, parameter :: MaxNumPfSect = 360
     integer, parameter :: MaxNumWdfSectors = 16
 
     integer, parameter :: MaxProfNodes = 7
@@ -1458,6 +1463,12 @@ module m_typedef
         character(32) :: fix
         logical :: subperiod
         logical :: wsect_exclude(MaxNumWSect)
+        !> Moving windows (0 = the sectors above) and their width, degrees.
+        integer :: mw_num
+        real(kind = dbl) :: mw_width
+        !> Bootstrap resamples of the tilt angles (0 = off) and seed.
+        integer :: boot_n
+        integer :: boot_seed
     end type PFSetupType
 
    type :: RUsetupType
@@ -1566,6 +1577,27 @@ module m_typedef
         !> the Langford limit of detection, in the FLUXNET file's tail.
         logical :: out_theta_flux
         logical :: out_lod_noise_stats
+        !> Cumulated-covariance time lag, tlag_meth 6 (innFLUX step 2,
+        !> Striednig et al. 2020, after Park et al. 2013): the Hamming length
+        !> in rows, the period filters, and the segment boundaries in days
+        !> since 1970-01-01 (m_driftfix_core DaysFromCivil).
+        integer :: tlag_cum_filter_len
+        real(kind = dbl) :: tlag_cum_min_ustar
+        real(kind = dbl) :: tlag_cum_min_compl_sonic
+        real(kind = dbl) :: tlag_cum_min_compl_gas
+        real(kind = dbl) :: tlag_cum_max_sst
+        integer :: tlag_cum_nseg
+        real(kind = dbl) :: tlag_cum_seg(MaxCumSegments)
+        !> Clock-drift correction of that lag (innFLUX v1.2.0 driftfix).
+        integer :: tlag_drift_meth
+        real(kind = dbl) :: tlag_drift_span_d
+        real(kind = dbl) :: tlag_drift_jump_thr
+        real(kind = dbl) :: tlag_drift_max_s
+        logical :: tlag_drift_ref(GHGNumVar)
+        !> Per-period cross-covariance output, by gas slot.
+        logical :: out_ccf(GHGNumVar)
+        real(kind = dbl) :: out_ccf_max_lag_s
+        integer :: out_ccf_decim
         !> Nemitz et al. (2018): a gas whose covariance at its own detected
         !> lag does not clear tlag_borrow_snr times its detection limit, or
         !> whose lag sits on an end of the search window, takes the lag of a

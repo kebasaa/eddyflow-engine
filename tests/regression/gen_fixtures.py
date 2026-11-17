@@ -399,7 +399,56 @@ def after_section(header, extra):
     return build
 
 
+def build_cumcov(drift, long=False):
+    """base_tlag_opt switched to the cumulated-covariance lag (tlag_meth=6).
+
+    Three hours of data are too few for innFLUX's filters (u* > 0.3 m/s,
+    95 % sonic completeness, SST < 0.3), so they are opened up here: the
+    fixture tests the machinery - gather, merge, sum, resolve, apply - not
+    the filters' values. With drift, the MIRO's CO2 is the reference.
+    """
+    extra = ['tlag_cum_min_ustar=0', 'tlag_cum_min_compl_sonic=0',
+             'tlag_cum_min_compl_gas=0', 'tlag_cum_max_sst=1000000',
+             'tlag_cum_segments="2025-06-01T01:30"']
+    if drift:
+        extra += ['tlag_drift_meth=1', 'tlag_drift_span_d=0.1',
+                  'gas_1_tlag_drift_ref=1']
+
+    def build(src_lines):
+        out = []
+        for ln in src_lines:
+            if ln.startswith('tlag_meth='):
+                ln = 'tlag_meth=6'
+            if long and ln.startswith('pr_end_date='):
+                ln = 'pr_end_date=2025-06-03'
+            out.append(ln)
+            if ln.strip() == '[RawProcess_Settings]':
+                out.extend(extra)
+        return out
+    return build
+
+
 TARGETS = {
+    #: The cumulated-covariance lag after innFLUX (Striednig et al. 2020),
+    #: two segments, without and with the clock-drift correction.
+    'base_cumcov.eddyflow': ('base_tlag_opt.eddyflow', build_cumcov(False)),
+    #: Planar-fit extras after innFLUX (Striednig et al. 2020): 36
+    #: overlapping 30-degree moving windows with a 50-resample bootstrap, and
+    #: the bootstrap alone on the user's sectors.
+    'base_pf_mw.eddyflow': ('base_gappy_tlag.eddyflow', after_section(
+        '[RawProcess_TiltCorrection_Settings]',
+        ['pf_mw_num=36', 'pf_mw_width=30', 'pf_boot_n=50', 'pf_boot_seed=7'])),
+    'base_pf_boot.eddyflow': ('base_gappy_tlag.eddyflow', after_section(
+        '[RawProcess_TiltCorrection_Settings]', ['pf_boot_n=50', 'pf_boot_seed=7'])),
+    #: The same on base_tlag_par's longer range, so check_parallel.sh can
+    #: show a split pre-pass sums to the same lags as a serial one.
+    'base_cumcov_par.eddyflow': ('base_tlag_par.eddyflow', build_cumcov(True, long=True)),
+    #: Per-period cross-covariance output (innFLUX step 1 files) for the
+    #: first two gases, +/-30 s at every fifth lag.
+    'base_ccf_out.eddyflow': ('base_rec.eddyflow', after_section(
+        '[RawProcess_ParameterSettings]',
+        ['gas_1_out_ccf=1', 'gas_2_out_ccf=1', 'out_ccf_max_lag_s=30', 'out_ccf_decim=5'])),
+    'base_cumcov_drift.eddyflow': ('base_tlag_opt.eddyflow', build_cumcov(True)),
     #: The innFLUX smoothed peak search (Striednig et al. 2020) on a
     #: covariance-maximisation project; off it is byte-identical to
     #: base_ep_native.

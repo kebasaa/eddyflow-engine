@@ -24,6 +24,14 @@ find_covariance_peak.m):
     near-flat function is reported as KNOWN (that mean convention), not
     failed. Anything larger fails.
 
+Stage 2 - the clock-drift estimate (m_driftfix_core SegmentedDrift against
+innFLUX_driftfix.m, v1.2.0, unpublished): a synthetic run of 30-minute
+periods whose lag drifts linearly and jumps once, with noise and outliers,
+seen through three reference gases. The engine and the port must agree to
+1e-9 s, find the jump, and recover the true drift to within 0.3 s RMS.
+The jump is placed at the midpoint of the 10 % and 90 % crossings; innFLUX
+uses MATLAB's risetime, which neither side reproduces exactly.
+
 Exit status 1 on any unexplained difference.
 
     <dp python> tests/innflux/compare.py [--seed N] [--cases N] [--keep DIR]
@@ -43,7 +51,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
-from innflux_port import find_covariance_peak, step1_lag  # noqa: E402
+from innflux_port import driftfix, find_covariance_peak, step1_lag  # noqa: E402
 
 DRIVER = ROOT / "obj" / "win" / "innflux_compare.exe"
 if not DRIVER.exists():
@@ -143,6 +151,41 @@ def stage1_series(rng, ncases, keep):
           f"{sum(1 for k in known if k.startswith('series'))} known")
 
 
+def stage2_drift(rng, keep):
+    per_day = 48
+    days = 20
+    n = per_day * days
+    t = np.arange(n) / per_day
+    truth = 2.0 + 0.15 * t + np.where(t >= 12.0, 3.0, 0.0)
+    nref = 3
+    px = np.repeat(t, nref)
+    py = np.repeat(truth, nref) + 0.3 * rng.standard_normal(n * nref)
+    out = rng.random(n * nref) < 0.05
+    py[out] += rng.uniform(-8, 8, out.sum())
+    span1d = per_day * nref
+    span = 5 * per_day * nref
+    thr = -0.8
+    port, njump = driftfix(px, py, t, span1d, span, thr)
+    lines = ["drift", f"{len(px)} {n} {span1d} {span} {thr}"]
+    lines += [f"{a:.17e} {b:.17e}" for a, b in zip(px, py)]
+    lines += [f"{a:.17e}" for a in t]
+    res = [l for l in run_driver("\n".join(lines) + "\n", keep, "drift") if l.strip()]
+    head = res[0].split()
+    eng = np.array([float(v) for v in res[1:1 + n]])
+    diff = np.max(np.abs(eng - port))
+    rms = float(np.sqrt(np.mean((eng - truth) ** 2)))
+    print(f"stage 2 drift:  engine {head[1]} jump(s), port {njump}; "
+          f"max |engine - port| {diff:.2e} s; RMS vs truth {rms:.3f} s")
+    if int(head[1]) != njump:
+        failures.append(f"drift: engine found {head[1]} jumps, port {njump}")
+    if int(head[1]) != 1:
+        failures.append(f"drift: expected one jump, engine found {head[1]}")
+    if not diff < 1e-9:
+        failures.append(f"drift: engine and port differ by {diff:.3e} s")
+    if not rms < 0.3:
+        failures.append(f"drift: RMS against the injected drift {rms:.3f} s")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--seed", type=int, default=20201447)
@@ -155,6 +198,7 @@ def main():
     rng = np.random.default_rng(args.seed)
     stage1_peak(rng, args.cases, args.keep)
     stage1_series(rng, max(4, args.cases // 3), args.keep)
+    stage2_drift(rng, args.keep)
     for k in known:
         print("KNOWN  " + k)
     for f in failures:

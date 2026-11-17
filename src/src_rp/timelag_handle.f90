@@ -37,6 +37,7 @@
 subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     DefTlagUsed, InTimelagOpt)
     use m_rp_global_var
+    use m_cumcov, only: CumCovLagNow
     use m_pwb_timelag
     use m_pwb_stream, only: PwbEvidenceType, PwbGatherEvidence, PwbClassifyPeriod, &
         PwbEvidenceOnly, PwbLastEvidence
@@ -106,6 +107,24 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             TLag(ts:pe)    = E2Col(ts:pe)%def_tl
             ActTLag(ts:pe) = E2Col(ts:pe)%def_tl
             DefTlagUsed(ts:pe) = .true.
+        case ('cumcov')
+            !> Cumulated cross-covariance after innFLUX (Striednig et al.
+            !> 2020): the lag the pre-pass resolved for this period's segment,
+            !> plus any clock drift, set by CumCovPeriodLags. A variable with
+            !> none - sonic temperature, a gas with no period that passed the
+            !> filters - keeps its nominal lag, flagged as the default.
+            RowLags(ts:pe) = def_rl(ts:pe)
+            TLag(ts:pe)    = E2Col(ts:pe)%def_tl
+            ActTLag(ts:pe) = E2Col(ts:pe)%def_tl
+            DefTlagUsed(ts:pe) = .true.
+            do j = firstGas, lastGas
+                if (.not. E2Col(j)%present) cycle
+                if (CumCovLagNow(j) == error) cycle
+                RowLags(j) = nint(CumCovLagNow(j) * Metadata%ac_freq)
+                TLag(j) = CumCovLagNow(j)
+                ActTLag(j) = CumCovLagNow(j)
+                DefTlagUsed(j) = .false.
+            end do
         case ('maxcov', 'maxcov&default')
             !> covariance maximization method, with or without default
             do j = ts, pe

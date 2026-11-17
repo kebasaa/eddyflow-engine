@@ -226,6 +226,12 @@ subroutine InitOutFiles_rp()
         mkdir_status = CreateDir('"' // CospectraDir(1:len_trim(CospectraDir)) // '"')
     end if
 
+    !> Per-period cross-covariance functions (innFLUX), only if a gas asks.
+    if (any(RPSetup%out_ccf)) then
+        CcfDir = Dir%main_out(1:len_trim(Dir%main_out)) // SubDirCcf // slash
+        mkdir_status = CreateDir('"' // CcfDir(1:len_trim(CcfDir)) // '"')
+    end if
+
     !> Open full output file and writes header
     if (EddyFlowProj%out_full) then
         Test_Path = Dir%main_out(1:len_trim(Dir%main_out)) &

@@ -50,3 +50,24 @@ average of the function's derivative.
 
 Result 2026-11-17, seeds 1–3 and the default, 60 cases each: 0 mismatches,
 0 known.
+
+## Stage 2: the clock-drift estimate
+
+`m_driftfix_core` `SegmentedDrift` against a port of `tools/driftfix/innFLUX_driftfix.m`
+(innFLUX v1.2.0, 2023; based on a routine by M. Graus, adapted by M. Striednig; not
+described in Striednig et al. 2020). A synthetic run of 20 days of 30-minute
+periods whose lag drifts by 0.15 s per day and jumps by 3 s on day 12, seen
+through three reference gases with 0.3 s of noise and 5 % outliers.
+
+- The engine and the port must agree to 1e-9 s.
+- Both must find exactly one jump.
+- The recovered drift must be within 0.3 s RMS of the injected one.
+
+The robust LOWESS follows MATLAB's `smooth(..., 'rlowess')`: the span nearest
+points in index order, tricube weights, five bisquare passes on residuals
+scaled by six times their median (Cleveland 1979). innFLUX places each jump
+with MATLAB's `risetime`. Both sides here use the midpoint of the first 10 %
+and 90 % crossings within two days instead, which is a documented departure.
+
+Result 2026-11-17, seeds 1–5: one jump each; engine and port within 1.6e-12 s;
+RMS against the injected drift 0.015–0.167 s.

@@ -239,7 +239,8 @@ eddyflow_fixture(langfordcheck langford_check langford_check_main.f90 ${covmax_c
 # innFLUX-derived routines on cases tests/innflux/compare.py writes, so its
 # Python port of the MATLAB code and the engine can be compared number for
 # number. static_checks/test_innflux_compare_static.py builds and runs it.
-eddyflow_common_objects(innflux_core_objects m_numeric_kinds m_covmax_core m_lagpeak_core)
+eddyflow_common_objects(innflux_core_objects m_numeric_kinds m_covmax_core m_lagpeak_core
+    m_driftfix_core)
 eddyflow_fixture(innfluxcmp innflux_compare innflux_compare_main.f90 ${innflux_core_objects})
 
 # The PWB table check: store a year of rows through the shipped routines and

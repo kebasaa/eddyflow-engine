@@ -110,7 +110,8 @@ RP_GAS_NUMERIC = [
     "to_min_flux", "to_min_lag", "to_max_lag", "pwb_min_lag", "pwb_max_lag",
 ] + [f"drift_dir_{k}" for k in range(7)] \
   + [f"drift_inv_{k}" for k in range(7)] \
-  + ["step_lim"]
+  + ["step_lim"] \
+  + ["tlag_drift_ref", "out_ccf"]
 RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
 #: sa_source is the gas record whose fitted transfer function this gas is
 #: corrected with: absent is automatic, 0 the gas's own, j > 0 record j. A
@@ -265,6 +266,38 @@ FIXED_TAGS = {
         #: signal-to-noise ratio of the Langford limit of detection.
         427: "out_theta_flux",
         428: "out_lod_noise_stats",
+        #: Cumulated-covariance time lag (tlag_meth 6) after innFLUX's step 2
+        #: (Striednig et al. 2020; Park et al. 2013): the Hamming smoothing
+        #: of the summed |cross-covariance| and the period filters - u*, the
+        #: completeness of the sonic and of the gas, and the steady-state
+        #: test's relative deviation. Read only under tlag_meth 6.
+        429: "tlag_cum_filter_len",
+        430: "tlag_cum_min_ustar",
+        431: "tlag_cum_min_compl_sonic",
+        432: "tlag_cum_min_compl_gas",
+        433: "tlag_cum_max_sst",
+        #: Clock-drift correction of that lag, after innFLUX v1.2.0's driftfix
+        #: tool (unpublished): 0 off, 1 robust LOWESS with jump detection;
+        #: the smoothing span in days, the jump threshold in s per day, and
+        #: how far the drift may reach, in s.
+        434: "tlag_drift_meth",
+        435: "tlag_drift_span_d",
+        436: "tlag_drift_jump_thr",
+        437: "tlag_drift_max_s",
+        #: Per-period cross-covariance output (innFLUX's step 1 cov files):
+        #: the half-width in s and every k-th lag kept. Gases opt in with
+        #: gas_<i>_out_ccf.
+        438: "out_ccf_max_lag_s",
+        439: "out_ccf_decim",
+        #: Planar-fit extras after innFLUX (Striednig et al. 2020, Sect.
+        #: 2.3.1, Fig. 1), both off: N overlapping moving windows of width W
+        #: degrees instead of the sectors (innFLUX: 360 windows of 30), and
+        #: the bootstrap uncertainty of the tilt angles with its resample
+        #: count and seed. Stored in the planar-fit file when used.
+        440: "pf_mw_num",
+        441: "pf_mw_width",
+        442: "pf_boot_n",
+        443: "pf_boot_seed",
         61: "sr_step_u",
         62: "sr_step_v",
         63: "sr_step_w",
@@ -295,6 +328,10 @@ FIXED_TAGS = {
         81: "tlag_borrow_noise",
         82: "tlag_borrow_donor",
         86: "tlag_borrow_pairs",
+        #: The cumulated-covariance lag's segment boundaries, a quoted list
+        #: of yyyy-mm-ddTHH:MM; empty is one segment over the whole run. The
+        #: first of the text slots RESERVED_TOP opened.
+        102: "tlag_cum_segments",
         #: Extra raw-signal instrument-malfunction diagnostics (AL1 lag-1
         #: autocorrelation, DDI discrete/dominant-value test, Qn-scaled
         #: HF5/HF10/HD5/HD10 spike counts), ported from RFlux (Vitale et al.

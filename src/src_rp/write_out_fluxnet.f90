@@ -955,6 +955,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddIntDatumToDataline(4, csv_row, EddyFlowProj%err_label)
         case('pwb')
             call AddIntDatumToDataline(5, csv_row, EddyFlowProj%err_label)
+        case('cumcov')
+            call AddIntDatumToDataline(6, csv_row, EddyFlowProj%err_label)
     end select
     !> WPL terms
     if (EddyFlowProj%wpl) then

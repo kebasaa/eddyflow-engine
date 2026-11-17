@@ -146,6 +146,8 @@ module m_common_global_var
     character(8),  parameter :: TO_FilePadding = '_timelag'
     character(25), parameter :: SubDirBinCospectra      = 'eddyflow_binned_cospectra'
     character(23), parameter :: SubDirCospectra         = 'eddyflow_full_cospectra'
+    !> Per-period cross-covariance functions, after innFLUX's step 1 files.
+    character(12), parameter :: SubDirCcf               = 'eddyflow_ccf'
     character(22), parameter :: RS_flags_FilePadding    = '_statistical_screening'
     character(13), parameter :: RS_spike_FilePadding    = '_spike_counts'
     character(23), parameter :: Rot2D_FilePadding       = '_double_rotation_angles'
@@ -313,8 +315,11 @@ module m_common_global_var
     type(fluxnetChunksType) :: fluxnetChunks
 
     !> Variables to be validate
-    real(kind = dbl) :: PFMat(3, 3, MaxNumWSect) = 0.d0
-    real(kind = dbl) :: PFb(3, MaxNumWSect) = 0.d0
+    real(kind = dbl) :: PFMat(3, 3, MaxNumPfSect) = 0.d0
+    real(kind = dbl) :: PFb(3, MaxNumPfSect) = 0.d0
+    !> Bootstrap standard deviations of the tilt angles, degrees (pf_boot_n).
+    real(kind = dbl) :: PFStdAlpha(MaxNumPfSect) = -9999d0
+    real(kind = dbl) :: PFStdBeta(MaxNumPfSect) = -9999d0
     real(kind = dbl) :: ITS(E2NumVar)
 
     !> filename tools
@@ -595,7 +600,7 @@ module m_common_global_var
     integer, parameter :: cellRecLeapC  = 2
     integer, parameter :: diagRecLeapN  = 1
     integer, parameter :: diagRecLeapC  = 2
-    integer, parameter :: rpGasLeapN    = 26
+    integer, parameter :: rpGasLeapN    = 28
     integer, parameter :: rpGasLeapC    = 3
     integer, parameter :: cecRecLeapN   = 3
     integer, parameter :: cecRecLeapC   = 1

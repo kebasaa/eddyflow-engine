@@ -268,6 +268,11 @@ base_ep_licor
 base_ep_native
 base_covmax_innflux
 base_innflux_outputs
+base_cumcov
+base_cumcov_drift
+base_ccf_out
+base_pf_mw
+base_pf_boot
 "
 
 [ -n "$NAMED" ] && FIXTURES="$NAMED"
