@@ -658,6 +658,8 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     real(kind = dbl) :: carry_hours, tlag_pw, corr_pw, cv_99
     real(kind = dbl) :: maxcov_lag
     integer :: ar_s, ar_w, ar_t
+    integer :: lineno
+    character(16) :: linestr
     type(PWBResultType) :: res
 
     recognized = .false.
@@ -694,8 +696,12 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
         return
     end if
     recognized = .true.
+    !> From here every refusal says why. The caller stops the run with "see
+    !> the message above", and before each of these said something, a table
+    !> refused for a malformed line stopped it with no message above at all.
     read(u, '(a)', iostat=ios) line
     if (ios /= 0 .or. index(line, 'fingerprint=') /= 1) then
+        call SayBadHeader('fingerprint=', 2)
         close(u)
         return
     end if
@@ -708,11 +714,13 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     end if
     read(u, '(a)', iostat=ios) line
     if (ios /= 0 .or. index(line, 'project_id=') /= 1) then
+        call SayBadHeader('project_id=', 3)
         close(u)
         return
     end if
     read(u, '(a)', iostat=ios) line
     if (ios /= 0 .or. index(line, 'period_seconds=') /= 1) then
+        call SayBadHeader('period_seconds=', 4)
         close(u)
         return
     end if
@@ -724,19 +732,24 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     end if
     read(u, '(a)', iostat=ios) line
     if (ios /= 0 .or. trim(line) /= 'data') then
+        call SayBadHeader('data', 5)
         close(u)
         return
     end if
     read(u, '(a)', iostat=ios) line
     if (ios /= 0 .or. index(line, 'date,time,gas,') /= 1) then
+        call SayBadHeader('date,time,gas,', 6)
         close(u)
         return
     end if
+    lineno = 6
     do
         read(u, '(a)', iostat=ios) line
         if (ios /= 0) exit
+        lineno = lineno + 1
         if (len_trim(line) == 0) cycle
         call InitPwbResult(res)
+        call PwbUnstarFields(line)
         read(line, *, iostat=ios) date, time, gas_label, &
             selected_lag, raw_row_lag, hdi_low, hdi_high, hdi_range, combo, edge_pinned, &
             unrestricted_lag, outside, raw_cov, &
@@ -746,6 +759,16 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
             tlag_pw, corr_pw, cv_99, differenced, ar_s, ar_w, ar_t, &
             maxcov_lag
         if (ios /= 0 .or. .not. ValidPwbPeriodTimestamp(date, time)) then
+            write(linestr, '(i0)') lineno
+            if (ios /= 0) then
+                call LogSay(' Fatal> PWB time-lag file line ' // trim(linestr) &
+                    // ' could not be read:')
+            else
+                call LogSay(' Fatal> PWB time-lag file line ' // trim(linestr) &
+                    // ' has no valid date and time:')
+            end if
+            call LogSay('        ' // line(1:min(len_trim(line), 200)))
+            call LogSay('        ' // trim(path))
             close(u)
             return
         end if
@@ -799,6 +822,24 @@ subroutine ReadPwbTimelagCache(path, recognized, valid)
     PwbCacheLoaded = .true.
     PwbCacheDirty = .false.
     valid = PwbTimelagCacheN > 0
+    if (.not. valid) then
+        call LogSay(' Fatal> PWB time-lag file has a header but no rows:')
+        call LogSay('        ' // trim(path))
+    end if
+
+contains
+
+    !> A header line that is missing or is not what this version writes.
+    subroutine SayBadHeader(expected, at)
+        character(*), intent(in) :: expected
+        integer, intent(in) :: at
+        character(16) :: atstr
+
+        write(atstr, '(i0)') at
+        call LogSay(' Fatal> PWB time-lag file line ' // trim(atstr) &
+            // ' should start with "' // expected // '" and does not:')
+        call LogSay('        ' // trim(path))
+    end subroutine SayBadHeader
 end subroutine ReadPwbTimelagCache
 
 subroutine StorePwbTimelagCacheAt(date, time, gas, actual_lag, used_lag, row_lag, default_used, res)
@@ -850,7 +891,7 @@ subroutine WritePwbTimelagCache()
             // '",",f12.6,",",l1,",",f14.6,",",f12.6,",",f12.6,",",i0,",",l1,' &
             // '",",a,",",a,",",a,",",a,",",a,' &
             // '",",f12.6,",",f12.6,",",f12.6,",",l1,",",l1,",",f12.6,' &
-            // '",",f12.6,",",f12.8,",",f12.8,",",l1,",",i0,",",i0,",",i0,",",f12.6)') &
+            // '",",f12.6,",",a,",",a,",",l1,",",i0,",",i0,",",i0,",",f12.6)') &
             trim(PwbTimelagCache(i)%date), trim(PwbTimelagCache(i)%time), &
             trim(GasLabel(PwbTimelagCache(i)%gas)), &
             PwbTimelagCache(i)%result%selected_lag, PwbTimelagCache(i)%result%row_lag, &
@@ -872,8 +913,8 @@ subroutine WritePwbTimelagCache()
             PwbTimelagCache(i)%result%block_length_clamped, &
             PwbTimelagCache(i)%result%hdi_prefiltered, &
             PwbTimelagCache(i)%result%carry_hours, &
-            PwbTimelagCache(i)%result%tlag_pw, PwbTimelagCache(i)%result%corr_pw, &
-            PwbTimelagCache(i)%result%cv_99, PwbTimelagCache(i)%result%differenced, &
+            PwbTimelagCache(i)%result%tlag_pw, PwbFixed8(PwbTimelagCache(i)%result%corr_pw), &
+            PwbFixed8(PwbTimelagCache(i)%result%cv_99), PwbTimelagCache(i)%result%differenced, &
             PwbTimelagCache(i)%result%ar_order_scalar, PwbTimelagCache(i)%result%ar_order_w, &
             PwbTimelagCache(i)%result%ar_order_t, &
             PwbTimelagCache(i)%result%maxcov_lag
@@ -885,6 +926,72 @@ subroutine WritePwbTimelagCache()
     write(*, '(a)') ' PWB half-hourly time-lag table written to: ' // trim(path)
     write(ulog, '(a)') ' PWB half-hourly time-lag table written to: ' // trim(path)
 end subroutine WritePwbTimelagCache
+
+!***************************************************************************
+!> \brief A correlation-sized value, eight decimals in twelve characters.
+!>
+!> corr_pw and cv_99 are bounded by one, so f12.8 holds every value they can
+!> take - except the error code. A period with no detection of its own keeps
+!> both at error, and -9999 to eight decimals is fourteen characters, so the
+!> table carried twelve asterisks there. Its own reader then failed on the
+!> first such row and refused the whole table: a step-2 run on CH-LAE
+!> stopped before its first period over a step-1 table twelve hours old.
+!> The error code goes out as every other error column in the table does,
+!> -9999.000000, in the same twelve characters.
+!***************************************************************************
+character(12) function PwbFixed8(x)
+    real(kind = dbl), intent(in) :: x
+
+    if (x == error) then
+        write(PwbFixed8, '(f12.6)') x
+    else
+        write(PwbFixed8, '(f12.8)') x
+    end if
+end function PwbFixed8
+
+!***************************************************************************
+!> \brief Read a field of asterisks back as the error code.
+!>
+!> For the tables written before PwbFixed8: their corr_pw and cv_99 hold
+!> twelve asterisks wherever the value was the error code, and a list-directed
+!> read cannot take them. Those two are the only columns whose width a real
+!> value cannot overflow - both are bounded by one - so the asterisks there
+!> can only ever have been the error code, and reading them back as it is
+!> exact. Any other column of asterisks gets the same reading; none of them is
+!> wide enough to fail on anything but the error code either.
+!***************************************************************************
+subroutine PwbUnstarFields(line)
+    character(*), intent(inout) :: line
+    character(len(line)) :: out
+    integer :: start, comma, n, k
+    character(*), parameter :: errText = '-9999.0'
+
+    if (index(line, '*') == 0) return
+    out = ''
+    n = 0
+    start = 1
+    do
+        comma = index(line(start:), ',')
+        if (comma == 0) then
+            k = len_trim(line)
+        else
+            k = start + comma - 2
+        end if
+        if (k >= start .and. verify(trim(adjustl(line(start:k))), '*') == 0 &
+            .and. len_trim(line(start:k)) > 0) then
+            out(n + 1:n + len(errText)) = errText
+            n = n + len(errText)
+        else if (k >= start) then
+            out(n + 1:n + k - start + 1) = line(start:k)
+            n = n + k - start + 1
+        end if
+        if (comma == 0) exit
+        out(n + 1:n + 1) = ','
+        n = n + 1
+        start = start + comma
+    end do
+    line = out
+end subroutine PwbUnstarFields
 
 !***************************************************************************
 !> Decide every period's time-lag with the whole record in hand.

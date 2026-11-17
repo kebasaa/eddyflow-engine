@@ -167,6 +167,22 @@ Unreleased
 	       EditIniFile only rewrites lines that are there, and an automatic
 	       gas has no gas_<i>_sa_source line.
 	  Pinned by static_checks/test_sa_source_static.py.
+	- Fix: A PWB half-hourly time-lag table with gap-filled periods could
+	       not be read back. corr_pw and cv_99 were written as f12.8, and a
+	       period with no detection of its own keeps both at the error code,
+	       which does not fit: the table carried twelve asterisks there, and
+	       its reader refused the whole table at the first such row. A run
+	       reusing it - step 2 of a two-step PWB run - stopped before its
+	       first period with "could not be used; see the message above"
+	       and nothing above. The error code is now written as -9999.000000,
+	       as in every other column, and the reader takes a field of
+	       asterisks as the error code, so tables written before this are
+	       read as they are and need not be regenerated.
+	- Fix: Every reason the PWB time-lag table can be refused is now said:
+	       a missing or malformed header line, a row that cannot be read (by
+	       line number, with the row), and a table with no rows. Six of them
+	       used to stop the run with no message.
+	  Pinned by static_checks/test_pwb_table_roundtrip_static.py.
 
 8.2.0 (2026-11-11)
 
