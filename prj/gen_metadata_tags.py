@@ -30,7 +30,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "src_common" / "m_common_global_var.f90"
 
-NUM_COLS = 200
+NUM_COLS = 320
 
 # --------------------------------------------------------------------------
 # Keys EddyFlow adds beyond what LI-COR's own software writes - the extended

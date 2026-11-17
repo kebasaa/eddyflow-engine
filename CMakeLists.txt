@@ -166,6 +166,14 @@ function(eddyflow_executable target output_name)
         OUTPUT_NAME ${output_name}
         RUNTIME_OUTPUT_DIRECTORY "${EDDYFLOW_BIN_DIR}")
     target_link_options(${target} PRIVATE ${EDDYFLOW_LDFLAGS_LIST})
+    # Windows gives the main thread 2 MB of stack by default, Linux and macOS
+    # 8 MB. Some per-variable temporaries scale with the gas ceiling squared
+    # (E2NumVar x E2NumVar), so 128 gases overflowed 2 MB on Windows
+    # (STATUS_STACK_OVERFLOW, 0xC00000FD). 64 MB reserved; only what is used
+    # is committed.
+    if(WIN32)
+        target_link_options(${target} PRIVATE "-Wl,--stack,67108864")
+    endif()
 endfunction()
 
 add_executable(eddyflow_rp "${RP_MAIN}"

@@ -785,7 +785,7 @@ subroutine WriteOutBinnedCoSpectra(String, bnf, bcnt, BinnedSpectrum, BinnedCosp
     integer :: spec_slots(E2NumVar), cosp_slots(E2NumVar)
     character(64) :: e2sg(E2NumVar)
     character(PathLen) :: BinCospectraPath
-    character(LongOutstringLen) :: dataline
+    character(SpecLineLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
@@ -914,7 +914,7 @@ subroutine WriteOutBinnedOgives(String, bnf, bcnt, BinnedOgive, BinnedCoOgive &
     integer :: spec_slots(E2NumVar), cosp_slots(E2NumVar)
     character(64) :: e2sg(E2NumVar)
     character(PathLen) :: BinOgivesPath
-    character(LongOutstringLen) :: dataline
+    character(SpecLineLen) :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
@@ -1031,10 +1031,10 @@ subroutine WriteOutFullCoSpectra(String, nf, Spectrum, Cospectrum, &
     integer :: i
     integer :: var
     character(PathLen) :: CospectraPath
-    character(LongOutstringLen) :: dataline
-    character(LongOutstringLen) :: dataline1
-    character(LongOutstringLen) :: dataline2
-    character(LongOutstringLen) :: dataline3
+    character(SpecLineLen) :: dataline
+    character(SpecLineLen) :: dataline1
+    character(SpecLineLen) :: dataline2
+    character(SpecLineLen) :: dataline3
     character(DatumLen) :: datum = ''
     !> Wide enough for a record-derived species tag; the historical eight are
     !> three or four characters, but a disambiguated one such as `cos_2` is not.

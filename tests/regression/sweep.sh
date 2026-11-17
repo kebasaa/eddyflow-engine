@@ -273,6 +273,7 @@ base_cumcov_drift
 base_ccf_out
 base_pf_mw
 base_pf_boot
+base_many
 "
 
 [ -n "$NAMED" ] && FIXTURES="$NAMED"
@@ -354,6 +355,7 @@ for f in $FIXTURES; do
                            gen_dir=data_slow_drift_integr; gen=gen_slow_drift.py ;;
         base_slow_drift_white)
                            gen_dir=data_slow_drift_white; gen=gen_slow_drift.py ;;
+        base_many)         gen_dir=data_many;         gen=gen_many.py ;;
         *)                 gen_dir= ;;
     esac
     if [ -n "$gen_dir" ] && [ ! -d "$HERE/$gen_dir" ]; then

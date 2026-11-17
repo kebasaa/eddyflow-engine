@@ -1,6 +1,28 @@
 Unreleased
 
     Engine:
+	- Change: Up to 128 gases per project (MaxNumGases 64 -> 128), 320
+	          raw columns (MaxNumCol 200 -> 320) and 64 custom variables
+	          (MaxUserVar 30 -> 64), so a PTR-MS dataset with a tracer per
+	          mass fits one run (innFLUX's use case, Striednig et al. 2020).
+	          A project's output depends on the gases it configures, not
+	          on the ceiling: the regression fixtures are byte-identical.
+	          New fixture base_many (gen_many.py): 80 gases.
+	- Fix: The output line buffer (LongOutstringLen) is derived from the
+	       ceilings. The FLUXNET header holds a covariance for every pair
+	       of gases, so it grows with their square; the fixed 65536
+	       characters were already too short for a full 64-gas project
+	       (about 180 kB), whose header was cut.
+	- Fix: The engine reserves a 64 MB stack on Windows (the default is
+	       2 MB; Linux and macOS give 8 MB). The larger ceiling overflowed
+	       it (STATUS_STACK_OVERFLOW).
+	- Change: Faster per period, results bitwise unchanged. The
+	          covariance matrix skips variable slots with no data and
+	          copies its symmetric half; the (co)spectra and ogive files
+	          build their rows in a row-sized buffer (SpecLineLen), not
+	          the FLUXNET-sized one, since each row append costs the
+	          buffer's length. base_rec: 17.1 s -> 14.5 s per run. Peak
+	          memory 98 -> 179 MB, from the larger static buffers.
 	- New: Planar-fit extras after innFLUX (Striednig et al. 2020, Sect.
 	       2.3.1 and Fig. 1), both off by default. pf_mw_num/pf_mw_width
 	       fit N overlapping moving windows instead of the sectors (innFLUX:

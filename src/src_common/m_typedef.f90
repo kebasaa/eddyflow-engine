@@ -49,11 +49,12 @@ module m_typedef
     integer, parameter :: MaxNumRawFlags = 10
     integer, parameter :: NumDegH = 9
     !> Columns a .metadata file may describe. Sized from what a full-capacity
-    !> project needs: 64 gases, 8 instruments x (4 cell + 2 diagnostic), the
-    !> sonic and its diagnostic, air_t/air_p and MaxUserVar customs = 149.
+    !> project needs: 128 gases, 8 instruments x (4 cell + 2 diagnostic), the
+    !> sonic and its diagnostic, air_t/air_p and MaxUserVar customs = 247.
+    !> Raised from 200 with the gas ceiling, for PTR-MS datasets (innFLUX).
     !> Must equal NUM_COLS in prj/gen_metadata_tags.py, which emits the
     !> per-column tag tables; the generator has a --check mode that says so.
-    integer, parameter :: MaxNumCol = 200
+    integer, parameter :: MaxNumCol = 320
 
     !> Gas capacity. A gas slot's species is decided at runtime from the
     !> project file, so this is a ceiling rather than a fixed list, and it is
@@ -62,7 +63,9 @@ module m_typedef
     !> never read - no array sized by it, no loop bounded by it - so it only
     !> ever described the interface's own input rule. Removed rather than left
     !> to be mistaken for a constraint the engine enforces.
-    integer, parameter :: MaxNumGases = 64
+    !> 128 since the innFLUX work: a PTR-MS reports many masses, and 64
+    !> left a PTR-TOF dataset split across runs.
+    integer, parameter :: MaxNumGases = 128
     !> How many CO2/water pairs the partition may be run over, and how many
     !> further species each pair may carry. One pair per analyser is the shape
     !> this is sized for, so the ceiling is the instrument ceiling.
@@ -113,7 +116,7 @@ module m_typedef
     !> the variable count at ~9 before a 32-bit integer overflows. They are now
     !> built directly as characters, so the only limit is this length.
     integer, parameter :: FlagStrLen = 1 + GHGNumVar
-    integer, parameter :: MaxUserVar = 30
+    integer, parameter :: MaxUserVar = 64
     !> Per-analyser fields the dynamic metadata file can override, per gas:
     !> manufacturer, model, measure type, the three separations, the three
     !> tube properties, kw, ko, the two path lengths and tau. Spelled out in
@@ -162,7 +165,22 @@ module m_typedef
     !> variables by. That is what a two-pairing project did against the old
     !> 16348, which is why the number is now well clear of any real layout
     !> rather than just clear of the one that was tried.
-    integer, parameter :: LongOutstringLen = 65536
+    !> Derived from the ceilings since the gas limit went to 128: the FLUXNET
+    !> header holds a block per gas (about 2 kB each) and a covariance for
+    !> every PAIR of gases (about 32 characters each), so it grows with the
+    !> square of the gas count. The fixed 65536 was already too short for a
+    !> full 64-gas project (~180 kB). These are static buffers - no
+    !> -frecursive - so the size costs memory, not stack.
+    integer, parameter :: LongOutstringLen = 65536 + 2048 * GHGNumVar &
+        + 32 * (MaxNumGases * (MaxNumGases - 1)) / 2
+
+    !> One row of a (co)spectra or ogive file: two frequencies and, per
+    !> variable, a spectrum and a cospectrum, each at most DatumLen wide, plus
+    !> room for the header labels. Not LongOutstringLen: these files write a
+    !> row per frequency, thousands per period, and every AddDatum costs the
+    !> buffer's whole length. On the 596 kB LongOutstringLen of 128 gases the
+    !> full-cospectra writer went from 3 s to 23 s per run of base_rec.
+    integer, parameter :: SpecLineLen = DatumLen * (2 * GHGNumVar + 8)
 
     integer, parameter :: iniLabelLen = 64
     integer, parameter :: iniValueLen = PathLen

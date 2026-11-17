@@ -119,8 +119,8 @@ class TheProjectNamesItsSignalColumns(unittest.TestCase):
         """
         globals_ = read(GLOBALS)
         for name, value in (("gasNumTag", 33), ("cellNumTag", 34),
-                            ("diagNumTag", 35), ("diagRecOriginC", 243),
-                            ("cecRecOriginC", 275)):
+                            ("diagNumTag", 35), ("diagRecOriginC", 371),
+                            ("cecRecOriginC", 403)):
             self.assertIn(
                 "integer, parameter :: %s = %d" % (name, value), globals_,
                 name + " moved - every record after it is now misaddressed")
