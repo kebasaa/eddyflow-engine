@@ -216,6 +216,16 @@ Unreleased
 	       36000 at 20 Hz), not by the flux's, so the two can differ a
 	       little even where nothing was out of step.
 	  Pinned by static_checks/test_spectra_common_window_static.py.
+	- New: power_of_two=2 computes the (co)spectra on the largest number of
+	       samples with no prime factor above 13 (FftFriendlyLength). The
+	       FFT, FFTPACK, is fast for any length without a large prime factor
+	       - per transform 0.12 ms at 32768 rows, 0.21 ms at 35750, 865 ms at
+	       35759, a prime - so this runs within 1.5 times the power-of-two
+	       time and leaves out at most 1 % of a period (0.15 % on average),
+	       where a power of two leaves out 9 % of 30 minutes at 20 Hz and 43 %
+	       at 32 Hz. 1 and 0 are unchanged; an engine from before reads 2 as
+	       every sample.
+	  Pinned by static_checks/test_fft_friendly_length_static.py.
 
 8.2.0 (2026-11-11)
 

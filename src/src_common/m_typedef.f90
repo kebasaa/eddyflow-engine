@@ -1564,6 +1564,9 @@ module m_typedef
         logical :: do_spectral_analysis
         logical :: use_geo_north
         logical :: power_of_two
+        !> The third choice of power_of_two (=2): the largest FFT-friendly
+        !> length, no prime factor above 13, instead of a power of two.
+        logical :: fft_friendly_len
         logical :: bu_multi
         logical :: filter_al
         logical :: filter_sr

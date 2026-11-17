@@ -1161,8 +1161,12 @@ subroutine WriteVariablesRP()
     if(SCTags(65)%value == '-1') RPsetup%bu_corr = 'none'
     RPsetup%bu_multi = SCTags(66)%value(1:1) == '1'
 
-    !> Whether to use power-of-two samples for FFT
+    !> How many samples the FFT takes: 1 a power of two, 2 the largest
+    !> length with no prime factor above 13, anything else all of them. An
+    !> engine from before 2 existed reads it as all of them, which is slow
+    !> but right.
     RPsetup%power_of_two = SCTags(87)%value(1:1) == '1'
+    RPsetup%fft_friendly_len = SCTags(87)%value(1:1) == '2'
 
     !> Whether to refer wind direction to geographic north
     RPsetup%use_geo_north = SCTags(89)%value(1:1) == '1'

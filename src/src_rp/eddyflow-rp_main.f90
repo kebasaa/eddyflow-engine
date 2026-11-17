@@ -3026,6 +3026,9 @@ program EddyFlowRP
                         !> Calculate power-of-two closest to number of
                         !> available samples
                         call PowerOfTwo(max_nsmpl, SpecRow)
+                    elseif (RPsetup%fft_friendly_len) then
+                        !> Nearly all of them, at power-of-two speed
+                        call FftFriendlyLength(max_nsmpl, SpecRow)
                     else
                         !> use all samples
                         SpecRow = max_nsmpl
