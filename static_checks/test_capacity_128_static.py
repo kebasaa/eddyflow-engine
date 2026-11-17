@@ -122,6 +122,16 @@ class TheLayoutFollowsTheProject(unittest.TestCase):
             text = f.read_text(encoding="utf-8", errors="replace")
             self.assertNotRegex(text, r"::\s*Set\(\s*N\s*,\s*E2NumVar\s*\)", f.name)
 
+    def test_lag_results_keep_the_ceiling_width(self):
+        #> The pwb branch assigns E2NumVar-wide arrays to these whole; at
+        #> ncol (pe) the assignment did not conform and base_many crashed.
+        tl = read("src", "src_rp", "timelag_handle.f90")
+        head = tl[tl.index("subroutine TimeLagHandle"):tl.index("    !> local variables", tl.index("subroutine TimeLagHandle"))]
+        for decl in ("logical, intent(out) :: DefTlagUsed(E2NumVar)",
+                     "real(kind = dbl), intent(out) :: ActTLag(E2NumVar)",
+                     "real(kind = dbl), intent(out) :: TLag(E2NumVar)"):
+            self.assertIn(decl, head)
+
     def test_covariance_into_the_leading_block(self):
         self.assertIn("Stats%Cov(1:ncol, 1:ncol), error)", BASIC)
 

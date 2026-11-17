@@ -46,9 +46,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     integer, intent(in) :: nrow, ncol
     character(*), intent(in) :: TlagMeth
     logical, intent(in) :: InTimelagOpt
-    logical, intent(out) :: DefTlagUsed(ncol)
-    real(kind = dbl), intent(out) :: ActTLag(ncol)
-    real(kind = dbl), intent(out) :: TLag(ncol)
+    !> E2NumVar, not ncol: every caller passes E2NumVar-wide arrays, and the
+    !> pwb branch assigns the E2NumVar-wide pwb_raw_* to them whole and hands
+    !> them on to PwbClassifyPeriod at that width. ncol was E2NumVar until the
+    !> set became pe wide (SetSlotLayout); declared ncol, those assignments
+    !> did not conform (the checks build stops on them).
+    logical, intent(out) :: DefTlagUsed(E2NumVar)
+    real(kind = dbl), intent(out) :: ActTLag(E2NumVar)
+    real(kind = dbl), intent(out) :: TLag(E2NumVar)
     real(kind = dbl), intent(inout) :: Set(nrow, ncol)
     !> local variables
     integer :: i = 0
