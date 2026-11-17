@@ -1248,6 +1248,29 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         end do
     end if
 
+    !> Optional outputs after innFLUX (Striednig et al. 2020), matching the
+    !> header in init_fluxnet_file_rp.f90: the potential and virtual
+    !> potential temperature fluxes [K m s-1], and the far-lag noise of the
+    !> Langford limit of detection with the flux signal-to-noise ratio.
+    if (RPSetup%out_theta_flux) then
+        call AddFloatDatumToDataline(Essentials%wtheta, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Essentials%wthetav, csv_row, EddyFlowProj%err_label)
+    end if
+    if (RPSetup%out_lod_noise_stats) then
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%lod_noise_mean(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%lod_noise_sd(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%lod_noise_snr(var), csv_row, EddyFlowProj%err_label)
+        end do
+    end if
+
     !> Replace error codes with user-defined error code
     csv_row = replace2(csv_row, ',-9999,', ',' // trim(EddyFlowProj%err_label) // ',')
     csv_row = replace2(csv_row, ',NaN,',   ',' // trim(EddyFlowProj%err_label) // ',')

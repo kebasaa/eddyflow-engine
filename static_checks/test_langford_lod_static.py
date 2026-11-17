@@ -158,13 +158,21 @@ class OneRoutineTwoCallers(unittest.TestCase):
         for literal in ("150d0", "160d0", "180d0", "RUsetup%lod_its_mult",
                         "nint(10d0 * f)", "nint(30d0 * f)"):
             self.assertIn(literal, NOISE)
-        self.assertIn("call FarLagCovarianceNoise(Set(:, w), Set(:, var), nrow, centre(var)",
+        # The statistics come from FarLagCovarianceStats, which also hands
+        # back the far-lag mean and SD for the optional noise columns
+        # (out_lod_noise_stats); the chosen one is the random error.
+        self.assertIn("call FarLagCovarianceStats(Set(:, w), Set(:, var), nrow, centre(var)",
                       NOISE)
+        self.assertIn("if (RUsetup%lod_stat == 'sd') then", NOISE)
 
     def test_the_core_is_pure_and_offers_both_statistics(self):
         self.assertIn("pure subroutine FarLagCovarianceNoise", CORE)
+        self.assertIn("pure subroutine FarLagCovarianceStats", CORE)
         self.assertIn("if (stat == 'sd') then", CORE)
-        self.assertIn("re = sqrt(s2 / dble(nlags))", CORE)
+        # The sums and their order are unchanged, so each statistic is
+        # bitwise what the noise routine returned before (langfordcheck).
+        self.assertIn("sd = sqrt(max(0d0, s2 / dble(nlags) - mu ** 2))", CORE)
+        self.assertIn("rmse = sqrt(s2 / dble(nlags))", CORE)
 
 
 class TheOutputs(unittest.TestCase):

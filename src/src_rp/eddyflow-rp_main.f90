@@ -3091,6 +3091,9 @@ program EddyFlowRP
 
             !> Calculate fluxes at Level 0
             call Fluxes0_rp(.true.)
+            !> Optional w'theta' and w'theta_v' after innFLUX, from the level 0
+            !> covariances (off unless out_theta_flux).
+            call ThetaFluxes()
 
             !> As of now, still use CO2 analyzer software version as a proxy for
             !> Logger software version. However, the machinery is in place

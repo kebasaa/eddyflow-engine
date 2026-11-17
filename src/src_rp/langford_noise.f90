@@ -60,7 +60,7 @@
 !***************************************************************************
 subroutine LangfordNoise(Set, nrow, ncol, centre, want, re)
     use m_rp_global_var
-    use m_covmax_core, only: FarLagCovarianceNoise, CrossCovarianceSeries, &
+    use m_covmax_core, only: FarLagCovarianceStats, CrossCovarianceSeries, &
         IntegralScaleFromCorr
     implicit none
     !> in/out variables
@@ -82,9 +82,16 @@ subroutine LangfordNoise(Set, nrow, ncol, centre, want, re)
     real(kind = dbl) :: f
     real(kind = dbl) :: itscale
     real(kind = dbl), allocatable :: corr(:)
+    real(kind = dbl) :: mean
+    real(kind = dbl) :: sd
+    real(kind = dbl) :: rmse
+    real(kind = dbl) :: peak(1)
     character(256) :: msg
 
     re = error
+    LangfordNoiseMean = error
+    LangfordNoiseSd = error
+    LangfordNoisePeak = error
     f = Metadata%ac_freq
     if (f <= 0d0) return
 
@@ -149,7 +156,22 @@ subroutine LangfordNoise(Set, nrow, ncol, centre, want, re)
         hi = min(hi, nrow / 2 - abs(centre(var)))
         if (hi - lo < 2) cycle
 
-        call FarLagCovarianceNoise(Set(:, w), Set(:, var), nrow, centre(var), &
-            lo, hi, error, RUsetup%lod_stat, re(var), nlags)
+        !> The statistics FarLagCovarianceNoise chooses its random error
+        !> from, computed once: the chosen one is that error, bitwise, and
+        !> the mean and SD are kept for the optional noise columns.
+        call FarLagCovarianceStats(Set(:, w), Set(:, var), nrow, centre(var), &
+            lo, hi, error, mean, sd, rmse, nlags)
+        if (RUsetup%lod_stat == 'sd') then
+            re(var) = sd
+        else
+            re(var) = rmse
+        end if
+        if (RPSetup%out_lod_noise_stats .and. var <= E2NumVar) then
+            LangfordNoiseMean(var) = mean
+            LangfordNoiseSd(var) = sd
+            call CrossCovarianceSeries(Set(:, w), Set(:, var), nrow, &
+                centre(var), centre(var), error, peak)
+            LangfordNoisePeak(var) = peak(1)
+        end if
     end do
 end subroutine LangfordNoise

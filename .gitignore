@@ -42,6 +42,13 @@ src/src_rp/deprecated
 /tests/pwb_dyco/*
 !/tests/pwb_dyco/compare.py
 !/tests/pwb_dyco/README.md
+# The engine against a Python port of innFLUX (Striednig et al. 2020): the
+# scripts and their README, no output.
+!/tests/innflux/
+/tests/innflux/*
+!/tests/innflux/compare.py
+!/tests/innflux/innflux_port.py
+!/tests/innflux/README.md
 !/tests/regression/README.md
 !/tests/regression/run.sh
 !/tests/regression/sweep.sh

@@ -51,8 +51,8 @@ class TheExistingOriginsDidNotMove(unittest.TestCase):
         self.assertEqual(origin("gasRecOriginC"), 51)
         self.assertEqual(origin("cellRecOriginC"), 179)
         self.assertEqual(origin("diagRecOriginC"), 243)
-        self.assertEqual(origin("rpGasOriginN"), 425)
-        self.assertEqual(origin("rpGasOriginC"), 102)
+        self.assertEqual(origin("rpGasOriginN"), 525)
+        self.assertEqual(origin("rpGasOriginC"), 142)
         self.assertEqual(origin("fccGasOriginN"), 110)
         self.assertEqual(origin("fccGasOriginC"), 28)
 

@@ -387,7 +387,28 @@ def build_lod(src_lines):
     return out
 
 
+def after_section(header, extra):
+    """Insert extra lines right after an INI section header."""
+    def build(src_lines):
+        out = []
+        for ln in src_lines:
+            out.append(ln)
+            if ln.strip() == header:
+                out.extend(extra)
+        return out
+    return build
+
+
 TARGETS = {
+    #: The innFLUX smoothed peak search (Striednig et al. 2020) on a
+    #: covariance-maximisation project; off it is byte-identical to
+    #: base_ep_native.
+    'base_covmax_innflux.eddyflow': ('base_ep_native.eddyflow', after_section(
+        '[RawProcess_Settings]', ['covmax_smooth_len=15', 'covmax_peak_sign=2'])),
+    #: The optional innFLUX-style FLUXNET columns: W_THETA/W_THETA_V and the
+    #: Langford far-lag noise and flux SNR, on base_n_gas_lod.
+    'base_innflux_outputs.eddyflow': ('base_n_gas_lod.eddyflow', after_section(
+        '[RawProcess_Settings]', ['out_theta_flux=1', 'out_lod_noise_stats=1'])),
     'base_n_gas_lod.eddyflow': ('base_n_gas_ru.eddyflow', build_lod),
     'base_es95.eddyflow': ('base_n_gas_analytic.eddyflow', build_es95),
     'base_sa_write.eddyflow': ('base_n_gas_bin.eddyflow', build_sa_write),

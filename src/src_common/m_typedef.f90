@@ -1258,6 +1258,18 @@ module m_typedef
         !> detection, LoD = lod_alpha * lod_re: kept apart from rand_uncer,
         !> which holds the random error method's own estimate.
         real(kind = dbl) :: lod_re(E2NumVar)
+        !> With out_lod_noise_stats: the mean and population SD of the
+        !> far-lag cross-covariance behind lod_re, and the flux signal-to-
+        !> noise ratio |cov(0) - mean| / SD, as innFLUX reports them
+        !> (Striednig et al. 2020; Spirig et al. 2005). Covariance units.
+        real(kind = dbl) :: lod_noise_mean(E2NumVar)
+        real(kind = dbl) :: lod_noise_sd(E2NumVar)
+        real(kind = dbl) :: lod_noise_snr(E2NumVar)
+        !> With out_theta_flux: the kinematic potential and virtual potential
+        !> temperature fluxes w'theta' and w'theta_v' [K m s-1], uncorrected
+        !> for spectral losses as innFLUX computes them.
+        real(kind = dbl) :: wtheta
+        real(kind = dbl) :: wthetav
         real(kind = dbl) :: lod_re_LE
         real(kind = dbl) :: lod_re_ET
         real(kind = dbl) :: ar_s(GHGNumVar)
@@ -1542,6 +1554,18 @@ module m_typedef
         !> maximisation, not a method of its own: it changes which lag is
         !> picked and nothing about the covariance reported there.
         logical :: covmax_debaseline
+        !> Smoothed peak search after innFLUX (Striednig et al. 2020,
+        !> find_covariance_peak.m; smoothing after Taipale et al. 2010).
+        !> covmax_smooth_len: Hamming window in rows, 0 or 1 = no smoothing.
+        !> covmax_peak_sign: 0 largest |cov| (as before), 1 largest cov,
+        !> 2 innFLUX's derivative rule. Both 0 by default: CovMax unchanged.
+        integer :: covmax_smooth_len
+        integer :: covmax_peak_sign
+        !> Optional outputs after innFLUX (Striednig et al. 2020), both off:
+        !> W_THETA/W_THETA_V, and the far-lag noise mean, SD and flux SNR of
+        !> the Langford limit of detection, in the FLUXNET file's tail.
+        logical :: out_theta_flux
+        logical :: out_lod_noise_stats
         !> Nemitz et al. (2018): a gas whose covariance at its own detected
         !> lag does not clear tlag_borrow_snr times its detection limit, or
         !> whose lag sits on an end of the search window, takes the lag of a

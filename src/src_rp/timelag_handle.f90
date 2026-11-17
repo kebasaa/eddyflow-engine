@@ -394,6 +394,7 @@ end subroutine ApplyCovMaxDefaultFallback
 subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     use m_rp_global_var
     use m_covmax_core, only: CrossCovarianceSeries
+    use m_lagpeak_core, only: FindCovPeak, PeakPadding
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow
@@ -418,6 +419,10 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     real(kind = dbl) :: score
     real(kind = dbl) :: baseline
     logical :: debaseline
+    real(kind = dbl), allocatable :: ExtSeries(:)
+    logical :: found
+    integer :: elo
+    integer :: ehi
 
     Cov = 0.d0
     MaxCov = 0.d0
@@ -434,6 +439,29 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     !> maximum needs. The baseline-subtracted criterion needs both ends of the
     !> function present at once to draw the chord between them, and by the
     !> time the far end has been computed the near one is long gone.
+    !> The smoothed peak search after innFLUX (Striednig et al. 2020,
+    !> find_covariance_peak.m), opt-in. It smooths the function and may read
+    !> its derivative, both of which need the covariance a little past each
+    !> end of the window, so it takes its own, wider series and returns. The
+    !> reader switches it off under stochastic detrending, whose per-lag
+    !> windows it does not reproduce. Off - the default - nothing below this
+    !> block changes.
+    if (RPSetup%covmax_smooth_len > 1 .or. RPSetup%covmax_peak_sign /= 0) then
+        elo = max(lagmin - PeakPadding(RPSetup%covmax_smooth_len, &
+            RPSetup%covmax_peak_sign), -(nrow - 1))
+        ehi = min(lagmax + PeakPadding(RPSetup%covmax_smooth_len, &
+            RPSetup%covmax_peak_sign), nrow - 1)
+        allocate(ExtSeries(elo:ehi))
+        call CrossCovarianceSeries(Col1, Col2, nrow, elo, ehi, error, ExtSeries)
+        call FindCovPeak(ExtSeries, elo, ehi, lagmin, lagmax, &
+            RPSetup%covmax_smooth_len, RPSetup%covmax_peak_sign, &
+            RPSetup%covmax_debaseline, error, RLag, found)
+        if (.not. found) RLag = lagmin
+        TLag = dble(RLag) / Metadata%ac_freq
+        deallocate(ExtSeries)
+        return
+    end if
+
     nlag = lagmax - lagmin + 1
     allocate(CovSeries(nlag))
     !> Without stochastic detrending, the cross-covariance at every lag in one

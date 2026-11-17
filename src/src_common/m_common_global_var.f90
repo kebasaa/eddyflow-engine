@@ -584,9 +584,9 @@ module m_common_global_var
     integer, parameter :: diagRecOriginC = 243
     integer, parameter :: cecRecOriginC = 275
     integer, parameter :: agcRecOriginC = 283
-    integer, parameter :: rpGasOriginN = 425
+    integer, parameter :: rpGasOriginN = 525
     integer, parameter :: rpInstrMaxLackN = 357
-    integer, parameter :: rpGasOriginC = 102
+    integer, parameter :: rpGasOriginC = 142
     integer, parameter :: fccGasOriginN = 110
     integer, parameter :: fccGasOriginC = 28
     integer, parameter :: gasRecLeapN   = 6

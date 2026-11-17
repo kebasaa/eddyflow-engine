@@ -612,6 +612,19 @@ subroutine InitFluxnetFile_rp()
         call AddVariableFamily('_CCF')
     end if
 
+    !> Optional outputs after innFLUX (Striednig et al. 2020), each behind
+    !> its own switch and off by default. In the tail for the same reason as
+    !> the RFlux block above, and after it, matching write_out_fluxnet.f90.
+    if (RPSetup%out_theta_flux) then
+        call AddDatum(csv_row, 'W_THETA', separator)
+        call AddDatum(csv_row, 'W_THETA_V', separator)
+    end if
+    if (RPSetup%out_lod_noise_stats) then
+        call AddVariableFamily('_LOD_NOISE_MEAN')
+        call AddVariableFamily('_LOD_NOISE_SD')
+        call AddVariableFamily('_FLUX_SNR')
+    end if
+
     !> The header used to be built with a GS4 placeholder for the fourth gas
     !> and have its real name substituted in here, over the whole finished
     !> row. The layout pass in SelectFluxnetGasSlots names every gas for its

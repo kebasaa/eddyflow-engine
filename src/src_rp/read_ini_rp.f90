@@ -938,6 +938,34 @@ subroutine WriteVariablesRP()
     !> absent tag must mean off rather than whatever the shared character
     !> array happens to hold.
     RPSetup%covmax_debaseline = SCTagFound(79) .and. SCTags(79)%value(1:1) == '1'
+    !> Smoothed peak search after innFLUX (Striednig et al. 2020). Off unless
+    !> stated: absent, or a value out of range, leaves CovMax as it was.
+    RPSetup%covmax_smooth_len = 0
+    RPSetup%covmax_peak_sign = 0
+    if (SNTagFound(425)) then
+        RPSetup%covmax_smooth_len = nint(SNTags(425)%value)
+        if (RPSetup%covmax_smooth_len < 2) RPSetup%covmax_smooth_len = 0
+    end if
+    if (SNTagFound(426)) then
+        RPSetup%covmax_peak_sign = nint(SNTags(426)%value)
+        if (RPSetup%covmax_peak_sign < 0 .or. RPSetup%covmax_peak_sign > 2) &
+            RPSetup%covmax_peak_sign = 0
+    end if
+    !> Optional innFLUX-style outputs, each off unless stated.
+    RPSetup%out_theta_flux = .false.
+    RPSetup%out_lod_noise_stats = .false.
+    if (SNTagFound(427)) RPSetup%out_theta_flux = nint(SNTags(427)%value) == 1
+    if (SNTagFound(428)) RPSetup%out_lod_noise_stats = nint(SNTags(428)%value) == 1
+    !> Stochastic detrending detrends every shifted window on its own; the
+    !> smoothed search reads one covariance function and does not reproduce
+    !> that, so the two are not combined and the established option wins.
+    if (RPSetup%covmax_stocdet .and. (RPSetup%covmax_smooth_len > 0 &
+        .or. RPSetup%covmax_peak_sign /= 0)) then
+        call LogSay(' Warning: covmax_smooth_len and covmax_peak_sign are ignored' &
+            // ' under stochastic detrending (covmax_stocdet).')
+        RPSetup%covmax_smooth_len = 0
+        RPSetup%covmax_peak_sign = 0
+    end if
 
     !> Conditional lag borrowing, Nemitz et al. (2018). Three times the
     !> detection limit is the paper's threshold and EddyUH's.

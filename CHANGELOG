@@ -1,6 +1,49 @@
 Unreleased
 
     Engine:
+	- New: Two optional column groups at the end of the FLUXNET file, after
+	       innFLUX (Striednig et al. 2020). Each is off by default and has its
+	       own switch in [RawProcess_Settings].
+	       out_theta_flux=1 writes W_THETA and W_THETA_V, the kinematic
+	       potential and virtual potential temperature fluxes [K m s-1]
+	       (p0 = 1000 hPa, kappa = 0.286; Stull 1988). As in innFLUX they
+	       come from the uncorrected covariances: the sonic temperature is
+	       humidity-corrected the way level 2 H is (van Dijk et al. 2004),
+	       but no spectral correction is applied. Both need a water flux.
+	       out_lod_noise_stats=1 writes <VAR>_LOD_NOISE_MEAN and
+	       <VAR>_LOD_NOISE_SD, the mean and SD of the cross-covariance in the
+	       far-lag windows of the Langford limit of detection, and
+	       <VAR>_FLUX_SNR = |cov(0) - mean| / SD, innFLUX's flux
+	       signal-to-noise ratio (far-lag noise after Wienhold et al. 1994 and
+	       Spirig et al. 2005). Covariance units. Needs lod_meth=1, otherwise
+	       these columns hold the error code.
+	       FarLagCovarianceNoise now takes its statistics from the new
+	       FarLagCovarianceStats. The sums and their order are unchanged, so
+	       the Langford random error is bitwise as before (langfordcheck).
+	       Pinned by static_checks/test_innflux_outputs_static.py.
+	- New: Smoothed covariance peak search after innFLUX (Striednig et al.
+	       2020, Atmos. Meas. Tech. 13, 1447-1465; find_covariance_peak.m,
+	       innFLUX v1.2.0). Off by default. covmax_smooth_len smooths the
+	       cross-covariance with a normalised Hamming window of that many
+	       rows, run forwards and backwards so the peak does not move, before
+	       covariance maximisation takes the lag (smoothing before the peak
+	       search after Taipale et al. 2010; innFLUX uses 15). covmax_peak_sign
+	       picks the extremum: 0 the largest |cov| (the search as before), 1
+	       the largest cov, 2 innFLUX's rule, which takes the maximum when the
+	       function's 100-row moving-average derivative peaks before it dips,
+	       else the minimum. Both in [RawProcess_Settings]; with both at 0
+	       CovMax is exactly as before. Ignored under stochastic detrending.
+	       New module m_lagpeak_core. tests/innflux/compare.py checks it
+	       against a line-by-line Python port of innFLUX's MATLAB routine:
+	       360 cases, 0 mismatches. Pinned by
+	       static_checks/test_covmax_peak_innflux_static.py and
+	       test_innflux_compare_static.py.
+	- Change: The RawProcess tag tables reserve a run of blank slots below
+	          the per-gas records (RESERVED_TOP in prj/gen_project_tags.py),
+	          room for the opt-in innFLUX-derived settings. rpGasOriginN moved
+	          from 425 to 525 and rpGasOriginC from 102 to 142. Readers address
+	          the records through those parameters, so no setting changes
+	          meaning; output on six regression fixtures is byte-identical.
 	- Fix: A quoted list in the project now parses. The GUI quotes a value
 	       with a comma in it (cec_<i>_extra="5,4"), and the quotes reached
 	       the parsers, so a CEC pairing with two or more extra gases ran

@@ -235,6 +235,13 @@ eddyflow_fixture(covmaxcheck covmax_bitexact covmax_bitexact_main.f90 ${covmax_c
 # runs it.
 eddyflow_fixture(langfordcheck langford_check langford_check_main.f90 ${covmax_core_objects})
 
+# The innFLUX comparison driver (Striednig et al. 2020): the engine's
+# innFLUX-derived routines on cases tests/innflux/compare.py writes, so its
+# Python port of the MATLAB code and the engine can be compared number for
+# number. static_checks/test_innflux_compare_static.py builds and runs it.
+eddyflow_common_objects(innflux_core_objects m_numeric_kinds m_covmax_core m_lagpeak_core)
+eddyflow_fixture(innfluxcmp innflux_compare innflux_compare_main.f90 ${innflux_core_objects})
+
 # The PWB table check: store a year of rows through the shipped routines and
 # confirm every lookup returns the row a scan from row 1 would. Unlike the
 # others it needs the engine's own state, so it links every RP object but the

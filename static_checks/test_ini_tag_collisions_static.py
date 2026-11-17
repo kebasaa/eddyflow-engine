@@ -214,7 +214,9 @@ class IniTagCollisionStaticTests(unittest.TestCase):
         # The literal, because the structural check above would happily follow
         # the origin wherever a re-run moved it. Moving it is not wrong in
         # principle - it is wrong by accident, which is what this catches.
-        assert declared == 425, (
+        # 425 -> 525 was deliberate: RESERVED_TOP in gen_project_tags.py
+        # reserved 100 blank slots for the InnFLUX-derived options.
+        assert declared == 525, (
             f"the per-gas record block moved to {declared}; if that is "
             "deliberate, say so here, and check nothing appended a tag past "
             "the last hand-written one"

@@ -266,6 +266,8 @@ base_n_gas_sa_partial
 base_ep
 base_ep_licor
 base_ep_native
+base_covmax_innflux
+base_innflux_outputs
 "
 
 [ -n "$NAMED" ] && FIXTURES="$NAMED"

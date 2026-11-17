@@ -740,6 +740,7 @@ subroutine LodLangford15(Set, N, M)
     integer :: centre(M)
     logical :: want(M)
     real(kind = dbl) :: re(M)
+    integer :: var
 
     !> Written every period: nothing else resets these fields, so a period
     !> with the LoD off must not carry the last one forward. Converted to
@@ -748,6 +749,9 @@ subroutine LodLangford15(Set, N, M)
     Essentials%lod_re(u:lastGas) = error
     Essentials%lod_re_LE = error
     Essentials%lod_re_ET = error
+    Essentials%lod_noise_mean = error
+    Essentials%lod_noise_sd = error
+    Essentials%lod_noise_snr = error
     if (RUsetup%lod_meth /= 'langford_15') return
 
     call LogSay('  Estimating the limit of detection..')
@@ -764,4 +768,32 @@ subroutine LodLangford15(Set, N, M)
     Essentials%lod_re(u) = re(u)
     Essentials%lod_re(ts) = re(ts)
     Essentials%lod_re(firstGas:lastGas) = re(firstGas:lastGas)
+
+    !> Optional: the far-lag noise behind it, and the flux signal-to-noise
+    !> ratio innFLUX reports, |cov(0) - mean| / SD (Striednig et al. 2020,
+    !> after Spirig et al. 2005). Covariance units, like lod_re before
+    !> Fluxes0 converts it.
+    if (RPSetup%out_lod_noise_stats) then
+        call LodNoiseStats(u)
+        call LodNoiseStats(ts)
+        do var = firstGas, lastGas
+            call LodNoiseStats(var)
+        end do
+    end if
+
+contains
+
+    subroutine LodNoiseStats(j)
+        integer, intent(in) :: j
+
+        Essentials%lod_noise_mean(j) = LangfordNoiseMean(j)
+        Essentials%lod_noise_sd(j) = LangfordNoiseSd(j)
+        if (LangfordNoiseMean(j) /= error .and. LangfordNoiseSd(j) /= error &
+            .and. LangfordNoisePeak(j) /= error) then
+            if (LangfordNoiseSd(j) > 0d0) &
+                Essentials%lod_noise_snr(j) = &
+                    abs(LangfordNoisePeak(j) - LangfordNoiseMean(j)) &
+                    / LangfordNoiseSd(j)
+        end if
+    end subroutine LodNoiseStats
 end subroutine LodLangford15

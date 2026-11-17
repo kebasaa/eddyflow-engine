@@ -173,6 +173,19 @@ CEC_PAIRS = const("MaxNumCecPairs")
 # --------------------------------------------------------------------------
 INSTR_LACK_ORIGIN = 357
 
+#: The highest index of a deliberately reserved run of blank slots at the end
+#: of a hand-written table, so that a batch of new flat keys has room below
+#: the record origin. Raising one of these is the ONE sanctioned way to move a
+#: record origin: it re-indexes every per-gas slot after it, which is harmless
+#: only because the readers address those slots through the generated
+#: rp*Origin* parameters, never by literal index. The 2026-11 raise made room
+#: for the opt-in InnFLUX-derived options (Striednig et al. 2020):
+#: RP.SNTags 425 -> 525 and RP.SCTags 102 -> 142.
+RESERVED_TOP = {
+    "RP.SNTags": 524,
+    "RP.SCTags": 141,
+}
+
 #: How much of its OWN expected data an instrument may be missing, in percent.
 #: Absent means "use the project-wide max_lack", which is every project written
 #: before this key existed. Keyed by the same 1-based index the .metadata uses
@@ -239,6 +252,19 @@ FIXED_TAGS = {
         366: "to_sample_min_n",
         367: "to_sample_seed",
         368: "to_dump_lags",
+        #: Smoothed covariance peak search after innFLUX (Striednig et al.
+        #: 2020; find_covariance_peak.m): the Hamming window length in rows
+        #: (0 off) and the sign rule (0 largest |cov|, 1 largest cov, 2
+        #: innFLUX's derivative rule). Both off by default, which is CovMax
+        #: exactly as before. The first two of the run RESERVED_TOP opened.
+        425: "covmax_smooth_len",
+        426: "covmax_peak_sign",
+        #: Optional innFLUX-style outputs (Striednig et al. 2020), each its
+        #: own switch, both off: the potential and virtual potential
+        #: temperature fluxes, and the far-lag noise mean, SD and the flux
+        #: signal-to-noise ratio of the Langford limit of detection.
+        427: "out_theta_flux",
+        428: "out_lod_noise_stats",
         61: "sr_step_u",
         62: "sr_step_v",
         63: "sr_step_w",
@@ -556,6 +582,17 @@ def process(path, table, marker, size_param, lim, check):
     for i, label in list(kept.items()):
         if label in retired:
             kept[i] = ""
+
+    # A reserved run of blank slots below the record block. Its top index is
+    # held as an unlabelled entry, so the record origin sits one past it and
+    # the blanks underneath are free for hand-placed tags without moving it.
+    top = RESERVED_TOP.get(marker)
+    if top is not None:
+        if any(i > top and l for i, l in kept.items()):
+            raise SystemExit(
+                f"{marker}: a hand-written tag sits above the reserved top "
+                f"{top}; raise RESERVED_TOP deliberately or move the tag")
+        kept.setdefault(top, "")
 
     # Where the record block starts before the hand-placed tags go in. Taking
     # it first is what lets the check below tell "filled a gap" from "appended
