@@ -226,6 +226,17 @@ Unreleased
 	       at 32 Hz. 1 and 0 are unchanged; an engine from before reads 2 as
 	       every sample.
 	  Pinned by static_checks/test_fft_friendly_length_static.py.
+	- Fix: The spike test crashed with a segmentation fault (SIGSEGV in
+	       PackFlagString) since the 128-gas ceiling - on CH-LAE four hours
+	       into a production run. Vickers and Mahrt (1997), Mauder et al.
+	       (2013) and the consecutive-difference despiking keep their flags
+	       up to the project's last gas but told PackFlagString they held
+	       GHGNumVar of them, so it read far past the end. Before the ceiling
+	       grew the read stayed in memory it could reach and wrote whatever
+	       it found there into the spike flag digits after the last gas,
+	       where "9" (not performed) belongs. Each now passes its array's own
+	       size.
+	  Pinned by static_checks/test_pack_flag_count_static.py.
 
 8.2.0 (2026-11-11)
 

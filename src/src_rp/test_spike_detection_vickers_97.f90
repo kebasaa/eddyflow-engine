@@ -337,8 +337,11 @@ subroutine TestSpikeDetectionVickers97(Set, N, printout)
         end if
     end do
 
-    !> Pack one digit per variable into the flag string
-    call PackFlagString(hflags(u:lastGas), GHGNumVar, CharHF%sr)
+    !> Pack one digit per variable into the flag string. The count is the
+    !> array's own: hflags ends at lastGas, and the ceiling (GHGNumVar) read
+    !> past it - leftover memory as flag digits, and since the 128-gas
+    !> ceiling a segfault. The slots after the last gas stay '9'.
+    call PackFlagString(hflags, size(hflags), CharHF%sr)
 
     !> Write on output variable
     if (.not. RPsetup%filter_sr) tot_spikes_sng(u:pe) = 0
