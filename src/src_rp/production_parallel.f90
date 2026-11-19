@@ -141,8 +141,8 @@ module m_production_parallel
     type(TimeLagType) :: CtxToPasGas(E2NumVar)
     type(TimeLagType) :: CtxToH2O(toMaxH2OClass, E2NumVar)
     logical :: CtxTimeLagOptSelected = .false.
-    real(kind = dbl) :: CtxPFMat(3, 3, MaxNumWSect)
-    real(kind = dbl) :: CtxPFb(3, MaxNumWSect)
+    real(kind = dbl) :: CtxPFMat(3, 3, MaxNumPfSect)
+    real(kind = dbl) :: CtxPFb(3, MaxNumPfSect)
     logical, allocatable :: CtxGoPlanarFit(:)
     real(kind = dbl) :: CtxBinGridAcFreq = -1d0
     real(kind = dbl), allocatable :: CtxBf(:)
@@ -635,6 +635,7 @@ contains
             if (RPsetup%out_full_sp(k) .or. RPsetup%out_full_cosp(k)) any_full = .true.
         end do
         if (any_full) call ToParentTree(CospectraDir)
+        if (any(RPSetup%out_ccf)) call ToParentTree(CcfDir)
     end subroutine ProdPieceBegins
 
     !***************************************************************************

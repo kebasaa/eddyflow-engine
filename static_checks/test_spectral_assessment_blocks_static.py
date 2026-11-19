@@ -70,16 +70,22 @@ class BlocksAreResolvedByName(unittest.TestCase):
         self.assertIn("skipFn", src,
                       "a block with no matching slot must still be read")
 
-    def test_shortness_is_decided_by_what_was_found(self):
-        """It used to mean 'the loop stopped early', which a file-driven loop
-        no longer expresses. It now means a wanted gas got no block."""
+    def test_a_missing_fit_is_decided_by_what_was_found(self):
+        """Whether a wanted gas got a fit is answered from the fits read, gas
+        by gas, through GasHasSpectralFit - not by how far the loop got. The
+        short_file flag that once said it is gone with the Alert(65) it
+        raised."""
         src = code(READER)
+        self.assertIn("own_fit(gas) = GasHasSpectralFit(gas)", src)
         #: Classes, not months. Both ranges are 1..12 and both used to be
         #: spelled JAN:DEC, which is how a month index came to be stored where
-        #: a class index belongs. The spelling is pinned so the two spaces
-        #: cannot quietly merge again.
-        self.assertRegex(src, r"all\(RegPar\(gas, 1:MaxGasClasses\)%fc == error\)")
-        self.assertIn("short_file = .true.", src)
+        #: a class index belongs. The spelling is pinned, now in the one
+        #: helper that asks, so the two spaces cannot quietly merge again.
+        helper = code("src/src_common/gas_slot_resolution.f90")
+        fn = helper[helper.index("logical function GasHasSpectralFit"):]
+        fn = fn[:fn.index("end function GasHasSpectralFit")]
+        self.assertIn("do cls = 1, MaxGasClasses", fn)
+        self.assertNotIn("JAN", fn)
 
 
 class SecondHygrometerRoundTrip(unittest.TestCase):
@@ -254,18 +260,32 @@ class SecondHygrometerRoundTrip(unittest.TestCase):
             "goodj == ierror", gate,
             "the file is gated on water's RH classes again; goodj is water's "
             "first usable class and belongs to the H2O spectra file below")
-        self.assertIn("call ExceptionHandler(110)", src,
+        self.assertIn("call ReportInsituCoverage(.false., own_fit)", src,
                       "a partial file must announce itself on the console")
+        self.assertIn("call ExceptionHandler(110)",
+                      code("src/src_fcc/spectral_assessment_diagnostics.f90"))
 
     def test_the_partial_warning_exists_and_names_both_outcomes(self):
         src = code("src/src_common/exception_handler.f90")
         self.assertIn("case(110)", src)
         block = src[src.index("case(110)"):]
-        block = block[:block.index("end select")]
-        for phrase in ("analytical", "readiness report"):
+        block = block[:block.index("case(111)")]
+        for phrase in ("analytical", "readiness report", "tube-mate"):
             self.assertIn(phrase, block,
-                          "Warning(110) must say what the unfitted gases got "
-                          "and where to read which gas is which")
+                          "Warning(110) must say what the unfitted gases got, "
+                          "that a borrowing gas is not one, and where to read "
+                          "which gas is which")
+
+    def test_a_file_that_was_read_has_its_own_warning(self):
+        """Reading a file assesses nothing and writes nothing, so it does not
+        get Warning(110)'s "succeeded" and "was written"."""
+        src = code("src/src_common/exception_handler.f90")
+        block = src[src.index("case(111)"):]
+        block = block[:block.index("case(116)")]
+        self.assertIn("was read", block)
+        self.assertIn("analytical", block)
+        self.assertIn("Gas Sources", block)
+        self.assertNotIn("succeeded", block)
 
     def test_the_method_is_chosen_per_gas_and_does_not_stick(self):
         """One gas without a fit used to demote every gas, and the demotion

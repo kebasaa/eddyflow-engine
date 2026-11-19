@@ -58,7 +58,7 @@ subroutine InitFluxnetFile_rp()
     character(96) :: cec_tag
     character(8) :: cec_kstr
     character(64) :: usg(NumUserVar)
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     include '../src_common/interfaces.inc'
 
 
@@ -67,6 +67,8 @@ subroutine InitFluxnetFile_rp()
     !> nothing. Every column name in this file comes from FluxnetLayoutTags,
     !> which SelectFluxnetGasSlots derives per record.
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     do j = 1, NumUserVar
         usg(j) = SafeFluxnetCustomLabel(j)
         call lowercase(usg(j))
@@ -610,6 +612,19 @@ subroutine InitFluxnetFile_rp()
         call AddVariableFamily('_HD10')
         call AddVariableFamily('_DIP')
         call AddVariableFamily('_CCF')
+    end if
+
+    !> Optional outputs after innFLUX (Striednig et al. 2020), each behind
+    !> its own switch and off by default. In the tail for the same reason as
+    !> the RFlux block above, and after it, matching write_out_fluxnet.f90.
+    if (RPSetup%out_theta_flux) then
+        call AddDatum(csv_row, 'W_THETA', separator)
+        call AddDatum(csv_row, 'W_THETA_V', separator)
+    end if
+    if (RPSetup%out_lod_noise_stats) then
+        call AddVariableFamily('_LOD_NOISE_MEAN')
+        call AddVariableFamily('_LOD_NOISE_SD')
+        call AddVariableFamily('_FLUX_SNR')
     end if
 
     !> The header used to be built with a GS4 placeholder for the fourth gas

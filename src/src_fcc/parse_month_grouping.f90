@@ -83,7 +83,14 @@ subroutine ParseMonthGrouping(spec, cls, ncls, ok)
     ncls = 0
     ok = .false.
 
-    body = adjustl(spec)
+    !> A list with a comma in it comes quoted from the GUI ("1-6,7-12") and
+    !> the INI reader keeps the quotes; left in, they fail the first and last
+    !> reads and refuse the whole list.
+    body = spec
+    do pos = 1, len_trim(body)
+        if (body(pos:pos) == '"' .or. body(pos:pos) == "'") body(pos:pos) = ' '
+    end do
+    body = adjustl(body)
     if (len_trim(body) == 0) return
 
     pos = 1

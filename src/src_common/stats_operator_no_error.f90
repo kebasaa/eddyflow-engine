@@ -334,9 +334,29 @@ subroutine CovarianceMatrixNoError(Set, nrow, ncol, Cov, err_float)
     integer :: Nact = 0
     real(kind = dbl) :: sumi
     real(kind = dbl) :: sumj
+    logical :: hasData(ncol)
+
+    !> A column with no valid value - every slot no instrument fills - gives
+    !> err against everything (Nact = 0), so it is not walked; and the matrix
+    !> is symmetric bit for bit (the same products and sums, only i and j
+    !> swapped), so the lower triangle is copied. Both keep every value what
+    !> the full double loop gave, and the cost follows the variables a project
+    !> has rather than the ceiling - which went from 102 to 166 slots when the
+    !> gas limit was raised to 128, and tripled the time per period.
+    do i = 1, ncol
+        hasData(i) = any(Set(:, i) /= err_float)
+    end do
 
     do i = 1, ncol
         do j = 1, ncol
+            if (j < i) then
+                Cov(i, j) = Cov(j, i)
+                cycle
+            end if
+            if (.not. (hasData(i) .and. hasData(j))) then
+                Cov(i, j) = err_float
+                cycle
+            end if
             sumi = 0d0
             sumj = 0d0
             Cov(i, j) = 0d0

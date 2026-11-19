@@ -38,7 +38,7 @@ subroutine TestNonSteadyWind(Set, N)
     implicit none
     !> in/out variables
     integer, intent(in) :: N
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: i = 0
     integer :: j = 0

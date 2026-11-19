@@ -88,7 +88,8 @@ subroutine AnalyticLowPassTransferFunction(nf, N, var, LocInstr, loc_var_present
             !> transfer function - and SpectralCorrectionFactors then
             !> reported no correction factor for it, whichever method
             !> was selected.
-            case (firstGas:lastGas)
+            !> MaxLastGas: a case needs a constant; var runs over u..lastGas here.
+            case (firstGas:MaxLastGas)
                 irga_freq = 1d0 / LocInstr(var)%tau
                 fp_irga(1:N) = nf(1:N) * dabs(LocInstr(var)%vpath_length / wind_speed)
                 fs_ver(1:N)  = nf(1:N) * dabs(LocInstr(var)%vsep / wind_speed)
@@ -292,7 +293,8 @@ subroutine LI7550_AnalogSignalsTransferFunctions(nf, N, var, ac_frequency, &
             !> hard-set .false. in write_processing_project_variables, so
             !> nothing reaches here. The selection is correct for the day the
             !> flags come back rather than waiting to be noticed then.
-            case(firstGas:lastGas)
+            !> MaxLastGas: a case needs a constant; var runs over u..lastGas here.
+            case(firstGas:MaxLastGas)
                 BPTF(1:N)%LP(var)%ba_irga = dsqrt(dabs(sinc(nf(1:N)*Tba, N)))
         end select
     end if

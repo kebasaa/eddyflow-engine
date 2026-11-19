@@ -227,40 +227,42 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
     integer, intent(in) :: nrow, ncol
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
     integer, parameter :: n_sub    = 6
+    !> The working arrays are lastGas wide: every result is read u..lastGas,
+    !> and past the project's last gas the slots are cells now.
     integer, parameter :: n_subsub = 6
     integer :: sub_idx, subsub_idx, gas_var
     integer :: sub_len, subsub_len
-    real(kind = dbl) :: cov_mat(GHGNumVar, GHGNumVar)
-    real(kind = dbl) :: subsub_cov(n_subsub, GHGNumVar)
-    real(kind = dbl) :: all_cov(n_sub*n_subsub, GHGNumVar)
-    real(kind = dbl) :: sub_mean(GHGNumVar), sub_means(n_sub, GHGNumVar)
-    real(kind = dbl) :: grand_mean(GHGNumVar), between_ss(GHGNumVar)
-    real(kind = dbl) :: sigma_wi(n_sub, GHGNumVar), sigma_btw(GHGNumVar)
+    real(kind = dbl) :: cov_mat(lastGas, lastGas)
+    real(kind = dbl) :: subsub_cov(n_subsub, lastGas)
+    real(kind = dbl) :: all_cov(n_sub*n_subsub, lastGas)
+    real(kind = dbl) :: sub_mean(lastGas), sub_means(n_sub, lastGas)
+    real(kind = dbl) :: grand_mean(lastGas), between_ss(lastGas)
+    real(kind = dbl) :: sigma_wi(n_sub, lastGas), sigma_btw(lastGas)
     real(kind = dbl), allocatable :: sub_chunk(:,:), ss_chunk(:,:)
     !> Valid sub-sub covariances per sub-period, valid sub-periods and valid
     !> sub-period means, per variable. The divisors were the nominal six,
     !> however many windows had data: an empty one left sigma_wi = 0 and
     !> still counted, so RE came out low and M98 = sigma_btw / RE high, and
     !> the vitale_20 grade was too severe.
-    integer :: nss(n_sub, GHGNumVar), nsub_ok, nbtw(GHGNumVar)
+    integer :: nss(n_sub, lastGas), nsub_ok, nbtw(lastGas)
 
     sub_len    = nrow / n_sub
     subsub_len = sub_len / n_subsub
 
-    allocate(sub_chunk(sub_len, GHGNumVar))
+    allocate(sub_chunk(sub_len, lastGas))
     do sub_idx = 1, n_sub
-        sub_chunk = Set(sub_len*(sub_idx-1)+1 : sub_len*sub_idx, 1:GHGNumVar)
-        allocate(ss_chunk(subsub_len, GHGNumVar))
+        sub_chunk = Set(sub_len*(sub_idx-1)+1 : sub_len*sub_idx, 1:lastGas)
+        allocate(ss_chunk(subsub_len, lastGas))
         do subsub_idx = 1, n_subsub
             ss_chunk = sub_chunk( &
                 subsub_len*(subsub_idx-1)+1 : subsub_len*subsub_idx, :)
-            call CovarianceMatrixNoError(ss_chunk, subsub_len, GHGNumVar, cov_mat, error)
+            call CovarianceMatrixNoError(ss_chunk, subsub_len, lastGas, cov_mat, error)
             subsub_cov(subsub_idx, :) = cov_mat(w, :)
             all_cov(n_subsub*(sub_idx-1)+subsub_idx, :) = cov_mat(w, :)
         end do
         deallocate(ss_chunk)
         ! Sub-period mean covariance (F_i_bar, Mahrt 1998 Eq. 8)
-        call AverageNoError(subsub_cov, n_subsub, GHGNumVar, sub_mean, error)
+        call AverageNoError(subsub_cov, n_subsub, lastGas, sub_mean, error)
         sub_means(sub_idx, :) = sub_mean
         sigma_wi(sub_idx, :) = 0d0
         nss(sub_idx, :) = 0
@@ -280,7 +282,7 @@ subroutine RU_Mahrt_98(Set, nrow, ncol)
     deallocate(sub_chunk)
 
     ! Grand mean (F_bar, Mahrt 1998 Eq. 10)
-    call AverageNoError(all_cov, n_sub*n_subsub, GHGNumVar, grand_mean, error)
+    call AverageNoError(all_cov, n_sub*n_subsub, lastGas, grand_mean, error)
 
     ! RE = mean of within-period sigmas / sqrt(n_subsub) (Mahrt 1998 Eq. 8)
     do gas_var = u, lastGas
@@ -740,6 +742,7 @@ subroutine LodLangford15(Set, N, M)
     integer :: centre(M)
     logical :: want(M)
     real(kind = dbl) :: re(M)
+    integer :: var
 
     !> Written every period: nothing else resets these fields, so a period
     !> with the LoD off must not carry the last one forward. Converted to
@@ -748,6 +751,9 @@ subroutine LodLangford15(Set, N, M)
     Essentials%lod_re(u:lastGas) = error
     Essentials%lod_re_LE = error
     Essentials%lod_re_ET = error
+    Essentials%lod_noise_mean = error
+    Essentials%lod_noise_sd = error
+    Essentials%lod_noise_snr = error
     if (RUsetup%lod_meth /= 'langford_15') return
 
     call LogSay('  Estimating the limit of detection..')
@@ -764,4 +770,32 @@ subroutine LodLangford15(Set, N, M)
     Essentials%lod_re(u) = re(u)
     Essentials%lod_re(ts) = re(ts)
     Essentials%lod_re(firstGas:lastGas) = re(firstGas:lastGas)
+
+    !> Optional: the far-lag noise behind it, and the flux signal-to-noise
+    !> ratio innFLUX reports, |cov(0) - mean| / SD (Striednig et al. 2020,
+    !> after Spirig et al. 2005). Covariance units, like lod_re before
+    !> Fluxes0 converts it.
+    if (RPSetup%out_lod_noise_stats) then
+        call LodNoiseStats(u)
+        call LodNoiseStats(ts)
+        do var = firstGas, lastGas
+            call LodNoiseStats(var)
+        end do
+    end if
+
+contains
+
+    subroutine LodNoiseStats(j)
+        integer, intent(in) :: j
+
+        Essentials%lod_noise_mean(j) = LangfordNoiseMean(j)
+        Essentials%lod_noise_sd(j) = LangfordNoiseSd(j)
+        if (LangfordNoiseMean(j) /= error .and. LangfordNoiseSd(j) /= error &
+            .and. LangfordNoisePeak(j) /= error) then
+            if (LangfordNoiseSd(j) > 0d0) &
+                Essentials%lod_noise_snr(j) = &
+                    abs(LangfordNoisePeak(j) - LangfordNoiseMean(j)) &
+                    / LangfordNoiseSd(j)
+        end if
+    end subroutine LodNoiseStats
 end subroutine LodLangford15

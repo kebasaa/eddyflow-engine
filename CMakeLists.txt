@@ -166,6 +166,14 @@ function(eddyflow_executable target output_name)
         OUTPUT_NAME ${output_name}
         RUNTIME_OUTPUT_DIRECTORY "${EDDYFLOW_BIN_DIR}")
     target_link_options(${target} PRIVATE ${EDDYFLOW_LDFLAGS_LIST})
+    # Windows gives the main thread 2 MB of stack by default, Linux and macOS
+    # 8 MB. Some per-variable temporaries scale with the gas ceiling squared
+    # (E2NumVar x E2NumVar), so 128 gases overflowed 2 MB on Windows
+    # (STATUS_STACK_OVERFLOW, 0xC00000FD). 64 MB reserved; only what is used
+    # is committed.
+    if(WIN32)
+        target_link_options(${target} PRIVATE "-Wl,--stack,67108864")
+    endif()
 endfunction()
 
 add_executable(eddyflow_rp "${RP_MAIN}"
@@ -234,6 +242,14 @@ eddyflow_fixture(covmaxcheck covmax_bitexact covmax_bitexact_main.f90 ${covmax_c
 # synthetic series with known answers. static_checks/test_langford_lod_static.py
 # runs it.
 eddyflow_fixture(langfordcheck langford_check langford_check_main.f90 ${covmax_core_objects})
+
+# The innFLUX comparison driver (Striednig et al. 2020): the engine's
+# innFLUX-derived routines on cases tests/innflux/compare.py writes, so its
+# Python port of the MATLAB code and the engine can be compared number for
+# number. static_checks/test_innflux_compare_static.py builds and runs it.
+eddyflow_common_objects(innflux_core_objects m_numeric_kinds m_covmax_core m_lagpeak_core
+    m_driftfix_core)
+eddyflow_fixture(innfluxcmp innflux_compare innflux_compare_main.f90 ${innflux_core_objects})
 
 # The PWB table check: store a year of rows through the shipped routines and
 # confirm every lookup returns the row a scan from row 1 would. Unlike the

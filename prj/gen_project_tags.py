@@ -110,10 +110,18 @@ RP_GAS_NUMERIC = [
     "to_min_flux", "to_min_lag", "to_max_lag", "pwb_min_lag", "pwb_max_lag",
 ] + [f"drift_dir_{k}" for k in range(7)] \
   + [f"drift_inv_{k}" for k in range(7)] \
-  + ["step_lim"]
+  + ["step_lim"] \
+  + ["tlag_drift_ref", "out_ccf"]
 RP_GAS_TEXT = ["out_full_sp", "out_full_cosp_w", "out_raw"]
+#: sa_source is the gas record whose fitted transfer function this gas is
+#: corrected with: absent is automatic, 0 the gas's own, j > 0 record j. A
+#: gas whose spectra are too noisy to fit (COS, N2O) takes the cut-off of a
+#: tube-mate that can be fitted, because tube, cell and sensor response
+#: belong to the analyser rather than to the species. Water never takes part:
+#: its cut-off depends on humidity through wall sorption.
 FCC_GAS_NUMERIC = [
     "sa_fmin", "sa_fmax", "sa_hfn_fmin", "sa_min_st", "sa_min_un", "sa_max",
+    "sa_source",
 ]
 #> The months this gas pools before a transfer function is fitted, written as
 #> a group list: `1-12` is one group over the calendar, `1-6,7-12` is two. A
@@ -165,6 +173,19 @@ CEC_PAIRS = const("MaxNumCecPairs")
 # (the other is 285..289 and 291..299). Eight of the thirteen are used here.
 # --------------------------------------------------------------------------
 INSTR_LACK_ORIGIN = 357
+
+#: The highest index of a deliberately reserved run of blank slots at the end
+#: of a hand-written table, so that a batch of new flat keys has room below
+#: the record origin. Raising one of these is the ONE sanctioned way to move a
+#: record origin: it re-indexes every per-gas slot after it, which is harmless
+#: only because the readers address those slots through the generated
+#: rp*Origin* parameters, never by literal index. The 2026-11 raise made room
+#: for the opt-in InnFLUX-derived options (Striednig et al. 2020):
+#: RP.SNTags 425 -> 525 and RP.SCTags 102 -> 142.
+RESERVED_TOP = {
+    "RP.SNTags": 524,
+    "RP.SCTags": 141,
+}
 
 #: How much of its OWN expected data an instrument may be missing, in percent.
 #: Absent means "use the project-wide max_lack", which is every project written
@@ -232,6 +253,51 @@ FIXED_TAGS = {
         366: "to_sample_min_n",
         367: "to_sample_seed",
         368: "to_dump_lags",
+        #: Smoothed covariance peak search after innFLUX (Striednig et al.
+        #: 2020; find_covariance_peak.m): the Hamming window length in rows
+        #: (0 off) and the sign rule (0 largest |cov|, 1 largest cov, 2
+        #: innFLUX's derivative rule). Both off by default, which is CovMax
+        #: exactly as before. The first two of the run RESERVED_TOP opened.
+        425: "covmax_smooth_len",
+        426: "covmax_peak_sign",
+        #: Optional innFLUX-style outputs (Striednig et al. 2020), each its
+        #: own switch, both off: the potential and virtual potential
+        #: temperature fluxes, and the far-lag noise mean, SD and the flux
+        #: signal-to-noise ratio of the Langford limit of detection.
+        427: "out_theta_flux",
+        428: "out_lod_noise_stats",
+        #: Cumulated-covariance time lag (tlag_meth 6) after innFLUX's step 2
+        #: (Striednig et al. 2020; Park et al. 2013): the Hamming smoothing
+        #: of the summed |cross-covariance| and the period filters - u*, the
+        #: completeness of the sonic and of the gas, and the steady-state
+        #: test's relative deviation. Read only under tlag_meth 6.
+        429: "tlag_cum_filter_len",
+        430: "tlag_cum_min_ustar",
+        431: "tlag_cum_min_compl_sonic",
+        432: "tlag_cum_min_compl_gas",
+        433: "tlag_cum_max_sst",
+        #: Clock-drift correction of that lag, after innFLUX v1.2.0's driftfix
+        #: tool (unpublished): 0 off, 1 robust LOWESS with jump detection;
+        #: the smoothing span in days, the jump threshold in s per day, and
+        #: how far the drift may reach, in s.
+        434: "tlag_drift_meth",
+        435: "tlag_drift_span_d",
+        436: "tlag_drift_jump_thr",
+        437: "tlag_drift_max_s",
+        #: Per-period cross-covariance output (innFLUX's step 1 cov files):
+        #: the half-width in s and every k-th lag kept. Gases opt in with
+        #: gas_<i>_out_ccf.
+        438: "out_ccf_max_lag_s",
+        439: "out_ccf_decim",
+        #: Planar-fit extras after innFLUX (Striednig et al. 2020, Sect.
+        #: 2.3.1, Fig. 1), both off: N overlapping moving windows of width W
+        #: degrees instead of the sectors (innFLUX: 360 windows of 30), and
+        #: the bootstrap uncertainty of the tilt angles with its resample
+        #: count and seed. Stored in the planar-fit file when used.
+        440: "pf_mw_num",
+        441: "pf_mw_width",
+        442: "pf_boot_n",
+        443: "pf_boot_seed",
         61: "sr_step_u",
         62: "sr_step_v",
         63: "sr_step_w",
@@ -262,6 +328,10 @@ FIXED_TAGS = {
         81: "tlag_borrow_noise",
         82: "tlag_borrow_donor",
         86: "tlag_borrow_pairs",
+        #: The cumulated-covariance lag's segment boundaries, a quoted list
+        #: of yyyy-mm-ddTHH:MM; empty is one segment over the whole run. The
+        #: first of the text slots RESERVED_TOP opened.
+        102: "tlag_cum_segments",
         #: Extra raw-signal instrument-malfunction diagnostics (AL1 lag-1
         #: autocorrelation, DDI discrete/dominant-value test, Qn-scaled
         #: HF5/HF10/HD5/HD10 spike counts), ported from RFlux (Vitale et al.
@@ -276,6 +346,14 @@ FIXED_TAGS = {
         #: default; slot 21 is the one skipped between me_file (20) and
         #: pf_start_time (22).
         21: "test_stor_clean",
+    },
+    "FCC.SNTags": {
+        #: Whether a gas left on automatic takes a tube-mate's transfer
+        #: function when its own fit is implausible (0 off, 1 on). Slot 10
+        #: has been blank since before the flat per-gas keys were retired;
+        #: their retirement left 16-54 blank too, so the "full" remark under
+        #: EPPrjCTags below no longer holds for this table.
+        10: "sa_auto_source",
     },
     "EPPrjCTags": {
         #: Post-flux despiking (RFlux's despiking(variant="v1"), Vitale et
@@ -541,6 +619,17 @@ def process(path, table, marker, size_param, lim, check):
     for i, label in list(kept.items()):
         if label in retired:
             kept[i] = ""
+
+    # A reserved run of blank slots below the record block. Its top index is
+    # held as an unlabelled entry, so the record origin sits one past it and
+    # the blanks underneath are free for hand-placed tags without moving it.
+    top = RESERVED_TOP.get(marker)
+    if top is not None:
+        if any(i > top and l for i, l in kept.items()):
+            raise SystemExit(
+                f"{marker}: a hand-written tag sits above the reserved top "
+                f"{top}; raise RESERVED_TOP deliberately or move the tag")
+        kept.setdefault(top, "")
 
     # Where the record block starts before the hand-placed tags go in. Taking
     # it first is what lets the check below tell "filled a gap" from "appended

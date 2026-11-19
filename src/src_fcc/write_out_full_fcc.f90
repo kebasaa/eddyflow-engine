@@ -47,7 +47,7 @@ subroutine WriteOutFullFcc(lEx)
     real(kind = dbl) :: rep_lre(E2NumVar)
     real(kind = dbl) :: rep_lle
     real(kind = dbl) :: rep_let
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
 
     !> local variables
     integer :: var
@@ -64,7 +64,7 @@ subroutine WriteOutFullFcc(lEx)
     integer :: n_w_slots
     !> How many variables the packed statistical-flag strings describe.
     integer :: n_flag_vars
-    character(LongOutstringLen) :: flag_legend
+    character(LineLen), allocatable :: flag_legend
     character(DatumLen) :: field_val
     integer :: cec_p
     integer :: cec_k
@@ -79,6 +79,8 @@ subroutine WriteOutFullFcc(lEx)
     !> The layout the header names. Not firstGas..lastGas: the placeholder
     !> arms below fire for slots holding no gas, so an unbounded loop wrote a
     !> block for every one of the sixty-four.
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row, flag_legend)
     call FullOutputGasSlots(fo_slots, n_fo_slots)
 
     !> The flag cells are cut to the variables the units row names.

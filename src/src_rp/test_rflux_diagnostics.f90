@@ -48,7 +48,7 @@ subroutine TestRFluxDiagnostics(Set, N, printout)
     !> in/out variables
     integer, intent(in) :: N
     logical, intent(in) :: printout
-    real(kind = dbl), intent(in) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(in) :: Set(N, pe)
     !> local variables
     integer :: icol
     real(kind = dbl) :: ref_col(N)

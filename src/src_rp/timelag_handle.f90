@@ -37,6 +37,7 @@
 subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     DefTlagUsed, InTimelagOpt)
     use m_rp_global_var
+    use m_cumcov, only: CumCovLagNow
     use m_pwb_timelag
     use m_pwb_stream, only: PwbEvidenceType, PwbGatherEvidence, PwbClassifyPeriod, &
         PwbEvidenceOnly, PwbLastEvidence
@@ -45,9 +46,14 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
     integer, intent(in) :: nrow, ncol
     character(*), intent(in) :: TlagMeth
     logical, intent(in) :: InTimelagOpt
-    logical, intent(out) :: DefTlagUsed(ncol)
-    real(kind = dbl), intent(out) :: ActTLag(ncol)
-    real(kind = dbl), intent(out) :: TLag(ncol)
+    !> E2NumVar, not ncol: every caller passes E2NumVar-wide arrays, and the
+    !> pwb branch assigns the E2NumVar-wide pwb_raw_* to them whole and hands
+    !> them on to PwbClassifyPeriod at that width. ncol was E2NumVar until the
+    !> set became pe wide (SetSlotLayout); declared ncol, those assignments
+    !> did not conform (the checks build stops on them).
+    logical, intent(out) :: DefTlagUsed(E2NumVar)
+    real(kind = dbl), intent(out) :: ActTLag(E2NumVar)
+    real(kind = dbl), intent(out) :: TLag(E2NumVar)
     real(kind = dbl), intent(inout) :: Set(nrow, ncol)
     !> local variables
     integer :: i = 0
@@ -106,6 +112,24 @@ subroutine TimeLagHandle(TlagMeth, Set, nrow, ncol, ActTLag, TLag, &
             TLag(ts:pe)    = E2Col(ts:pe)%def_tl
             ActTLag(ts:pe) = E2Col(ts:pe)%def_tl
             DefTlagUsed(ts:pe) = .true.
+        case ('cumcov')
+            !> Cumulated cross-covariance after innFLUX (Striednig et al.
+            !> 2020): the lag the pre-pass resolved for this period's segment,
+            !> plus any clock drift, set by CumCovPeriodLags. A variable with
+            !> none - sonic temperature, a gas with no period that passed the
+            !> filters - keeps its nominal lag, flagged as the default.
+            RowLags(ts:pe) = def_rl(ts:pe)
+            TLag(ts:pe)    = E2Col(ts:pe)%def_tl
+            ActTLag(ts:pe) = E2Col(ts:pe)%def_tl
+            DefTlagUsed(ts:pe) = .true.
+            do j = firstGas, lastGas
+                if (.not. E2Col(j)%present) cycle
+                if (CumCovLagNow(j) == error) cycle
+                RowLags(j) = nint(CumCovLagNow(j) * Metadata%ac_freq)
+                TLag(j) = CumCovLagNow(j)
+                ActTLag(j) = CumCovLagNow(j)
+                DefTlagUsed(j) = .false.
+            end do
         case ('maxcov', 'maxcov&default')
             !> covariance maximization method, with or without default
             do j = ts, pe
@@ -394,6 +418,7 @@ end subroutine ApplyCovMaxDefaultFallback
 subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     use m_rp_global_var
     use m_covmax_core, only: CrossCovarianceSeries
+    use m_lagpeak_core, only: FindCovPeak, PeakPadding
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow
@@ -418,6 +443,10 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     real(kind = dbl) :: score
     real(kind = dbl) :: baseline
     logical :: debaseline
+    real(kind = dbl), allocatable :: ExtSeries(:)
+    logical :: found
+    integer :: elo
+    integer :: ehi
 
     Cov = 0.d0
     MaxCov = 0.d0
@@ -434,6 +463,29 @@ subroutine CovMax(lagmin, lagmax, Col1, Col2, nrow, TLag, RLag)
     !> maximum needs. The baseline-subtracted criterion needs both ends of the
     !> function present at once to draw the chord between them, and by the
     !> time the far end has been computed the near one is long gone.
+    !> The smoothed peak search after innFLUX (Striednig et al. 2020,
+    !> find_covariance_peak.m), opt-in. It smooths the function and may read
+    !> its derivative, both of which need the covariance a little past each
+    !> end of the window, so it takes its own, wider series and returns. The
+    !> reader switches it off under stochastic detrending, whose per-lag
+    !> windows it does not reproduce. Off - the default - nothing below this
+    !> block changes.
+    if (RPSetup%covmax_smooth_len > 1 .or. RPSetup%covmax_peak_sign /= 0) then
+        elo = max(lagmin - PeakPadding(RPSetup%covmax_smooth_len, &
+            RPSetup%covmax_peak_sign), -(nrow - 1))
+        ehi = min(lagmax + PeakPadding(RPSetup%covmax_smooth_len, &
+            RPSetup%covmax_peak_sign), nrow - 1)
+        allocate(ExtSeries(elo:ehi))
+        call CrossCovarianceSeries(Col1, Col2, nrow, elo, ehi, error, ExtSeries)
+        call FindCovPeak(ExtSeries, elo, ehi, lagmin, lagmax, &
+            RPSetup%covmax_smooth_len, RPSetup%covmax_peak_sign, &
+            RPSetup%covmax_debaseline, error, RLag, found)
+        if (.not. found) RLag = lagmin
+        TLag = dble(RLag) / Metadata%ac_freq
+        deallocate(ExtSeries)
+        return
+    end if
+
     nlag = lagmax - lagmin + 1
     allocate(CovSeries(nlag))
     !> Without stochastic detrending, the cross-covariance at every lag in one

@@ -56,10 +56,8 @@ subroutine ReadSpectralAssessmentFile()
     !> A hygrometer block's `exp=` token, and whether it parsed.
     character(96) :: exp_text
     integer :: exp_status
-    logical :: short_file
     !> Gases this file actually carries a fit for.
-    integer :: n_fitted
-    integer :: n_configured
+    logical :: own_fit(GHGNumVar)
     real(kind = dbl) :: skipFn, skipfc
     !> One block's rows as they sit in the file: indexed by MONTH.
     real(kind = dbl) :: monthFn(12), monthfc(12)
@@ -89,7 +87,6 @@ subroutine ReadSpectralAssessmentFile()
     RegPar%fc = 0d0
     RegPar%f2 = 0d0
     read_status = 0
-    short_file = .false.
     if (open_status == 0) then
         call LogSay('  Spectral assessment file found, importing content..')
         !> Six free-text lines, then the primary water table's own header,
@@ -332,15 +329,6 @@ subroutine ReadSpectralAssessmentFile()
             if (slot > 0) call MonthlyRegParToClasses(slot, monthFn, monthfc)
         end do
 
-        !> Short means a gas this project wants got no block, which is now
-        !> answered by what was found rather than by how far the loop got.
-        do gas = firstGas, lastGas
-            if (GasSlotIsWater(gas)) cycle
-            if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
-            !> Classes again, not months - "no class of this gas got a fit".
-            if (all(RegPar(gas, 1:MaxGasClasses)%fc == error)) short_file = .true.
-        end do
-
         !> A truncated block is a malformed file, not an older one: the
         !> position is no longer trustworthy, so stop rather than parse on.
         if (read_status /= 0) then
@@ -349,24 +337,23 @@ subroutine ReadSpectralAssessmentFile()
             call ExceptionHandler(65)
             return
         end if
-        if (short_file) call ExceptionHandler(65)
 
         !> A file read from disk can be partial for the same reason a file
         !> written on the fly can: some gases were fitted and some were not.
-        !> The writer says so as it writes; this is the other way in, and
-        !> without it a stored partial assessment would mix in-situ and
-        !> analytic corrections without a word.
-        !> Counted over every configured gas, water included, rather than off
-        !> short_file: that flag deliberately skips hygrometers, and water
-        !> unfitted while the gases are fitted is exactly the common case.
-        n_fitted = 0
-        n_configured = 0
+        !> Which gases that leaves without an in-situ correction is said per
+        !> gas, water included - water unfitted while the gases are fitted is
+        !> the common case. A gas without a fit of its own that takes a
+        !> tube-mate's is corrected in situ and reported as such, not warned
+        !> about. This used to be Alert(65), "switched to Moncrieff et al.
+        !> (1997)", for any gas without a block - which nothing switched - and
+        !> Warning(110), "the assessment succeeded for some gases", which is
+        !> not what reading a file does.
+        own_fit = .false.
         do gas = firstGas, lastGas
             if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
-            n_configured = n_configured + 1
-            if (GasHasSpectralFit(gas)) n_fitted = n_fitted + 1
+            own_fit(gas) = GasHasSpectralFit(gas)
         end do
-        if (n_fitted > 0 .and. n_fitted < n_configured) call ExceptionHandler(110)
+        call ReportInsituCoverage(.true., own_fit)
 
         !> skip 4 lines - the last of them the exp1 exp2 exp3 label, kept:
         !> for a project at more than one rate it carries each rate's

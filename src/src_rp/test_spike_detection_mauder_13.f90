@@ -39,7 +39,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     !> in/out variables
     integer, intent(in) :: N
     logical, intent(in) :: printout
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: max_pass = 10
     integer :: passes = 0
@@ -61,7 +61,7 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
     real(kind = dbl) :: m
     real(kind = dbl) :: q
     logical :: again
-    logical :: IsSpike(N, E2NumVar)
+    logical :: IsSpike(N, pe)
     logical :: new_spike
     real(kind = dbl), allocatable :: tmpx(:)
 
@@ -236,8 +236,11 @@ subroutine TestSpikeDetectionMauder13(Set, N, printout)
         end if
     end do
 
-    !> Pack one digit per variable into the flag string
-    call PackFlagString(hflags(u:lastGas), GHGNumVar, CharHF%sr)
+    !> Pack one digit per variable into the flag string. The count is the
+    !> array's own: hflags ends at lastGas, and the ceiling (GHGNumVar) read
+    !> past it - leftover memory as flag digits, and since the 128-gas
+    !> ceiling a segfault. The slots after the last gas stay '9'.
+    call PackFlagString(hflags, size(hflags), CharHF%sr)
 
     !> Write on output variable
     if (.not. RPsetup%filter_sr) tot_spikes_sng(u:pe) = 0

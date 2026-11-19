@@ -51,16 +51,18 @@ subroutine MakeDataset(PathIn, MasterTimeSeries, nrow, StartIndx, &
     integer :: open_status
     integer :: read_status
     character(PathLen) :: PathOut
-    character(LongOutstringLen) :: dataline
-    character(LongOutstringLen) :: dataline_utf8
-    character(LongOutstringLen) :: Tmpdataline
-    character(LongOutstringLen) :: ErrString
+    character(LineLen), allocatable :: dataline
+    character(LineLen), allocatable :: dataline_utf8
+    character(LineLen), allocatable :: Tmpdataline
+    character(LineLen), allocatable :: ErrString
     character(10) :: fdate
     character(5)  :: ftime
     type (DateType) :: fTimestamp
     logical :: add_error
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline, dataline_utf8, Tmpdataline, ErrString)
     tmp_indx = index(PathIn, TmpExt)
     PathOut  = PathIn(1:tmp_indx - 1)
 

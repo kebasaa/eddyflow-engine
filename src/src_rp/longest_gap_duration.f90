@@ -36,8 +36,9 @@ subroutine LongestGapDuration(Set, nrow, ncol)
     integer, external :: LongestVariableGap
     real(kind = dbl), external :: ColumnAcFreq
 
+    !> icol <= lastGas: past the project's last gas the slots are cells now.
     do icol = u, GHGNumVar
-        if (E2Col(icol)%present) then
+        if (icol <= lastGas .and. E2Col(icol)%present) then
             !> The rows between one sample of a slow column and the next are
             !> error rows by construction - nine of every ten for a 1 Hz column
             !> in a 10 Hz file - and they are not a gap in the record. Subtract

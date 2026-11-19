@@ -48,6 +48,13 @@ subroutine WindSector(wdir, n)
     if (twdir >= 360d0) twdir = twdir - 360d0
     if (twdir < 0d0) twdir = 360d0 + twdir
 
+    !> Moving windows (after innFLUX): the window centred nearest the
+    !> direction, centres every 360/N degrees from zero.
+    if (PFSetup%mw_num > 0) then
+        n = modulo(nint(twdir * dble(PFSetup%mw_num) / 360d0), PFSetup%mw_num) + 1
+        return
+    end if
+
     !> Now treats everything as if offset is zero
     if(twdir >= 0d0 .and. twdir < dfloat(PFSetup%wsect_end(1))) then
         n = 1

@@ -1,3 +1,266 @@
+Unreleased
+
+    Engine:
+	- Change: Up to 128 gases per project (MaxNumGases 64 -> 128), 320
+	          raw columns (MaxNumCol 200 -> 320) and 64 custom variables
+	          (MaxUserVar 30 -> 64), so a PTR-MS dataset with a tracer per
+	          mass fits one run (innFLUX's use case, Striednig et al. 2020).
+	          A project's output depends on the gases it configures, not
+	          on the ceiling: the regression fixtures are byte-identical.
+	          New fixture base_many (gen_many.py): 80 gases.
+	- Fix: The output line buffer (LongOutstringLen) is derived from the
+	       ceilings. The FLUXNET header holds a covariance for every pair
+	       of gases, so it grows with their square; the fixed 65536
+	       characters were already too short for a full 64-gas project
+	       (about 180 kB), whose header was cut.
+	- Fix: The engine reserves a 64 MB stack on Windows (the default is
+	       2 MB; Linux and macOS give 8 MB). The larger ceiling overflowed
+	       it (STATUS_STACK_OVERFLOW).
+	- Change: Faster per period, results bitwise unchanged. The
+	          covariance matrix skips variable slots with no data and
+	          copies its symmetric half; the (co)spectra and ogive files
+	          build their rows in a row-sized buffer (SpecLineLen), not
+	          the FLUXNET-sized one, since each row append costs the
+	          buffer's length. base_rec: 17.1 s -> 14.5 s per run. Peak
+	          memory 98 -> 179 MB, from the larger static buffers.
+	- Change: Memory and time follow the gases a project has, not the
+	          ceiling; results bitwise unchanged (the slot layout on the 76
+	          regression fixtures that run). The variable
+	          slots close up after the project's last gas (SetSlotLayout),
+	          so the per-period datasets and their copies are as wide as
+	          the project. The output line buffers are sized from the
+	          project's gas count (LineLen, at least the 65536 characters
+	          of the 64-gas build for any project) and live on the heap.
+	          base_rec (4 gases): 15.7 s -> 10.7 s per run, peak working
+	          set 179 -> 100 MB, peak commit 246 -> 157 MB. The 64-gas
+	          build took 17.2 s, 98 MB and 132 MB.
+	- New: Planar-fit extras after innFLUX (Striednig et al. 2020, Sect.
+	       2.3.1 and Fig. 1), both off by default. pf_mw_num/pf_mw_width
+	       fit N overlapping moving windows instead of the sectors (innFLUX:
+	       360 of 30 degrees); a period is rotated with the window centred
+	       nearest its wind direction. pf_boot_n/pf_boot_seed bootstrap the
+	       pitch and roll angles per sector (new pure module m_pfboot,
+	       xorshift64 seeded per sector). Both are written into the
+	       planar-fit file. A moving-window file is read back with its own
+	       windows, so reusing it gives the same rotation. With both off,
+	       the file is unchanged. PFMat and PFb now hold up to 360 rotations
+	       (MaxNumPfSect); user sectors stay at 36. Fixtures base_pf_mw and
+	       base_pf_boot. Pinned by static_checks/test_pf_extras_static.py.
+	- New: Per-period cross-covariance functions, after innFLUX's step 1
+	       covariance files (Striednig et al. 2020). Off unless a gas asks
+	       (gas_<i>_out_ccf=1). One file per averaging period in
+	       eddyflow_ccf/: w against each selected gas at every
+	       out_ccf_decim-th lag (default 1) within +/- out_ccf_max_lag_s
+	       (default 200 s), before the time lag is applied. A production
+	       worker writes into the parent's folder, like the cospectra.
+	       Fixture base_ccf_out.
+	- New: Time lag method 6 (tlag_meth=6), the time lag from cumulated
+	       cross-covariances after innFLUX (Striednig et al. 2020, Sect. 2.3.2;
+	       after Park et al. 2013). A pre-pass computes each period's
+	       cross-covariance over the gas's time lag optimization window and
+	       records u*, the sonic and gas completeness and the steady-state
+	       relative deviation. Every period passing all four filters
+	       (tlag_cum_min_ustar 0.3, _min_compl_sonic 0.95, _min_compl_gas 0.5,
+	       _max_sst 0.3, innFLUX's values) has its |function| summed per date
+	       segment (tlag_cum_segments), and the Hamming-smoothed peak
+	       (tlag_cum_filter_len 15) is the segment's lag. Records go to a
+	       scratch file per process and are summed by the parent in period
+	       order, so a split pre-pass gives the same lags. New files:
+	       _cumcov_timelags, _cumcov_function_<gas>. Method code 6 in the
+	       Fluxnet file. New module m_cumcov.
+	- New: Clock-drift correction of that lag (tlag_drift_meth=1, off by
+	       default), after innFLUX v1.2.0's driftfix tool (unpublished;
+	       M. Graus, M. Striednig). The reference gases' per-period lags
+	       (gas_<i>_tlag_drift_ref) are smoothed with a robust LOWESS
+	       (Cleveland 1979) and split at jumps (tlag_drift_jump_thr, -0.8 s
+	       per day), then smoothed over tlag_drift_span_d days (5). The drift,
+	       relative to its median and bounded by tlag_drift_max_s (10 s), shifts
+	       each period's function before summing and is added back after. New
+	       file _tlag_drift. New module m_driftfix_core. tests/innflux/compare.py
+	       stage 2: engine and port of the MATLAB tool agree to 1e-12 s and
+	       recover an injected drift and jump within 0.2 s RMS.
+	       Pinned by static_checks/test_cumcov_static.py; fixtures base_cumcov
+	       and base_cumcov_drift.
+	- New: Two optional column groups at the end of the FLUXNET file, after
+	       innFLUX (Striednig et al. 2020). Each is off by default and has its
+	       own switch in [RawProcess_Settings].
+	       out_theta_flux=1 writes W_THETA and W_THETA_V, the kinematic
+	       potential and virtual potential temperature fluxes [K m s-1]
+	       (p0 = 1000 hPa, kappa = 0.286; Stull 1988). As in innFLUX they
+	       come from the uncorrected covariances: the sonic temperature is
+	       humidity-corrected the way level 2 H is (van Dijk et al. 2004),
+	       but no spectral correction is applied. Both need a water flux.
+	       out_lod_noise_stats=1 writes <VAR>_LOD_NOISE_MEAN and
+	       <VAR>_LOD_NOISE_SD, the mean and SD of the cross-covariance in the
+	       far-lag windows of the Langford limit of detection, and
+	       <VAR>_FLUX_SNR = |cov(0) - mean| / SD, innFLUX's flux
+	       signal-to-noise ratio (far-lag noise after Wienhold et al. 1994 and
+	       Spirig et al. 2005). Covariance units. Needs lod_meth=1, otherwise
+	       these columns hold the error code.
+	       FarLagCovarianceNoise now takes its statistics from the new
+	       FarLagCovarianceStats. The sums and their order are unchanged, so
+	       the Langford random error is bitwise as before (langfordcheck).
+	       Pinned by static_checks/test_innflux_outputs_static.py.
+	- New: Smoothed covariance peak search after innFLUX (Striednig et al.
+	       2020, Atmos. Meas. Tech. 13, 1447-1465; find_covariance_peak.m,
+	       innFLUX v1.2.0). Off by default. covmax_smooth_len smooths the
+	       cross-covariance with a normalised Hamming window of that many
+	       rows, run forwards and backwards so the peak does not move, before
+	       covariance maximisation takes the lag (smoothing before the peak
+	       search after Taipale et al. 2010; innFLUX uses 15). covmax_peak_sign
+	       picks the extremum: 0 the largest |cov| (the search as before), 1
+	       the largest cov, 2 innFLUX's rule, which takes the maximum when the
+	       function's 100-row moving-average derivative peaks before it dips,
+	       else the minimum. Both in [RawProcess_Settings]; with both at 0
+	       CovMax is exactly as before. Ignored under stochastic detrending.
+	       New module m_lagpeak_core. tests/innflux/compare.py checks it
+	       against a line-by-line Python port of innFLUX's MATLAB routine:
+	       360 cases, 0 mismatches. Pinned by
+	       static_checks/test_covmax_peak_innflux_static.py and
+	       test_innflux_compare_static.py.
+	- Change: The RawProcess tag tables reserve a run of blank slots below
+	          the per-gas records (RESERVED_TOP in prj/gen_project_tags.py),
+	          room for the opt-in innFLUX-derived settings. rpGasOriginN moved
+	          from 425 to 525 and rpGasOriginC from 102 to 142. Readers address
+	          the records through those parameters, so no setting changes
+	          meaning; output on six regression fixtures is byte-identical.
+	- Fix: A quoted list in the project now parses. The GUI quotes a value
+	       with a comma in it (cec_<i>_extra="5,4"), and the quotes reached
+	       the parsers, so a CEC pairing with two or more extra gases ran
+	       with none, without a warning. A quoted gas_<i>_sa_months list was
+	       refused the same way. Quotes are now read as separators.
+	  Pinned by static_checks/test_quoted_list_values_static.py.
+	- New: A gas can be corrected with the spectral transfer function of
+	       another gas on the same analyser. On CH-LAE the MIRO's COS and N2O
+	       fits came out at fc 0.002 and 0.035 Hz with Fn 0.04-0.07, which is
+	       noise, against 0.54 Hz and Fn 0.46 for the MIRO's own CO2. Tube,
+	       cell and sensor response belong to the analyser, not the species,
+	       so the noisy gases can take the CO2 fit. gas_<i>_sa_source in
+	       [FluxCorrection_SpectralAnalysis_General] names the donor record (0
+	       is the gas's own fit; absent is automatic). Only a non-water gas
+	       on the same named analyser can lend or borrow: water's cut-off
+	       depends on humidity through wall sorption. A pairing that breaks
+	       either rule is warned about and ignored. The hub's in-situ gate
+	       and RetrieveLPTFpars both read the donor's fit in the donor's own
+	       month class, so they cannot disagree. A donor with no fit for a
+	       month leaves the gas to the analytic method, not to its own fit.
+	       The assessment file still records every gas's own fit.
+	- New: sa_auto_source (off by default). A gas left on automatic takes
+	       the best-resolved tube-mate's transfer function when its own
+	       looks implausible: Fn below 0.2, or a cut-off more than four times
+	       off that tube-mate's. One analyser gives one response, so its
+	       gases' cut-offs should agree. Which gases take another's fit, or
+	       would, is logged after the assessment is read or fitted, and with
+	       automatic_spectra_config on, the suggestion is written into the
+	       output project as gas_<i>_sa_source. A source automatic selection
+	       actually applied, in every month, is always written into the
+	       output project's processing_*.eddyflow, whatever
+	       automatic_spectra_config says: it is what corrected this run, so
+	       the project kept with the results names it.
+	- Change: Every suggestion a run makes - the transfer-function sources
+	          above and the flux limits for the spectral assessment - is
+	          printed together as its very last message, before "Program
+	          EddyFlow executed gracefully". The flux-limit suggestions came
+	          out with the readiness report, before the period loop, under
+	          thousands of period lines.
+	- New: SetIniKeyInSection adds a key to its section when it is missing.
+	       EditIniFile only rewrites lines that are there, and an automatic
+	       gas has no gas_<i>_sa_source line.
+	  Pinned by static_checks/test_sa_source_static.py.
+	- Fix: A PWB half-hourly time-lag table with gap-filled periods could
+	       not be read back. corr_pw and cv_99 were written as f12.8, and a
+	       period with no detection of its own keeps both at the error code,
+	       which does not fit: the table carried twelve asterisks there, and
+	       its reader refused the whole table at the first such row. A run
+	       reusing it - step 2 of a two-step PWB run - stopped before its
+	       first period with "could not be used; see the message above"
+	       and nothing above. The error code is now written as -9999.000000,
+	       as in every other column, and the reader takes a field of
+	       asterisks as the error code, so tables written before this are
+	       read as they are and need not be regenerated.
+	- Fix: Every reason the PWB time-lag table can be refused is now said:
+	       a missing or malformed header line, a row that cannot be read (by
+	       line number, with the row), and a table with no rows. Six of them
+	       used to stop the run with no message.
+	  Pinned by static_checks/test_pwb_table_roundtrip_static.py.
+	- Fix: The "denoised ensemble averaged spectrum" columns of the spectral
+	       assessment showed the raw spectrum. SubtractHighFreqNoise copied
+	       the raw ensemble over the whole denoised one for any gas slot
+	       with no noise range - every unused slot - so the first such slot
+	       after a denoised gas undid it. The copy is now made once, before
+	       the loop. The transfer-function fits read the long spectra, which
+	       were denoised in place, and are unchanged.
+	  Pinned by static_checks/test_hf_noise_subtraction_static.py.
+	- Fix: A gas's (co)spectra could be computed out of step with w.
+	       FixDatasetForSpectra interpolated each column over all its rows,
+	       and the interpolation drops a column's leading error rows by
+	       moving the rest of it up, so any column that opened on a gap was
+	       paired with w that many rows out of step - in its cospectrum and
+	       in the covariance the cospectrum is divided by. A negative time
+	       lag opens a column with exactly such a gap, so for it the move
+	       undid the lag compensation; data missing or filtered at the start
+	       of a period did the same by however many rows it was. On CH-LAE
+	       the MIRO's normalising covariance matched its flux in 19-49 % of
+	       the half-hours, the sonic's and the LI analyser's in 72-93 %.
+	       Each column is now interpolated over its own span, nothing
+	       moves, and every (co)spectrum is computed on one window where
+	       all columns have data, which also replaces the trim by the
+	       spread of the time lags. A period whose columns share data on
+	       fewer than two thirds of its rows gets no (co)spectra, with a
+	       log line. Binned and full (co)spectra, ogives, the degraded
+	       covariances and the FCC transfer functions fitted from them move
+	       for the affected periods; fluxes do not, since they never pass
+	       through here.
+	       With power_of_two on, a cospectrum is still normalised by the
+	       covariance of the power-of-two rows it was computed on (32768 of
+	       36000 at 20 Hz), not by the flux's, so the two can differ a
+	       little even where nothing was out of step.
+	  Pinned by static_checks/test_spectra_common_window_static.py.
+	- New: power_of_two=2 computes the (co)spectra on the largest number of
+	       samples with no prime factor above 13 (FftFriendlyLength). The
+	       FFT, FFTPACK, is fast for any length without a large prime factor
+	       - per transform 0.12 ms at 32768 rows, 0.21 ms at 35750, 865 ms at
+	       35759, a prime - so this runs within 1.5 times the power-of-two
+	       time and leaves out at most 1 % of a period (0.15 % on average),
+	       where a power of two leaves out 9 % of 30 minutes at 20 Hz and 43 %
+	       at 32 Hz. 1 and 0 are unchanged; an engine from before reads 2 as
+	       every sample.
+	  Pinned by static_checks/test_fft_friendly_length_static.py.
+	- Fix: The spike test crashed with a segmentation fault (SIGSEGV in
+	       PackFlagString) since the 128-gas ceiling - on CH-LAE four hours
+	       into a production run. Vickers and Mahrt (1997), Mauder et al.
+	       (2013) and the consecutive-difference despiking keep their flags
+	       up to the project's last gas but told PackFlagString they held
+	       GHGNumVar of them, so it read far past the end. Before the ceiling
+	       grew the read stayed in memory it could reach and wrote whatever
+	       it found there into the spike flag digits after the last gas,
+	       where "9" (not performed) belongs. Each now passes its array's own
+	       size.
+	  Pinned by static_checks/test_pack_flag_count_static.py.
+	- Fix: A gas without a spectral transfer function of its own that takes a
+	       tube-mate's (gas_<i>_sa_source, or automatic selection) is now
+	       reported as such - "Info> COS (...) has no spectral transfer
+	       function of its own; corrected with CO2 (...)'s [set by user]" -
+	       instead of being counted as unfitted. Warning(110) said the
+	       assessment had partly failed for it, although it is corrected in
+	       situ. Only a gas left with no in-situ correction at all is warned
+	       about, and named.
+	- Fix: Reading a spectral assessment file no longer raises Warning(110),
+	       whose "succeeded" and "the file was written" describe an
+	       assessment made in the run. A file that lacks a transfer function
+	       for some gases, with no tube-mate to take one from, raises the new
+	       Warning(111), worded for a file that was read. The reader's
+	       Alert(65), "switched to Moncrieff et al. (1997)", for a gas
+	       without a block - which switched nothing - is gone; Alert(65)
+	       stays for a malformed file, where the method is switched.
+	  Pinned by static_checks/test_insitu_coverage_static.py.
+
+8.2.0 (2026-11-11)
+
+    Engine:
+	- Version bump to 8.2.0, to match EddyFlow GUI 8.2.0. No change to the
+	  computation.
+
 8.1.10 (2026-11-06)
 
     Engine:

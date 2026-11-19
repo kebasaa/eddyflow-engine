@@ -37,7 +37,7 @@ subroutine WriteOutFluxnetFcc(lEx)
     implicit none
     !> in/out variables
     Type(ExType), intent(in) :: lEx
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     !> The random errors as reported: spectrally corrected like their fluxes
     !> when ru_spec_corr is on. See reported_random_errors.f90.
     real(kind = dbl) :: rep_re(E2NumVar)
@@ -94,6 +94,8 @@ subroutine WriteOutFluxnetFcc(lEx)
     include '../src_common/interfaces_1.inc'
 
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row)
     call FluxnetLayoutGasSlots(gasSlots, nGasSlots)
     nRowVar = 0
     do vi = u, ts

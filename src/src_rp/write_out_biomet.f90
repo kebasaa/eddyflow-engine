@@ -40,13 +40,15 @@ subroutine WriteOutBiomet(init_string, embedded)
     logical, intent(in) :: embedded
     !> local variables
     integer :: i
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
     character(DatumLen) :: datum
     character(len=len(init_string)) :: prefix
     include '../src_common/interfaces.inc'
 
     !>==========================================================================
     !> EddyFlow's BIOMET output
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     if (embedded) then
         prefix = init_string(index(init_string, ',') + 1: &
                              len_trim(init_string))

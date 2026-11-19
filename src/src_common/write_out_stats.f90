@@ -49,7 +49,7 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     integer :: nslots = 0
     integer :: gasslots(GHGNumVar)
     integer :: ngas = 0
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
     character(DatumLen) :: datum = ''
     include '../src_common/interfaces.inc'
 
@@ -58,6 +58,8 @@ subroutine WriteOutStats(unt, LocStats, string, N)
     !> They used to agree only because `u, pe` happened to enumerate the
     !> twelve names the header lists, which stopped being true when E2NumVar
     !> grew from 14 to 102.
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     call StatsLayoutSlots(slots, nslots)
     ngas = 0
     do i = 1, nslots

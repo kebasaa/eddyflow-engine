@@ -60,7 +60,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     real(kind = dbl) :: float_doy
     real(kind = dbl), allocatable :: bAggrOut(:)
     real(kind = dbl) :: lrad
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     !> The random errors as reported: spectrally corrected like their fluxes
     !> when ru_spec_corr is on. See reported_random_errors.f90.
     real(kind = dbl) :: rep_re(E2NumVar)
@@ -82,7 +82,7 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
     !> How many gases the time-lag flag string describes, from the helper the
     !> header uses, so the cell and its legend cannot disagree.
     integer :: n_tl_vars
-    character(LongOutstringLen) :: tl_legend
+    character(LineLen), allocatable :: tl_legend
     !> The row's variable order: the four anemometric slots, then the gas
     !> layout. Every per-variable loop below walks this rather than counting
     !> slots, because the layout is an order and not a range - the gas at
@@ -111,6 +111,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
 
 
     !> write FLUXNET output file (csv)
+    !> On the heap, at this project's line length (LineLen).
+    allocate(csv_row, tl_legend)
     call clearstr(csv_row)
 
     !> Anemometric slots first, then the gas layout the header was built from.
@@ -955,6 +957,8 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
             call AddIntDatumToDataline(4, csv_row, EddyFlowProj%err_label)
         case('pwb')
             call AddIntDatumToDataline(5, csv_row, EddyFlowProj%err_label)
+        case('cumcov')
+            call AddIntDatumToDataline(6, csv_row, EddyFlowProj%err_label)
     end select
     !> WPL terms
     if (EddyFlowProj%wpl) then
@@ -1245,6 +1249,29 @@ subroutine WriteOutFluxnet(StDiff, DtDiff, STFlg, DTFlg)
         do jg = 1, nRowVar
             var = rowVar(jg)
             call AddFloatDatumToDataline(Essentials%CCF(var), csv_row, EddyFlowProj%err_label)
+        end do
+    end if
+
+    !> Optional outputs after innFLUX (Striednig et al. 2020), matching the
+    !> header in init_fluxnet_file_rp.f90: the potential and virtual
+    !> potential temperature fluxes [K m s-1], and the far-lag noise of the
+    !> Langford limit of detection with the flux signal-to-noise ratio.
+    if (RPSetup%out_theta_flux) then
+        call AddFloatDatumToDataline(Essentials%wtheta, csv_row, EddyFlowProj%err_label)
+        call AddFloatDatumToDataline(Essentials%wthetav, csv_row, EddyFlowProj%err_label)
+    end if
+    if (RPSetup%out_lod_noise_stats) then
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%lod_noise_mean(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%lod_noise_sd(var), csv_row, EddyFlowProj%err_label)
+        end do
+        do jg = 1, nRowVar
+            var = rowVar(jg)
+            call AddFloatDatumToDataline(Essentials%lod_noise_snr(var), csv_row, EddyFlowProj%err_label)
         end do
     end if
 

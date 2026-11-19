@@ -195,21 +195,23 @@ class PerInstrumentLackStaticTests(unittest.TestCase):
             "the rows must be read before the gaps are interpolated away"
         )
 
-    def test_the_interpolation_shift_is_undone_for_the_gas_not_for_w(self):
+    def test_the_samples_are_read_where_they_were_recorded(self):
         """ReplaceGapWithLinearInterpolation removes a column's leading error
-        rows by shifting it up. A slow column nearly always opens with a few
-        empty rows, so its samples sit that many rows above where they were
-        recorded, and w does not move. Read both at the recorded row, as the
-        fixed-phase reading did, and the gas is an interpolated blend paired
-        with w up to an interval out of step: white noise sampled at 0.987 Hz
-        came out with 0.36 of its low-frequency power near Nyquist. Read at
-        the shifted row, 0.99."""
+        rows by shifting it up, and a slow column nearly always opens with a
+        few empty rows. Read at the recorded row while the column had moved,
+        the gas was an interpolated blend paired with w up to an interval out
+        of step: white noise sampled at 0.987 Hz came out with 0.36 of its
+        low-frequency power near Nyquist; read where it really was, 0.99.
+
+        That used to be done by recording the shift (SpecLead) and reading
+        the gas that many rows up. FixDatasetForSpectra now interpolates each
+        column over its own span, from its first value to its last, so no
+        column opens on a gap and none moves: SpecLead is zero, and the
+        subtraction below reads the recorded row."""
         fix = read("src/src_rp/fix_dataset_for_spectra.f90")
-        assert "if (i <= nrow) SpecLead(j) = i - 1" in fix
-        assert (fix.index("SpecLead(j) = i - 1")
-                < fix.index("call ReplaceGapWithLinearInterpolation(")), (
-            "the shift must be measured before the interpolation applies it"
-        )
+        assert "SpecLead = 0" in fix
+        assert "SpecLead(j) = " not in fix, "a per-column shift is back"
+        assert "call ReplaceGapWithLinearInterpolation(Set(first:last, j)," in fix
         fn = read("src/src_rp/spectral_analysis.f90")
         fn = fn[fn.index("subroutine SlowColumnSpectra"):]
         fn = fn[:fn.index("end subroutine SlowColumnSpectra")]

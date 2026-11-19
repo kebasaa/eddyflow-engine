@@ -46,13 +46,15 @@ class TheExistingOriginsDidNotMove(unittest.TestCase):
         self.assertEqual(origin("cellNumTag"), 34)
         self.assertEqual(origin("diagNumTag"), 35)
         self.assertEqual(origin("gasRecOriginN"), 36)
-        self.assertEqual(origin("cellRecOriginN"), 420)
-        self.assertEqual(origin("diagRecOriginN"), 452)
+        # The cell and diagnostic blocks follow the gas records, so they moved
+        # when MaxNumGases went from 64 to 128 (innFLUX, PTR-MS). Deliberate.
+        self.assertEqual(origin("cellRecOriginN"), 804)
+        self.assertEqual(origin("diagRecOriginN"), 836)
         self.assertEqual(origin("gasRecOriginC"), 51)
-        self.assertEqual(origin("cellRecOriginC"), 179)
-        self.assertEqual(origin("diagRecOriginC"), 243)
-        self.assertEqual(origin("rpGasOriginN"), 425)
-        self.assertEqual(origin("rpGasOriginC"), 102)
+        self.assertEqual(origin("cellRecOriginC"), 307)
+        self.assertEqual(origin("diagRecOriginC"), 371)
+        self.assertEqual(origin("rpGasOriginN"), 525)
+        self.assertEqual(origin("rpGasOriginC"), 142)
         self.assertEqual(origin("fccGasOriginN"), 110)
         self.assertEqual(origin("fccGasOriginC"), 28)
 

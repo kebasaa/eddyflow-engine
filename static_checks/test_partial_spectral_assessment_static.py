@@ -69,19 +69,29 @@ class WriterTests(unittest.TestCase):
                          "to the H2O spectra file, not to this gate")
 
     def test_a_partial_file_says_so(self):
-        self.assertIn("call ExceptionHandler(110)", code(WRITER))
-        self.assertIn("call ExceptionHandler(110)", code(READER),
+        """Per gas, through one routine: Warning(110) for an assessment made in
+        this run, Warning(111) for a file that was read - a gas that takes a
+        tube-mate's transfer function is reported as such, not counted."""
+        writer = code(WRITER)
+        self.assertEqual(writer.count("call ReportInsituCoverage(.false., own_fit)"), 2,
+                         "the single-rate and the per-rate file both report")
+        self.assertNotIn("call ExceptionHandler(110)", writer)
+        self.assertIn("call ReportInsituCoverage(.true., own_fit)", code(READER),
                       "a partial file read from disk is just as partial as one "
                       "written on the fly")
+        self.assertNotIn("call ExceptionHandler(110)", code(READER),
+                         "a file that was read did not 'succeed' or get 'written'")
 
-    def test_the_reader_does_not_key_the_warning_off_short_file(self):
-        """short_file deliberately skips hygrometers, and water unfitted while
-        the gases are fitted is the common case - keying off it would stay
-        silent in exactly the situation the warning exists for."""
+    def test_the_reader_counts_water_and_drops_short_file(self):
+        """Water unfitted while the gases are fitted is the common case, so the
+        reader asks every configured gas, water included. short_file, which
+        skipped hygrometers and raised an Alert(65) "switched to Moncrieff"
+        that nothing switched, is gone."""
         body = code(READER)
-        m = re.search(r"if \(n_fitted > 0[^\n]*\)\s*call ExceptionHandler\(110\)", body)
-        self.assertIsNotNone(m, "the partial-file warning is gone")
-        self.assertNotIn("short_file", m.group(0))
+        self.assertIn("own_fit(gas) = GasHasSpectralFit(gas)", body)
+        self.assertNotIn("short_file", body)
+        self.assertEqual(body.count("call ExceptionHandler(65)"), 1,
+                         "Alert(65) is left for the malformed file only")
 
 
 class CorrectionTests(unittest.TestCase):

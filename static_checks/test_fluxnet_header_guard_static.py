@@ -267,8 +267,11 @@ class Vm97ProducersCoverEveryGas(unittest.TestCase):
                     "packs only up to the fourth gas, so every later slot "
                     "reports 'not performed' whatever the test found",
                 )
+                #> Every gas: the ceiling, or the array's own size where the
+                #> array ends at lastGas (the ceiling would read past it).
                 self.assertRegex(
-                    source, r"call PackFlagString\(.*,\s*GHGNumVar\s*,"
+                    source,
+                    r"call PackFlagString\(.*,\s*(GHGNumVar|size\(\w+\))\s*,"
                 )
 
     def test_the_time_lag_flags_are_not_an_integer(self):

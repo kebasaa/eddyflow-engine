@@ -49,11 +49,12 @@ module m_typedef
     integer, parameter :: MaxNumRawFlags = 10
     integer, parameter :: NumDegH = 9
     !> Columns a .metadata file may describe. Sized from what a full-capacity
-    !> project needs: 64 gases, 8 instruments x (4 cell + 2 diagnostic), the
-    !> sonic and its diagnostic, air_t/air_p and MaxUserVar customs = 149.
+    !> project needs: 128 gases, 8 instruments x (4 cell + 2 diagnostic), the
+    !> sonic and its diagnostic, air_t/air_p and MaxUserVar customs = 247.
+    !> Raised from 200 with the gas ceiling, for PTR-MS datasets (innFLUX).
     !> Must equal NUM_COLS in prj/gen_metadata_tags.py, which emits the
     !> per-column tag tables; the generator has a --check mode that says so.
-    integer, parameter :: MaxNumCol = 200
+    integer, parameter :: MaxNumCol = 320
 
     !> Gas capacity. A gas slot's species is decided at runtime from the
     !> project file, so this is a ceiling rather than a fixed list, and it is
@@ -62,7 +63,9 @@ module m_typedef
     !> never read - no array sized by it, no loop bounded by it - so it only
     !> ever described the interface's own input rule. Removed rather than left
     !> to be mistaken for a constraint the engine enforces.
-    integer, parameter :: MaxNumGases = 64
+    !> 128 since the innFLUX work: a PTR-MS reports many masses, and 64
+    !> left a PTR-TOF dataset split across runs.
+    integer, parameter :: MaxNumGases = 128
     !> How many CO2/water pairs the partition may be run over, and how many
     !> further species each pair may carry. One pair per analyser is the shape
     !> this is sized for, so the ceiling is the instrument ceiling.
@@ -96,6 +99,8 @@ module m_typedef
 
     !> u, v, w, ts + the gas slots + the per-instrument cell slots + air_t, air_p
     integer, parameter :: E2NumVar = NumAnemVar + MaxNumGases + MaxNumCellSlots + 2
+    !> Most boundaries tlag_cum_segments may state.
+    integer, parameter :: MaxCumSegments = 64
     integer, parameter :: MaxNumDiag = 6
     !> Highest variable index, and therefore the width of every array indexed by
     !> variable: the anemometric block followed by the gas slots.
@@ -111,7 +116,7 @@ module m_typedef
     !> the variable count at ~9 before a 32-bit integer overflows. They are now
     !> built directly as characters, so the only limit is this length.
     integer, parameter :: FlagStrLen = 1 + GHGNumVar
-    integer, parameter :: MaxUserVar = 30
+    integer, parameter :: MaxUserVar = 64
     !> Per-analyser fields the dynamic metadata file can override, per gas:
     !> manufacturer, model, measure type, the three separations, the three
     !> tube properties, kw, ko, the two path lengths and tau. Spelled out in
@@ -160,7 +165,22 @@ module m_typedef
     !> variables by. That is what a two-pairing project did against the old
     !> 16348, which is why the number is now well clear of any real layout
     !> rather than just clear of the one that was tried.
-    integer, parameter :: LongOutstringLen = 65536
+    !> Derived from the ceilings since the gas limit went to 128: the FLUXNET
+    !> header holds a block per gas (about 2 kB each) and a covariance for
+    !> every PAIR of gases (about 32 characters each), so it grows with the
+    !> square of the gas count. The fixed 65536 was already too short for a
+    !> full 64-gas project (~180 kB). These are static buffers - no
+    !> -frecursive - so the size costs memory, not stack.
+    integer, parameter :: LongOutstringLen = 65536 + 2048 * GHGNumVar &
+        + 32 * (MaxNumGases * (MaxNumGases - 1)) / 2
+
+    !> One row of a (co)spectra or ogive file: two frequencies and, per
+    !> variable, a spectrum and a cospectrum, each at most DatumLen wide, plus
+    !> room for the header labels. Not LongOutstringLen: these files write a
+    !> row per frequency, thousands per period, and every AddDatum costs the
+    !> buffer's whole length. On the 596 kB LongOutstringLen of 128 gases the
+    !> full-cospectra writer went from 3 s to 23 s per run of base_rec.
+    integer, parameter :: SpecLineLen = DatumLen * (2 * GHGNumVar + 8)
 
     integer, parameter :: iniLabelLen = 64
     integer, parameter :: iniValueLen = PathLen
@@ -174,6 +194,9 @@ module m_typedef
     !> column beside it printed uninitialised memory.
     integer, parameter :: toMinH2OClassN = 15
     integer, parameter :: MaxNumWSect = 36
+    !> Planar-fit rotations: the user's sectors, or up to 360 moving windows
+    !> (pf_mw_num, after innFLUX).
+    integer, parameter :: MaxNumPfSect = 360
     integer, parameter :: MaxNumWdfSectors = 16
 
     integer, parameter :: MaxProfNodes = 7
@@ -192,7 +215,13 @@ module m_typedef
     !> after ts, and lastGas is GHGNumVar by construction rather than by
     !> coincidence - the two were separately maintained literals before.
     integer, parameter :: firstGas = NumAnemVar + 1
-    integer, parameter :: lastGas  = GHGNumVar
+    !> The ceiling of the gas block. lastGas below is the project's: the
+    !> slot layout closes up to the gases a project configures (SetSlotLayout),
+    !> so the cell slots, te and pe follow its last gas rather than slot 132,
+    !> and every per-period dataset is as wide as the project, not the
+    !> ceiling. Declarations - type components, module arrays - stay sized by
+    !> the Max* constants and are indexed with the run-time bounds.
+    integer, parameter :: MaxLastGas = GHGNumVar
     !> The four gas slots EddyPro had, by position.
     !>
     !> They were co2, h2o, ch4, n2o and gas4 - names that read as species and
@@ -220,8 +249,8 @@ module m_typedef
     !> firstCell + (k-1)*NumCellPerInstr + {0,1,2,3}, in the order
     !> cell_t, int_t_1, int_t_2, int_p. Use CellSlot() rather than arithmetic
     !> at the call site.
-    integer, parameter :: firstCell = lastGas + 1
-    integer, parameter :: lastCell  = firstCell + MaxNumCellSlots - 1
+    integer, parameter :: MaxFirstCell = MaxLastGas + 1
+    integer, parameter :: MaxLastCell  = MaxFirstCell + MaxNumCellSlots - 1
 
     !> `moist_ref` value meaning "the biomet relative humidity", as opposed to
     !> a gas slot holding a hygrometer.
@@ -236,13 +265,29 @@ module m_typedef
 
     !> The first instrument's cell slots keep their historical names, so code
     !> that predates per-instrument cells still addresses instrument 1.
-    integer, parameter :: tc  = firstCell
-    integer, parameter :: ti1 = firstCell + 1
-    integer, parameter :: ti2 = firstCell + 2
-    integer, parameter :: pi  = firstCell + 3
-    integer, parameter :: pc  = firstCell + 3
-    integer, parameter :: te  = lastCell + 1
-    integer, parameter :: pe  = lastCell + 2
+    integer, parameter :: MaxTe = MaxLastCell + 1
+    integer, parameter :: MaxPe = MaxLastCell + 2
+
+    !> The run-time slot layout. The defaults are the ceiling's layout, which
+    !> is what a program that never reads a project (the test drivers) gets;
+    !> SetSlotLayout closes it up to the project's gases.
+    integer :: lastGas   = MaxLastGas
+    integer :: firstCell = MaxFirstCell
+    integer :: lastCell  = MaxLastCell
+    integer :: tc  = MaxFirstCell
+    integer :: ti1 = MaxFirstCell + 1
+    integer :: ti2 = MaxFirstCell + 2
+    integer :: pi  = MaxFirstCell + 3
+    integer :: pc  = MaxFirstCell + 3
+    integer :: te  = MaxLastCell + 1
+    integer :: pe  = MaxLastCell + 2
+
+    !> How long an output line can get for this project: LongOutstringLen's
+    !> formula at the project's gas count rather than the ceiling's. The
+    !> output buffers are sized by it, so a four-gas project's are 86 kB, not
+    !> 596 kB - and every AddDatum scans its buffer's length (len_trim), which
+    !> made that size the cost of writing a row. SetSlotLayout sets it.
+    integer :: LineLen = LongOutstringLen
 
     !> The anemometer's slot in ExType%instr. There used to be four more -
     !> ico2, ih2o, ich4, igas4 - a second, five-wide numbering of the *same*
@@ -278,7 +323,7 @@ module m_typedef
     !> one file and h2o in another and read as two different things. Nothing
     !> refers to them now.
     integer, parameter :: w_firstGas = firstGas
-    integer, parameter :: w_lastGas  = lastGas
+    integer :: w_lastGas  = MaxLastGas
 
     !> Other labels
     integer, parameter :: fink_sims = 1
@@ -1033,6 +1078,14 @@ module m_typedef
         logical :: ibrom_model
         logical :: in_situ
         logical :: subperiod
+        !> Whose fitted transfer function each gas slot is corrected with:
+        !> SASourceAuto, SASourceOwn, or the slot of a tube-mate on the same
+        !> analyser (gas_<i>_sa_source). SpectralSourceSlot resolves it.
+        integer :: source(E2NumVar)
+        !> Whether a gas left on SASourceAuto takes the best-resolved
+        !> tube-mate's transfer function when its own fit is implausible
+        !> (sa_auto_source).
+        logical :: auto_source
     end type SASetupType
 
     type :: FCCsetupType
@@ -1250,6 +1303,18 @@ module m_typedef
         !> detection, LoD = lod_alpha * lod_re: kept apart from rand_uncer,
         !> which holds the random error method's own estimate.
         real(kind = dbl) :: lod_re(E2NumVar)
+        !> With out_lod_noise_stats: the mean and population SD of the
+        !> far-lag cross-covariance behind lod_re, and the flux signal-to-
+        !> noise ratio |cov(0) - mean| / SD, as innFLUX reports them
+        !> (Striednig et al. 2020; Spirig et al. 2005). Covariance units.
+        real(kind = dbl) :: lod_noise_mean(E2NumVar)
+        real(kind = dbl) :: lod_noise_sd(E2NumVar)
+        real(kind = dbl) :: lod_noise_snr(E2NumVar)
+        !> With out_theta_flux: the kinematic potential and virtual potential
+        !> temperature fluxes w'theta' and w'theta_v' [K m s-1], uncorrected
+        !> for spectral losses as innFLUX computes them.
+        real(kind = dbl) :: wtheta
+        real(kind = dbl) :: wthetav
         real(kind = dbl) :: lod_re_LE
         real(kind = dbl) :: lod_re_ET
         real(kind = dbl) :: ar_s(GHGNumVar)
@@ -1438,6 +1503,12 @@ module m_typedef
         character(32) :: fix
         logical :: subperiod
         logical :: wsect_exclude(MaxNumWSect)
+        !> Moving windows (0 = the sectors above) and their width, degrees.
+        integer :: mw_num
+        real(kind = dbl) :: mw_width
+        !> Bootstrap resamples of the tilt angles (0 = off) and seed.
+        integer :: boot_n
+        integer :: boot_seed
     end type PFSetupType
 
    type :: RUsetupType
@@ -1493,6 +1564,9 @@ module m_typedef
         logical :: do_spectral_analysis
         logical :: use_geo_north
         logical :: power_of_two
+        !> The third choice of power_of_two (=2): the largest FFT-friendly
+        !> length, no prime factor above 13, instead of a power of two.
+        logical :: fft_friendly_len
         logical :: bu_multi
         logical :: filter_al
         logical :: filter_sr
@@ -1534,6 +1608,39 @@ module m_typedef
         !> maximisation, not a method of its own: it changes which lag is
         !> picked and nothing about the covariance reported there.
         logical :: covmax_debaseline
+        !> Smoothed peak search after innFLUX (Striednig et al. 2020,
+        !> find_covariance_peak.m; smoothing after Taipale et al. 2010).
+        !> covmax_smooth_len: Hamming window in rows, 0 or 1 = no smoothing.
+        !> covmax_peak_sign: 0 largest |cov| (as before), 1 largest cov,
+        !> 2 innFLUX's derivative rule. Both 0 by default: CovMax unchanged.
+        integer :: covmax_smooth_len
+        integer :: covmax_peak_sign
+        !> Optional outputs after innFLUX (Striednig et al. 2020), both off:
+        !> W_THETA/W_THETA_V, and the far-lag noise mean, SD and flux SNR of
+        !> the Langford limit of detection, in the FLUXNET file's tail.
+        logical :: out_theta_flux
+        logical :: out_lod_noise_stats
+        !> Cumulated-covariance time lag, tlag_meth 6 (innFLUX step 2,
+        !> Striednig et al. 2020, after Park et al. 2013): the Hamming length
+        !> in rows, the period filters, and the segment boundaries in days
+        !> since 1970-01-01 (m_driftfix_core DaysFromCivil).
+        integer :: tlag_cum_filter_len
+        real(kind = dbl) :: tlag_cum_min_ustar
+        real(kind = dbl) :: tlag_cum_min_compl_sonic
+        real(kind = dbl) :: tlag_cum_min_compl_gas
+        real(kind = dbl) :: tlag_cum_max_sst
+        integer :: tlag_cum_nseg
+        real(kind = dbl) :: tlag_cum_seg(MaxCumSegments)
+        !> Clock-drift correction of that lag (innFLUX v1.2.0 driftfix).
+        integer :: tlag_drift_meth
+        real(kind = dbl) :: tlag_drift_span_d
+        real(kind = dbl) :: tlag_drift_jump_thr
+        real(kind = dbl) :: tlag_drift_max_s
+        logical :: tlag_drift_ref(GHGNumVar)
+        !> Per-period cross-covariance output, by gas slot.
+        logical :: out_ccf(GHGNumVar)
+        real(kind = dbl) :: out_ccf_max_lag_s
+        integer :: out_ccf_decim
         !> Nemitz et al. (2018): a gas whose covariance at its own detected
         !> lag does not clear tlag_borrow_snr times its detection limit, or
         !> whose lag sits on an end of the search window, takes the lag of a
@@ -2275,6 +2382,34 @@ module m_typedef
     end type fluxnetChunksType
 
 contains
+
+    !***************************************************************************
+    !> \brief Close the slot layout up to the project's ngas gases.
+    !>
+    !> u, v, w, ts and the gas slots keep their numbers; the cell block, te and
+    !> pe follow the last gas. At least four gas slots stay, because the
+    !> historical fallbacks address histGas1..4 by position. Output does not
+    !> change: every file is written from the configured gases and the cells
+    !> keep their order. Only how wide the per-period datasets are does, and
+    !> how long the output buffers are (LineLen).
+    !***************************************************************************
+    subroutine SetSlotLayout(ngas)
+        integer, intent(in) :: ngas
+
+        lastGas = firstGas + max(4, min(ngas, MaxNumGases)) - 1
+        w_lastGas = lastGas
+        firstCell = lastGas + 1
+        lastCell = firstCell + MaxNumCellSlots - 1
+        tc  = firstCell
+        ti1 = firstCell + 1
+        ti2 = firstCell + 2
+        pi  = firstCell + 3
+        pc  = firstCell + 3
+        te  = lastCell + 1
+        pe  = lastCell + 2
+        LineLen = 65536 + 2048 * lastGas &
+            + 32 * ((lastGas - firstGas + 1) * (lastGas - firstGas)) / 2
+    end subroutine SetSlotLayout
 
     character(32) function InstrumentModelBase(model)
         implicit none

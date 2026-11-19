@@ -32,16 +32,21 @@
 ! \test
 ! \todo
 !***************************************************************************
-subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
+subroutine FixDatasetForSpectra(Set, nrow, ncol, lo, nrow2)
     use m_rp_global_var
     implicit none
     !> in/out variables
     integer, intent(in) :: nrow, ncol
+    !> The window every (co)spectrum is computed on: rows lo .. lo + nrow2 - 1
+    !> of Set, the same rows for every column.
+    integer, intent(out) :: lo
     integer, intent(out) :: nrow2
     real(kind = dbl) :: Set(nrow, ncol)
     !> local variables
-    integer :: i
     integer :: j
+    integer :: hi
+    integer :: first
+    integer :: last
     integer :: tnrow
     integer :: expected
     integer :: stride
@@ -97,23 +102,48 @@ subroutine FixDatasetForSpectra(Set, nrow, ncol, nrow2)
     end do
     deallocate(rows, isreal)
 
-    !> The shift ReplaceGapWithLinearInterpolation is about to apply to each
-    !> column: it removes leading error rows by moving the column up.
-    SpecLead = 0
-    do j = 1, GHGNumVar
+    !> One window for every column: from the first row on which all of them
+    !> have a value to the last. Each column used to be interpolated over all
+    !> its rows, and ReplaceGapWithLinearInterpolation drops a column's
+    !> LEADING error rows by moving the rest of it up - so any column that
+    !> opened with a gap was paired with w that many rows out of step in
+    !> every cospectrum, and in the covariance it was normalised by. A
+    !> negative lag opens a column with exactly such a gap, so for it the
+    !> move undid the lag compensation; data missing or filtered at the start
+    !> of a period did the same by however many rows it was. On CH-LAE the
+    !> MIRO's normalising covariance matched its flux in a fifth to a half of
+    !> the half-hours, the sonic's and LI analyser's in three quarters or more.
+    !>
+    !> Each column is interpolated over its own span, from its first value to
+    !> its last, where it opens and closes on a value - so nothing moves, only
+    !> interior gaps are filled. Its own span and not the common window: a
+    !> slower column has a value only every few rows, and the window can open
+    !> between two of them, which would hand the interpolation a leading gap
+    !> to shift away again. The lag-shift error rows at either end lie outside
+    !> the window, which is what the trim by RowLags in the caller used to
+    !> approximate.
+    !> j <= lastGas: past the project's last gas the slots are cells now.
+    lo = 1
+    hi = nrow
+    do j = 1, lastGas
         if (.not. SpecCol(j)%present) cycle
-        do i = 1, nrow
-            if (Set(i, j) /= error) exit
+        do first = 1, nrow
+            if (Set(first, j) /= error) exit
         end do
-        if (i <= nrow) SpecLead(j) = i - 1
-    end do
-
-    !> nrow2 is the smallest nrow of all columns
-    nrow2 = nrow
-    do j = 1, GHGNumVar
-        if (SpecCol(j)%present) then
-            call ReplaceGapWithLinearInterpolation(Set(1:nrow, j), size(Set, 1), tnrow, error)
-            if (tnrow < nrow2) nrow2 = tnrow
+        if (first > nrow) then
+            SpecCol(j)%present = .false.
+            cycle
         end if
+        do last = nrow, first, -1
+            if (Set(last, j) /= error) exit
+        end do
+        lo = max(lo, first)
+        hi = min(hi, last)
+        call ReplaceGapWithLinearInterpolation(Set(first:last, j), &
+            last - first + 1, tnrow, error)
     end do
+    !> Nothing moves now, so a slower column's samples are read where
+    !> SpecSamples recorded them; SlowColumnSpectra still subtracts this.
+    SpecLead = 0
+    nrow2 = max(0, hi - lo + 1)
 end subroutine FixDatasetForSpectra

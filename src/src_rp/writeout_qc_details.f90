@@ -43,10 +43,12 @@ subroutine WriteOutQCDetails(string, StDiff, DtDiff, STFlg, DTFlg)
     integer, intent(in) :: STFlg(GHGNumVar)
     integer, intent(in) :: DTFlg(GHGNumVar)
     !> local variables
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
     character(DatumLen) :: datum
     integer :: gas
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     call clearstr(dataline)
 
     !> File info

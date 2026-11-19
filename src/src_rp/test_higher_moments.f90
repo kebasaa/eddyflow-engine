@@ -39,13 +39,13 @@ subroutine TestHigherMoments(Set, N)
     implicit none
     !> in/out variables
     integer, intent(in) :: N
-    real(kind = dbl), intent(inout) :: Set(N, E2NumVar)
+    real(kind = dbl), intent(inout) :: Set(N, pe)
     !> local variables
     integer :: j = 0
     integer :: hflags(E2NumVar)
     integer :: sflags(E2NumVar)
-    real(kind = dbl) :: LocSet(N, E2NumVar)
-    real(kind = dbl) :: Primes(N, E2NumVar)
+    real(kind = dbl) :: LocSet(N, pe)
+    real(kind = dbl) :: Primes(N, pe)
     real(kind = dbl) :: Skw(E2NumVar)
     real(kind = dbl) :: Kur(E2NumVar)
 
@@ -56,17 +56,20 @@ subroutine TestHigherMoments(Set, N)
     sflags = 9
 
     !> Define LocSet, limited to variables u to gas4
-    LocSet(1:N, u:E2NumVar) = Set(1:N, u:E2NumVar)
+    LocSet(1:N, u:pe) = Set(1:N, u:pe)
 
     !> Linear detrending
-    call LinDetrend(LocSet, Primes, RPsetup%avrg_len * 60, E2Col, N, E2NumVar)
+    call LinDetrend(LocSet, Primes, RPsetup%avrg_len * 60, E2Col, N, pe)
 
     !> Hihgher moments 
-    call KurtosisNoError(Primes, N, E2NumVar, Kur, error)
-    call SkewnessNoError(Primes, N, E2NumVar, Skw, error)
+    call KurtosisNoError(Primes, N, pe, Kur, error)
+    call SkewnessNoError(Primes, N, pe, Skw, error)
 
-    !> Hard/soft flags for skewness or kurtorsis out of bounds
-    do j = u, GHGNumVar
+    !> Hard/soft flags for skewness or kurtorsis out of bounds. To lastGas:
+    !> the slots after it are the cells now, which this test never flagged.
+    Essentials%sk_s_skw(lastGas + 1:GHGNumVar) = error
+    Essentials%sk_s_kur(lastGas + 1:GHGNumVar) = error
+    do j = u, lastGas
         if (E2Col(j)%present) then
             if ((Skw(j) <= sk%hf_skmin) .or. (Skw(j) >= sk%hf_skmax) .or. &
                 (Kur(j) <= sk%hf_kumin) .or. (Kur(j) >= sk%hf_kumax)) then

@@ -106,6 +106,7 @@ end subroutine ReadIniRP
 !*******************************************************************************
 subroutine WriteVariablesRP()
     use m_rp_global_var
+    use m_cumcov, only: CumCovGenerate, ParseCumCovSegments
     implicit none
     integer, external :: PrimaryWaterSlot
     !> local variables
@@ -634,6 +635,9 @@ subroutine WriteVariablesRP()
         Meth%tlag = 'tlag_opt'
         case ('5')
         Meth%tlag = 'pwb'
+        case ('6')
+        !> Cumulated cross-covariance, after innFLUX (Striednig et al. 2020)
+        Meth%tlag = 'cumcov'
         case default
         Meth%tlag = 'none'
     end select
@@ -713,6 +717,7 @@ subroutine WriteVariablesRP()
     RPsetup%tlag_assessment_only = SCTagFound(101) .and. &
         SCTags(101)%value(1:1) == '1'
     TimeLagOptSelected = .false.
+    CumCovGenerate = Meth%tlag == 'cumcov'
     if (Meth%tlag == 'tlag_opt') then
         TimeLagOptSelected = .true.
         if (SCTags(91)%value(1:1) == '1') then
@@ -722,6 +727,10 @@ subroutine WriteVariablesRP()
             if (len_trim(SCTags(92)%value) > 0) &
                 AuxFile%to = SCTags(92)%value(1:len_trim(SCTags(92)%value))
         end if
+    elseif (Meth%tlag == 'cumcov') then
+        !> The cumulated-covariance lag always needs its pre-pass: the
+        !> functions are summed over the run before any period is processed.
+        RPsetup%to_onthefly = .true.
     elseif (Meth%tlag == 'pwb') then
         if (SCTags(91)%value(1:1) == '1') then
             !> PWB on-the-fly means generate a per-period PWB cache before
@@ -836,7 +845,20 @@ subroutine WriteVariablesRP()
 
                 end if
             end do
-            if (PFSetup%num_sec == 0) then
+            !> Moving windows and the bootstrap, after innFLUX (Striednig et al.
+            !> 2020); both off unless stated. Windows replace the sectors.
+            PFSetup%mw_num = 0
+            PFSetup%mw_width = 30d0
+            PFSetup%boot_n = 0
+            PFSetup%boot_seed = 1
+            if (SNTagFound(440)) PFSetup%mw_num = max(0, min(MaxNumPfSect, nint(SNTags(440)%value)))
+            if (SNTagFound(441)) PFSetup%mw_width = SNTags(441)%value
+            if (PFSetup%mw_width <= 0d0 .or. PFSetup%mw_width > 360d0) PFSetup%mw_width = 30d0
+            if (SNTagFound(442)) PFSetup%boot_n = max(0, nint(SNTags(442)%value))
+            if (SNTagFound(443)) PFSetup%boot_seed = nint(SNTags(443)%value)
+            if (PFSetup%mw_num > 0) then
+                PFSetup%num_sec = PFSetup%mw_num
+            elseif (PFSetup%num_sec == 0) then
                 call ExceptionHandler(40)
                 PFSetup%num_sec = 1
             elseif (PFSetup%num_sec == 1) then
@@ -938,6 +960,76 @@ subroutine WriteVariablesRP()
     !> absent tag must mean off rather than whatever the shared character
     !> array happens to hold.
     RPSetup%covmax_debaseline = SCTagFound(79) .and. SCTags(79)%value(1:1) == '1'
+    !> Smoothed peak search after innFLUX (Striednig et al. 2020). Off unless
+    !> stated: absent, or a value out of range, leaves CovMax as it was.
+    RPSetup%covmax_smooth_len = 0
+    RPSetup%covmax_peak_sign = 0
+    if (SNTagFound(425)) then
+        RPSetup%covmax_smooth_len = nint(SNTags(425)%value)
+        if (RPSetup%covmax_smooth_len < 2) RPSetup%covmax_smooth_len = 0
+    end if
+    if (SNTagFound(426)) then
+        RPSetup%covmax_peak_sign = nint(SNTags(426)%value)
+        if (RPSetup%covmax_peak_sign < 0 .or. RPSetup%covmax_peak_sign > 2) &
+            RPSetup%covmax_peak_sign = 0
+    end if
+    !> Cumulated-covariance lag and its clock-drift correction, after innFLUX.
+    !> innFLUX's own values as defaults; read only under tlag_meth 6.
+    RPSetup%tlag_cum_filter_len = 15
+    RPSetup%tlag_cum_min_ustar = 0.3d0
+    RPSetup%tlag_cum_min_compl_sonic = 0.95d0
+    RPSetup%tlag_cum_min_compl_gas = 0.5d0
+    RPSetup%tlag_cum_max_sst = 0.3d0
+    RPSetup%tlag_cum_nseg = 0
+    RPSetup%tlag_cum_seg = error
+    RPSetup%tlag_drift_meth = 0
+    RPSetup%tlag_drift_span_d = 5d0
+    RPSetup%tlag_drift_jump_thr = -0.8d0
+    RPSetup%tlag_drift_max_s = 10d0
+    RPSetup%tlag_drift_ref = .false.
+    if (SNTagFound(429)) RPSetup%tlag_cum_filter_len = max(0, nint(SNTags(429)%value))
+    if (SNTagFound(430)) RPSetup%tlag_cum_min_ustar = SNTags(430)%value
+    if (SNTagFound(431)) RPSetup%tlag_cum_min_compl_sonic = SNTags(431)%value
+    if (SNTagFound(432)) RPSetup%tlag_cum_min_compl_gas = SNTags(432)%value
+    if (SNTagFound(433)) RPSetup%tlag_cum_max_sst = SNTags(433)%value
+    if (SNTagFound(434)) RPSetup%tlag_drift_meth = nint(SNTags(434)%value)
+    if (RPSetup%tlag_drift_meth /= 1) RPSetup%tlag_drift_meth = 0
+    if (SNTagFound(435)) RPSetup%tlag_drift_span_d = SNTags(435)%value
+    if (SNTagFound(436)) RPSetup%tlag_drift_jump_thr = SNTags(436)%value
+    if (SNTagFound(437)) RPSetup%tlag_drift_max_s = max(0d0, SNTags(437)%value)
+    if (RPSetup%tlag_drift_span_d <= 0d0) RPSetup%tlag_drift_span_d = 5d0
+    if (SCTagFound(102)) call ParseCumCovSegments(SCTags(102)%value, &
+        RPSetup%tlag_cum_seg, MaxCumSegments, RPSetup%tlag_cum_nseg)
+    !> Per-period cross-covariance output, off unless a gas asks for it.
+    RPSetup%out_ccf = .false.
+    RPSetup%out_ccf_max_lag_s = 200d0
+    RPSetup%out_ccf_decim = 1
+    if (SNTagFound(438)) RPSetup%out_ccf_max_lag_s = max(0d0, SNTags(438)%value)
+    if (SNTagFound(439)) RPSetup%out_ccf_decim = max(1, nint(SNTags(439)%value))
+    do i = 1, min(EddyFlowProj%gas_num, MaxNumGases)
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 26)) &
+            RPSetup%tlag_drift_ref(firstGas + i - 1) = &
+                nint(SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 26)%value) == 1
+        if (SNTagFound(rpGasOriginN + (i - 1) * rpGasLeapN + 27)) &
+            RPSetup%out_ccf(firstGas + i - 1) = &
+                nint(SNTags(rpGasOriginN + (i - 1) * rpGasLeapN + 27)%value) == 1
+    end do
+
+    !> Optional innFLUX-style outputs, each off unless stated.
+    RPSetup%out_theta_flux = .false.
+    RPSetup%out_lod_noise_stats = .false.
+    if (SNTagFound(427)) RPSetup%out_theta_flux = nint(SNTags(427)%value) == 1
+    if (SNTagFound(428)) RPSetup%out_lod_noise_stats = nint(SNTags(428)%value) == 1
+    !> Stochastic detrending detrends every shifted window on its own; the
+    !> smoothed search reads one covariance function and does not reproduce
+    !> that, so the two are not combined and the established option wins.
+    if (RPSetup%covmax_stocdet .and. (RPSetup%covmax_smooth_len > 0 &
+        .or. RPSetup%covmax_peak_sign /= 0)) then
+        call LogSay(' Warning: covmax_smooth_len and covmax_peak_sign are ignored' &
+            // ' under stochastic detrending (covmax_stocdet).')
+        RPSetup%covmax_smooth_len = 0
+        RPSetup%covmax_peak_sign = 0
+    end if
 
     !> Conditional lag borrowing, Nemitz et al. (2018). Three times the
     !> detection limit is the paper's threshold and EddyUH's.
@@ -1069,8 +1161,12 @@ subroutine WriteVariablesRP()
     if(SCTags(65)%value == '-1') RPsetup%bu_corr = 'none'
     RPsetup%bu_multi = SCTags(66)%value(1:1) == '1'
 
-    !> Whether to use power-of-two samples for FFT
+    !> How many samples the FFT takes: 1 a power of two, 2 the largest
+    !> length with no prime factor above 13, anything else all of them. An
+    !> engine from before 2 existed reads it as all of them, which is slow
+    !> but right.
     RPsetup%power_of_two = SCTags(87)%value(1:1) == '1'
+    RPsetup%fft_friendly_len = SCTags(87)%value(1:1) == '2'
 
     !> Whether to refer wind direction to geographic north
     RPsetup%use_geo_north = SCTags(89)%value(1:1) == '1'

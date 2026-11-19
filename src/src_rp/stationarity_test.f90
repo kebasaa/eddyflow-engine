@@ -38,6 +38,8 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     implicit none
     !> in/out variables
     integer, parameter :: ndiv = 6
+    !> The working arrays are lastGas wide: every result is read u..lastGas,
+    !> and past the project's last gas the slots are cells now.
     integer, intent(in) :: nrow, ncol
     real(kind = dbl), intent(in) :: Set(nrow, ncol)
     !> local variables
@@ -46,36 +48,36 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
     integer :: j = 0
     integer :: subn
     integer :: gas
-    integer :: IntDiff(GHGNumVar, GHGNumVar)
+    integer :: IntDiff(lastGas, lastGas)
     integer :: IntDiffUstar
     type(QCType) :: StDiff
-    real(kind = dbl) :: LocSet(nrow, GHGNumVar)
+    real(kind = dbl) :: LocSet(nrow, lastGas)
     real(kind = dbl), allocatable :: SubSet(:, :)
-    real(kind = dbl) :: SubCov(GHGNumVar, GHGNumVar)
-    real(kind = dbl) :: AvrgCov(GHGNumVar, GHGNumVar)
-    real(kind = dbl) :: GlbCov(GHGNumVar, GHGNumVar)
+    real(kind = dbl) :: SubCov(lastGas, lastGas)
+    real(kind = dbl) :: AvrgCov(lastGas, lastGas)
+    real(kind = dbl) :: GlbCov(lastGas, lastGas)
     real(kind = dbl) :: dev
-!    real(kind = dbl) :: Mean(GHGNumVar)
+!    real(kind = dbl) :: Mean(lastGas)
 !    real(kind = dbl) :: DirYaw
 !    real(kind = dbl) :: Yaw(3, 3)
 !    real(kind = dbl) :: SinTheta
 !    real(kind = dbl) :: CosTheta
     real(kind = dbl) :: GlbUstar
     real(kind = dbl) :: SubUstar
-    integer :: nv(GHGNumVar, GHGNumVar)
+    integer :: nv(lastGas, lastGas)
 
 
     call LogSayNoAdv('  Performing stationarity test..')
 
     !> Define LocSet with only variables u to gas4
-    LocSet(:, u:GHGNumVar) = Set(:, u:GHGNumVar)
+    LocSet(:, u:lastGas) = Set(:, u:lastGas)
 
     !> Global covariances from raw data
-    call CovarianceMatrixNoError(LocSet, nrow, GHGNumVar, GlbCov, error)
+    call CovarianceMatrixNoError(LocSet, nrow, lastGas, GlbCov, error)
 
     !> Partial covariances from subsets and their averages
     subn = int(dble(nrow/ndiv))
-    allocate(SubSet(subn, GHGNumVar))
+    allocate(SubSet(subn, lastGas))
     !> Averaged over the sub-periods that have a covariance. A sub-period
     !> without one returns the error code, which was added in like a value:
     !> (5c - 9999) / 6 passed the error test below, and the period got a
@@ -87,7 +89,7 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
         do i = 1, subn
             SubSet(i, :) = LocSet(i + (subn*(l - 1)), :)
         end do
-        call CovarianceMatrixNoError(SubSet, subn, GHGNumVar, SubCov, error)
+        call CovarianceMatrixNoError(SubSet, subn, lastGas, SubCov, error)
         where (SubCov /= error)
             AvrgCov = AvrgCov + SubCov
             nv = nv + 1
@@ -109,8 +111,8 @@ subroutine StationarityTest(Set, nrow, ncol, StDiff)
         GlbUstar = (GlbCov(u, w)**2  + GlbCov(v, w)**2 )**0.25d0
 
     !> Differences
-    do i = u, GHGNumVar
-        do j = u, GHGNumVar
+    do i = u, lastGas
+        do j = u, lastGas
             if (GlbCov(i, j) /= 0d0 .and. GlbCov(i, j) /= error .and. AvrgCov(i, j) /= error) then
                 dev = dabs((GlbCov(i, j) - AvrgCov(i, j)) * 1d2 / GlbCov(i, j))
                 if (dabs(dev) < 2147483648.d0) then

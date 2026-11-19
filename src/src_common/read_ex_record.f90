@@ -83,7 +83,7 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     real(kind = dbl) :: instr_kw, instr_ko
     real(kind = dbl) :: instr_ac_freq
     character(9) :: vm97flags(GHGNumVar)
-    character(LongOutstringLen) :: dataline
+    character(LineLen), allocatable :: dataline
     !> Scratch for fields that are read only to be discarded. Must hold the
     !> largest such group, which is the level 1 and 2 fluxes: two flux families
     !> of four plus one per gas each. At 32 a project with more than 28 gases
@@ -197,6 +197,8 @@ subroutine ReadExRecord(FilePath, unt, rec_num, lEx, ValidRecord, EndOfFileReach
     ! integer, external :: strCharIndex
 
     !> If rec_num > 0,open file and moves to the requested record
+    !> On the heap, at this project's line length (LineLen).
+    allocate(dataline)
     if (rec_num > 0) then
         open(udf, file = trim(adjustl(FilePath)), status = 'old', iostat = open_status)
         if (open_status /= 0) call ExceptionHandler(60)

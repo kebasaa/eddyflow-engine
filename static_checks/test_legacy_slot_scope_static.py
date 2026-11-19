@@ -214,7 +214,10 @@ class TheSpeciesSpellingsAreGone(unittest.TestCase):
         src = (ROOT / "src/src_common/m_typedef.f90").read_text(
             encoding="utf-8", errors="replace")
         self.assertIn("firstGas = NumAnemVar + 1", src)
-        self.assertIn("lastGas  = GHGNumVar", src)
+        #> The ceiling's layout by default; SetSlotLayout closes it up to
+        #> the project's gases.
+        self.assertIn("MaxLastGas = GHGNumVar", src)
+        self.assertIn("integer :: lastGas   = MaxLastGas", src)
 
 
 if __name__ == "__main__":

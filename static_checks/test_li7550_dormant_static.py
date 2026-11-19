@@ -76,7 +76,7 @@ class TheSelectionIsByInstrumentNotBySlot(unittest.TestCase):
 
     def test_the_arm_takes_whatever_gas_it_is_given(self):
         src = code(TF)
-        self.assertIn("case(firstGas:lastGas)", src)
+        self.assertIn("case(firstGas:MaxLastGas)", src)
         self.assertNotIn(
             "case(histGas1, histGas2)", src,
             "the arm names slots again; the caller decides which gases are "

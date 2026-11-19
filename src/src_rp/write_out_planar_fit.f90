@@ -60,6 +60,13 @@ subroutine WriteOutPlanarFit(NumElem, N)
         zero = nint(360 + PFSetup%north_offset)
     end if
     write(upf, '(a)') 'Planar_fit_results'
+    !> Moving windows (after innFLUX, Striednig et al. 2020): the file says
+    !> so and holds one row per window, so that reusing it applies exactly
+    !> these windows, whatever the reusing project's own pf_mw_* keys say.
+    if (PFSetup%mw_num > 0) then
+        call WriteMovingWindows()
+        return
+    end if
     write(upf, '(a, i3)') 'Number_of_selected_wind_sectors: ', PFSetup%num_sec
     write(upf, '(a, i4)') 'Minimum_number_of_data_per_wind_sector: ', PFSetup%min_per_sec
     write(upf, '(a, f5.2)') 'Maximum_average_vertical_wind_component_(m/s): ', PFSetup%w_max
@@ -110,9 +117,52 @@ subroutine WriteOutPlanarFit(NumElem, N)
             end do
         end do
     end if
+    !> Bootstrap uncertainty of the tilt angles, when asked for (after
+    !> innFLUX, Striednig et al. 2020, Fig. 1). After the rotation matrices,
+    !> where an older reader stops reading.
+    if (PFSetup%boot_n > 0) then
+        write(upf, *)
+        write(upf, '(a, i0, a, i0)') 'Bootstrap: ', PFSetup%boot_n, ' seed ', PFSetup%boot_seed
+        write(upf, '(a)') 'Tilt angle uncertainty (std, degrees)'
+        do sec = 1, PFSetup%num_sec
+            write(upf, '(i11, 2(f14.7))') sec, PFStdAlpha(sec), PFStdBeta(sec)
+        end do
+    end if
     close(udf)
     write(*,'(a)') '  Results written on file: ' &
         // PlanarFit_Path(1:len_trim(PlanarFit_Path))
     write(ulog,'(a)') '  Results written on file: ' &
         // PlanarFit_Path(1:len_trim(PlanarFit_Path))
+contains
+
+    subroutine WriteMovingWindows()
+        real(kind = dbl) :: centre
+
+        write(upf, '(a, i0)') 'Number_of_selected_wind_sectors: ', PFSetup%num_sec
+        write(upf, '(a, i0, a, f0.2)') 'Moving_window_sectors: ', PFSetup%mw_num, &
+            ' width ', PFSetup%mw_width
+        write(upf, '(a, f0.2)') 'North_offset: ', PFSetup%north_offset
+        write(upf, '(a, i0, a, i0)') 'Bootstrap: ', PFSetup%boot_n, ' seed ', PFSetup%boot_seed
+        write(upf, '(a, i4)') 'Minimum_number_of_data_per_wind_sector: ', PFSetup%min_per_sec
+        write(upf, '(a, f5.2)') 'Maximum_average_vertical_wind_component_(m/s): ', PFSetup%w_max
+        write(upf, '(a, f5.2)') 'Minimum_average_horizontal_wind_component_(m/s): ', PFSetup%u_min
+        write(upf, '(a, a)') 'Beginning_of_planar_fit_determination_period: ', PFSetup%start_date
+        write(upf, '(a, a)') 'End_of_planar_fit_determination_period: ', PFSetup%end_date
+        write(upf, '(a)')
+        write(upf, '(a)') 'Moving window planes and rotation matrices'
+        write(upf, '(a)') 'window,centre_deg,n,B0,B1,B2,std_alpha_deg,std_beta_deg,' &
+            // 'P11,P12,P13,P21,P22,P23,P31,P32,P33'
+        do sec = 1, PFSetup%num_sec
+            centre = modulo(dble(sec - 1) * 360d0 / dble(PFSetup%mw_num) &
+                + PFSetup%north_offset, 360d0)
+            write(upf, '(i0, a, f0.3, a, i0, 14(a, es20.12))') sec, ',', centre, ',', &
+                NumElem(sec), (',', PFb(i, sec), i = 1, 3), ',', PFStdAlpha(sec), ',', &
+                PFStdBeta(sec), ((',', PFMat(j, i, sec), i = 1, 3), j = 1, 3)
+        end do
+        close(upf)
+        write(*,'(a)') '  Results written on file: ' &
+            // PlanarFit_Path(1:len_trim(PlanarFit_Path))
+        write(ulog,'(a)') '  Results written on file: ' &
+            // PlanarFit_Path(1:len_trim(PlanarFit_Path))
+    end subroutine WriteMovingWindows
 end subroutine WriteOutPlanarFit

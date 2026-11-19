@@ -151,7 +151,9 @@ class TheHaarTestComparesLikeWithLike(unittest.TestCase):
 
     def test_all_three_are_variances(self):
         for v in ("Var", "Var_dw", "Var_up"):
-            self.assertIn("where (%s /= error) %s = %s**2" % (v, v, v), self.DS)
+            #> Over the gas slots only: past lastGas the slots are cells.
+            self.assertIn("where (%s(1:lastGas) /= error) %s(1:lastGas) = %s(1:lastGas)**2"
+                          % (v, v, v), self.DS)
 
 
 class PwbCachedLagsFollowThePeriodsRate(unittest.TestCase):

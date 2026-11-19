@@ -180,7 +180,8 @@ class SpectralCorrectionsReachEveryGas(unittest.TestCase):
 
     def test_the_analytic_transfer_function_covers_every_gas(self):
         source = read("src/src_common/bpcf_analytic_transfer_functions.f90")
-        self.assertIn("case (firstGas:lastGas)", source)
+        #> MaxLastGas: a case needs a constant, and lastGas is the run's.
+        self.assertIn("case (firstGas:MaxLastGas)", source)
         self.assertNotIn("case (co2, h2o, ch4, gas4)", source)
 
     def test_the_cospectral_model_covers_every_gas(self):

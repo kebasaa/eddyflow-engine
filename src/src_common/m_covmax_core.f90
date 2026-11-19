@@ -53,6 +53,7 @@ module m_covmax_core
 
     public :: CrossCovarianceSeries
     public :: FarLagCovarianceNoise
+    public :: FarLagCovarianceStats
     public :: IntegralScaleFromCorr
     public :: LimitOfDetection
 
@@ -155,6 +156,43 @@ contains
         character(*), intent(in) :: stat
         real(kind = dbl), intent(out) :: re
         integer, intent(out) :: nlags
+        real(kind = dbl) :: mean
+        real(kind = dbl) :: sd
+        real(kind = dbl) :: rmse
+
+        call FarLagCovarianceStats(col1, col2, n, centre, lo, hi, err, &
+            mean, sd, rmse, nlags)
+        if (stat == 'sd') then
+            re = sd
+        else
+            re = rmse
+        end if
+    end subroutine FarLagCovarianceNoise
+
+    !***************************************************************************
+    !> \brief The far-lag statistics FarLagCovarianceNoise chooses from: the
+    !>        mean, the population standard deviation and the root mean square
+    !>        of the cross-covariance over the two windows, pooled.
+    !>
+    !> The same sums in the same order the noise routine has always used, so
+    !> each statistic is bitwise what it returned. innFLUX reports the mean
+    !> and the SD beside the flux and their ratio as a signal-to-noise ratio
+    !> (Striednig et al. 2020, after Spirig et al. 2005). err for all three
+    !> when fewer than three lags are valid or a window does not fit.
+    !***************************************************************************
+    pure subroutine FarLagCovarianceStats(col1, col2, n, centre, lo, hi, err, &
+        mean, sd, rmse, nlags)
+        integer, intent(in) :: n
+        integer, intent(in) :: centre
+        integer, intent(in) :: lo
+        integer, intent(in) :: hi
+        real(kind = dbl), intent(in) :: col1(n)
+        real(kind = dbl), intent(in) :: col2(n)
+        real(kind = dbl), intent(in) :: err
+        real(kind = dbl), intent(out) :: mean
+        real(kind = dbl), intent(out) :: sd
+        real(kind = dbl), intent(out) :: rmse
+        integer, intent(out) :: nlags
         real(kind = dbl) :: cov_lo(centre - hi:centre - lo)
         real(kind = dbl) :: cov_hi(centre + lo:centre + hi)
         real(kind = dbl) :: s1
@@ -162,7 +200,9 @@ contains
         real(kind = dbl) :: mu
         integer :: lag
 
-        re = err
+        mean = err
+        sd = err
+        rmse = err
         nlags = 0
         if (lo < 0 .or. hi < lo) return
         if (abs(centre - hi) >= n .or. abs(centre + hi) >= n) return
@@ -186,13 +226,11 @@ contains
         end do
         if (nlags < 3) return
 
-        if (stat == 'sd') then
-            mu = s1 / dble(nlags)
-            re = sqrt(max(0d0, s2 / dble(nlags) - mu ** 2))
-        else
-            re = sqrt(s2 / dble(nlags))
-        end if
-    end subroutine FarLagCovarianceNoise
+        mu = s1 / dble(nlags)
+        mean = mu
+        sd = sqrt(max(0d0, s2 / dble(nlags) - mu ** 2))
+        rmse = sqrt(s2 / dble(nlags))
+    end subroutine FarLagCovarianceStats
 
     !***************************************************************************
     !> \brief Integral scale of a cross-correlation already normalised to one

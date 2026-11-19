@@ -197,7 +197,10 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
     real(kind = dbl)  :: lRH
     logical, external :: GasSlotIsWater
     integer, external :: PrimaryWaterSlot
+    integer, external :: SpectralSourceSlot
     integer :: wsl
+    !> The gas whose fitted transfer function a gas is corrected with
+    integer :: src
 
     f_c(firstGas:lastGas) = error
     f_2(firstGas:lastGas) = error
@@ -263,9 +266,13 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             do gas = firstGas, lastGas
                 if (GasSlotIsWater(gas)) cycle
                 if (.not. lEx%var_present(gas)) cycle
-                if (LocSetup%SA%class(gas, month) < 1 .or. &
-                    LocSetup%SA%class(gas, month) > MaxGasClasses) cycle
-                f_c(gas) = RegPar(gas, LocSetup%SA%class(gas, month))%fc
+                !> Its own fit, or the tube-mate's it takes instead
+                !> (SpectralSourceSlot), in that gas's own class for the
+                !> month - the pair the hub's gate tested.
+                src = SpectralSourceSlot(gas, month, LocSetup%SA)
+                if (LocSetup%SA%class(src, month) < 1 .or. &
+                    LocSetup%SA%class(src, month) > MaxGasClasses) cycle
+                f_c(gas) = RegPar(src, LocSetup%SA%class(src, month))%fc
             end do
 
         case('sigma')
@@ -316,9 +323,10 @@ subroutine RetrieveLPTFpars(lEx, tf_shape, LocSetup)
             do gas = firstGas, lastGas
                 if (GasSlotIsWater(gas)) cycle
                 if (.not. lEx%var_present(gas)) cycle
-                if (LocSetup%SA%class(gas, month) < 1 .or. &
-                    LocSetup%SA%class(gas, month) > MaxGasClasses) cycle
-                f_2(gas) = RegPar(gas, LocSetup%SA%class(gas, month))%f2
+                src = SpectralSourceSlot(gas, month, LocSetup%SA)
+                if (LocSetup%SA%class(src, month) < 1 .or. &
+                    LocSetup%SA%class(src, month) > MaxGasClasses) cycle
+                f_2(gas) = RegPar(src, LocSetup%SA%class(src, month))%f2
             end do
     end select
 end subroutine RetrieveLPTFpars

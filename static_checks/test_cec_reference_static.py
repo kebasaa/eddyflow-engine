@@ -573,7 +573,7 @@ class CecReferenceTests(unittest.TestCase):
         the same by hand.
         """
         engine = read("src/src_rp/stationarity_test.f90")
-        self.assertIn("call CovarianceMatrixNoError(SubSet, subn, GHGNumVar, SubCov, error)",
+        self.assertIn("call CovarianceMatrixNoError(SubSet, subn, lastGas, SubCov, error)",
                       engine)
         cec = read("src/src_common/m_cec.f90")
         block = cec[cec.index("subroutine CecPartitionStability"):

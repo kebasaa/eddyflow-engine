@@ -36,6 +36,10 @@
 program EddyFlowRP
     use m_rp_global_var
     use m_cec
+    use m_pfboot, only: BootstrapTilt
+    use m_cumcov, only: CumCovGenerate, CumCovBeginPrepass, CumCovGatherPeriod, &
+        CumCovFlushPeriod, CumCovEndSlice, CumCovResolve, CumCovPeriodLags, &
+        WriteCcfOutput
     use m_pwb_timelag, only: ResetPwbDiagnostics, ReportPwbDiagnostics, InitPwbTimelagCache, &
         ResetPwbOutsideWindow, &
         ReadPwbTimelagCache, WritePwbTimelagCache, SetPwbPeriodTimestamp, &
@@ -124,8 +128,8 @@ program EddyFlowRP
     real(kind = dbl), allocatable :: CecPrimes(:, :)
     logical :: cec_ok
     integer :: SpecRow
-    integer :: Nmax
-    integer :: Nmin
+    !> First row of E2Primes in the window the (co)spectra are computed on.
+    integer :: SpecLo
     integer :: max_nsmpl
     integer :: pfn
     !> How the two assessment pre-passes were split across worker processes.
@@ -144,6 +148,10 @@ program EddyFlowRP
     !> asked for, the worst relative change at the last comparison, and the
     !> previous pass's gas fluxes to compare against.
     integer :: corr_pass
+    !> The gas slots' presence for the spectral corrections, which take it
+    !> GHGNumVar wide. Past the project's last gas those slots are the cells
+    !> now (SetSlotLayout), and a cell is not a gas to correct.
+    logical :: GasSlotPresent(GHGNumVar)
     integer :: corr_passes
     real(kind = dbl) :: iter_dev
     real(kind = dbl) :: prev_gas_flux(GHGNumVar)
@@ -200,7 +208,7 @@ program EddyFlowRP
     real(kind = dbl) :: Mat2d(2, 2)
     real(kind = dbl) :: pfVec(3)
     real(kind = dbl) :: pfVec2d(2)
-    real(kind = dbl) :: PFb2d(2, MaxNumWSect) = 0.d0
+    real(kind = dbl) :: PFb2d(2, MaxNumPfSect) = 0.d0
     !> Highest acquisition frequency among the raw files, for the spectra grid
     real(kind = dbl) :: SurveyAcFreq
 
@@ -653,7 +661,8 @@ program EddyFlowRP
     if (BatchIndex == 0 .and. EddyFlowProj%caller == 'gui') then
         RunPlan = ''
         if (RPsetup%to_onthefly .and. &
-            (trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
+            (trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate &
+            .or. CumCovGenerate) .and. &
             (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only)) &
             RunPlan = trim(RunPlan) // ' to'
         if (RPsetup%pf_onthefly .and. &
@@ -699,7 +708,8 @@ program EddyFlowRP
     !> time-lag periods, write time-lag records where its wind means belonged,
     !> and stop - and the parent read those records as wind and lost every
     !> sector of the fit. The wind means it is there for depend on no time lag.
-    if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate) .and. &
+    if ((trim(adjustl(Meth%tlag)) == 'tlag_opt' .or. PwbCacheGenerate &
+        .or. CumCovGenerate) .and. &
         (.not. AssessmentOnly .or. RPsetup%tlag_assessment_only) .and. &
         (BatchIndex == 0 .or. BatchKind == 'to')) then
         if (.not. RPsetup%to_onthefly) then
@@ -709,7 +719,7 @@ program EddyFlowRP
         else
             call LogSay(' Performing time-lag optimization:')
 
-            if (PwbCacheGenerate .and. EddyFlowProj%subperiod) then
+            if ((PwbCacheGenerate .or. CumCovGenerate) .and. EddyFlowProj%subperiod) then
                 !> PWB caches cover the actual requested output range, not the
                 !> optional aggregate-optimizer assessment subperiod.
                 call DateTimeToDateType(EddyFlowProj%start_date, EddyFlowProj%start_time, auxStartTimestamp)
@@ -719,7 +729,8 @@ program EddyFlowRP
                 toEndTimestampIndx = toEndTimestampIndx + 1
                 if (toStartTimestampIndx == nint(error) .or. toEndTimestampIndx == nint(error)) &
                     call ExceptionHandler(49)
-            elseif (TOSetup%subperiod .and. .not. PwbCacheGenerate) then
+            elseif (TOSetup%subperiod .and. .not. PwbCacheGenerate &
+                .and. .not. CumCovGenerate) then
                 !> Timestamps of start and end of time-lag optimization period
                 call DateTimeToDateType(TOSetup%start_date, TOSetup%start_time, auxStartTimestamp)
                 call DateTimeToDateType(TOSetup%end_date, TOSetup%end_time, auxEndTimestamp)
@@ -788,6 +799,9 @@ program EddyFlowRP
                 RawTimeSeries, size(RawTimeSeries), RawFileList, NumRawFiles, &
                 toWalk)
             call PlanPrepassBatches(toWalk, .true., toWorkers)
+            !> The cumulated-covariance records go to a scratch file per
+            !> process, read back by the parent after the merge.
+            if (CumCovGenerate) call CumCovBeginPrepass()
 
             !> A worker was handed its slice on the command line. Narrowed
             !> here rather than where the range was computed, so the arrays
@@ -916,9 +930,9 @@ program EddyFlowRP
 
                 !> Allocate arrays for actual data processing
                 if (.not. allocated(E2Set)) &
-                    allocate(E2Set(PeriodRecords, E2NumVar))
+                    allocate(E2Set(PeriodRecords, pe))
                 if (.not. allocated(E2Primes)) &
-                    allocate(E2Primes(PeriodRecords, E2NumVar))
+                    allocate(E2Primes(PeriodRecords, pe))
                 if (.not. allocated(DiagSet)) &
                     allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
@@ -1109,6 +1123,10 @@ program EddyFlowRP
                     !> Adjust min/max time-lags associated to columns, to fit
                     !> user settings in the Time lag optimizer dialog
                     call AdjustTimelagOptSettings()
+                    !> The cross-covariances the cumulated lag sums, before
+                    !> the lag is applied.
+                    if (CumCovGenerate) call CumCovGatherPeriod(E2Set, &
+                        size(E2Set, 1), size(E2Set, 2), pcount, tmpDate, tmpTime)
                     call TimeLagHandle('maxcov', E2Set, &
                         size(E2Set, 1), size(E2Set, 2), Essentials%actual_timelag, &
                         Essentials%used_timelag, Essentials%def_tlag, .true.)
@@ -1150,6 +1168,15 @@ program EddyFlowRP
                     size(E2Primes, 1), size(E2Primes, 2), 7, .false.)
                 if (allocated(E2Primes)) deallocate(E2Primes)
                 Stats7 = Stats
+                !> The period's u*, the last of the cumulated lag's filters.
+                if (CumCovGenerate) then
+                    if (Stats7%Cov(u, w) /= error .and. Stats7%Cov(v, w) /= error) then
+                        call CumCovFlushPeriod((Stats7%Cov(u, w) ** 2 &
+                            + Stats7%Cov(v, w) ** 2) ** 0.25d0)
+                    else
+                        call CumCovFlushPeriod(error)
+                    end if
+                end if
 
                 !***************************************************************
                 !**** RAW DATA REDUCTION FINISHES HERE. ************************
@@ -1190,6 +1217,7 @@ program EddyFlowRP
                 call NoteRunColumns()
 
             end do to_periods_loop
+            if (CumCovGenerate) call CumCovEndSlice()
             write(*, '(a)')
             write(ulog, '(a)')
             call LogSay(' Done.')
@@ -1271,6 +1299,17 @@ program EddyFlowRP
                 call ReportPwbDiagnostics()
                 call ResetPwbDiagnostics()
                 call LogSay(' PWB time-lag pre-pass finished.')
+            elseif (CumCovGenerate) then
+                !> Sum every piece's functions and resolve the lags, after
+                !> innFLUX (Striednig et al. 2020). The optimizer's own fit
+                !> is not run: its dataset was only gathered alongside.
+                if (toParallel) then
+                    call CumCovResolve(PrepassChunkCount())
+                else
+                    call CumCovResolve(1)
+                end if
+                if (allocated(TimelagOpt)) deallocate(TimelagOpt)
+                TimelagOptSize = 0
             else
             !> The preliminary assessment's table, from the dataset before
             !> FixTimelagOptDataset compacts it away.
@@ -1503,7 +1542,7 @@ program EddyFlowRP
 
                 !> Allocate arrays for actual data processing
                 if (.not. allocated(E2Set)) &
-                    allocate(E2Set(PeriodRecords, E2NumVar))
+                    allocate(E2Set(PeriodRecords, pe))
                 if (.not. allocated(DiagSet)) &
                     allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
@@ -1684,14 +1723,21 @@ program EddyFlowRP
             !> Loop over wind sectors
             GoPlanarFit = .true.
             secloop: do sec = 1, PFSetup%num_sec
-                write(SectorLine, '(a, i2, a)') '  Sector n.', sec, '..'
+                if (sec < 100) then
+                    write(SectorLine, '(a, i2, a)') '  Sector n.', sec, '..'
+                else
+                    write(SectorLine, '(a, i0, a)') '  Sector n.', sec, '..'
+                end if
                 call LogOpenLine(trim(SectorLine))
-                if (PFSetup%wsect_exclude(sec)) then
-                    GoPlanarFit(sec) = .false.
-                    PFb(:, sec) = error
-                    PFMat(:, :, sec) = error
-                    call ExceptionHandler(41)
-                    cycle secloop
+                !> Moving windows have no user exclusion flags.
+                if (PFSetup%mw_num == 0) then
+                    if (PFSetup%wsect_exclude(sec)) then
+                        GoPlanarFit(sec) = .false.
+                        PFb(:, sec) = error
+                        PFMat(:, :, sec) = error
+                        call ExceptionHandler(41)
+                        cycle secloop
+                    end if
                 end if
                 if(pfNumElem(sec) < PFSetup%min_per_sec) then
                     GoPlanarFit(sec) = .false.
@@ -1708,6 +1754,16 @@ program EddyFlowRP
 
                 !> Calculate auxiliary variables (see, e.g., Van Dijk et al.2004)
                 call PlanarFitAuxParams(pfWind, pfNumElem(sec), Mat, pfVec)
+                !> Optional bootstrap of the tilt angles, after innFLUX
+                !> (Striednig et al. 2020, Fig. 1): seeded per sector, so the
+                !> order sectors are fitted in does not matter.
+                PFStdAlpha(sec) = error
+                PFStdBeta(sec) = error
+                if (PFSetup%boot_n > 0) &
+                    call BootstrapTilt(pfWind(:, u), pfWind(:, v), pfWind(:, w), &
+                        pfNumElem(sec), PFSetup%boot_n, PFSetup%boot_seed + sec, &
+                        Meth%rot(1:len_trim(Meth%rot)) == 'planar_fit_no_bias', &
+                        error, PFStdAlpha(sec), PFStdBeta(sec))
                 deallocate(pfWind)
 
                 if (Meth%rot(1:len_trim(Meth%rot)) == 'planar_fit') then
@@ -2356,9 +2412,9 @@ program EddyFlowRP
 
         !> Allocate arrays for actual data processing
         if (.not. allocated(E2Set))    &
-            allocate(E2Set(PeriodRecords, E2NumVar))
+            allocate(E2Set(PeriodRecords, pe))
         if (.not. allocated(E2Primes)) &
-            allocate(E2Primes(PeriodRecords, E2NumVar))
+            allocate(E2Primes(PeriodRecords, pe))
         if (.not. allocated(DiagSet))  &
             allocate(DiagSet(PeriodRecords, MaxNumDiag))
 
@@ -2767,6 +2823,11 @@ program EddyFlowRP
 
             !> Calculate and compensate time-lags
             if (TimeLagOptSelected) Meth%tlag = 'maxcov&default'
+            if (CumCovGenerate) call CumCovPeriodLags(Stats%date, Stats%time)
+            !> Optional per-period cross-covariance functions (innFLUX), on
+            !> the series before the lag is applied.
+            if (any(RPSetup%out_ccf)) call WriteCcfOutput(E2Set, size(E2Set, 1), &
+                size(E2Set, 2), Stats%start_date, Stats%start_time)
             call TimeLagHandle(Meth%tlag(1:len_trim(Meth%tlag)), E2Set, &
                 size(E2Set, 1), size(E2Set, 2), Essentials%actual_timelag, &
                 Essentials%used_timelag, Essentials%def_tlag, .false.)
@@ -2831,10 +2892,10 @@ program EddyFlowRP
 
             !> ===== 6.2 QC tests =============================================
             !> Calculate Kurtosis Index on differenced variables
-            call KID(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
+            call KID(E2Set(:, 1:lastGas), size(E2Set, 1), lastGas)
 
             !> Calculate Longest Gap Duration
-            call LongestGapDuration(E2Set(:, 1:GHGNumVar), size(E2Set, 1), GHGNumVar)
+            call LongestGapDuration(E2Set(:, 1:lastGas), size(E2Set, 1), lastGas)
 
             !> ===== 6.3 CONDITIONAL EDDY COVARIANCE ==========================
             !> Before the run's own detrending, because the partition screens
@@ -2918,14 +2979,14 @@ program EddyFlowRP
             !> full second dimension - that is E2NumVar, half as wide again as
             !> the GHGNumVar columns handed over, so the explicit-shape dummy
             !> inside read past the end of them. Matches the KID call above.
-            call Fisher(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), GHGNumVar)
+            call Fisher(E2Primes(:, 1:lastGas), size(E2Primes, 1), lastGas)
 
             !> Cross-correlation R^2 test for repeated values - informational
             !> only (see cross_corr_test.f90's own header), so gated the
             !> same as its sibling raw-signal diagnostics rather than
             !> always spending the two extra CCF passes per variable.
             if (Test%rf) &
-                call CrossCorrTest(E2Primes(:, 1:GHGNumVar), size(E2Primes, 1), size(E2Primes, 2))
+                call CrossCorrTest(E2Primes(:, 1:lastGas), size(E2Primes, 1), lastGas)
 
             !> Calculate Mahrt's random error and Nonstationarity ratio anyway.
             call RU_Mahrt_98(E2Primes, size(E2Primes, 1), size(E2Primes, 2))
@@ -2944,48 +3005,59 @@ program EddyFlowRP
             if (RPsetup%do_spectral_analysis) then
                 SpecCol = E2Col
 
-                !> Replace gaps with linear interpolation of neighbouring data
+                !> Replace gaps with linear interpolation of neighbouring data,
+                !> inside the one window [SpecLo, SpecLo + N2 - 1] on which
+                !> every column has data - the lag-shift error rows at either
+                !> end included, which the trim by the spread of RowLags here
+                !> used to approximate after the columns had already moved.
                 call FixDatasetForSpectra(E2Primes, &
-                    size(E2Primes, 1), size(E2Primes, 2), N2)
+                    size(E2Primes, 1), size(E2Primes, 2), SpecLo, N2)
 
-                !> Set length of dataset by stripping
-                !> trailing/leading error codes
-                Nmax = maxval(RowLags)
-                Nmin = minval(RowLags)
-                max_nsmpl = N2 - (Nmax - Nmin)
-                if(RPsetup%power_of_two) then
-                    !> Calculate power-of-two closest to number of
-                    !> available samples
-                    call PowerOfTwo(max_nsmpl, SpecRow)
+                !> A window under two thirds of the period is the one-third
+                !> rule FixDatasetForSpectra applies to each column, applied
+                !> to what the columns have in common: gaps at opposite ends
+                !> of two columns can pass it one at a time and not together.
+                if (N2 < (2 * size(E2Primes, 1)) / 3) then
+                    call LogSay('  (Co)spectra skipped: the columns share data on fewer than two thirds of the period.')
+                    Essentials%degH(:) = error
                 else
-                    !> use all samples
-                    SpecRow = max_nsmpl
+                    max_nsmpl = N2
+                    if(RPsetup%power_of_two) then
+                        !> Calculate power-of-two closest to number of
+                        !> available samples
+                        call PowerOfTwo(max_nsmpl, SpecRow)
+                    elseif (RPsetup%fft_friendly_len) then
+                        !> Nearly all of them, at power-of-two speed
+                        call FftFriendlyLength(max_nsmpl, SpecRow)
+                    else
+                        !> use all samples
+                        SpecRow = max_nsmpl
+                    end if
+
+                    !> Which row of E2Primes the spectral set starts at. A slower
+                    !> column's samples are located relative to E2Primes, and this
+                    !> is what carries that phase across the trim.
+                    SpecRowOffset = SpecLo - 1
+                    !> Recalculate basic statistics with PeriodRecords=SpecRow
+                    !> as number of observations
+                    allocate(SpecSet(SpecRow, pe))
+                    SpecSet(1: SpecRow, :) = E2Primes(SpecLo: SpecLo + SpecRow - 1, :)
+                    call BasicStats(SpecSet, &
+                        size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
+
+                    !> Calculate spectra and cospectra and output them all
+                    !> Pass the whole gas block, not just the four legacy slots:
+                    !> SpectralAnalysis loops u..GHGNumVar internally, so a
+                    !> narrower slice reads past the end of the array as soon as a
+                    !> project describes more than four gases.
+                    call SpectralAnalysis(Stats%date, Stats%time, bf, &
+                        SpecSet(:, u:lastGas), size(SpecSet, 1), lastGas)
+                    if (allocated(SpecSet)) deallocate(SpecSet)
+
+                    !> Reset stats to Stats7, after the parenthesis
+                    !> of spectral analysis
+                    Stats = Stats7
                 end if
-
-                Nmin = - Nmin
-                !> Which row of E2Primes the spectral set starts at. A slower
-                !> column's samples are located relative to E2Primes, and this
-                !> is what carries that phase across the trim.
-                SpecRowOffset = Nmin
-                !> Recalculate basic statistics with PeriodRecords=SpecRow
-                !> as number of observations
-                allocate(SpecSet(SpecRow, E2NumVar))
-                SpecSet(1: SpecRow, :) = E2Primes(Nmin + 1: Nmin + SpecRow, :)
-                call BasicStats(SpecSet, &
-                    size(SpecSet, 1), size(SpecSet, 2), 8, .true.)
-
-                !> Calculate spectra and cospectra and output them all
-                !> Pass the whole gas block, not just the four legacy slots:
-                !> SpectralAnalysis loops u..GHGNumVar internally, so a
-                !> narrower slice reads past the end of the array as soon as a
-                !> project describes more than four gases.
-                call SpectralAnalysis(Stats%date, Stats%time, bf, &
-                    SpecSet(:, u:lastGas), size(SpecSet, 1), lastGas)
-                if (allocated(SpecSet)) deallocate(SpecSet)
-
-                !> Reset stats to Stats7, after the parenthesis
-                !> of spectral analysis
-                Stats = Stats7
             else
                 Essentials%degH(:) = error
             end if
@@ -3091,6 +3163,9 @@ program EddyFlowRP
 
             !> Calculate fluxes at Level 0
             call Fluxes0_rp(.true.)
+            !> Optional w'theta' and w'theta_v' after innFLUX, from the level 0
+            !> covariances (off unless out_theta_flux).
+            call ThetaFluxes()
 
             !> As of now, still use CO2 analyzer software version as a proxy for
             !> Logger software version. However, the machinery is in place
@@ -3137,8 +3212,10 @@ program EddyFlowRP
                     if (corr_pass > 1) prev_gas_flux = Flux3%gas
 
                     !> Low-pass and high-pass spectral correction factors
+                    GasSlotPresent = E2Col(u:GHGNumVar)%present
+                    GasSlotPresent(lastGas + 1:) = .false.
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
+                        Metadata%d, GasSlotPresent, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, corr_pass == 1, E2Col(u:GHGNumVar)%instr, 1)
@@ -3182,8 +3259,10 @@ program EddyFlowRP
                     !> Those gases cannot use in-situ spectral corrections
                     !> (FCC-only): compute with BPCF=1.0, then zero the ones
                     !> that can so FCC corrects those later.
+                    GasSlotPresent = E2Col(u:GHGNumVar)%present
+                    GasSlotPresent(lastGas + 1:) = .false.
                     call BandPassSpectralCorrections(E2Col(u)%Instr%height, &
-                        Metadata%d, E2Col(u:GHGNumVar)%present, Ambient%WS, Ambient%Ta, &
+                        Metadata%d, GasSlotPresent, Ambient%WS, Ambient%Ta, &
                         Ambient%zL, Metadata%ac_freq, RPsetup%avrg_len, &
                         Metadata%logger_swver, Meth%det, &
                         RPsetup%Tconst, .true., E2Col(u:GHGNumVar)%instr, 1)

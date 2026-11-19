@@ -64,7 +64,9 @@ class FisherIsToldHowManyColumnsItWasGiven(unittest.TestCase):
         call = re.search(r"call Fisher\(([^)]*\)[^)]*)\)", src)
         self.assertIsNotNone(call, "the Fisher call site should still exist")
         text = call.group(1)
-        self.assertIn("1:GHGNumVar", text)
+        #> The gas block: the set is pe wide now (SetSlotLayout), and past
+        #> lastGas its columns are the cells.
+        self.assertIn("1:lastGas", text)
         self.assertNotIn("size(E2Primes, 2)", text,
                          "ncol must describe the section passed (GHGNumVar), "
                          "not E2Primes's full second dimension (E2NumVar)")

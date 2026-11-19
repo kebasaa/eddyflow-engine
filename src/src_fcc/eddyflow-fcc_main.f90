@@ -638,6 +638,12 @@ Program EddyFlowFCC
     !> What the flux loop starts from, for workers should it be split
     if (BatchIndex == 0) call CaptureFccContext()
 
+    !> Which gases take a tube-mate's transfer function, and which would, now
+    !> that the assessment is final. Workers apply the same rule per period
+    !> from the same RegPar, so the parent's report speaks for them. After
+    !> the capture, which it changes nothing in.
+    if (BatchIndex == 0) call ReportSpectralSources()
+
     !***************************************************************************
     !***************************************************************************
     !****** MAIN CYCLE ON RESULTS RECORDS RETRIEVED FROM ESSENTIALS FILE *******
@@ -946,7 +952,13 @@ Program EddyFlowFCC
     // Timestamp_FilePadding // '.eddyflow')
     call ApplyAutomaticSpectralConfiguration(trim(adjustl(Dir%main_out)) // 'processing' &
         // Timestamp_FilePadding // '.eddyflow')
+    !> And what automatic transfer-function selection actually did, which
+    !> belongs in the project kept with the results whatever the setting above
+    call SaveAppliedSpectralSources(trim(adjustl(Dir%main_out)) // 'processing' &
+        // Timestamp_FilePadding // '.eddyflow')
 
+    !> Every suggestion the run made, as its last message before the banner
+    call ReportRunSuggestions()
 
     call LogSay('')
     call LogSay(' ****************************************************')
@@ -1000,8 +1012,10 @@ end subroutine WriteRatePassSpectra
 !> as the header skip both callers need.
 subroutine CheckExFileVintage()
     implicit none
-    character(LongOutstringLen) :: header
+    character(LineLen), allocatable :: header
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(header)
     header = ''
     read(uex, '(a)', iostat = open_status) header
     if (open_status /= 0) call ExceptionHandler(60)
@@ -1019,8 +1033,10 @@ subroutine CheckExFileVintageAt(path)
 
     integer :: unt
     integer :: ios
-    character(LongOutstringLen) :: header
+    character(LineLen), allocatable :: header
 
+    !> On the heap, at this project's line length (LineLen).
+    allocate(header)
     open(newunit = unt, file = path, status = 'old', iostat = ios)
     if (ios /= 0) call ExceptionHandler(60)
     header = ''

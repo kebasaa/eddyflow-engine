@@ -653,6 +653,13 @@ subroutine ReadMeasurementRecords()
     EddyFlowProj%diag_num = min(max(EddyFlowProj%diag_num, 0), MaxNumDiagCols)
     EddyFlowProj%agc_num  = min(max(EddyFlowProj%agc_num,  0), MaxNumAgcCols)
 
+    !> The slot layout follows the gas count from here on: the cell slots, te
+    !> and pe sit right after the project's last gas, so the per-period arrays
+    !> are as wide as the project, not the ceiling. Before anything below
+    !> addresses a slot. An express run adds at most three records later,
+    !> inside the four the layout always keeps.
+    call SetSlotLayout(EddyFlowProj%gas_num)
+
     do i = 1, MaxNumGases
         EddyFlowProj%gas(i) = GasRecordType('none', 'none', nint(error), 0, 0, &
                                             error, error, 0, error)
@@ -845,6 +852,10 @@ end subroutine ReadCecRecords
 !              Anything that is not a positive integer is dropped rather than
 !              refused: an extra species that cannot be resolved costs the
 !              project a column, not the run.
+! \note        The GUI writes a list with a comma in it quoted ("6,4"), and the
+!              INI reader keeps quotes inside a value. A quote left in front of
+!              the first number fails the integer read and drops the whole
+!              list, so quotes are separators here, like the commas.
 !***************************************************************************
 subroutine ParseCecExtraList(text, tok, ntok)
     character(*), intent(in) :: text
@@ -860,7 +871,8 @@ subroutine ParseCecExtraList(text, tok, ntok)
     ntok = 0
     buf = text
     do i = 1, len_trim(buf)
-        if (buf(i:i) == ',' .or. buf(i:i) == ';') buf(i:i) = ' '
+        if (buf(i:i) == ',' .or. buf(i:i) == ';' .or. buf(i:i) == '"' &
+            .or. buf(i:i) == "'") buf(i:i) = ' '
     end do
     if (len_trim(buf) == 0) return
 

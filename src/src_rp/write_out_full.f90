@@ -64,13 +64,13 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
     !> How many gases the time-lag flag string describes. Fewer than
     !> n_flag_vars: that pair names gases only, not u/v/w/ts.
     integer :: n_tl_vars
-    character(LongOutstringLen) :: flag_legend
-    character(LongOutstringLen) :: tl_legend
+    character(LineLen), allocatable :: flag_legend
+    character(LineLen), allocatable :: tl_legend
 !    integer :: prof
     real(kind = dbl) :: gas_flux_sc(GHGNumVar), gas_dens_sc(GHGNumVar)
     character(32) :: gas_flux_label(GHGNumVar), gas_conc_label(GHGNumVar)
     character(32) :: gas_mixr_label(GHGNumVar), gas_dens_label(GHGNumVar)
-    character(LongOutstringLen) :: csv_row
+    character(LineLen), allocatable :: csv_row
     character(DatumLen) :: field_val
     integer :: cec_p
     integer :: cec_k
@@ -83,6 +83,8 @@ subroutine WriteOutFull(init_string, PeriodRecords, PeriodActualRecords)
 
     !> Scale every gas back to the unit basis its column is labelled with.
     !> The same call fills the header, so the two cannot disagree.
+    !> On the heap, at this project's line length (LineLen).
+    allocate(flag_legend, tl_legend, csv_row)
     call GasFullOutputUnitsAll(gas_flux_sc, gas_dens_sc, &
         gas_flux_label, gas_conc_label, gas_mixr_label, gas_dens_label)
 
