@@ -47,6 +47,8 @@ subroutine OutputSpectralAssessmentResults(nbins)
     !> The file is written for the first; the second is what makes it partial.
     integer :: n_fitted
     integer :: n_unfitted
+    !> Which gases have a fit of their own, for ReportInsituCoverage
+    logical :: own_fit(GHGNumVar)
     integer :: cls
     integer :: gas
     integer :: month
@@ -115,11 +117,13 @@ subroutine OutputSpectralAssessmentResults(nbins)
     !> analytic correction.
     n_fitted = 0
     n_unfitted = 0
+    own_fit = .false.
     do gas = firstGas, lastGas
         if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
         if (.not. fcc_var_present(gas)) cycle
         if (GasHasSpectralFit(gas)) then
             n_fitted = n_fitted + 1
+            own_fit(gas) = .true.
         else
             n_unfitted = n_unfitted + 1
         end if
@@ -160,8 +164,9 @@ subroutine OutputSpectralAssessmentResults(nbins)
         else
             !> Some gases fitted and some not: the file is written and covers
             !> only the first group. Said once, here, because this is where it
-            !> is decided - the correction then falls back per gas.
-            if (n_unfitted > 0) call ExceptionHandler(110)
+            !> is decided - per gas: one taking a tube-mate's transfer function
+            !> is reported as such, and only one left with none is warned about.
+            if (n_unfitted > 0) call ReportInsituCoverage(.false., own_fit)
             call LogSay(' Writing spectral assessment results on file.. ')
 
             !> Transfer function parameters
@@ -905,11 +910,13 @@ contains
         !> single-rate file asks, of every slot
         n_fitted = 0
         n_unfitted = 0
+        own_fit = .false.
         do gas = firstGas, lastGas
             if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
             if (.not. fcc_var_present(gas)) cycle
             if (any([(SlotUsable(gas, kk), kk = 1, max(nGasRates(gas), 1))])) then
                 n_fitted = n_fitted + 1
+                own_fit(gas) = .true.
             else
                 n_unfitted = n_unfitted + 1
             end if
@@ -918,7 +925,9 @@ contains
             call ExceptionHandler(76)
             return
         end if
-        if (n_unfitted > 0) call ExceptionHandler(110)
+        !> Per gas, as for a single rate: a gas taking a tube-mate's transfer
+        !> function is reported as such, only one left with none is warned of.
+        if (n_unfitted > 0) call ReportInsituCoverage(.false., own_fit)
         call LogSay(' Writing spectral assessment results on file.. ')
 
         Filename = EddyFlowProj%id(1:len_trim(EddyFlowProj%id)) // SA_FilePadding  &

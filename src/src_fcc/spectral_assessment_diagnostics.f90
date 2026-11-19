@@ -1145,3 +1145,68 @@ contains
     end function MonthSpan
 
 end subroutine ReportSpectralSources
+
+!*******************************************************************************
+!> Which gases the in-situ correction covers, said once where the assessment is
+!> read or written.
+!>
+!> A gas with a fit of its own needs no word. A gas without one that takes a
+!> tube-mate's transfer function - named in gas_<i>_sa_source, or chosen by
+!> automatic selection - is corrected in situ all the same, and gets an
+!> information line naming the donor. Only a gas left with neither falls back
+!> to the analytical method, and only that is warned about: Warning(110) for an
+!> assessment made in this run, Warning(111) for a file that was read, where
+!> "the assessment succeeded" and "the file was written" would not be true.
+!>
+!> Before this, a borrowing gas was counted as unfitted, so a run that read a
+!> file and borrowed for COS warned that the assessment had partly failed.
+!*******************************************************************************
+subroutine ReportInsituCoverage(from_file, own_fit)
+    use m_fx_global_var
+    implicit none
+    logical, intent(in) :: from_file
+    logical, intent(in) :: own_fit(GHGNumVar)
+    integer :: gas
+    integer :: donor
+    integer :: n_covered
+    integer :: n_none
+    character(:), allocatable :: none_list
+    character(16) :: how
+    character(32), external :: GasRecordLabel
+    integer, external :: SpectralInsituDonor
+
+    n_covered = 0
+    n_none = 0
+    none_list = ''
+    do gas = firstGas, lastGas
+        if (gas - firstGas + 1 > min(EddyFlowProj%gas_num, MaxNumGases)) exit
+        if (.not. fcc_var_present(gas)) cycle
+        if (own_fit(gas)) then
+            n_covered = n_covered + 1
+            cycle
+        end if
+        donor = SpectralInsituDonor(gas, FCCsetup%SA)
+        if (donor > 0) then
+            n_covered = n_covered + 1
+            how = 'automatic'
+            if (FCCsetup%SA%source(gas) > 0) how = 'set by user'
+            call LogSay(' Info> ' // trim(GasRecordLabel(gas)) &
+                // ' has no spectral transfer function of its own; corrected with ' &
+                // trim(GasRecordLabel(donor)) // '''s [' // trim(how) // '].')
+        else
+            n_none = n_none + 1
+            if (len(none_list) > 0) none_list = none_list // ', '
+            none_list = none_list // trim(GasRecordLabel(gas))
+        end if
+    end do
+
+    !> Nothing covered is the whole assessment failing, which its own message
+    !> says; nothing left out needs no warning.
+    if (n_covered == 0 .or. n_none == 0) return
+    if (from_file) then
+        call ExceptionHandler(111)
+    else
+        call ExceptionHandler(110)
+    end if
+    call LogSay(' Corrected with the analytical method instead: ' // none_list)
+end subroutine ReportInsituCoverage

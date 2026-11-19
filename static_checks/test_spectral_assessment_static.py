@@ -101,9 +101,15 @@ class TheWriterAndReaderAgreeOnTheBlockCount(unittest.TestCase):
             source = read(path)
             self.assertNotIn("if (gas == h2o) cycle", source,
                              f"{path} must skip water by species, not by slot")
-            self.assertIn("GasSlotIsWater(gas)", source,
-                          f"{path} must skip water, whose cut-offs come from "
-                          f"the RH class table, not from a gas block")
+        self.assertIn("GasSlotIsWater(gas)", read(WRITER),
+                      "the writer must skip water, whose cut-offs come from "
+                      "the RH class table, not from a gas block")
+        #> The reader takes water's table by the hygrometer it names, asked by
+        #> species too. It no longer loops over gases to skip water: the one
+        #> loop that did, for the short_file flag, went with the Alert(65) it
+        #> raised (test_insitu_coverage_static.py).
+        self.assertIn("GasSlotIsWater(water_slot)", read(READER),
+                      "the reader must identify water by species")
         writer = read(WRITER)
         self.assertIn("do gas = firstGas, lastGas", writer, WRITER)
         self.assertIn(

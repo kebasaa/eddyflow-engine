@@ -237,6 +237,23 @@ Unreleased
 	       where "9" (not performed) belongs. Each now passes its array's own
 	       size.
 	  Pinned by static_checks/test_pack_flag_count_static.py.
+	- Fix: A gas without a spectral transfer function of its own that takes a
+	       tube-mate's (gas_<i>_sa_source, or automatic selection) is now
+	       reported as such - "Info> COS (...) has no spectral transfer
+	       function of its own; corrected with CO2 (...)'s [set by user]" -
+	       instead of being counted as unfitted. Warning(110) said the
+	       assessment had partly failed for it, although it is corrected in
+	       situ. Only a gas left with no in-situ correction at all is warned
+	       about, and named.
+	- Fix: Reading a spectral assessment file no longer raises Warning(110),
+	       whose "succeeded" and "the file was written" describe an
+	       assessment made in the run. A file that lacks a transfer function
+	       for some gases, with no tube-mate to take one from, raises the new
+	       Warning(111), worded for a file that was read. The reader's
+	       Alert(65), "switched to Moncrieff et al. (1997)", for a gas
+	       without a block - which switched nothing - is gone; Alert(65)
+	       stays for a malformed file, where the method is switched.
+	  Pinned by static_checks/test_insitu_coverage_static.py.
 
 8.2.0 (2026-11-11)
 

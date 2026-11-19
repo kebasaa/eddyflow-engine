@@ -2712,3 +2712,40 @@ integer function SpectralSourceSlot(gas_slot, month, SA)
     suggested = SpectralSuggestedSource(gas_slot, month, SA)
     if (suggested > 0) SpectralSourceSlot = suggested
 end function SpectralSourceSlot
+
+!***************************************************************************
+!
+! \brief       The tube-mate whose transfer function corrects a gas, if any
+! \author      Jonathan Muller
+! \note        The first slot other than the gas itself that
+!              SpectralSourceSlot hands it in some month and that has a fit
+!              of its own; 0 when the gas is corrected with its own fit, or
+!              with none. Water never borrows.
+!
+!              What "is this gas corrected in situ" means everywhere a run
+!              reports it: a gas with no fit of its own that takes a
+!              tube-mate's is corrected in situ, not analytically, and was
+!              wrongly warned about as if it were.
+!***************************************************************************
+integer function SpectralInsituDonor(gas_slot, SA)
+    use m_common_global_var
+    implicit none
+    integer, intent(in) :: gas_slot
+    type(SASetupType), intent(in) :: SA
+    integer :: month
+    integer :: src
+    logical, external :: GasSlotIsWater
+    logical, external :: GasHasSpectralFit
+    integer, external :: SpectralSourceSlot
+
+    SpectralInsituDonor = 0
+    if (gas_slot < firstGas .or. gas_slot > lastGas) return
+    if (GasSlotIsWater(gas_slot)) return
+    do month = 1, 12
+        src = SpectralSourceSlot(gas_slot, month, SA)
+        if (src == gas_slot) cycle
+        if (.not. GasHasSpectralFit(src)) cycle
+        SpectralInsituDonor = src
+        return
+    end do
+end function SpectralInsituDonor
